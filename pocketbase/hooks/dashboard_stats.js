@@ -1,12 +1,16 @@
 // Endpoint: POST /backend/v1/dashboard/stats
 // Agrega no servidor os KPIs, gráficos e opções de filtro da coleção `vendas`.
 //
-// IMPLEMENTAÇÃO: em vez de raw SQL com SUM()/GROUP BY + DynamicModel.scan
-// (que falha neste JSVM — SUM() retorna float64 e o scan para campos
-// inicializados como inteiro JS silenciosamente zera tudo), buscamos os
-// registros via $app.findRecordsByFilter() (API garantida do PocketBase)
-// e fazemos TODA a agregação em JavaScript. Comprovadamente estável com
-// 125k+ registros.
+// IMPLEMENTAÇÃO: TODAS as agregações (KPIs, charts, filterOptions) são feitas
+// com SQL puro via $app.db().newQuery() — SUM/COUNT/GROUP BY/DISTINCT rodam
+// inteiramente dentro do SQLite e retornam POUCAS linhas (dezenas), nunca os
+// 125k+ registros paginados para a memória do JSVM (que estourava o timeout).
+//
+// BUG EVITADO: o JSVM devolve float64 para SUM()/COUNT() e o scan de
+// DynamicModel inicializado como inteiro (`0`) falha silenciosamente zerando
+// tudo. Aqui todo campo agregado é declarado como STRING (SQL converte
+// qualquer tipo numérico para string sem erro) e parseado com parseFloat/
+// parseInt no JS — à prova de mismatch de tipo.
 //
 // Body:
 //   filters (object, opcional) — mesmos campos suportados por /vendas/list:
@@ -14,164 +18,165 @@
 //     grupoItem[], estado[], utilizacao[], search, tipoDevolucao
 //
 // Retorna: { kpis, charts, recentSales, filterOptions }
-//   kpis: { faturamento, valorLiquido, itensVendidos, documentos, devolucoes }
-//   charts: {
-//     vendasPorMes: [{ mes, faturamento, liquido }],
-//     grupoItem: [{ name, value }],
-//     topVendedores: [{ name, total }],
-//     topClientes: [{ name, total }],
-//     estado: [{ uf, total }],
-//   }
-//   recentSales: [ itens limitados a 8 ]
-//   filterOptions: { vendedorCliente, vendedor, grupoItem, estado, utilizacao, anos, meses, dias }
 routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const body = e.requestInfo().body || {}
   const f = body.filters || {}
 
-  // Constroi filtro PocketBase (mesma sintaxe do /vendas/list)
-  const parts = []
-  if (f.dataDe) parts.push(`data_lancamento >= "${f.dataDe} 00:00:00"`)
-  if (f.dataAte) parts.push(`data_lancamento <= "${f.dataAte} 23:59:59"`)
-  if (f.ano) parts.push(`data_lancamento ~ "${f.ano}-"`)
+  // ---- Escape SQL (aspas simples duplicadas) ----
+  const sqlEsc = (s) => String(s).replace(/'/g, "''")
+
+  // ---- Constrói cláusula WHERE (SQL) e filtro PocketBase em paralelo ----
+  // O filtro PB é usado apenas para recentSales (findRecordsByFilter).
+  const sqlParts = []
+  const pbParts = []
+
+  if (f.dataDe) {
+    sqlParts.push("data_lancamento >= '" + sqlEsc(f.dataDe) + " 00:00:00'")
+    pbParts.push('data_lancamento >= "' + f.dataDe + ' 00:00:00"')
+  }
+  if (f.dataAte) {
+    sqlParts.push("data_lancamento <= '" + sqlEsc(f.dataAte) + " 23:59:59'")
+    pbParts.push('data_lancamento <= "' + f.dataAte + ' 23:59:59"')
+  }
+  if (f.ano) {
+    const a = sqlEsc(f.ano)
+    sqlParts.push("data_lancamento LIKE '" + a + "-%'")
+    pbParts.push('data_lancamento ~ "' + f.ano + '-"')
+  }
   if (f.mes) {
     const mm = String(f.mes).padStart(2, '0')
-    parts.push(`data_lancamento ~ "-${mm}-"`)
+    sqlParts.push("data_lancamento LIKE '%-" + mm + "-%'")
+    pbParts.push('data_lancamento ~ "-' + mm + '-"')
   }
   if (f.dia) {
     const dd = String(f.dia).padStart(2, '0')
-    parts.push(`data_lancamento ~ "-${dd} "`)
+    sqlParts.push("data_lancamento LIKE '%-" + dd + " %'")
+    pbParts.push('data_lancamento ~ "-' + dd + ' "')
   }
   if (Array.isArray(f.vendedorCliente) && f.vendedorCliente.length > 0) {
-    const arr = f.vendedorCliente.map((v) => `"${v}"`).join(',')
-    parts.push(`vendedor_cliente in (${arr})`)
+    const sqlArr = f.vendedorCliente.map((v) => "'" + sqlEsc(v) + "'").join(',')
+    const pbArr = f.vendedorCliente.map((v) => '"' + v + '"').join(',')
+    sqlParts.push('vendedor_cliente IN (' + sqlArr + ')')
+    pbParts.push('vendedor_cliente in (' + pbArr + ')')
   }
   if (Array.isArray(f.vendedor) && f.vendedor.length > 0) {
-    const arr = f.vendedor.map((v) => `"${v}"`).join(',')
-    parts.push(`nome_vendedor in (${arr})`)
+    const sqlArr = f.vendedor.map((v) => "'" + sqlEsc(v) + "'").join(',')
+    const pbArr = f.vendedor.map((v) => '"' + v + '"').join(',')
+    sqlParts.push('nome_vendedor IN (' + sqlArr + ')')
+    pbParts.push('nome_vendedor in (' + pbArr + ')')
   }
   if (Array.isArray(f.grupoItem) && f.grupoItem.length > 0) {
-    const arr = f.grupoItem.map((v) => `"${v}"`).join(',')
-    parts.push(`grupo_item in (${arr})`)
+    const sqlArr = f.grupoItem.map((v) => "'" + sqlEsc(v) + "'").join(',')
+    const pbArr = f.grupoItem.map((v) => '"' + v + '"').join(',')
+    sqlParts.push('grupo_item IN (' + sqlArr + ')')
+    pbParts.push('grupo_item in (' + pbArr + ')')
   }
   if (Array.isArray(f.estado) && f.estado.length > 0) {
-    const arr = f.estado.map((v) => `"${v}"`).join(',')
-    parts.push(`estado in (${arr})`)
+    const sqlArr = f.estado.map((v) => "'" + sqlEsc(v) + "'").join(',')
+    const pbArr = f.estado.map((v) => '"' + v + '"').join(',')
+    sqlParts.push('estado IN (' + sqlArr + ')')
+    pbParts.push('estado in (' + pbArr + ')')
   }
   if (Array.isArray(f.utilizacao) && f.utilizacao.length > 0) {
-    const arr = f.utilizacao.map((v) => `"${v}"`).join(',')
-    parts.push(`utilizacao in (${arr})`)
+    const sqlArr = f.utilizacao.map((v) => "'" + sqlEsc(v) + "'").join(',')
+    const pbArr = f.utilizacao.map((v) => '"' + v + '"').join(',')
+    sqlParts.push('utilizacao IN (' + sqlArr + ')')
+    pbParts.push('utilizacao in (' + pbArr + ')')
   }
   if (f.tipoDevolucao) {
-    parts.push(`tipo_documento = "${f.tipoDevolucao}"`)
+    const td = sqlEsc(f.tipoDevolucao)
+    sqlParts.push("tipo_documento = '" + td + "'")
+    pbParts.push('tipo_documento = "' + f.tipoDevolucao + '"')
   }
   if (f.search) {
-    const q = f.search.toString().replace(/"/g, '\\"')
-    const term = `"${q}"`
-    parts.push(
-      `(nome_cliente ~ ${term} || codigo_cliente ~ ${term} || codigo_item ~ ${term} || descricao_item ~ ${term} || numero_nfe ~ ${term} || numero_sap ~ ${term})`,
+    const q = sqlEsc(f.search)
+    const like = " LIKE '%" + q + "%'"
+    sqlParts.push(
+      '(nome_cliente' +
+        like +
+        ' OR codigo_cliente' +
+        like +
+        ' OR codigo_item' +
+        like +
+        ' OR descricao_item' +
+        like +
+        ' OR numero_nfe' +
+        like +
+        ' OR numero_sap' +
+        like +
+        ')',
+    )
+    const pbq = f.search.toString().replace(/"/g, '\\"')
+    const term = '"' + pbq + '"'
+    pbParts.push(
+      '(nome_cliente ~ ' +
+        term +
+        ' || codigo_cliente ~ ' +
+        term +
+        ' || codigo_item ~ ' +
+        term +
+        ' || descricao_item ~ ' +
+        term +
+        ' || numero_nfe ~ ' +
+        term +
+        ' || numero_sap ~ ' +
+        term +
+        ')',
     )
   }
-  const filterStr = parts.length > 0 ? parts.join(' && ') : "id != ''"
 
-  // ---- Helper: busca TODOS os registros de `vendas` que casam com `filter`,
-  //      paginando (1000 por página) até esgotar. Retorna array de records.
-  //      O `sort` controla a ordem (usamos "-created" para recentSales).
-  //      Tudo inline no callback (regra de escopo do JSVM de hooks).
-  const fetchAll = (filter, sort) => {
-    const all = []
-    let offset = 0
-    // Limite por página alto para minimizar viagens; o avanço do offset é
-    // feito pelo número REAL de registros retornados (à prova de cap silencioso).
-    const perPage = 1000
-    while (true) {
-      let batch
-      try {
-        batch = $app.findRecordsByFilter('vendas', filter, sort, perPage, offset)
-      } catch (err) {
-        console.error('dashboard_stats: findRecordsByFilter falhou:', err)
-        break
-      }
-      if (!batch || batch.length === 0) break
-      for (let i = 0; i < batch.length; i++) {
-        all.push(batch[i])
-      }
-      offset += batch.length
+  const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'
+  const pbFilter = pbParts.length > 0 ? pbParts.join(' && ') : "id != ''"
+
+  // ---- Helper: roda SELECT e devolve array de DynamicModel (campos a..f) ----
+  const runAgg = (sql) => {
+    const rows = arrayOf(new DynamicModel({ a: '', b: '', c: '', d: '', e: '', f: '' }))
+    try {
+      $app.db().newQuery(sql).all(rows)
+    } catch (err) {
+      console.error('dashboard_stats: query falhou:', sql, err)
     }
-    return all
+    return rows
   }
 
-  // ---- 1) Registros filtrados (ordenados por created desc p/ recentSales) ----
-  const records = fetchAll(filterStr, '-created')
-
-  // ---- 2) Agregação de KPIs + 5 charts em UMA passada ----
-  let faturamento = 0
-  let valorLiquido = 0
-  let itensVendidos = 0
-  let devolucoes = 0
-  const nfeSet = {}
-  const mesMap = {} // ym "YYYY-MM" -> { faturamento, liquido }
-  const grupoMap = {} // name -> value
-  const vendMap = {} // name -> total
-  const cliMap = {} // name -> total
-  const ufMap = {} // uf -> total
-  const devTypes = { 'Dev. Entrega': true, 'Dev. NF': true, DEVNF: true }
-
-  for (let i = 0; i < records.length; i++) {
-    const r = records[i]
-    const tl = r.getFloat('total_linha')
-    const vl = r.getFloat('valor_liquido')
-    const qt = r.getFloat('quantidade')
-
-    faturamento += tl
-    valorLiquido += vl
-    itensVendidos += qt
-
-    const nfe = r.getString('numero_nfe')
-    nfeSet[nfe] = true
-
-    const td = r.getString('tipo_documento')
-    if (devTypes[td]) devolucoes += tl
-
-    const dl = r.getString('data_lancamento')
-    if (dl && dl.length >= 7) {
-      const ym = dl.substr(0, 7)
-      if (!mesMap[ym]) mesMap[ym] = { faturamento: 0, liquido: 0 }
-      mesMap[ym].faturamento += tl
-      mesMap[ym].liquido += vl
-    }
-
-    let g = r.getString('grupo_item')
-    if (!g) g = 'Outros'
-    if (!grupoMap[g]) grupoMap[g] = 0
-    grupoMap[g] += tl
-
-    let v = r.getString('nome_vendedor')
-    if (!v) v = 'Não informado'
-    if (!vendMap[v]) vendMap[v] = 0
-    vendMap[v] += tl
-
-    let c = r.getString('nome_cliente')
-    if (!c) c = 'Cliente Diversos'
-    if (!cliMap[c]) cliMap[c] = 0
-    cliMap[c] += tl
-
-    let uf = r.getString('estado')
-    if (!uf) uf = 'Outros'
-    if (!ufMap[uf]) ufMap[uf] = 0
-    ufMap[uf] += tl
+  const toNum = (v) => {
+    const n = parseFloat(v)
+    return isNaN(n) ? 0 : n
   }
 
-  const documentos = Object.keys(nfeSet).length
-
+  // ============================================================
+  // 1) KPIs (uma única query, 1 linha)
+  // ============================================================
+  const kpiSql =
+    'SELECT ' +
+    'COALESCE(SUM(total_linha),0) AS a, ' +
+    'COALESCE(SUM(valor_liquido),0) AS b, ' +
+    'COALESCE(SUM(quantidade),0) AS c, ' +
+    'COUNT(DISTINCT numero_nfe) AS d, ' +
+    "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS e " +
+    'FROM vendas WHERE ' +
+    sqlWhere
+  const kpiRows = runAgg(kpiSql)
+  const kpiRow = kpiRows.length > 0 ? kpiRows[0] : null
   const kpis = {
-    faturamento: faturamento,
-    valorLiquido: valorLiquido,
-    itensVendidos: itensVendidos,
-    documentos: documentos,
-    devolucoes: devolucoes,
+    faturamento: kpiRow ? toNum(kpiRow.a) : 0,
+    valorLiquido: kpiRow ? toNum(kpiRow.b) : 0,
+    itensVendidos: kpiRow ? toNum(kpiRow.c) : 0,
+    documentos: kpiRow ? toNum(kpiRow.d) : 0,
+    devolucoes: kpiRow ? toNum(kpiRow.e) : 0,
   }
 
-  // ---- vendasPorMes (ordenado por ym ASC) ----
+  // ============================================================
+  // 2) Charts
+  // ============================================================
+  // vendasPorMes (GROUP BY ano-mês, ordenado ASC)
+  const mesSql =
+    'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b, COALESCE(SUM(valor_liquido),0) AS c ' +
+    'FROM vendas WHERE ' +
+    sqlWhere +
+    ' AND length(data_lancamento) >= 7 ' +
+    'GROUP BY substr(data_lancamento,1,7) ORDER BY 1 ASC'
+  const mesRows = runAgg(mesSql)
   const monthNames = [
     'Jan',
     'Fev',
@@ -186,127 +191,160 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     'Nov',
     'Dez',
   ]
-  const ymKeys = Object.keys(mesMap).sort()
   const vendasPorMes = []
-  for (let i = 0; i < ymKeys.length; i++) {
-    const ym = ymKeys[i]
+  for (let i = 0; i < mesRows.length; i++) {
+    const ym = mesRows[i].a
     const p = ym.split('-')
     if (p.length < 2) continue
     const y = p[0]
     const mo = parseInt(p[1], 10)
     if (isNaN(mo) || mo < 1 || mo > 12) continue
     vendasPorMes.push({
-      mes: `${monthNames[mo - 1]}/${y.slice(2)}`,
-      faturamento: mesMap[ym].faturamento,
-      liquido: mesMap[ym].liquido,
+      mes: monthNames[mo - 1] + '/' + y.slice(2),
+      faturamento: toNum(mesRows[i].b),
+      liquido: toNum(mesRows[i].c),
     })
   }
 
-  // ---- Helpers de ranking (top N por valor desc) ----
-  const toRanked = (map, keyName, valName, limit) => {
-    const keys = Object.keys(map)
-    const arr = []
-    for (let i = 0; i < keys.length; i++) {
-      const o = {}
-      o[keyName] = keys[i]
-      o[valName] = map[keys[i]]
-      arr.push(o)
-    }
-    arr.sort((a, b) => b[valName] - a[valName])
-    if (limit && arr.length > limit) arr.length = limit
-    return arr
+  // grupoItem (todos, value = SUM total_linha; vazio -> "Outros")
+  const grupoSql =
+    "SELECT COALESCE(NULLIF(grupo_item,''),'Outros') AS a, COALESCE(SUM(total_linha),0) AS b " +
+    'FROM vendas WHERE ' +
+    sqlWhere +
+    " GROUP BY COALESCE(NULLIF(grupo_item,''),'Outros') ORDER BY 2 DESC"
+  const grupoRows = runAgg(grupoSql)
+  const grupoItem = []
+  for (let i = 0; i < grupoRows.length; i++) {
+    grupoItem.push({ name: grupoRows[i].a, value: toNum(grupoRows[i].b) })
   }
 
-  const grupoItem = toRanked(grupoMap, 'name', 'value', 0)
-  const topVendedores = toRanked(vendMap, 'name', 'total', 10)
-  const topClientes = toRanked(cliMap, 'name', 'total', 10)
-  const estado = toRanked(ufMap, 'uf', 'total', 0)
+  // topVendedores (top 10 por faturamento)
+  const vendSql =
+    "SELECT COALESCE(NULLIF(nome_vendedor,''),'Não informado') AS a, COALESCE(SUM(total_linha),0) AS b " +
+    'FROM vendas WHERE ' +
+    sqlWhere +
+    " GROUP BY COALESCE(NULLIF(nome_vendedor,''),'Não informado') ORDER BY 2 DESC LIMIT 10"
+  const vendRows = runAgg(vendSql)
+  const topVendedores = []
+  for (let i = 0; i < vendRows.length; i++) {
+    topVendedores.push({ name: vendRows[i].a, total: toNum(vendRows[i].b) })
+  }
 
-  // ---- recentSales: primeiros 8 registros (já em -created) ----
+  // topClientes (top 10)
+  const cliSql =
+    "SELECT COALESCE(NULLIF(nome_cliente,''),'Cliente Diversos') AS a, COALESCE(SUM(total_linha),0) AS b " +
+    'FROM vendas WHERE ' +
+    sqlWhere +
+    " GROUP BY COALESCE(NULLIF(nome_cliente,''),'Cliente Diversos') ORDER BY 2 DESC LIMIT 10"
+  const cliRows = runAgg(cliSql)
+  const topClientes = []
+  for (let i = 0; i < cliRows.length; i++) {
+    topClientes.push({ name: cliRows[i].a, total: toNum(cliRows[i].b) })
+  }
+
+  // estado (todos)
+  const ufSql =
+    "SELECT COALESCE(NULLIF(estado,''),'Outros') AS a, COALESCE(SUM(total_linha),0) AS b " +
+    'FROM vendas WHERE ' +
+    sqlWhere +
+    " GROUP BY COALESCE(NULLIF(estado,''),'Outros') ORDER BY 2 DESC"
+  const ufRows = runAgg(ufSql)
+  const estado = []
+  for (let i = 0; i < ufRows.length; i++) {
+    estado.push({ uf: ufRows[i].a, total: toNum(ufRows[i].b) })
+  }
+
+  // ============================================================
+  // 3) recentSales — findRecordsByFilter com LIMIT 8 (rápido)
+  // ============================================================
   const recentSales = []
-  const rc = records.length < 8 ? records.length : 8
-  for (let i = 0; i < rc; i++) {
-    const r = records[i]
-    recentSales.push({
-      id: r.id,
-      data_lancamento: r.getString('data_lancamento'),
-      nome_cliente: r.getString('nome_cliente'),
-      vendedor_cliente: r.getString('vendedor_cliente'),
-      codigo_item: r.getString('codigo_item'),
-      descricao_item: r.getString('descricao_item'),
-      grupo_item: r.getString('grupo_item'),
-      quantidade: r.getFloat('quantidade'),
-      total_linha: r.getFloat('total_linha'),
-    })
+  try {
+    const recent = $app.findRecordsByFilter('vendas', pbFilter, '-created', 8, 0)
+    for (let i = 0; i < recent.length; i++) {
+      const r = recent[i]
+      recentSales.push({
+        id: r.id,
+        data_lancamento: r.getString('data_lancamento'),
+        nome_cliente: r.getString('nome_cliente'),
+        vendedor_cliente: r.getString('vendedor_cliente'),
+        codigo_item: r.getString('codigo_item'),
+        descricao_item: r.getString('descricao_item'),
+        grupo_item: r.getString('grupo_item'),
+        quantidade: r.getFloat('quantidade'),
+        total_linha: r.getFloat('total_linha'),
+      })
+    }
+  } catch (err) {
+    console.error('dashboard_stats: recentSales falhou:', err)
   }
 
-  // ---- filterOptions (distincts) ----
-  // Distintos sobre a BASE INTEIRA (sem aplicar filtros), para preservar as
-  // opções disponíveis mesmo quando há filtros ativos. Quando não há filtros,
-  // reutilizamos os mesmos registros já buscados (filterStr == "id != ''").
-  const hasFilters = parts.length > 0
-  const distinctSource = hasFilters ? fetchAll("id != ''", '') : records
-
-  const distVendedorCliente = {}
-  const distVendedor = {}
-  const distGrupoItem = {}
-  const distEstado = {}
-  const distUtilizacao = {}
-  const distAnos = {}
-  const distMeses = {}
-  const distDias = {}
-
-  for (let i = 0; i < distinctSource.length; i++) {
-    const r = distinctSource[i]
-
-    const vc = r.getString('vendedor_cliente')
-    if (vc) distVendedorCliente[vc] = true
-    const vd = r.getString('nome_vendedor')
-    if (vd) distVendedor[vd] = true
-    const gi = r.getString('grupo_item')
-    if (gi) distGrupoItem[gi] = true
-    const uf = r.getString('estado')
-    if (uf) distEstado[uf] = true
-    const ut = r.getString('utilizacao')
-    if (ut) distUtilizacao[ut] = true
-
-    const dl = r.getString('data_lancamento')
-    if (dl && dl.length >= 4) {
-      const ano = parseInt(dl.substr(0, 4), 10)
-      if (!isNaN(ano)) distAnos[ano] = true
+  // ============================================================
+  // 4) filterOptions (DISTINCT sobre a BASE INTEIRA — sem filtros)
+  //    Uma query DISTINCT por campo; todas as colunas têm índice.
+  // ============================================================
+  const distinctCol = (col) => {
+    const rows = arrayOf(new DynamicModel({ a: '' }))
+    try {
+      $app
+        .db()
+        .newQuery(
+          'SELECT DISTINCT ' +
+            col +
+            ' AS a FROM vendas WHERE ' +
+            col +
+            ' IS NOT NULL AND ' +
+            col +
+            " != '' ORDER BY 1 ASC",
+        )
+        .all(rows)
+    } catch (err) {
+      console.error('dashboard_stats: DISTINCT ' + col + ' falhou:', err)
     }
-    if (dl && dl.length >= 7) {
-      const mes = parseInt(dl.substr(5, 2), 10)
-      if (!isNaN(mes) && mes >= 1 && mes <= 12) distMeses[mes] = true
-    }
-    if (dl && dl.length >= 10) {
-      const dia = parseInt(dl.substr(8, 2), 10)
-      if (!isNaN(dia) && dia >= 1 && dia <= 31) distDias[dia] = true
-    }
+    const out = []
+    for (let i = 0; i < rows.length; i++) out.push(rows[i].a)
+    return out
   }
 
-  const objKeysSorted = (obj) => {
-    const ks = Object.keys(obj)
-    ks.sort()
-    return ks
-  }
-  const numKeysSorted = (obj) => {
-    const ks = Object.keys(obj)
-    const nums = []
-    for (let i = 0; i < ks.length; i++) nums.push(parseInt(ks[i], 10))
-    nums.sort((a, b) => a - b)
-    return nums
+  const distinctSubstr = (start, len) => {
+    const rows = arrayOf(new DynamicModel({ a: '' }))
+    try {
+      $app
+        .db()
+        .newQuery(
+          'SELECT DISTINCT substr(data_lancamento,' +
+            start +
+            ',' +
+            len +
+            ') AS a FROM vendas ' +
+            'WHERE length(data_lancamento) >= ' +
+            (start + len - 1) +
+            ' AND substr(data_lancamento,' +
+            start +
+            ',' +
+            len +
+            ") != '' ORDER BY 1 ASC",
+        )
+        .all(rows)
+    } catch (err) {
+      console.error('dashboard_stats: DISTINCT substr falhou:', err)
+    }
+    const out = []
+    for (let i = 0; i < rows.length; i++) {
+      const n = parseInt(rows[i].a, 10)
+      if (!isNaN(n)) out.push(n)
+    }
+    return out
   }
 
   const filterOptions = {
-    vendedorCliente: objKeysSorted(distVendedorCliente),
-    vendedor: objKeysSorted(distVendedor),
-    grupoItem: objKeysSorted(distGrupoItem),
-    estado: objKeysSorted(distEstado),
-    utilizacao: objKeysSorted(distUtilizacao),
-    anos: numKeysSorted(distAnos),
-    meses: numKeysSorted(distMeses),
-    dias: numKeysSorted(distDias),
+    vendedorCliente: distinctCol('vendedor_cliente'),
+    vendedor: distinctCol('nome_vendedor'),
+    grupoItem: distinctCol('grupo_item'),
+    estado: distinctCol('estado'),
+    utilizacao: distinctCol('utilizacao'),
+    anos: distinctSubstr(1, 4),
+    meses: distinctSubstr(6, 2),
+    dias: distinctSubstr(9, 2),
   }
 
   return e.json(200, {

@@ -111,18 +111,26 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
 
   const result = $app.findRecordsByFilter('vendas', filterStr, sort, perPage, (page - 1) * perPage)
 
-  // Conta total com o filtro aplicado para calcular a paginação correta
+  // Conta total com o filtro aplicado para calcular a paginação correta.
+  //
+  // BUG EVITADO: o JSVM devolve float64 para COUNT(*) e o scan de
+  // DynamicModel inicializado como inteiro (`0`) falha silenciosamente —
+  // totalItems caía no catch e ficava como result.length (20). Aqui o
+  // campo é declarado como STRING e parseado com parseInt, à prova de
+  // mismatch de tipo.
   let totalItems = 0
-  const countModel = arrayOf(new DynamicModel({ total: 0 }))
   try {
+    const countRows = arrayOf(new DynamicModel({ total: '' }))
     $app
       .db()
       .newQuery('SELECT COUNT(*) as total FROM vendas WHERE ' + filterStr)
-      .all(countModel)
-    if (countModel.length > 0) {
-      totalItems = countModel[0].total
+      .all(countRows)
+    if (countRows.length > 0) {
+      const n = parseInt(countRows[0].total, 10)
+      if (!isNaN(n)) totalItems = n
     }
-  } catch (_) {
+  } catch (err) {
+    console.error('vendas_list: COUNT falhou:', err)
     totalItems = result.length
   }
 
