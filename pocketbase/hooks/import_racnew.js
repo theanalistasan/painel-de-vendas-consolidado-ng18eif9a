@@ -111,11 +111,12 @@ routerAdd(
         .toString()
         .trim()
 
-      if (!numeroSap || !numeroNfe || !codigoCliente || !codigoItem) {
+      // Número SAP e Nº NFe continuam obrigatórios: se QUALQUER UM destes dois
+      // estiver ausente/vazio, o registro é silenciosamente pulado (sem alerta).
+      // Código do Cliente e Cód. do Item passam a ser opcionais (o registro é
+      // importado mesmo sem eles).
+      if (!numeroSap || !numeroNfe) {
         ignorados++
-        erros.push(
-          `Linha ${lineNum}: campos obrigatórios ausentes (Número SAP, Nº NFe, Código Cliente ou Cód. Item).`,
-        )
         continue
       }
 
