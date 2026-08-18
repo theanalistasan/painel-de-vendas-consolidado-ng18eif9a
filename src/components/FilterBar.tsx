@@ -4,7 +4,15 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { FilterState } from '@/types/sales'
+import { MESES_PT_BR, nomeMes } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 
 interface FilterBarProps {
@@ -16,6 +24,9 @@ interface FilterBarProps {
     grupoItem: string[]
     estado: string[]
     utilizacao: string[]
+    anos: number[]
+    meses: number[]
+    dias: number[]
   }
   showSearch?: boolean
 }
@@ -180,7 +191,10 @@ export default function FilterBar({
     filters.grupoItem.length +
     filters.estado.length +
     filters.utilizacao.length +
-    (filters.search ? 1 : 0)
+    (filters.search ? 1 : 0) +
+    (filters.ano ? 1 : 0) +
+    (filters.mes ? 1 : 0) +
+    (filters.dia ? 1 : 0)
 
   const clearAllFilters = () => {
     setFilters({
@@ -192,11 +206,21 @@ export default function FilterBar({
       estado: [],
       utilizacao: [],
       search: '',
+      ano: '',
+      mes: '',
+      dia: '',
     })
   }
 
   const removeSingleFilter = (type: keyof FilterState, value?: string) => {
-    if (type === 'dataDe' || type === 'dataAte' || type === 'search') {
+    if (
+      type === 'dataDe' ||
+      type === 'dataAte' ||
+      type === 'search' ||
+      type === 'ano' ||
+      type === 'mes' ||
+      type === 'dia'
+    ) {
       setFilters((prev) => ({ ...prev, [type]: '' }))
     } else if (value && Array.isArray(filters[type])) {
       setFilters((prev) => ({
@@ -280,6 +304,106 @@ export default function FilterBar({
               onChange={(e) => setFilters((prev) => ({ ...prev, dataAte: e.target.value }))}
               className="h-10 text-xs rounded-lg border-slate-200"
             />
+          </div>
+        </div>
+
+        {/* Ano / Mês / Dia (Data de Lançamento) */}
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Ano</Label>
+            <Select
+              value={filters.ano}
+              onValueChange={(v) =>
+                setFilters((prev) => ({ ...prev, ano: v === '__all' ? '' : v }))
+              }
+            >
+              <SelectTrigger
+                className={cn(
+                  'h-10 text-xs rounded-lg',
+                  filters.ano
+                    ? 'border-indigo-400 font-medium text-slate-900 bg-indigo-50/20'
+                    : 'border-slate-200 text-slate-600',
+                )}
+              >
+                <SelectValue placeholder="Ano" />
+              </SelectTrigger>
+              <SelectContent>
+                {options.anos.length === 0 && (
+                  <SelectItem value="__none" disabled>
+                    Sem dados
+                  </SelectItem>
+                )}
+                {options.anos.map((ano) => (
+                  <SelectItem key={ano} value={String(ano)} className="text-xs">
+                    {ano}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Mês</Label>
+            <Select
+              value={filters.mes}
+              onValueChange={(v) =>
+                setFilters((prev) => ({ ...prev, mes: v === '__all' ? '' : v }))
+              }
+            >
+              <SelectTrigger
+                className={cn(
+                  'h-10 text-xs rounded-lg',
+                  filters.mes
+                    ? 'border-indigo-400 font-medium text-slate-900 bg-indigo-50/20'
+                    : 'border-slate-200 text-slate-600',
+                )}
+              >
+                <SelectValue placeholder="Mês" />
+              </SelectTrigger>
+              <SelectContent>
+                {options.meses.length === 0 && (
+                  <SelectItem value="__none" disabled>
+                    Sem dados
+                  </SelectItem>
+                )}
+                {options.meses.map((m) => (
+                  <SelectItem key={m} value={String(m)} className="text-xs">
+                    {MESES_PT_BR[m - 1]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Dia</Label>
+            <Select
+              value={filters.dia}
+              onValueChange={(v) =>
+                setFilters((prev) => ({ ...prev, dia: v === '__all' ? '' : v }))
+              }
+            >
+              <SelectTrigger
+                className={cn(
+                  'h-10 text-xs rounded-lg',
+                  filters.dia
+                    ? 'border-indigo-400 font-medium text-slate-900 bg-indigo-50/20'
+                    : 'border-slate-200 text-slate-600',
+                )}
+              >
+                <SelectValue placeholder="Dia" />
+              </SelectTrigger>
+              <SelectContent>
+                {options.dias.length === 0 && (
+                  <SelectItem value="__none" disabled>
+                    Sem dados
+                  </SelectItem>
+                )}
+                {options.dias.map((d) => (
+                  <SelectItem key={d} value={String(d)} className="text-xs">
+                    {String(d).padStart(2, '0')}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
@@ -514,6 +638,54 @@ export default function FilterBar({
                 type="button"
                 onClick={() => removeSingleFilter('search')}
                 className="p-0.5 rounded-full hover:bg-amber-200 text-amber-700"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </Badge>
+          )}
+
+          {filters.ano && (
+            <Badge
+              variant="outline"
+              className="bg-indigo-50 border-indigo-200 text-indigo-900 text-xs pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1"
+            >
+              <span>Ano: {filters.ano}</span>
+              <button
+                type="button"
+                onClick={() => removeSingleFilter('ano')}
+                className="p-0.5 rounded-full hover:bg-indigo-200 text-indigo-700"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </Badge>
+          )}
+
+          {filters.mes && (
+            <Badge
+              variant="outline"
+              className="bg-indigo-50 border-indigo-200 text-indigo-900 text-xs pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1"
+            >
+              <span>Mês: {nomeMes(Number(filters.mes))}</span>
+              <button
+                type="button"
+                onClick={() => removeSingleFilter('mes')}
+                className="p-0.5 rounded-full hover:bg-indigo-200 text-indigo-700"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </Badge>
+          )}
+
+          {filters.dia && (
+            <Badge
+              variant="outline"
+              className="bg-indigo-50 border-indigo-200 text-indigo-900 text-xs pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1"
+            >
+              <span>Dia: {String(filters.dia).padStart(2, '0')}</span>
+              <button
+                type="button"
+                onClick={() => removeSingleFilter('dia')}
+                className="p-0.5 rounded-full hover:bg-indigo-200 text-indigo-700"
               >
                 <X className="w-3 h-3" />
               </button>

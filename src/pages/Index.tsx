@@ -29,7 +29,15 @@ import {
 import { fetchVendas } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
 import type { VendaConsolidada, FilterState } from '@/types/sales'
-import { formatCurrency, formatNumber, formatDate, getGrupoColor } from '@/lib/formatters'
+import {
+  formatCurrency,
+  formatNumber,
+  formatDate,
+  getGrupoColor,
+  extractAno,
+  extractMes,
+  extractDia,
+} from '@/lib/formatters'
 import FilterBar from '@/components/FilterBar'
 import KpiCard from '@/components/KpiCard'
 import ChartCard from '@/components/ChartCard'
@@ -76,6 +84,9 @@ export default function Index() {
     estado: [],
     utilizacao: [],
     search: '',
+    ano: '',
+    mes: '',
+    dia: '',
   })
 
   // Load consolidated sales
@@ -108,12 +119,22 @@ export default function Index() {
     const eSet = new Set<string>()
     const uSet = new Set<string>()
 
+    const anoSet = new Set<number>()
+    const mesSet = new Set<number>()
+    const diaSet = new Set<number>()
+
     vendas.forEach((v) => {
       if (v.vendedor_cliente) vcSet.add(v.vendedor_cliente)
       if (v.nome_vendedor) vSet.add(v.nome_vendedor)
       if (v.grupo_item) giSet.add(v.grupo_item)
       if (v.estado) eSet.add(v.estado)
       if (v.utilizacao) uSet.add(v.utilizacao)
+      const ano = extractAno(v.data_lancamento)
+      const mes = extractMes(v.data_lancamento)
+      const dia = extractDia(v.data_lancamento)
+      if (ano !== null) anoSet.add(ano)
+      if (mes !== null) mesSet.add(mes)
+      if (dia !== null) diaSet.add(dia)
     })
 
     return {
@@ -122,13 +143,16 @@ export default function Index() {
       grupoItem: Array.from(giSet).sort(),
       estado: Array.from(eSet).sort(),
       utilizacao: Array.from(uSet).sort(),
+      anos: Array.from(anoSet).sort((a, b) => b - a),
+      meses: Array.from(mesSet).sort((a, b) => a - b),
+      dias: Array.from(diaSet).sort((a, b) => a - b),
     }
   }, [vendas])
 
   // Filtered dataset
   const filteredVendas = useMemo(() => {
     return vendas.filter((v) => {
-      // Date filters
+      // Date range filters (período) — intersecção com ano/mês/dia
       if (filters.dataDe) {
         const vDate = (v.data_lancamento || '').slice(0, 10)
         if (vDate && vDate < filters.dataDe) return false
@@ -137,6 +161,11 @@ export default function Index() {
         const vDate = (v.data_lancamento || '').slice(0, 10)
         if (vDate && vDate > filters.dataAte) return false
       }
+
+      // Filtros por parte da data (ano/mês/dia) extraídos da Data de Lançamento (BR ou ISO)
+      if (filters.ano && extractAno(v.data_lancamento) !== Number(filters.ano)) return false
+      if (filters.mes && extractMes(v.data_lancamento) !== Number(filters.mes)) return false
+      if (filters.dia && extractDia(v.data_lancamento) !== Number(filters.dia)) return false
 
       // Multi-selects
       if (
@@ -364,6 +393,9 @@ export default function Index() {
                   estado: [],
                   utilizacao: [],
                   search: '',
+                  ano: '',
+                  mes: '',
+                  dia: '',
                 })
               }
             >

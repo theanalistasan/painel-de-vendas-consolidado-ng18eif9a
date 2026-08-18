@@ -137,6 +137,12 @@ export interface FilterState {
   estado: string[]
   utilizacao: string[]
   search: string
+  /** Ano (string) extraído da Data de Lançamento, ex: "2024" */
+  ano: string
+  /** Mês (1-12) como string, exibido como nome */
+  mes: string
+  /** Dia (1-31) como string */
+  dia: string
 }
 
 export interface ImportResult {

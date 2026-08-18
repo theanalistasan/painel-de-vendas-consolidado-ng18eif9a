@@ -54,26 +54,104 @@ export function formatDateTime(value: string | Date | undefined | null): string 
   }
 }
 
+export const MESES_PT_BR = [
+  'Janeiro',
+  'Fevereiro',
+  'Março',
+  'Abril',
+  'Maio',
+  'Junho',
+  'Julho',
+  'Agosto',
+  'Setembro',
+  'Outubro',
+  'Novembro',
+  'Dezembro',
+] as const
+
+export const MESES_CURTOS = [
+  'Jan',
+  'Fev',
+  'Mar',
+  'Abr',
+  'Mai',
+  'Jun',
+  'Jul',
+  'Ago',
+  'Set',
+  'Out',
+  'Nov',
+  'Dez',
+] as const
+
+/**
+ * Parse uma data que pode vir em formato brasileiro (dd/mm/yyyy) ou ISO (yyyy-mm-dd),
+ * podendo conter ou não horário. Retorna um objeto Date válido em horário local (meio-dia UTC)
+ * ou null se inválida/vazia.
+ */
+export function parseDataLancamento(value: string | undefined | null): Date | null {
+  if (!value) return null
+  const str = String(value).trim()
+  if (!str) return null
+
+  // ISO: yyyy-mm-dd[Thh:mm:ss...] ou yyyy/mm/dd
+  const isoMatch = str.match(/^(\d{4})[-/](\d{2})[-/](\d{2})(.*)$/)
+  if (isoMatch) {
+    const [, y, m, d] = isoMatch
+    const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), 12, 0, 0))
+    return isNaN(date.getTime()) ? null : date
+  }
+
+  // Brasileiro: dd/mm/yyyy[ hh:mm:ss] ou dd-mm-yyyy
+  const brMatch = str.match(/^(\d{2})[/\-.](\d{2})[/\-.](\d{4})(.*)$/)
+  if (brMatch) {
+    const [, d, m, y] = brMatch
+    const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), 12, 0, 0))
+    return isNaN(date.getTime()) ? null : date
+  }
+
+  // Fallback: deixa o Date tentar
+  const fallback = new Date(str)
+  return isNaN(fallback.getTime()) ? null : fallback
+}
+
+/**
+ * Extrai o ano (4 dígitos) de uma data de lançamento (BR ou ISO).
+ */
+export function extractAno(value: string | undefined | null): number | null {
+  const d = parseDataLancamento(value)
+  if (!d) return null
+  return d.getUTCFullYear()
+}
+
+/**
+ * Extrai o mês (1-12) de uma data de lançamento (BR ou ISO).
+ */
+export function extractMes(value: string | undefined | null): number | null {
+  const d = parseDataLancamento(value)
+  if (!d) return null
+  return d.getUTCMonth() + 1
+}
+
+/**
+ * Extrai o dia (1-31) de uma data de lançamento (BR ou ISO).
+ */
+export function extractDia(value: string | undefined | null): number | null {
+  const d = parseDataLancamento(value)
+  if (!d) return null
+  return d.getUTCDate()
+}
+
+export function nomeMes(numero: number): string {
+  return MESES_PT_BR[numero - 1] || String(numero)
+}
+
 export function formatMonthYear(isoDate: string): string {
   if (!isoDate) return ''
   try {
     const d = new Date(isoDate)
     if (isNaN(d.getTime())) return ''
-    const months = [
-      'Jan',
-      'Fev',
-      'Mar',
-      'Abr',
-      'Mai',
-      'Jun',
-      'Jul',
-      'Ago',
-      'Set',
-      'Out',
-      'Nov',
-      'Dez',
-    ]
-    return `${months[d.getUTCMonth()]}/${String(d.getUTCFullYear()).slice(2)}`
+    return `${MESES_CURTOS[d.getUTCMonth()]}/${String(d.getUTCFullYear()).slice(2)}`
   } catch (_) {
     return isoDate
   }

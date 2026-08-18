@@ -19,6 +19,9 @@ import {
   formatDate,
   exportToCSV,
   getGrupoColor,
+  extractAno,
+  extractMes,
+  extractDia,
 } from '@/lib/formatters'
 import FilterBar from '@/components/FilterBar'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -48,6 +51,9 @@ export default function Vendas() {
     estado: [],
     utilizacao: [],
     search: '',
+    ano: '',
+    mes: '',
+    dia: '',
   })
 
   const loadData = async () => {
@@ -83,12 +89,22 @@ export default function Vendas() {
     const eSet = new Set<string>()
     const uSet = new Set<string>()
 
+    const anoSet = new Set<number>()
+    const mesSet = new Set<number>()
+    const diaSet = new Set<number>()
+
     vendas.forEach((v) => {
       if (v.vendedor_cliente) vcSet.add(v.vendedor_cliente)
       if (v.nome_vendedor) vSet.add(v.nome_vendedor)
       if (v.grupo_item) giSet.add(v.grupo_item)
       if (v.estado) eSet.add(v.estado)
       if (v.utilizacao) uSet.add(v.utilizacao)
+      const ano = extractAno(v.data_lancamento)
+      const mes = extractMes(v.data_lancamento)
+      const dia = extractDia(v.data_lancamento)
+      if (ano !== null) anoSet.add(ano)
+      if (mes !== null) mesSet.add(mes)
+      if (dia !== null) diaSet.add(dia)
     })
 
     return {
@@ -97,13 +113,16 @@ export default function Vendas() {
       grupoItem: Array.from(giSet).sort(),
       estado: Array.from(eSet).sort(),
       utilizacao: Array.from(uSet).sort(),
+      anos: Array.from(anoSet).sort((a, b) => b - a),
+      meses: Array.from(mesSet).sort((a, b) => a - b),
+      dias: Array.from(diaSet).sort((a, b) => a - b),
     }
   }, [vendas])
 
   // Filter dataset
   const filteredVendas = useMemo(() => {
     return vendas.filter((v) => {
-      // Date filters
+      // Date range filters (período) — intersecção com ano/mês/dia
       if (filters.dataDe) {
         const vDate = (v.data_lancamento || '').slice(0, 10)
         if (vDate && vDate < filters.dataDe) return false
@@ -112,6 +131,11 @@ export default function Vendas() {
         const vDate = (v.data_lancamento || '').slice(0, 10)
         if (vDate && vDate > filters.dataAte) return false
       }
+
+      // Filtros por parte da data (ano/mês/dia) extraídos da Data de Lançamento (BR ou ISO)
+      if (filters.ano && extractAno(v.data_lancamento) !== Number(filters.ano)) return false
+      if (filters.mes && extractMes(v.data_lancamento) !== Number(filters.mes)) return false
+      if (filters.dia && extractDia(v.data_lancamento) !== Number(filters.dia)) return false
 
       // Multi-selects
       if (

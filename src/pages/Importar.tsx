@@ -30,6 +30,23 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
+const CHUNK_SIZE = 5000
+
+interface BatchProgress {
+  current: number
+  total: number
+  sent: number
+}
+
+interface BatchResult {
+  importados: number
+  atualizados: number
+  ignorados: number
+  erros: string[]
+  failedBatches: number[]
+  totalBatches: number
+}
+
 interface CardImportProps {
   title: string
   subtitle: string
@@ -53,6 +70,8 @@ function BaseImportCard({
   const [parsedRows, setParsedRows] = useState<Record<string, string>[]>([])
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
+  const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null)
+  const [batchResult, setBatchResult] = useState<BatchResult | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
@@ -144,15 +163,73 @@ function BaseImportCard({
   const handleExecuteImport = async () => {
     if (parsedRows.length === 0) return
     setLoading(true)
+    setResult(null)
+    setBatchResult(null)
+
+    // Divide os registros em lotes de até CHUNK_SIZE
+    const chunks: Record<string, string>[][] = []
+    for (let i = 0; i < parsedRows.length; i += CHUNK_SIZE) {
+      chunks.push(parsedRows.slice(i, i + CHUNK_SIZE))
+    }
+    const totalBatches = chunks.length
+
+    setBatchProgress({ current: 0, total: totalBatches, sent: 0 })
+
+    const acc: BatchResult = {
+      importados: 0,
+      atualizados: 0,
+      ignorados: 0,
+      erros: [],
+      failedBatches: [],
+      totalBatches,
+    }
 
     try {
-      const res = await onImport(parsedRows)
-      setResult(res)
+      for (let i = 0; i < chunks.length; i++) {
+        const batchNum = i + 1
+        setBatchProgress({ current: batchNum, total: totalBatches, sent: i * CHUNK_SIZE })
 
-      toast({
-        title: `Importação de ${title} concluída`,
-        description: `${res.importados} novos, ${res.atualizados} atualizados, ${res.ignorados} ignorados.`,
+        try {
+          const res = await onImport(chunks[i])
+          acc.importados += res.importados || 0
+          acc.atualizados += res.atualizados || 0
+          acc.ignorados += res.ignorados || 0
+          if (res.erros && res.erros.length > 0) {
+            acc.erros.push(...res.erros.slice(0, 20))
+          }
+        } catch (err: unknown) {
+          acc.failedBatches.push(batchNum)
+          const errMsg = err instanceof Error ? err.message : 'Falha no lote'
+          acc.erros.push(`Lote ${batchNum}/${totalBatches}: ${errMsg}`)
+          // continua com os próximos lotes
+        }
+      }
+
+      setBatchProgress({ current: totalBatches, total: totalBatches, sent: parsedRows.length })
+      setBatchResult(acc)
+
+      // Resumo consolidado (compatível com o box de resultado existente)
+      setResult({
+        success: acc.failedBatches.length === 0,
+        importados: acc.importados,
+        atualizados: acc.atualizados,
+        ignorados: acc.ignorados,
+        erros: acc.erros,
+        data_carga: new Date().toISOString(),
       })
+
+      if (acc.failedBatches.length === 0) {
+        toast({
+          title: `Importação de ${title} concluída`,
+          description: `${acc.importados} novos, ${acc.atualizados} atualizados, ${acc.ignorados} ignorados em ${totalBatches} lote(s).`,
+        })
+      } else {
+        toast({
+          variant: 'destructive',
+          title: `Importação de ${title} parcial`,
+          description: `${totalBatches - acc.failedBatches.length} de ${totalBatches} lotes OK. Falharam: ${acc.failedBatches.join(', ')}.`,
+        })
+      }
 
       // Trigger automatic consolidation
       await onConsolidationTrigger()
@@ -165,6 +242,7 @@ function BaseImportCard({
       })
     } finally {
       setLoading(false)
+      setBatchProgress(null)
     }
   }
 
@@ -172,10 +250,13 @@ function BaseImportCard({
     setFile(null)
     setParsedRows([])
     setResult(null)
+    setBatchProgress(null)
+    setBatchResult(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  const previewRows = parsedRows.slice(0, 5)
+  // Pré-visualização limitada às primeiras 100 linhas (performance)
+  const previewRows = parsedRows.slice(0, 100).slice(0, 5)
   const previewHeaders = previewRows.length > 0 ? Object.keys(previewRows[0]).slice(0, 7) : []
 
   return (
@@ -265,7 +346,10 @@ function BaseImportCard({
             {previewRows.length > 0 && (
               <div className="border border-slate-200 rounded-lg overflow-hidden">
                 <div className="bg-slate-100/80 px-2.5 py-1 text-[11px] font-semibold text-slate-600 flex justify-between">
-                  <span>Pré-visualização (5 primeiras linhas)</span>
+                  <span>
+                    Pré-visualização (5 primeiras linhas
+                    {parsedRows.length > 100 ? ' de 100 exibidas' : ''})
+                  </span>
                   <span>Total lido: {parsedRows.length}</span>
                 </div>
                 <div className="max-h-36 overflow-x-auto overflow-y-auto">
@@ -295,6 +379,35 @@ function BaseImportCard({
               </div>
             )}
 
+            {/* Batch progress bar */}
+            {loading && batchProgress && (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium">
+                  <span>
+                    Enviando lote {batchProgress.current} de {batchProgress.total}...
+                  </span>
+                  <span className="tabular-nums text-indigo-700">
+                    {batchProgress.total > 0
+                      ? Math.round((batchProgress.current / batchProgress.total) * 100)
+                      : 0}
+                    %
+                  </span>
+                </div>
+                <Progress
+                  value={
+                    batchProgress.total > 0
+                      ? (batchProgress.current / batchProgress.total) * 100
+                      : 0
+                  }
+                  className="h-2"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Lotes de {formatNumber(CHUNK_SIZE)} registros • {formatNumber(parsedRows.length)}{' '}
+                  total
+                </p>
+              </div>
+            )}
+
             {/* Action button */}
             <Button
               onClick={handleExecuteImport}
@@ -304,12 +417,16 @@ function BaseImportCard({
               {loading ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Processando carga ({parsedRows.length} registros)...
+                  Processando carga ({formatNumber(parsedRows.length)} registros)...
                 </>
               ) : (
                 <>
                   <UploadCloud className="w-4 h-4 mr-1.5" />
-                  Importar {title} ({parsedRows.length} linhas)
+                  Importar {title} ({formatNumber(parsedRows.length)} linhas
+                  {parsedRows.length > CHUNK_SIZE
+                    ? ` • ${Math.ceil(parsedRows.length / CHUNK_SIZE)} lotes`
+                    : ''}
+                  )
                 </>
               )}
             </Button>
@@ -319,10 +436,32 @@ function BaseImportCard({
         {/* Import Results Box */}
         {result && (
           <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
-            <div className="flex items-center gap-1.5 text-emerald-700 font-bold">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              Resultado da Carga:
+            <div className="flex items-center gap-1.5 font-bold">
+              {batchResult && batchResult.failedBatches.length > 0 ? (
+                <>
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  <span className="text-amber-700">Importação Parcial:</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span className="text-emerald-700">Resultado da Carga:</span>
+                </>
+              )}
             </div>
+
+            {batchResult && (
+              <div className="text-[11px] text-slate-500">
+                {batchResult.totalBatches} lote(s) processados
+                {batchResult.failedBatches.length > 0 && (
+                  <span className="text-rose-600 font-medium">
+                    {' '}
+                    • {batchResult.failedBatches.length} falhou(aram): lote(s){' '}
+                    {batchResult.failedBatches.join(', ')}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-2 text-center pt-1">
               <div className="bg-white p-2 rounded-lg border border-slate-100">
                 <span className="text-[10px] text-slate-400 uppercase font-semibold block">
