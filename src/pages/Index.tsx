@@ -32,6 +32,7 @@ import type { VendaConsolidada, FilterState } from '@/types/sales'
 import { formatCurrency, formatNumber, formatDate, getGrupoColor } from '@/lib/formatters'
 import FilterBar from '@/components/FilterBar'
 import KpiCard from '@/components/KpiCard'
+import ChartCard from '@/components/ChartCard'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -47,6 +48,19 @@ const CHART_PALETTE = [
   '#3B82F6', // Blue
   '#10B981', // Green
 ]
+
+const tooltipContentStyle = {
+  backgroundColor: '#0F172A',
+  borderRadius: '8px',
+  color: '#fff',
+  fontSize: '12px',
+  border: 'none',
+}
+
+const currencyFormatter =
+  (label = 'Total') =>
+  (val: number | string | undefined) =>
+    [formatCurrency(typeof val === 'number' ? val : Number(val)), label] as [string, string]
 
 export default function Index() {
   const [vendas, setVendas] = useState<VendaConsolidada[]>([])
@@ -198,21 +212,6 @@ export default function Index() {
       const y = date.getUTCFullYear()
       const m = date.getUTCMonth() + 1
       const sortKey = `${y}-${String(m).padStart(2, '0')}`
-      const months = [
-        'Jan',
-        'Fev',
-        'Mar',
-        'Abr',
-        'Mai',
-        'Jun',
-        'Jul',
-        'Ago',
-        'Set',
-        'Out',
-        'Nov',
-        'Dez',
-      ]
-      const label = `${months[m - 1]}/${String(y).slice(2)}`
 
       if (!monthly[sortKey]) {
         monthly[sortKey] = { faturamento: 0, liquido: 0, sortKey }
@@ -420,360 +419,249 @@ export default function Index() {
           {/* Charts Grid Row 1 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Chart 1: Vendas por Mês */}
-            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                      <BarChart2 className="w-4 h-4 text-indigo-600" />
-                      Evolução de Vendas por Mês
-                    </CardTitle>
-                    <CardDescription className="text-xs text-slate-500">
-                      Soma de faturamento consolidado ao longo do tempo
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <div className="h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={chartVendasPorMes}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="colorFaturamento" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.4} />
-                          <stop offset="95%" stopColor="#4F46E5" stopOpacity={0.0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                      <XAxis
-                        dataKey="mes"
-                        tickLine={false}
-                        axisLine={{ stroke: '#E2E8F0' }}
-                        tick={{ fill: '#64748B', fontSize: 12 }}
-                      />
-                      <YAxis
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#64748B', fontSize: 11 }}
-                        tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                      />
-                      <Tooltip
-                        formatter={(val: number | string | undefined) => [
-                          formatCurrency(typeof val === 'number' ? val : Number(val)),
-                          'Faturamento',
-                        ]}
-                        contentStyle={{
-                          backgroundColor: '#0F172A',
-                          borderRadius: '8px',
-                          color: '#fff',
-                          fontSize: '12px',
-                          border: 'none',
-                        }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="faturamento"
-                        stroke="#4F46E5"
-                        strokeWidth={2.5}
-                        fillOpacity={1}
-                        fill="url(#colorFaturamento)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
+            <ChartCard
+              title="Evolução de Vendas por Mês"
+              description="Soma de faturamento consolidado ao longo do tempo"
+              icon={BarChart2}
+              iconColor="text-indigo-600"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={chartVendasPorMes}
+                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="colorFaturamento" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="#4F46E5" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis
+                    dataKey="mes"
+                    tickLine={false}
+                    axisLine={{ stroke: '#E2E8F0' }}
+                    tick={{ fill: '#64748B', fontSize: 12 }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    formatter={currencyFormatter('Faturamento')}
+                    contentStyle={tooltipContentStyle}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="faturamento"
+                    stroke="#4F46E5"
+                    strokeWidth={2.5}
+                    fillOpacity={1}
+                    fill="url(#colorFaturamento)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </ChartCard>
 
             {/* Chart 2: Vendas por Grupo do Item */}
-            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <PieChartIcon className="w-4 h-4 text-teal-600" />
-                  Vendas por Grupo do Item
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-500">
-                  Distribuição do faturamento por categoria de produto
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-2">
-                <div className="h-72 w-full flex items-center justify-center">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={chartGrupoItem}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={65}
-                        outerRadius={95}
-                        paddingAngle={3}
-                        dataKey="value"
-                      >
-                        {chartGrupoItem.map((entry, index) => (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={
-                              getGrupoColor(entry.name) ||
-                              CHART_PALETTE[index % CHART_PALETTE.length]
-                            }
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        formatter={(val: number | string | undefined) => [
-                          formatCurrency(typeof val === 'number' ? val : Number(val)),
-                          'Total',
-                        ]}
-                        contentStyle={{
-                          backgroundColor: '#0F172A',
-                          borderRadius: '8px',
-                          color: '#fff',
-                          fontSize: '12px',
-                          border: 'none',
-                        }}
+            <ChartCard
+              title="Vendas por Grupo do Item"
+              description="Distribuição do faturamento por categoria de produto"
+              icon={PieChartIcon}
+              iconColor="text-teal-600"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartGrupoItem}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={65}
+                    outerRadius={95}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {chartGrupoItem.map((entry, index) => (
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={
+                          getGrupoColor(entry.name) || CHART_PALETTE[index % CHART_PALETTE.length]
+                        }
                       />
-                      <Legend
-                        verticalAlign="bottom"
-                        height={36}
-                        formatter={(value) => (
-                          <span className="text-xs font-medium text-slate-700">{value}</span>
-                        )}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={currencyFormatter('Total')}
+                    contentStyle={tooltipContentStyle}
+                  />
+                  <Legend
+                    verticalAlign="bottom"
+                    height={36}
+                    formatter={(value) => (
+                      <span className="text-xs font-medium text-slate-700">{value}</span>
+                    )}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </ChartCard>
           </div>
 
           {/* Charts Grid Row 2 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Chart 3: Top 10 Vendedores */}
-            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-bold text-slate-900">
-                  Top Vendedores (Faturamento)
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-500">
-                  Ranking dos vendedores com maior volume financeiro
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-2">
-                <div className="h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      layout="vertical"
-                      data={chartTopVendedores}
-                      margin={{ top: 5, right: 20, left: 30, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
-                      <XAxis
-                        type="number"
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#64748B', fontSize: 11 }}
-                        tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#334155', fontSize: 11 }}
-                        width={130}
-                      />
-                      <Tooltip
-                        formatter={(val: number | string | undefined) => [
-                          formatCurrency(typeof val === 'number' ? val : Number(val)),
-                          'Total',
-                        ]}
-                        contentStyle={{
-                          backgroundColor: '#0F172A',
-                          borderRadius: '8px',
-                          color: '#fff',
-                          fontSize: '12px',
-                          border: 'none',
-                        }}
-                      />
-                      <Bar dataKey="total" fill="#4F46E5" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
+            <ChartCard
+              title="Top Vendedores (Faturamento)"
+              description="Ranking dos vendedores com maior volume financeiro"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  layout="vertical"
+                  data={chartTopVendedores}
+                  margin={{ top: 5, right: 20, left: 30, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#334155', fontSize: 11 }}
+                    width={130}
+                  />
+                  <Tooltip
+                    formatter={currencyFormatter('Total')}
+                    contentStyle={tooltipContentStyle}
+                  />
+                  <Bar dataKey="total" fill="#4F46E5" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
 
             {/* Chart 4: Top 10 Clientes */}
-            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-bold text-slate-900">
-                  Top Clientes (Faturamento)
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-500">
-                  Principais compradores consolidados
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-2">
-                <div className="h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      layout="vertical"
-                      data={chartTopClientes}
-                      margin={{ top: 5, right: 20, left: 30, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
-                      <XAxis
-                        type="number"
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#64748B', fontSize: 11 }}
-                        tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#334155', fontSize: 11 }}
-                        width={130}
-                      />
-                      <Tooltip
-                        formatter={(val: number | string | undefined) => [
-                          formatCurrency(typeof val === 'number' ? val : Number(val)),
-                          'Total',
-                        ]}
-                        contentStyle={{
-                          backgroundColor: '#0F172A',
-                          borderRadius: '8px',
-                          color: '#fff',
-                          fontSize: '12px',
-                          border: 'none',
-                        }}
-                      />
-                      <Bar dataKey="total" fill="#0D9488" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
+            <ChartCard
+              title="Top Clientes (Faturamento)"
+              description="Principais compradores consolidados"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  layout="vertical"
+                  data={chartTopClientes}
+                  margin={{ top: 5, right: 20, left: 30, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#334155', fontSize: 11 }}
+                    width={130}
+                  />
+                  <Tooltip
+                    formatter={currencyFormatter('Total')}
+                    contentStyle={tooltipContentStyle}
+                  />
+                  <Bar dataKey="total" fill="#0D9488" radius={[0, 4, 4, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
           </div>
 
           {/* Charts Grid Row 3 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Chart 5: Vendas por Estado */}
-            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-bold text-slate-900">
-                  Vendas por Estado (UF)
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-500">
-                  Faturamento por unidade federativa
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-2">
-                <div className="h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={chartEstado}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                      <XAxis
-                        dataKey="uf"
-                        tickLine={false}
-                        axisLine={{ stroke: '#E2E8F0' }}
-                        tick={{ fill: '#64748B', fontSize: 12 }}
-                      />
-                      <YAxis
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#64748B', fontSize: 11 }}
-                        tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                      />
-                      <Tooltip
-                        formatter={(val: number | string | undefined) => [
-                          formatCurrency(typeof val === 'number' ? val : Number(val)),
-                          'Faturamento',
-                        ]}
-                        contentStyle={{
-                          backgroundColor: '#0F172A',
-                          borderRadius: '8px',
-                          color: '#fff',
-                          fontSize: '12px',
-                          border: 'none',
-                        }}
-                      />
-                      <Bar dataKey="total" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
+            <ChartCard
+              title="Vendas por Estado (UF)"
+              description="Faturamento por unidade federativa"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartEstado} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis
+                    dataKey="uf"
+                    tickLine={false}
+                    axisLine={{ stroke: '#E2E8F0' }}
+                    tick={{ fill: '#64748B', fontSize: 12 }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    formatter={currencyFormatter('Faturamento')}
+                    contentStyle={tooltipContentStyle}
+                  />
+                  <Bar dataKey="total" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
 
             {/* Chart 6: Valor Líquido x Faturamento */}
-            <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base font-bold text-slate-900">
-                  Valor Líquido x Faturamento por Mês
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-500">
-                  Comparativo de margem financeira
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-2">
-                <div className="h-72 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={chartVendasPorMes}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                      <XAxis
-                        dataKey="mes"
-                        tickLine={false}
-                        axisLine={{ stroke: '#E2E8F0' }}
-                        tick={{ fill: '#64748B', fontSize: 12 }}
-                      />
-                      <YAxis
-                        tickLine={false}
-                        axisLine={false}
-                        tick={{ fill: '#64748B', fontSize: 11 }}
-                        tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                      />
-                      <Tooltip
-                        formatter={(val: number | string | undefined) => [
-                          formatCurrency(typeof val === 'number' ? val : Number(val)),
-                        ]}
-                        contentStyle={{
-                          backgroundColor: '#0F172A',
-                          borderRadius: '8px',
-                          color: '#fff',
-                          fontSize: '12px',
-                          border: 'none',
-                        }}
-                      />
-                      <Legend
-                        verticalAlign="top"
-                        height={36}
-                        formatter={(value) => (
-                          <span className="text-xs font-semibold text-slate-700 capitalize">
-                            {value === 'faturamento' ? 'Faturamento Total' : 'Valor Líquido'}
-                          </span>
-                        )}
-                      />
-                      <Bar
-                        dataKey="faturamento"
-                        name="faturamento"
-                        fill="#4F46E5"
-                        radius={[4, 4, 0, 0]}
-                      />
-                      <Bar dataKey="liquido" name="liquido" fill="#0D9488" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
+            <ChartCard
+              title="Valor Líquido x Faturamento por Mês"
+              description="Comparativo de margem financeira"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={chartVendasPorMes}
+                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis
+                    dataKey="mes"
+                    tickLine={false}
+                    axisLine={{ stroke: '#E2E8F0' }}
+                    tick={{ fill: '#64748B', fontSize: 12 }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    formatter={(val: number | string | undefined) => [
+                      formatCurrency(typeof val === 'number' ? val : Number(val)),
+                    ]}
+                    contentStyle={tooltipContentStyle}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    height={36}
+                    formatter={(value) => (
+                      <span className="text-xs font-semibold text-slate-700 capitalize">
+                        {value === 'faturamento' ? 'Faturamento Total' : 'Valor Líquido'}
+                      </span>
+                    )}
+                  />
+                  <Bar
+                    dataKey="faturamento"
+                    name="faturamento"
+                    fill="#4F46E5"
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar dataKey="liquido" name="liquido" fill="#0D9488" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
           </div>
 
           {/* Highlights Table: 8 Most Recent Sales */}
