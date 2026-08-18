@@ -1,6 +1,7 @@
 # VERSION.md — Estado Estável do Projeto
 
-**Versão:** `v0.0.22` (backup estável)
+**Versão:** `v0.0.26` (backup estável)
+**Backup anterior:** `v0.0.25` (commit `6efe576`)
 **Data do backup:** estado consolidado atual do repositório.
 
 ---
@@ -11,8 +12,9 @@
 (PocketBase) com SQL puro, operando aproximadamente **126.000 registros** consolidados.
 
 A versão estável atual é totalmente funcional: o Dashboard renderiza KPIs e gráficos,
-os filtros respondem, a aba Vendas pagina e exporta, a importação de bases processa
-arquivos XLSX/CSV com barra de progresso e a consolidação roda sem erros.
+os filtros respondem, a aba Vendas pagina e exporta CSV (padrão brasileiro), a importação
+de bases processa arquivos XLSX/CSV em lotes de 5.000 com barra de progresso e a
+consolidação roda via SQL sem timeout.
 
 ---
 
@@ -21,7 +23,7 @@ arquivos XLSX/CSV com barra de progresso e a consolidação roda sem erros.
 ### Dashboard
 
 - Consultas em **SQL puro** sobre ~126k registros consolidados.
-- **5 KPIs** (cards de indicadores).
+- **5 KPIs**: Faturamento, Valor Líquido, Itens, Documentos, Devoluções.
 - **6 gráficos** (renderizados via `ChartCard`).
 - Filtros combinados:
   - Ano
@@ -29,29 +31,39 @@ arquivos XLSX/CSV com barra de progresso e a consolidação roda sem erros.
   - Dia
   - Vendedor
   - Estado
+  - Grupo item
+  - Classificação
+- Filtros com **colapso de pílulas** (mostra 3 + "+ X filtros") e botão **"Limpar Todos"**.
 
 ### Vendas
 
 - Tabela **paginada** de vendas.
-- **Exportação CSV** dos dados filtrados.
+- **Exportação CSV** dos dados filtrados em padrão brasileiro.
 
 ### Importação
 
-- Importação de bases com **barra de progresso**.
+- Importação de bases: **Produtos**, **RacNew**, **NetSales**.
+- **Barra de progresso** em lotes de 5.000 registros.
 - Suporte a arquivos XLSX e CSV.
-- Consolidação de dados **executando sem erro**.
+
+### Consolidação
+
+- Consolidação via **SQL** (`INSERT ... SELECT ... LEFT JOIN`), sem timeout.
+- `COALESCE` aplicado aos campos da NetSales.
+- **Regra de negócio:** RacNew é a base mestra (prevalece sempre); NetSales complementa
+  apenas quando não há correspondência, adicionando **12 campos exclusivos**.
+
+### Datas
+
+- **Correção definitiva aplicada** no parser XLSX: captura o valor serial bruto da data
+  (ignora formatação visual do Excel) e converte matematicamente para data real no JS.
+- Datas armazenadas em **ISO (`YYYY-MM-DD`)** e exibidas em **DD/MM/AAAA brasileiro**.
+- NFE 790 validada como **12/06/2026**.
 
 ### Backend
 
-- **Hooks pb_hooks deployados** no Skip Cloud.
+- **Hooks pb_hooks deployados** no Skip Cloud: `stats_counts`, `vendas_list`, `dashboard_stats`.
 - Migrações aplicadas (schema consolidado).
-
-### Formatação de Datas
-
-- Datas no **formato brasileiro DD/MM/AAAA**.
-- Correção aplicada no **parser XLSX**.
-- Correção aplicada em `import_racnew`.
-- Correção aplicada em `import_netsales`.
 
 ---
 
@@ -75,6 +87,6 @@ arquivos XLSX/CSV com barra de progresso e a consolidação roda sem erros.
 ## Observação
 
 Este commit é um **backup de ponto estável**. Nenhum código foi alterado —
-apenas este arquivo `VERSION.md` foi criado para documentar o estado funcional atual.
+apenas este arquivo `VERSION.md` foi atualizado para documentar o estado funcional atual.
 
 Tag sugerida: `backup-estavel` apontando para este commit.
