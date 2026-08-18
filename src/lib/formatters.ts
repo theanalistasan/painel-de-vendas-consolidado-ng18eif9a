@@ -23,9 +23,22 @@ export function formatNumber(value: number | undefined | null, decimals = 0): st
 export function formatDate(value: string | Date | undefined | null): string {
   if (!value) return '-'
   try {
+    // Se for string no formato ISO (YYYY-MM-DD...), formata direto para evitar conversões indesejadas
+    if (typeof value === 'string') {
+      const match = value.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/)
+      if (match) {
+        const [, y, m, d] = match
+        return `${d}/${m}/${y}`
+      }
+      // Se for string dd/mm/yyyy
+      const brMatch = value.match(/^(\d{2})[/\-.](\d{2})[/\-.](\d{4})/)
+      if (brMatch) {
+        const [, d, m, y] = brMatch
+        return `${d}/${m}/${y}`
+      }
+    }
     const d = typeof value === 'string' ? new Date(value) : value
     if (isNaN(d.getTime())) return String(value)
-    // Adjust timezone offset if UTC date
     return new Intl.DateTimeFormat('pt-BR', {
       timeZone: 'UTC',
       day: '2-digit',
@@ -102,11 +115,21 @@ export function parseDataLancamento(value: string | undefined | null): Date | nu
     return isNaN(date.getTime()) ? null : date
   }
 
-  // Brasileiro: dd/mm/yyyy[ hh:mm:ss] ou dd-mm-yyyy
+  // Brasileiro: dd/mm/yyyy[ hh:mm:ss] ou mm/dd/yyyy caso p2 > 12
   const brMatch = str.match(/^(\d{2})[/\-.](\d{2})[/\-.](\d{4})(.*)$/)
   if (brMatch) {
-    const [, d, m, y] = brMatch
-    const date = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), 12, 0, 0))
+    let p1 = Number(brMatch[1])
+    let p2 = Number(brMatch[2])
+    const y = Number(brMatch[3])
+
+    let d = p1
+    let m = p2
+    if (p2 > 12 && p1 <= 12) {
+      m = p1
+      d = p2
+    }
+
+    const date = new Date(Date.UTC(y, m - 1, d, 12, 0, 0))
     return isNaN(date.getTime()) ? null : date
   }
 
@@ -201,9 +224,11 @@ export async function parseXLSX(data: ArrayBuffer): Promise<Record<string, strin
       if (v === null || v === undefined) {
         out[key] = ''
       } else if (v instanceof Date) {
-        // yyyy-mm-dd
-        const iso = v.toISOString()
-        out[key] = iso.slice(0, 10)
+        // Formata Date vindo do XLSX diretamente em DD/MM/YYYY para evitar distorção de fuso
+        const day = String(v.getUTCDate()).padStart(2, '0')
+        const month = String(v.getUTCMonth() + 1).padStart(2, '0')
+        const year = v.getUTCFullYear()
+        out[key] = `${day}/${month}/${year}`
       } else {
         out[key] = String(v).trim()
       }

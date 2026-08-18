@@ -39,19 +39,41 @@ routerAdd(
     const parseDateStr = (val) => {
       if (!val) return ''
       const s = val.toString().trim()
+
+      // Formato DD/MM/AAAA ou MM/DD/AAAA
       if (s.includes('/')) {
         const parts = s.split('/')
         if (parts.length === 3) {
-          let d = parseInt(parts[0], 10)
-          let m = parseInt(parts[1], 10)
+          let p1 = parseInt(parts[0], 10)
+          let p2 = parseInt(parts[1], 10)
           let y = parseInt(parts[2], 10)
           if (y < 100) y += 2000
+
+          let d = p1
+          let m = p2
+
+          // Se p1 > 12 e p2 <= 12, p1 só pode ser dia (ex: 25/06/2026 -> d=25, m=6)
+          // Se p2 > 12 e p1 <= 12, p2 só pode ser dia -> formato invertido (ex: 06/25/2026 -> m=6, d=25)
+          if (p2 > 12 && p1 <= 12) {
+            m = p1
+            d = p2
+          }
+
           const mm = String(m).padStart(2, '0')
           const dd = String(d).padStart(2, '0')
           return `${y}-${mm}-${dd} 00:00:00.000Z`
         }
       }
+
+      // Formato ISO YYYY-MM-DD
       if (s.includes('-')) {
+        const parts = s.split('-')
+        if (parts.length >= 3 && parts[0].length === 4) {
+          const y = parts[0]
+          const mm = parts[1].padStart(2, '0')
+          const dd = parts[2].slice(0, 2).padStart(2, '0')
+          return `${y}-${mm}-${dd} 00:00:00.000Z`
+        }
         if (s.length === 10) return `${s} 00:00:00.000Z`
         return s
       }
