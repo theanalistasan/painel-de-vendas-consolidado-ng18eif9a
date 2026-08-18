@@ -208,18 +208,13 @@ export function getGrupoColor(grupo: string): string {
  */
 export async function parseXLSX(data: ArrayBuffer): Promise<Record<string, string>[]> {
   const XLSX = await import('xlsx')
-  // cellDates removido: com raw:false e sem cellDates, o XLSX devolve datas como
-  // strings formatadas exatamente como aparecem na planilha (ex: "12/06/2026"),
-  // evitando que o SheetJS interprete células MM/DD/YYYY como Date e inverta
-  // dia/mês em arquivos brasileiros.
-  const workbook = XLSX.read(data, { type: 'array' })
+  const workbook = XLSX.read(data, { type: 'array', cellDates: true })
   const firstSheetName = workbook.SheetNames[0]
   if (!firstSheetName) return []
   const sheet = workbook.Sheets[firstSheetName]
-  // raw:false força o XLSX a formatar datas/números como strings conforme a formatação da célula
   const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
     defval: '',
-    raw: false,
+    raw: true,
   })
   return json.map((row) => {
     const out: Record<string, string> = {}
