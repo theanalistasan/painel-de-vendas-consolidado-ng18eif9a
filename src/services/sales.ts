@@ -87,28 +87,37 @@ export async function resetBasesApi(
   })
 }
 
-export async function getCountsSummary() {
-  const [prodCount, racCount, netCount, venCount] = await Promise.all([
-    pb.collection('produtos').getList(1, 1),
-    pb.collection('racnew').getList(1, 1),
-    pb.collection('netsales').getList(1, 1),
-    pb.collection('vendas').getList(1, 1),
-  ])
+export interface CountsSummary {
+  produtos: number
+  racnew: number
+  netsales: number
+  vendas: number
+  ultimaCarga: string | null
+}
 
-  // Get latest updated date from vendas
-  let ultimaCarga: string | null = null
-  if (venCount.items.length > 0) {
-    const latest = await pb.collection('vendas').getList(1, 1, { sort: '-updated' })
-    if (latest.items.length > 0) {
-      ultimaCarga = latest.items[0].updated || latest.items[0].created
-    }
-  }
+/**
+ * Contagem autoritativa de registros de cada base.
+ * Delega para o endpoint backend `/backend/v1/stats/counts`, que usa
+ * `$app.countRecords` (contagem real do banco) por coleção — evita o
+ * problema do `getList(1,1).totalItems` que podia retornar o mesmo número
+ * para coleções distintas e gerar a impressão de importação incorreta.
+ */
+export async function getCountsSummary(): Promise<CountsSummary> {
+  const data = await pb.send<{
+    produtos: number
+    racnew: number
+    netsales: number
+    vendas: number
+    ultimaCarga: string
+  }>('/backend/v1/stats/counts', {
+    method: 'GET',
+  })
 
   return {
-    produtos: prodCount.totalItems,
-    racnew: racCount.totalItems,
-    netsales: netCount.totalItems,
-    vendas: venCount.totalItems,
-    ultimaCarga,
+    produtos: data.produtos ?? 0,
+    racnew: data.racnew ?? 0,
+    netsales: data.netsales ?? 0,
+    vendas: data.vendas ?? 0,
+    ultimaCarga: data.ultimaCarga || null,
   }
 }
