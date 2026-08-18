@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import type { FilterState } from '@/types/sales'
+import { DEVOLUCAO_TIPOS } from '@/types/sales'
 import { MESES_PT_BR, nomeMes } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 
@@ -194,7 +195,8 @@ export default function FilterBar({
     (filters.search ? 1 : 0) +
     (filters.ano ? 1 : 0) +
     (filters.mes ? 1 : 0) +
-    (filters.dia ? 1 : 0)
+    (filters.dia ? 1 : 0) +
+    (filters.tipoDevolucao ? 1 : 0)
 
   const clearAllFilters = () => {
     setFilters({
@@ -209,6 +211,7 @@ export default function FilterBar({
       ano: '',
       mes: '',
       dia: '',
+      tipoDevolucao: '',
     })
   }
 
@@ -219,7 +222,8 @@ export default function FilterBar({
       type === 'search' ||
       type === 'ano' ||
       type === 'mes' ||
-      type === 'dia'
+      type === 'dia' ||
+      type === 'tipoDevolucao'
     ) {
       setFilters((prev) => ({ ...prev, [type]: '' }))
     } else if (value && Array.isArray(filters[type])) {
@@ -479,8 +483,42 @@ export default function FilterBar({
           />
         </div>
 
+        {/* Tipo de Devolução */}
+        <div>
+          <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+            Tipo de Devolução
+          </Label>
+          <Select
+            value={filters.tipoDevolucao || '__all'}
+            onValueChange={(v) =>
+              setFilters((prev) => ({ ...prev, tipoDevolucao: v === '__all' ? '' : v }))
+            }
+          >
+            <SelectTrigger
+              className={cn(
+                'h-10 text-xs rounded-lg',
+                filters.tipoDevolucao
+                  ? 'border-indigo-400 font-medium text-slate-900 bg-indigo-50/20'
+                  : 'border-slate-200 text-slate-600',
+              )}
+            >
+              <SelectValue placeholder="Todas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all" className="text-xs">
+                Todas
+              </SelectItem>
+              {DEVOLUCAO_TIPOS.map((tipo) => (
+                <SelectItem key={tipo} value={tipo} className="text-xs">
+                  {tipo}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         {showSearch && (
-          <div className="sm:col-span-4">
+          <div className="sm:col-span-3">
             <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
               Busca Textual (Cliente, Item, Nº NFe, SAP)
             </Label>
@@ -686,6 +724,22 @@ export default function FilterBar({
                 type="button"
                 onClick={() => removeSingleFilter('dia')}
                 className="p-0.5 rounded-full hover:bg-indigo-200 text-indigo-700"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </Badge>
+          )}
+
+          {filters.tipoDevolucao && (
+            <Badge
+              variant="outline"
+              className="bg-rose-50 border-rose-200 text-rose-900 text-xs pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1"
+            >
+              <span>Devolução: {filters.tipoDevolucao}</span>
+              <button
+                type="button"
+                onClick={() => removeSingleFilter('tipoDevolucao')}
+                className="p-0.5 rounded-full hover:bg-rose-200 text-rose-700"
               >
                 <X className="w-3 h-3" />
               </button>

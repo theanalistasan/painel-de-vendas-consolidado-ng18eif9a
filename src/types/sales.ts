@@ -143,6 +143,17 @@ export interface FilterState {
   mes: string
   /** Dia (1-31) como string */
   dia: string
+  /** Tipo de Devolução: '' = Todas, ou um de 'Dev. Entrega' | 'Dev. NF' | 'DEVNF' */
+  tipoDevolucao: string
+}
+
+/** Tipos de documento considerados devolução */
+export const DEVOLUCAO_TIPOS = ['Dev. Entrega', 'Dev. NF', 'DEVNF'] as const
+
+/** Verifica se um tipo_documento é uma devolução */
+export function isDevolucao(tipoDocumento: string | undefined | null): boolean {
+  if (!tipoDocumento) return false
+  return (DEVOLUCAO_TIPOS as readonly string[]).includes(tipoDocumento)
 }
 
 export interface ImportResult {

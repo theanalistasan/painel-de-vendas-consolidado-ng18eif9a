@@ -10,6 +10,7 @@ import {
   BarChart2,
   PieChart as PieChartIcon,
   RefreshCw,
+  RotateCcw,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -29,6 +30,7 @@ import {
 import { fetchVendas } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
 import type { VendaConsolidada, FilterState } from '@/types/sales'
+import { isDevolucao } from '@/types/sales'
 import {
   formatCurrency,
   formatNumber,
@@ -87,6 +89,7 @@ export default function Index() {
     ano: '',
     mes: '',
     dia: '',
+    tipoDevolucao: '',
   })
 
   // Load consolidated sales
@@ -191,6 +194,11 @@ export default function Index() {
         return false
       }
 
+      // Filtro por Tipo de Devolução
+      if (filters.tipoDevolucao) {
+        if (v.tipo_documento !== filters.tipoDevolucao) return false
+      }
+
       // Text search
       if (filters.search) {
         const q = filters.search.toLowerCase()
@@ -207,17 +215,21 @@ export default function Index() {
     })
   }, [vendas, filters])
 
-  // 4 KPIs
+  // 5 KPIs
   const kpis = useMemo(() => {
     let faturamento = 0
     let valorLiquido = 0
     let itensVendidos = 0
+    let devolucoes = 0
     const nfSet = new Set<string>()
 
     filteredVendas.forEach((v) => {
       faturamento += v.total_linha || 0
       valorLiquido += v.valor_liquido || 0
       itensVendidos += v.quantidade || 0
+      if (isDevolucao(v.tipo_documento)) {
+        devolucoes += v.total_linha || v.valor_liquido || 0
+      }
       if (v.numero_nfe) nfSet.add(v.numero_nfe)
     })
 
@@ -226,6 +238,7 @@ export default function Index() {
       valorLiquido,
       itensVendidos,
       documentos: nfSet.size,
+      devolucoes,
     }
   }, [filteredVendas])
 
@@ -359,8 +372,8 @@ export default function Index() {
       {/* Loading Skeleton */}
       {loading ? (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map((i) => (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            {[1, 2, 3, 4, 5].map((i) => (
               <Skeleton key={i} className="h-32 w-full rounded-xl" />
             ))}
           </div>
@@ -396,6 +409,7 @@ export default function Index() {
                   ano: '',
                   mes: '',
                   dia: '',
+                  tipoDevolucao: '',
                 })
               }
             >
@@ -408,8 +422,8 @@ export default function Index() {
         </Card>
       ) : (
         <>
-          {/* 4 KPIs Section */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 5 KPIs Section */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             <KpiCard
               title="Faturamento Total"
               value={kpis.faturamento}
@@ -445,6 +459,14 @@ export default function Index() {
               iconBgColor="bg-purple-50"
               iconColor="text-purple-600"
               deltaPercent={4.1}
+            />
+            <KpiCard
+              title="Devoluções"
+              value={kpis.devolucoes}
+              isCurrency
+              icon={RotateCcw}
+              iconBgColor="bg-rose-50"
+              iconColor="text-rose-600"
             />
           </div>
 

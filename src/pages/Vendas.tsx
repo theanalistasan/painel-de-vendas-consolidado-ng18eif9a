@@ -9,10 +9,15 @@ import {
   Layers,
   FileSpreadsheet,
   RefreshCw,
+  DollarSign,
+  TrendingUp,
+  FileText,
+  RotateCcw,
 } from 'lucide-react'
 import { fetchVendas } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
 import type { VendaConsolidada, FilterState } from '@/types/sales'
+import { isDevolucao } from '@/types/sales'
 import {
   formatCurrency,
   formatNumber,
@@ -24,6 +29,7 @@ import {
   extractDia,
 } from '@/lib/formatters'
 import FilterBar from '@/components/FilterBar'
+import KpiCard from '@/components/KpiCard'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -54,6 +60,7 @@ export default function Vendas() {
     ano: '',
     mes: '',
     dia: '',
+    tipoDevolucao: '',
   })
 
   const loadData = async () => {
@@ -161,6 +168,11 @@ export default function Vendas() {
         return false
       }
 
+      // Filtro por Tipo de Devolução
+      if (filters.tipoDevolucao) {
+        if (v.tipo_documento !== filters.tipoDevolucao) return false
+      }
+
       // Text search
       if (filters.search) {
         const q = filters.search.toLowerCase()
@@ -180,6 +192,33 @@ export default function Vendas() {
       return true
     })
   }, [vendas, filters])
+
+  // KPIs
+  const kpis = useMemo(() => {
+    let faturamento = 0
+    let valorLiquido = 0
+    let itensVendidos = 0
+    let devolucoes = 0
+    const nfSet = new Set<string>()
+
+    filteredVendas.forEach((v) => {
+      faturamento += v.total_linha || 0
+      valorLiquido += v.valor_liquido || 0
+      itensVendidos += v.quantidade || 0
+      if (isDevolucao(v.tipo_documento)) {
+        devolucoes += v.total_linha || v.valor_liquido || 0
+      }
+      if (v.numero_nfe) nfSet.add(v.numero_nfe)
+    })
+
+    return {
+      faturamento,
+      valorLiquido,
+      itensVendidos,
+      documentos: nfSet.size,
+      devolucoes,
+    }
+  }, [filteredVendas])
 
   // Sort dataset
   const sortedVendas = useMemo(() => {
@@ -285,6 +324,50 @@ export default function Vendas() {
     <div className="space-y-6">
       {/* Filters Bar with Text Search */}
       <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} showSearch />
+
+      {/* 5 KPIs Section */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <KpiCard
+          title="Faturamento Total"
+          value={kpis.faturamento}
+          isCurrency
+          icon={DollarSign}
+          iconBgColor="bg-indigo-50"
+          iconColor="text-indigo-600"
+        />
+        <KpiCard
+          title="Valor Líquido"
+          value={kpis.valorLiquido}
+          isCurrency
+          icon={TrendingUp}
+          iconBgColor="bg-teal-50"
+          iconColor="text-teal-600"
+        />
+        <KpiCard
+          title="Itens Vendidos"
+          value={kpis.itensVendidos}
+          decimals={0}
+          icon={Package}
+          iconBgColor="bg-amber-50"
+          iconColor="text-amber-600"
+        />
+        <KpiCard
+          title="Documentos (NFe)"
+          value={kpis.documentos}
+          decimals={0}
+          icon={FileText}
+          iconBgColor="bg-purple-50"
+          iconColor="text-purple-600"
+        />
+        <KpiCard
+          title="Devoluções"
+          value={kpis.devolucoes}
+          isCurrency
+          icon={RotateCcw}
+          iconBgColor="bg-rose-50"
+          iconColor="text-rose-600"
+        />
+      </div>
 
       {/* Main Table Card */}
       <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
