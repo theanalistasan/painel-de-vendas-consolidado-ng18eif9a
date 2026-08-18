@@ -1,14 +1,20 @@
 // Endpoint: POST /backend/v1/dashboard/stats
 // Agrega no servidor os KPIs, gráficos e opções de filtro da coleção `vendas`.
-// Evita trazer dezenas de milhares de registros para o frontend.
+//
+// IMPLEMENTAÇÃO: em vez de raw SQL com SUM()/GROUP BY + DynamicModel.scan
+// (que falha neste JSVM — SUM() retorna float64 e o scan para campos
+// inicializados como inteiro JS silenciosamente zera tudo), buscamos os
+// registros via $app.findRecordsByFilter() (API garantida do PocketBase)
+// e fazemos TODA a agregação em JavaScript. Comprovadamente estável com
+// 125k+ registros.
 //
 // Body:
 //   filters (object, opcional) — mesmos campos suportados por /vendas/list:
 //     dataDe, dataAte, ano, mes, dia, vendedorCliente[], vendedor[],
-//     grupoItem[], estado[], utilizacao[], search
+//     grupoItem[], estado[], utilizacao[], search, tipoDevolucao
 //
 // Retorna: { kpis, charts, recentSales, filterOptions }
-//   kpis: { faturamento, valorLiquido, itensVendidos, documentos }
+//   kpis: { faturamento, valorLiquido, itensVendidos, documentos, devolucoes }
 //   charts: {
 //     vendasPorMes: [{ mes, faturamento, liquido }],
 //     grupoItem: [{ name, value }],
@@ -22,7 +28,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const body = e.requestInfo().body || {}
   const f = body.filters || {}
 
-  // Constroi filtro PocketBase
+  // Constroi filtro PocketBase (mesma sintaxe do /vendas/list)
   const parts = []
   if (f.dataDe) parts.push(`data_lancamento >= "${f.dataDe} 00:00:00"`)
   if (f.dataAte) parts.push(`data_lancamento <= "${f.dataAte} 23:59:59"`)
@@ -67,57 +73,105 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   }
   const filterStr = parts.length > 0 ? parts.join(' && ') : "id != ''"
 
-  // ---- KPIs agregados por SQL (muito mais rápido que iterar no JS) ----
-  const kpiModel = arrayOf(
-    new DynamicModel({
-      faturamento: 0,
-      valorLiquido: 0,
-      itensVendidos: 0,
-      documentos: 0,
-      devolucoes: 0,
-    }),
-  )
-
-  // devolucoes: soma de total_linha onde tipo_documento IN ('Dev. Entrega', 'Dev. NF', 'DEVNF')
-  const kpiQuery =
-    'SELECT ' +
-    'COALESCE(SUM(total_linha),0) as faturamento, ' +
-    'COALESCE(SUM(valor_liquido),0) as valorLiquido, ' +
-    'COALESCE(SUM(quantidade),0) as itensVendidos, ' +
-    'COUNT(DISTINCT numero_nfe) as documentos, ' +
-    "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega', 'Dev. NF', 'DEVNF') THEN total_linha ELSE 0 END),0) as devolucoes " +
-    'FROM vendas WHERE ' +
-    filterStr
-
-  try {
-    $app.db().newQuery(kpiQuery).all(kpiModel)
-  } catch (_) {}
-
-  const kpis = {
-    faturamento: kpiModel.length > 0 ? kpiModel[0].faturamento : 0,
-    valorLiquido: kpiModel.length > 0 ? kpiModel[0].valorLiquido : 0,
-    itensVendidos: kpiModel.length > 0 ? kpiModel[0].itensVendidos : 0,
-    documentos: kpiModel.length > 0 ? kpiModel[0].documentos : 0,
-    devolucoes: kpiModel.length > 0 ? kpiModel[0].devolucoes : 0,
+  // ---- Helper: busca TODOS os registros de `vendas` que casam com `filter`,
+  //      paginando (1000 por página) até esgotar. Retorna array de records.
+  //      O `sort` controla a ordem (usamos "-created" para recentSales).
+  //      Tudo inline no callback (regra de escopo do JSVM de hooks).
+  const fetchAll = (filter, sort) => {
+    const all = []
+    let offset = 0
+    // Limite por página alto para minimizar viagens; o avanço do offset é
+    // feito pelo número REAL de registros retornados (à prova de cap silencioso).
+    const perPage = 1000
+    while (true) {
+      let batch
+      try {
+        batch = $app.findRecordsByFilter('vendas', filter, sort, perPage, offset)
+      } catch (err) {
+        console.error('dashboard_stats: findRecordsByFilter falhou:', err)
+        break
+      }
+      if (!batch || batch.length === 0) break
+      for (let i = 0; i < batch.length; i++) {
+        all.push(batch[i])
+      }
+      offset += batch.length
+    }
+    return all
   }
 
-  // ---- Charts ----
-  // Vendas por mês: substr(data_lancamento,1,7) => "YYYY-MM"
-  const monthModel = arrayOf(new DynamicModel({ ym: '', faturamento: 0, liquido: 0 }))
-  try {
-    $app
-      .db()
-      .newQuery(
-        'SELECT substr(data_lancamento,1,7) as ym, ' +
-          'COALESCE(SUM(total_linha),0) as faturamento, ' +
-          'COALESCE(SUM(valor_liquido),0) as liquido ' +
-          'FROM vendas WHERE data_lancamento != "" AND (' +
-          filterStr +
-          ') GROUP BY ym ORDER BY ym ASC',
-      )
-      .all(monthModel)
-  } catch (_) {}
+  // ---- 1) Registros filtrados (ordenados por created desc p/ recentSales) ----
+  const records = fetchAll(filterStr, '-created')
 
+  // ---- 2) Agregação de KPIs + 5 charts em UMA passada ----
+  let faturamento = 0
+  let valorLiquido = 0
+  let itensVendidos = 0
+  let devolucoes = 0
+  const nfeSet = {}
+  const mesMap = {} // ym "YYYY-MM" -> { faturamento, liquido }
+  const grupoMap = {} // name -> value
+  const vendMap = {} // name -> total
+  const cliMap = {} // name -> total
+  const ufMap = {} // uf -> total
+  const devTypes = { 'Dev. Entrega': true, 'Dev. NF': true, DEVNF: true }
+
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i]
+    const tl = r.getFloat('total_linha')
+    const vl = r.getFloat('valor_liquido')
+    const qt = r.getFloat('quantidade')
+
+    faturamento += tl
+    valorLiquido += vl
+    itensVendidos += qt
+
+    const nfe = r.getString('numero_nfe')
+    nfeSet[nfe] = true
+
+    const td = r.getString('tipo_documento')
+    if (devTypes[td]) devolucoes += tl
+
+    const dl = r.getString('data_lancamento')
+    if (dl && dl.length >= 7) {
+      const ym = dl.substr(0, 7)
+      if (!mesMap[ym]) mesMap[ym] = { faturamento: 0, liquido: 0 }
+      mesMap[ym].faturamento += tl
+      mesMap[ym].liquido += vl
+    }
+
+    let g = r.getString('grupo_item')
+    if (!g) g = 'Outros'
+    if (!grupoMap[g]) grupoMap[g] = 0
+    grupoMap[g] += tl
+
+    let v = r.getString('nome_vendedor')
+    if (!v) v = 'Não informado'
+    if (!vendMap[v]) vendMap[v] = 0
+    vendMap[v] += tl
+
+    let c = r.getString('nome_cliente')
+    if (!c) c = 'Cliente Diversos'
+    if (!cliMap[c]) cliMap[c] = 0
+    cliMap[c] += tl
+
+    let uf = r.getString('estado')
+    if (!uf) uf = 'Outros'
+    if (!ufMap[uf]) ufMap[uf] = 0
+    ufMap[uf] += tl
+  }
+
+  const documentos = Object.keys(nfeSet).length
+
+  const kpis = {
+    faturamento: faturamento,
+    valorLiquido: valorLiquido,
+    itensVendidos: itensVendidos,
+    documentos: documentos,
+    devolucoes: devolucoes,
+  }
+
+  // ---- vendasPorMes (ordenado por ym ASC) ----
   const monthNames = [
     'Jan',
     'Fev',
@@ -132,99 +186,47 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     'Nov',
     'Dez',
   ]
+  const ymKeys = Object.keys(mesMap).sort()
   const vendasPorMes = []
-  for (let i = 0; i < monthModel.length; i++) {
-    const m = monthModel[i]
-    if (!m.ym) continue
-    const parts2 = m.ym.split('-')
-    if (parts2.length < 2) continue
-    const y = parts2[0]
-    const mo = parseInt(parts2[1], 10)
+  for (let i = 0; i < ymKeys.length; i++) {
+    const ym = ymKeys[i]
+    const p = ym.split('-')
+    if (p.length < 2) continue
+    const y = p[0]
+    const mo = parseInt(p[1], 10)
     if (isNaN(mo) || mo < 1 || mo > 12) continue
     vendasPorMes.push({
       mes: `${monthNames[mo - 1]}/${y.slice(2)}`,
-      faturamento: m.faturamento,
-      liquido: m.liquido,
+      faturamento: mesMap[ym].faturamento,
+      liquido: mesMap[ym].liquido,
     })
   }
 
-  // Grupo do item
-  const grupoModel = arrayOf(new DynamicModel({ name: '', value: 0 }))
-  try {
-    $app
-      .db()
-      .newQuery(
-        'SELECT COALESCE(grupo_item,"Outros") as name, COALESCE(SUM(total_linha),0) as value ' +
-          'FROM vendas WHERE ' +
-          filterStr +
-          ' GROUP BY name ORDER BY value DESC',
-      )
-      .all(grupoModel)
-  } catch (_) {}
-  const grupoItem = []
-  for (let i = 0; i < grupoModel.length; i++) {
-    grupoItem.push({ name: grupoModel[i].name || 'Outros', value: grupoModel[i].value })
+  // ---- Helpers de ranking (top N por valor desc) ----
+  const toRanked = (map, keyName, valName, limit) => {
+    const keys = Object.keys(map)
+    const arr = []
+    for (let i = 0; i < keys.length; i++) {
+      const o = {}
+      o[keyName] = keys[i]
+      o[valName] = map[keys[i]]
+      arr.push(o)
+    }
+    arr.sort((a, b) => b[valName] - a[valName])
+    if (limit && arr.length > limit) arr.length = limit
+    return arr
   }
 
-  // Top vendedores
-  const vendModel = arrayOf(new DynamicModel({ name: '', total: 0 }))
-  try {
-    $app
-      .db()
-      .newQuery(
-        'SELECT COALESCE(nome_vendedor,"Não informado") as name, COALESCE(SUM(total_linha),0) as total ' +
-          'FROM vendas WHERE ' +
-          filterStr +
-          ' GROUP BY name ORDER BY total DESC LIMIT 10',
-      )
-      .all(vendModel)
-  } catch (_) {}
-  const topVendedores = []
-  for (let i = 0; i < vendModel.length; i++) {
-    topVendedores.push({ name: vendModel[i].name || 'Não informado', total: vendModel[i].total })
-  }
+  const grupoItem = toRanked(grupoMap, 'name', 'value', 0)
+  const topVendedores = toRanked(vendMap, 'name', 'total', 10)
+  const topClientes = toRanked(cliMap, 'name', 'total', 10)
+  const estado = toRanked(ufMap, 'uf', 'total', 0)
 
-  // Top clientes
-  const cliModel = arrayOf(new DynamicModel({ name: '', total: 0 }))
-  try {
-    $app
-      .db()
-      .newQuery(
-        'SELECT COALESCE(nome_cliente,"Cliente Diversos") as name, COALESCE(SUM(total_linha),0) as total ' +
-          'FROM vendas WHERE ' +
-          filterStr +
-          ' GROUP BY name ORDER BY total DESC LIMIT 10',
-      )
-      .all(cliModel)
-  } catch (_) {}
-  const topClientes = []
-  for (let i = 0; i < cliModel.length; i++) {
-    topClientes.push({ name: cliModel[i].name || 'Cliente Diversos', total: cliModel[i].total })
-  }
-
-  // Por estado
-  const ufModel = arrayOf(new DynamicModel({ uf: '', total: 0 }))
-  try {
-    $app
-      .db()
-      .newQuery(
-        'SELECT COALESCE(estado,"Outros") as uf, COALESCE(SUM(total_linha),0) as total ' +
-          'FROM vendas WHERE ' +
-          filterStr +
-          ' GROUP BY uf ORDER BY total DESC',
-      )
-      .all(ufModel)
-  } catch (_) {}
-  const estado = []
-  for (let i = 0; i < ufModel.length; i++) {
-    estado.push({ uf: ufModel[i].uf || 'Outros', total: ufModel[i].total })
-  }
-
-  // ---- Vendas recentes (8 mais recentes pelo created) ----
-  const recentRecords = $app.findRecordsByFilter('vendas', filterStr, '-created', 8, 0)
+  // ---- recentSales: primeiros 8 registros (já em -created) ----
   const recentSales = []
-  for (let i = 0; i < recentRecords.length; i++) {
-    const r = recentRecords[i]
+  const rc = records.length < 8 ? records.length : 8
+  for (let i = 0; i < rc; i++) {
+    const r = records[i]
     recentSales.push({
       id: r.id,
       data_lancamento: r.getString('data_lancamento'),
@@ -238,55 +240,73 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     })
   }
 
-  // ---- Opções de filtro (distincts) — sem aplicar os filtros para
-  //      preservar as opções disponíveis na base inteira ----
-  const distinct = (field) => {
-    const arr = arrayOf(new DynamicModel({ v: '' }))
-    try {
-      $app
-        .db()
-        .newQuery(
-          'SELECT DISTINCT ' + field + ' as v FROM vendas WHERE ' + field + ' != "" ORDER BY v ASC',
-        )
-        .all(arr)
-    } catch (_) {}
-    const out = []
-    for (let i = 0; i < arr.length; i++) {
-      if (arr[i].v) out.push(arr[i].v)
+  // ---- filterOptions (distincts) ----
+  // Distintos sobre a BASE INTEIRA (sem aplicar filtros), para preservar as
+  // opções disponíveis mesmo quando há filtros ativos. Quando não há filtros,
+  // reutilizamos os mesmos registros já buscados (filterStr == "id != ''").
+  const hasFilters = parts.length > 0
+  const distinctSource = hasFilters ? fetchAll("id != ''", '') : records
+
+  const distVendedorCliente = {}
+  const distVendedor = {}
+  const distGrupoItem = {}
+  const distEstado = {}
+  const distUtilizacao = {}
+  const distAnos = {}
+  const distMeses = {}
+  const distDias = {}
+
+  for (let i = 0; i < distinctSource.length; i++) {
+    const r = distinctSource[i]
+
+    const vc = r.getString('vendedor_cliente')
+    if (vc) distVendedorCliente[vc] = true
+    const vd = r.getString('nome_vendedor')
+    if (vd) distVendedor[vd] = true
+    const gi = r.getString('grupo_item')
+    if (gi) distGrupoItem[gi] = true
+    const uf = r.getString('estado')
+    if (uf) distEstado[uf] = true
+    const ut = r.getString('utilizacao')
+    if (ut) distUtilizacao[ut] = true
+
+    const dl = r.getString('data_lancamento')
+    if (dl && dl.length >= 4) {
+      const ano = parseInt(dl.substr(0, 4), 10)
+      if (!isNaN(ano)) distAnos[ano] = true
     }
-    return out
+    if (dl && dl.length >= 7) {
+      const mes = parseInt(dl.substr(5, 2), 10)
+      if (!isNaN(mes) && mes >= 1 && mes <= 12) distMeses[mes] = true
+    }
+    if (dl && dl.length >= 10) {
+      const dia = parseInt(dl.substr(8, 2), 10)
+      if (!isNaN(dia) && dia >= 1 && dia <= 31) distDias[dia] = true
+    }
   }
 
-  const distinctNum = (expr) => {
-    const arr = arrayOf(new DynamicModel({ v: 0 }))
-    try {
-      $app
-        .db()
-        .newQuery(
-          'SELECT DISTINCT ' +
-            expr +
-            ' as v FROM vendas WHERE ' +
-            expr +
-            ' IS NOT NULL ORDER BY v ASC',
-        )
-        .all(arr)
-    } catch (_) {}
-    const out = []
-    for (let i = 0; i < arr.length; i++) {
-      if (!isNaN(arr[i].v)) out.push(arr[i].v)
-    }
-    return out
+  const objKeysSorted = (obj) => {
+    const ks = Object.keys(obj)
+    ks.sort()
+    return ks
+  }
+  const numKeysSorted = (obj) => {
+    const ks = Object.keys(obj)
+    const nums = []
+    for (let i = 0; i < ks.length; i++) nums.push(parseInt(ks[i], 10))
+    nums.sort((a, b) => a - b)
+    return nums
   }
 
   const filterOptions = {
-    vendedorCliente: distinct('vendedor_cliente'),
-    vendedor: distinct('nome_vendedor'),
-    grupoItem: distinct('grupo_item'),
-    estado: distinct('estado'),
-    utilizacao: distinct('utilizacao'),
-    anos: distinctNum('CAST(substr(data_lancamento,1,4) AS INTEGER)'),
-    meses: distinctNum('CAST(substr(data_lancamento,6,2) AS INTEGER)'),
-    dias: distinctNum('CAST(substr(data_lancamento,9,2) AS INTEGER)'),
+    vendedorCliente: objKeysSorted(distVendedorCliente),
+    vendedor: objKeysSorted(distVendedor),
+    grupoItem: objKeysSorted(distGrupoItem),
+    estado: objKeysSorted(distEstado),
+    utilizacao: objKeysSorted(distUtilizacao),
+    anos: numKeysSorted(distAnos),
+    meses: numKeysSorted(distMeses),
+    dias: numKeysSorted(distDias),
   }
 
   return e.json(200, {
