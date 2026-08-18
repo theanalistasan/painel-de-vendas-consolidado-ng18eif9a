@@ -60,8 +60,8 @@ routerAdd(
         '  n.numero_documento, n.preco_unitario, n.total_nf_sem_frete, ' +
         '  n.total_nf_novo, n.valor_liquido, n.custo_total, n.classificacao, ' +
         '  n.vendedor_revenda, ' +
-        // grupo_item da Produtos (LEFT JOIN por codigo_item)
-        '  p.grupo_item, ' +
+        // grupo_item da Produtos (LEFT JOIN por codigo_item com fallback)
+        "  COALESCE(NULLIF(p.grupo_item, ''), 'Não Categorizado'), " +
         // vendedor_cliente = "nome_vendedor > nome_cliente" (concat)
         "  (r.nome_vendedor || ' > ' || r.nome_cliente), " +
         "  'Consolidado', " +

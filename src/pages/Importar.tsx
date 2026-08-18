@@ -56,7 +56,7 @@ interface CardImportProps {
   onImport: (rows: Record<string, unknown>[]) => Promise<ImportResult>
   badgeLabel: string
   badgeColor: string
-  onConsolidationTrigger: () => Promise<void>
+  onConsolidationTrigger?: () => Promise<void>
   /** Total de registros atualmente na base (consultado do backend) */
   baseCount?: number
   /** Callback disparado ao final da importação com o resultado consolidado */
@@ -244,8 +244,14 @@ function BaseImportCard({
         })
       }
 
-      // Trigger automatic consolidation
-      await onConsolidationTrigger()
+      // Trigger automatic consolidation if provided, without crashing import feedback on failure
+      if (onConsolidationTrigger) {
+        try {
+          await onConsolidationTrigger()
+        } catch (consErr) {
+          console.warn('Consolidação automática pós-importação falhou:', consErr)
+        }
+      }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Falha na importação'
       toast({
