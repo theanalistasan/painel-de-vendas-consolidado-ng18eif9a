@@ -98,9 +98,7 @@ export interface CountsSummary {
 /**
  * Contagem autoritativa de registros de cada base.
  * Delega para o endpoint backend `/backend/v1/stats/counts`, que usa
- * `$app.countRecords` (contagem real do banco) por coleção — evita o
- * problema do `getList(1,1).totalItems` que podia retornar o mesmo número
- * para coleções distintas e gerar a impressão de importação incorreta.
+ * `$app.countRecords` (contagem real do banco) por coleção.
  */
 export async function getCountsSummary(): Promise<CountsSummary> {
   const data = await pb.send<{
@@ -120,4 +118,70 @@ export async function getCountsSummary(): Promise<CountsSummary> {
     vendas: data.vendas ?? 0,
     ultimaCarga: data.ultimaCarga || null,
   }
+}
+
+export interface DashboardStatsResult {
+  kpis: {
+    faturamento: number
+    valorLiquido: number
+    itensVendidos: number
+    documentos: number
+  }
+  charts: {
+    vendasPorMes: Array<{ mes: string; faturamento: number; liquido: number }>
+    grupoItem: Array<{ name: string; value: number }>
+    topVendedores: Array<{ name: string; total: number }>
+    topClientes: Array<{ name: string; total: number }>
+    estado: Array<{ uf: string; total: number }>
+  }
+  recentSales: Array<{
+    id: string
+    data_lancamento: string
+    nome_cliente: string
+    vendedor_cliente: string
+    codigo_item: string
+    descricao_item: string
+    grupo_item: string
+    quantidade: number
+    total_linha: number
+  }>
+  filterOptions: {
+    vendedorCliente: string[]
+    vendedor: string[]
+    grupoItem: string[]
+    estado: string[]
+    utilizacao: string[]
+    anos: number[]
+    meses: number[]
+    dias: number[]
+  }
+}
+
+export async function fetchDashboardStats(
+  filters?: Record<string, unknown>,
+): Promise<DashboardStatsResult> {
+  return pb.send<DashboardStatsResult>('/backend/v1/dashboard/stats', {
+    method: 'POST',
+    body: { filters: filters || {} },
+  })
+}
+
+export interface VendasListResult {
+  items: VendaConsolidada[]
+  page: number
+  perPage: number
+  totalItems: number
+  totalPages: number
+}
+
+export async function fetchVendasList(params?: {
+  page?: number
+  perPage?: number
+  sort?: string
+  filters?: Record<string, unknown>
+}): Promise<VendasListResult> {
+  return pb.send<VendasListResult>('/backend/v1/vendas/list', {
+    method: 'POST',
+    body: params || {},
+  })
 }

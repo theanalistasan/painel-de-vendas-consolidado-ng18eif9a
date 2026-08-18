@@ -27,10 +27,9 @@ import {
   Bar,
   Legend,
 } from 'recharts'
-import { fetchVendas } from '@/services/sales'
+import { fetchDashboardStats, type DashboardStatsResult } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { VendaConsolidada, FilterState } from '@/types/sales'
-import { isDevolucao } from '@/types/sales'
+import type { FilterState } from '@/types/sales'
 import {
   formatCurrency,
   formatNumber,
@@ -73,9 +72,8 @@ const currencyFormatter =
     [formatCurrency(typeof val === 'number' ? val : Number(val)), label] as [string, string]
 
 export default function Index() {
-  const [vendas, setVendas] = useState<VendaConsolidada[]>([])
+  const [data, setData] = useState<DashboardStatsResult | null>(null)
   const [loading, setLoading] = useState(true)
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
 
   const [filters, setFilters] = useState<FilterState>({
     dataDe: '',
@@ -92,14 +90,14 @@ export default function Index() {
     tipoDevolucao: '',
   })
 
-  // Load consolidated sales
+  // Load aggregated dashboard stats from server
   const loadData = async () => {
+    setLoading(true)
     try {
-      const data = await fetchVendas()
-      setVendas(data)
-      setLastUpdated(new Date())
+      const res = await fetchDashboardStats(filters as unknown as Record<string, unknown>)
+      setData(res)
     } catch (err) {
-      console.error('Erro ao buscar vendas:', err)
+      console.error('Erro ao buscar estatísticas do dashboard:', err)
     } finally {
       setLoading(false)
     }
@@ -107,262 +105,49 @@ export default function Index() {
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [filters])
 
   // Realtime subscription for sales updates
-  useRealtime<VendaConsolidada>('vendas', () => {
+  useRealtime('vendas', () => {
     loadData()
   })
 
-  // Extract distinct filter options
   const filterOptions = useMemo(() => {
-    const vcSet = new Set<string>()
-    const vSet = new Set<string>()
-    const giSet = new Set<string>()
-    const eSet = new Set<string>()
-    const uSet = new Set<string>()
-
-    const anoSet = new Set<number>()
-    const mesSet = new Set<number>()
-    const diaSet = new Set<number>()
-
-    vendas.forEach((v) => {
-      if (v.vendedor_cliente) vcSet.add(v.vendedor_cliente)
-      if (v.nome_vendedor) vSet.add(v.nome_vendedor)
-      if (v.grupo_item) giSet.add(v.grupo_item)
-      if (v.estado) eSet.add(v.estado)
-      if (v.utilizacao) uSet.add(v.utilizacao)
-      const ano = extractAno(v.data_lancamento)
-      const mes = extractMes(v.data_lancamento)
-      const dia = extractDia(v.data_lancamento)
-      if (ano !== null) anoSet.add(ano)
-      if (mes !== null) mesSet.add(mes)
-      if (dia !== null) diaSet.add(dia)
-    })
-
-    return {
-      vendedorCliente: Array.from(vcSet).sort(),
-      vendedor: Array.from(vSet).sort(),
-      grupoItem: Array.from(giSet).sort(),
-      estado: Array.from(eSet).sort(),
-      utilizacao: Array.from(uSet).sort(),
-      anos: Array.from(anoSet).sort((a, b) => b - a),
-      meses: Array.from(mesSet).sort((a, b) => a - b),
-      dias: Array.from(diaSet).sort((a, b) => a - b),
+    if (!data?.filterOptions) {
+      return {
+        vendedorCliente: [],
+        vendedor: [],
+        grupoItem: [],
+        estado: [],
+        utilizacao: [],
+        anos: [],
+        meses: [],
+        dias: [],
+      }
     }
-  }, [vendas])
+    return data.filterOptions
+  }, [data])
 
-  // Filtered dataset
-  const filteredVendas = useMemo(() => {
-    return vendas.filter((v) => {
-      // Date range filters (período) — intersecção com ano/mês/dia
-      if (filters.dataDe) {
-        const vDate = (v.data_lancamento || '').slice(0, 10)
-        if (vDate && vDate < filters.dataDe) return false
-      }
-      if (filters.dataAte) {
-        const vDate = (v.data_lancamento || '').slice(0, 10)
-        if (vDate && vDate > filters.dataAte) return false
-      }
-
-      // Filtros por parte da data (ano/mês/dia) extraídos da Data de Lançamento (BR ou ISO)
-      if (filters.ano && extractAno(v.data_lancamento) !== Number(filters.ano)) return false
-      if (filters.mes && extractMes(v.data_lancamento) !== Number(filters.mes)) return false
-      if (filters.dia && extractDia(v.data_lancamento) !== Number(filters.dia)) return false
-
-      // Multi-selects
-      if (
-        filters.vendedorCliente.length > 0 &&
-        !filters.vendedorCliente.includes(v.vendedor_cliente)
-      ) {
-        return false
-      }
-
-      if (filters.vendedor.length > 0 && !filters.vendedor.includes(v.nome_vendedor)) {
-        return false
-      }
-
-      if (filters.grupoItem.length > 0 && !filters.grupoItem.includes(v.grupo_item)) {
-        return false
-      }
-
-      if (filters.estado.length > 0 && !filters.estado.includes(v.estado)) {
-        return false
-      }
-
-      if (filters.utilizacao.length > 0 && !filters.utilizacao.includes(v.utilizacao)) {
-        return false
-      }
-
-      // Filtro por Tipo de Devolução
-      if (filters.tipoDevolucao) {
-        if (v.tipo_documento !== filters.tipoDevolucao) return false
-      }
-
-      // Text search
-      if (filters.search) {
-        const q = filters.search.toLowerCase()
-        const match =
-          (v.nome_cliente || '').toLowerCase().includes(q) ||
-          (v.codigo_item || '').toLowerCase().includes(q) ||
-          (v.descricao_item || '').toLowerCase().includes(q) ||
-          (v.numero_nfe || '').toLowerCase().includes(q) ||
-          (v.numero_sap || '').toLowerCase().includes(q)
-        if (!match) return false
-      }
-
-      return true
-    })
-  }, [vendas, filters])
-
-  // 5 KPIs
   const kpis = useMemo(() => {
-    let faturamento = 0
-    let valorLiquido = 0
-    let itensVendidos = 0
-    let devolucoes = 0
-    const nfSet = new Set<string>()
-
-    filteredVendas.forEach((v) => {
-      faturamento += v.total_linha || 0
-      valorLiquido += v.valor_liquido || 0
-      itensVendidos += v.quantidade || 0
-      if (isDevolucao(v.tipo_documento)) {
-        devolucoes += v.total_linha || v.valor_liquido || 0
-      }
-      if (v.numero_nfe) nfSet.add(v.numero_nfe)
-    })
-
     return {
-      faturamento,
-      valorLiquido,
-      itensVendidos,
-      documentos: nfSet.size,
-      devolucoes,
+      faturamento: data?.kpis?.faturamento || 0,
+      valorLiquido: data?.kpis?.valorLiquido || 0,
+      itensVendidos: data?.kpis?.itensVendidos || 0,
+      documentos: data?.kpis?.documentos || 0,
+      devolucoes: 0,
     }
-  }, [filteredVendas])
+  }, [data])
 
-  // Chart 1: Vendas por Mês (Área)
-  const chartVendasPorMes = useMemo(() => {
-    const monthly: Record<string, { faturamento: number; liquido: number; sortKey: string }> = {}
-
-    filteredVendas.forEach((v) => {
-      if (!v.data_lancamento) return
-      const date = new Date(v.data_lancamento)
-      if (isNaN(date.getTime())) return
-
-      const y = date.getUTCFullYear()
-      const m = date.getUTCMonth() + 1
-      const sortKey = `${y}-${String(m).padStart(2, '0')}`
-
-      if (!monthly[sortKey]) {
-        monthly[sortKey] = { faturamento: 0, liquido: 0, sortKey }
-      }
-      monthly[sortKey].faturamento += v.total_linha || 0
-      monthly[sortKey].liquido += v.valor_liquido || 0
-    })
-
-    return Object.keys(monthly)
-      .sort()
-      .map((k) => {
-        const [y, mStr] = k.split('-')
-        const m = parseInt(mStr, 10)
-        const months = [
-          'Jan',
-          'Fev',
-          'Mar',
-          'Abr',
-          'Mai',
-          'Jun',
-          'Jul',
-          'Ago',
-          'Set',
-          'Out',
-          'Nov',
-          'Dez',
-        ]
-        return {
-          mes: `${months[m - 1]}/${String(y).slice(2)}`,
-          faturamento: monthly[k].faturamento,
-          liquido: monthly[k].liquido,
-        }
-      })
-  }, [filteredVendas])
-
-  // Chart 2: Vendas por Grupo do Item (Donut)
-  const chartGrupoItem = useMemo(() => {
-    const grupos: Record<string, number> = {}
-
-    filteredVendas.forEach((v) => {
-      const g = v.grupo_item || 'Outros'
-      grupos[g] = (grupos[g] || 0) + (v.total_linha || 0)
-    })
-
-    return Object.keys(grupos)
-      .map((g) => ({
-        name: g,
-        value: grupos[g],
-      }))
-      .sort((a, b) => b.value - a.value)
-  }, [filteredVendas])
-
-  // Chart 3: Top 10 Vendedores (Barras Horizontais)
-  const chartTopVendedores = useMemo(() => {
-    const vend: Record<string, number> = {}
-
-    filteredVendas.forEach((v) => {
-      const name = v.nome_vendedor || 'Não informado'
-      vend[name] = (vend[name] || 0) + (v.total_linha || 0)
-    })
-
-    return Object.keys(vend)
-      .map((name) => ({ name, total: vend[name] }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10)
-  }, [filteredVendas])
-
-  // Chart 4: Top 10 Clientes (Barras Horizontais)
-  const chartTopClientes = useMemo(() => {
-    const cli: Record<string, number> = {}
-
-    filteredVendas.forEach((v) => {
-      const name = v.nome_cliente || 'Cliente Diversos'
-      cli[name] = (cli[name] || 0) + (v.total_linha || 0)
-    })
-
-    return Object.keys(cli)
-      .map((name) => ({ name, total: cli[name] }))
-      .sort((a, b) => b.total - a.total)
-      .slice(0, 10)
-  }, [filteredVendas])
-
-  // Chart 5: Vendas por Estado (Barras Verticais)
-  const chartEstado = useMemo(() => {
-    const ufs: Record<string, number> = {}
-
-    filteredVendas.forEach((v) => {
-      const uf = v.estado || 'Outros'
-      ufs[uf] = (ufs[uf] || 0) + (v.total_linha || 0)
-    })
-
-    return Object.keys(ufs)
-      .map((uf) => ({ uf, total: ufs[uf] }))
-      .sort((a, b) => b.total - a.total)
-  }, [filteredVendas])
-
-  // Top 8 Recent Sales
-  const recentSales = useMemo(() => {
-    return [...filteredVendas]
-      .sort((a, b) => {
-        const da = a.data_lancamento || ''
-        const db = b.data_lancamento || ''
-        return db.localeCompare(da)
-      })
-      .slice(0, 8)
-  }, [filteredVendas])
+  const chartVendasPorMes = data?.charts?.vendasPorMes || []
+  const chartGrupoItem = data?.charts?.grupoItem || []
+  const chartTopVendedores = data?.charts?.topVendedores || []
+  const chartTopClientes = data?.charts?.topClientes || []
+  const chartEstado = data?.charts?.estado || []
+  const recentSales = data?.recentSales || []
 
   // Empty state check
-  const isNoData = filteredVendas.length === 0
+  const isNoData =
+    !data || (kpis.faturamento === 0 && kpis.documentos === 0 && recentSales.length === 0)
 
   return (
     <div className="space-y-6">
@@ -809,9 +594,7 @@ export default function Index() {
               <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
               Sincronização em tempo real ativa
             </span>
-            <span>
-              Exibindo {filteredVendas.length} de {vendas.length} registros consolidados
-            </span>
+            <span>Exibindo {recentSales.length} registros recentes consolidados</span>
           </div>
         </>
       )}

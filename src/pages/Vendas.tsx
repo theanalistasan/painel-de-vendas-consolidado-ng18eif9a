@@ -14,7 +14,7 @@ import {
   FileText,
   RotateCcw,
 } from 'lucide-react'
-import { fetchVendas } from '@/services/sales'
+import { fetchVendasList, fetchDashboardStats } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
 import type { VendaConsolidada, FilterState } from '@/types/sales'
 import { isDevolucao } from '@/types/sales'
@@ -41,7 +41,9 @@ const PAGE_SIZE = 20
 type SortField = keyof VendaConsolidada | 'default'
 
 export default function Vendas() {
-  const [vendas, setVendas] = useState<VendaConsolidada[]>([])
+  const [paginatedVendas, setPaginatedVendas] = useState<VendaConsolidada[]>([])
+  const [totalItems, setTotalItems] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [sortField, setSortField] = useState<SortField>('data_lancamento')
@@ -63,10 +65,63 @@ export default function Vendas() {
     tipoDevolucao: '',
   })
 
-  const loadData = async () => {
+  const [kpis, setKpis] = useState({
+    faturamento: 0,
+    valorLiquido: 0,
+    itensVendidos: 0,
+    documentos: 0,
+    devolucoes: 0,
+  })
+
+  const [filterOptions, setFilterOptions] = useState({
+    vendedorCliente: [] as string[],
+    vendedor: [] as string[],
+    grupoItem: [] as string[],
+    estado: [] as string[],
+    utilizacao: [] as string[],
+    anos: [] as number[],
+    meses: [] as number[],
+    dias: [] as number[],
+  })
+
+  // Carrega opções de filtro e KPIs via endpoint do dashboard
+  const loadStats = async () => {
     try {
-      const data = await fetchVendas()
-      setVendas(data)
+      const stats = await fetchDashboardStats(filters as unknown as Record<string, unknown>)
+      if (stats) {
+        setKpis({
+          faturamento: stats.kpis?.faturamento || 0,
+          valorLiquido: stats.kpis?.valorLiquido || 0,
+          itensVendidos: stats.kpis?.itensVendidos || 0,
+          documentos: stats.kpis?.documentos || 0,
+          devolucoes: 0,
+        })
+        if (stats.filterOptions) {
+          setFilterOptions(stats.filterOptions)
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao carregar estatísticas:', err)
+    }
+  }
+
+  // Carrega a página atual de vendas via endpoint paginado
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      const sortString =
+        sortField === 'default'
+          ? '-data_lancamento'
+          : `${sortDir === 'desc' ? '-' : ''}${String(sortField)}`
+      const res = await fetchVendasList({
+        page,
+        perPage: PAGE_SIZE,
+        sort: sortString,
+        filters: filters as unknown as Record<string, unknown>,
+      })
+      setPaginatedVendas(res.items || [])
+      setTotalItems(res.totalItems || 0)
+      setTotalPages(res.totalPages || 1)
     } catch (err) {
       console.error('Erro ao carregar vendas:', err)
       toast({
@@ -80,180 +135,23 @@ export default function Vendas() {
   }
 
   useEffect(() => {
+    loadStats()
+  }, [filters])
+
+  useEffect(() => {
     loadData()
-  }, [])
-
-  // Realtime subscription
-  useRealtime<VendaConsolidada>('vendas', () => {
-    loadData()
-  })
-
-  // Extract distinct filter options
-  const filterOptions = useMemo(() => {
-    const vcSet = new Set<string>()
-    const vSet = new Set<string>()
-    const giSet = new Set<string>()
-    const eSet = new Set<string>()
-    const uSet = new Set<string>()
-
-    const anoSet = new Set<number>()
-    const mesSet = new Set<number>()
-    const diaSet = new Set<number>()
-
-    vendas.forEach((v) => {
-      if (v.vendedor_cliente) vcSet.add(v.vendedor_cliente)
-      if (v.nome_vendedor) vSet.add(v.nome_vendedor)
-      if (v.grupo_item) giSet.add(v.grupo_item)
-      if (v.estado) eSet.add(v.estado)
-      if (v.utilizacao) uSet.add(v.utilizacao)
-      const ano = extractAno(v.data_lancamento)
-      const mes = extractMes(v.data_lancamento)
-      const dia = extractDia(v.data_lancamento)
-      if (ano !== null) anoSet.add(ano)
-      if (mes !== null) mesSet.add(mes)
-      if (dia !== null) diaSet.add(dia)
-    })
-
-    return {
-      vendedorCliente: Array.from(vcSet).sort(),
-      vendedor: Array.from(vSet).sort(),
-      grupoItem: Array.from(giSet).sort(),
-      estado: Array.from(eSet).sort(),
-      utilizacao: Array.from(uSet).sort(),
-      anos: Array.from(anoSet).sort((a, b) => b - a),
-      meses: Array.from(mesSet).sort((a, b) => a - b),
-      dias: Array.from(diaSet).sort((a, b) => a - b),
-    }
-  }, [vendas])
-
-  // Filter dataset
-  const filteredVendas = useMemo(() => {
-    return vendas.filter((v) => {
-      // Date range filters (período) — intersecção com ano/mês/dia
-      if (filters.dataDe) {
-        const vDate = (v.data_lancamento || '').slice(0, 10)
-        if (vDate && vDate < filters.dataDe) return false
-      }
-      if (filters.dataAte) {
-        const vDate = (v.data_lancamento || '').slice(0, 10)
-        if (vDate && vDate > filters.dataAte) return false
-      }
-
-      // Filtros por parte da data (ano/mês/dia) extraídos da Data de Lançamento (BR ou ISO)
-      if (filters.ano && extractAno(v.data_lancamento) !== Number(filters.ano)) return false
-      if (filters.mes && extractMes(v.data_lancamento) !== Number(filters.mes)) return false
-      if (filters.dia && extractDia(v.data_lancamento) !== Number(filters.dia)) return false
-
-      // Multi-selects
-      if (
-        filters.vendedorCliente.length > 0 &&
-        !filters.vendedorCliente.includes(v.vendedor_cliente)
-      ) {
-        return false
-      }
-
-      if (filters.vendedor.length > 0 && !filters.vendedor.includes(v.nome_vendedor)) {
-        return false
-      }
-
-      if (filters.grupoItem.length > 0 && !filters.grupoItem.includes(v.grupo_item)) {
-        return false
-      }
-
-      if (filters.estado.length > 0 && !filters.estado.includes(v.estado)) {
-        return false
-      }
-
-      if (filters.utilizacao.length > 0 && !filters.utilizacao.includes(v.utilizacao)) {
-        return false
-      }
-
-      // Filtro por Tipo de Devolução
-      if (filters.tipoDevolucao) {
-        if (v.tipo_documento !== filters.tipoDevolucao) return false
-      }
-
-      // Text search
-      if (filters.search) {
-        const q = filters.search.toLowerCase()
-        const match =
-          (v.nome_cliente || '').toLowerCase().includes(q) ||
-          (v.codigo_cliente || '').toLowerCase().includes(q) ||
-          (v.codigo_item || '').toLowerCase().includes(q) ||
-          (v.descricao_item || '').toLowerCase().includes(q) ||
-          (v.numero_nfe || '').toLowerCase().includes(q) ||
-          (v.numero_sap || '').toLowerCase().includes(q) ||
-          (v.vendedor_cliente || '').toLowerCase().includes(q) ||
-          (v.cidade || '').toLowerCase().includes(q) ||
-          (v.mercado || '').toLowerCase().includes(q)
-        if (!match) return false
-      }
-
-      return true
-    })
-  }, [vendas, filters])
-
-  // KPIs
-  const kpis = useMemo(() => {
-    let faturamento = 0
-    let valorLiquido = 0
-    let itensVendidos = 0
-    let devolucoes = 0
-    const nfSet = new Set<string>()
-
-    filteredVendas.forEach((v) => {
-      faturamento += v.total_linha || 0
-      valorLiquido += v.valor_liquido || 0
-      itensVendidos += v.quantidade || 0
-      if (isDevolucao(v.tipo_documento)) {
-        devolucoes += v.total_linha || v.valor_liquido || 0
-      }
-      if (v.numero_nfe) nfSet.add(v.numero_nfe)
-    })
-
-    return {
-      faturamento,
-      valorLiquido,
-      itensVendidos,
-      documentos: nfSet.size,
-      devolucoes,
-    }
-  }, [filteredVendas])
-
-  // Sort dataset
-  const sortedVendas = useMemo(() => {
-    const list = [...filteredVendas]
-    if (sortField === 'default') return list
-
-    list.sort((a, b) => {
-      let valA = a[sortField]
-      let valB = b[sortField]
-
-      if (valA === undefined || valA === null) valA = ''
-      if (valB === undefined || valB === null) valB = ''
-
-      if (typeof valA === 'number' && typeof valB === 'number') {
-        return sortDir === 'asc' ? valA - valB : valB - valA
-      }
-
-      const strA = String(valA).toLowerCase()
-      const strB = String(valB).toLowerCase()
-      return sortDir === 'asc' ? strA.localeCompare(strB) : strB.localeCompare(strA)
-    })
-
-    return list
-  }, [filteredVendas, sortField, sortDir])
+  }, [page, sortField, sortDir, filters])
 
   // Reset pagination on filter change
   useEffect(() => {
     setPage(1)
   }, [filters, sortField, sortDir])
 
-  const totalPages = Math.max(1, Math.ceil(sortedVendas.length / PAGE_SIZE))
-  const paginatedVendas = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE
-    return sortedVendas.slice(start, start + PAGE_SIZE)
-  }, [sortedVendas, page])
+  // Realtime subscription
+  useRealtime<VendaConsolidada>('vendas', () => {
+    loadStats()
+    loadData()
+  })
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -293,7 +191,7 @@ export default function Vendas() {
   ]
 
   const handleExportCSV = () => {
-    if (sortedVendas.length === 0) {
+    if (paginatedVendas.length === 0) {
       toast({
         variant: 'destructive',
         title: 'Nenhum dado para exportar',
@@ -310,13 +208,13 @@ export default function Vendas() {
     const dateStr = new Date().toISOString().slice(0, 10)
     exportToCSV(
       `vendas_consolidadas_${dateStr}`,
-      sortedVendas as unknown as Record<string, unknown>[],
+      paginatedVendas as unknown as Record<string, unknown>[],
       exportColumns,
     )
 
     toast({
       title: 'Exportação concluída',
-      description: `${sortedVendas.length} registros exportados em formato Excel/CSV (UTF-8 BOM).`,
+      description: `${paginatedVendas.length} registros exportados em formato Excel/CSV (UTF-8 BOM).`,
     })
   }
 
@@ -379,8 +277,7 @@ export default function Vendas() {
                 Vendas Consolidadas (RacNew + NetSales + Produtos)
               </CardTitle>
               <CardDescription className="text-xs text-slate-500">
-                {filteredVendas.length} linhas encontradas • Base mestre RacNew com enriquecimento
-                NetSales
+                {totalItems} linhas encontradas • Base mestre RacNew com enriquecimento NetSales
               </CardDescription>
             </div>
 
@@ -573,14 +470,13 @@ export default function Vendas() {
           <div>
             Mostrando{' '}
             <span className="font-semibold text-slate-800">
-              {filteredVendas.length === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}
+              {totalItems === 0 ? 0 : (page - 1) * PAGE_SIZE + 1}
             </span>{' '}
             a{' '}
             <span className="font-semibold text-slate-800">
-              {Math.min(page * PAGE_SIZE, filteredVendas.length)}
+              {Math.min(page * PAGE_SIZE, totalItems)}
             </span>{' '}
-            de <span className="font-semibold text-slate-800">{filteredVendas.length}</span>{' '}
-            registros
+            de <span className="font-semibold text-slate-800">{totalItems}</span> registros
           </div>
 
           {totalPages > 1 && (
