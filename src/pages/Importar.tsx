@@ -744,7 +744,6 @@ export default function Importar() {
           badgeColor="bg-amber-600"
           expectedColumns={['codigo_item', 'descricao_item', 'grupo_item', 'ativo']}
           onImport={(rows) => importProdutosApi(rows)}
-          onConsolidationTrigger={handleConsolidar}
           baseCount={counts.produtos}
           onImported={(r) => handleImported('produtos', r)}
         />
@@ -770,7 +769,6 @@ export default function Importar() {
             'cidade',
           ]}
           onImport={(rows) => importRacNewApi(rows)}
-          onConsolidationTrigger={handleConsolidar}
           baseCount={counts.racnew}
           onImported={(r) => handleImported('racnew', r)}
         />
@@ -796,7 +794,6 @@ export default function Importar() {
             'vendedor_revenda',
           ]}
           onImport={(rows) => importNetSalesApi(rows)}
-          onConsolidationTrigger={handleConsolidar}
           baseCount={counts.netsales}
           onImported={(r) => handleImported('netsales', r)}
         />
