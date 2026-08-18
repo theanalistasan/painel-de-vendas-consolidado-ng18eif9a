@@ -10,6 +10,7 @@ import {
   BarChart3,
   Calendar,
   Layers,
+  ShieldAlert,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -52,6 +53,11 @@ export default function Layout() {
       title: 'Importar Dados',
       href: '/importar',
       icon: UploadCloud,
+    },
+    {
+      title: 'Administração',
+      href: '/admin',
+      icon: ShieldAlert,
     },
   ]
 
