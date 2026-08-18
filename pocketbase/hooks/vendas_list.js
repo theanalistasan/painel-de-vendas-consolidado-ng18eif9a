@@ -67,6 +67,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
     const arr = f.utilizacao.map((v) => `"${v}"`).join(',')
     parts.push(`utilizacao in (${arr})`)
   }
+  if (f.tipoDevolucao) {
+    parts.push(`tipo_documento = "${f.tipoDevolucao}"`)
+  }
   if (f.search) {
     const q = f.search.toString().replace(/"/g, '\\"')
     const term = `"${q}"`
@@ -108,15 +111,27 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
 
   const result = $app.findRecordsByFilter('vendas', filterStr, sort, perPage, (page - 1) * perPage)
 
-  // Conta total (sem limite) para calcular paginação
-  const totalItems = $app.countRecords('vendas')
+  // Conta total com o filtro aplicado para calcular a paginação correta
+  let totalItems = 0
+  const countModel = arrayOf(new DynamicModel({ total: 0 }))
+  try {
+    $app
+      .db()
+      .newQuery('SELECT COUNT(*) as total FROM vendas WHERE ' + filterStr)
+      .all(countModel)
+    if (countModel.length > 0) {
+      totalItems = countModel[0].total
+    }
+  } catch (_) {
+    totalItems = result.length
+  }
 
   // Serializa manualmente apenas os campos necessários
   const items = []
   for (let i = 0; i < result.length; i++) {
     const r = result[i]
     items.push({
-      id: r.getId(),
+      id: r.id,
       tipo_documento: r.getString('tipo_documento'),
       nf_entrega_futura: r.getString('nf_entrega_futura'),
       numero_sap: r.getString('numero_sap'),

@@ -134,7 +134,7 @@ export default function Index() {
       valorLiquido: data?.kpis?.valorLiquido || 0,
       itensVendidos: data?.kpis?.itensVendidos || 0,
       documentos: data?.kpis?.documentos || 0,
-      devolucoes: 0,
+      devolucoes: data?.kpis?.devolucoes || 0,
     }
   }, [data])
 

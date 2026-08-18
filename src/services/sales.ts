@@ -126,6 +126,7 @@ export interface DashboardStatsResult {
     valorLiquido: number
     itensVendidos: number
     documentos: number
+    devolucoes: number
   }
   charts: {
     vendasPorMes: Array<{ mes: string; faturamento: number; liquido: number }>

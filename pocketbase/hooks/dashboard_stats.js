@@ -55,6 +55,9 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const arr = f.utilizacao.map((v) => `"${v}"`).join(',')
     parts.push(`utilizacao in (${arr})`)
   }
+  if (f.tipoDevolucao) {
+    parts.push(`tipo_documento = "${f.tipoDevolucao}"`)
+  }
   if (f.search) {
     const q = f.search.toString().replace(/"/g, '\\"')
     const term = `"${q}"`
@@ -71,17 +74,18 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       valorLiquido: 0,
       itensVendidos: 0,
       documentos: 0,
+      devolucoes: 0,
     }),
   )
 
-  // count(distinct numero_nfe) não existe diretamente em SQLite sem subquery;
-  // usamos COUNT(DISTINCT ...) que é suportado pelo SQLite.
+  // devolucoes: soma de total_linha onde tipo_documento IN ('Dev. Entrega', 'Dev. NF', 'DEVNF')
   const kpiQuery =
     'SELECT ' +
     'COALESCE(SUM(total_linha),0) as faturamento, ' +
     'COALESCE(SUM(valor_liquido),0) as valorLiquido, ' +
     'COALESCE(SUM(quantidade),0) as itensVendidos, ' +
-    'COUNT(DISTINCT numero_nfe) as documentos ' +
+    'COUNT(DISTINCT numero_nfe) as documentos, ' +
+    "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega', 'Dev. NF', 'DEVNF') THEN total_linha ELSE 0 END),0) as devolucoes " +
     'FROM vendas WHERE ' +
     filterStr
 
@@ -94,6 +98,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     valorLiquido: kpiModel.length > 0 ? kpiModel[0].valorLiquido : 0,
     itensVendidos: kpiModel.length > 0 ? kpiModel[0].itensVendidos : 0,
     documentos: kpiModel.length > 0 ? kpiModel[0].documentos : 0,
+    devolucoes: kpiModel.length > 0 ? kpiModel[0].devolucoes : 0,
   }
 
   // ---- Charts ----
@@ -221,7 +226,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   for (let i = 0; i < recentRecords.length; i++) {
     const r = recentRecords[i]
     recentSales.push({
-      id: r.getId(),
+      id: r.id,
       data_lancamento: r.getString('data_lancamento'),
       nome_cliente: r.getString('nome_cliente'),
       vendedor_cliente: r.getString('vendedor_cliente'),
