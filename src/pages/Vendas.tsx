@@ -35,10 +35,12 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
+import { useTableSort } from '@/hooks/use-table-sort'
+import { sortData } from '@/lib/sort'
 
 const PAGE_SIZE = 20
 
-type SortField = keyof VendaConsolidada | 'default'
+type SortField = Extract<keyof VendaConsolidada, string>
 
 export default function Vendas() {
   const [paginatedVendas, setPaginatedVendas] = useState<VendaConsolidada[]>([])
@@ -46,8 +48,7 @@ export default function Vendas() {
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
-  const [sortField, setSortField] = useState<SortField>('data_lancamento')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const sort = useTableSort<SortField>()
   const { toast } = useToast()
 
   const [filters, setFilters] = useState<FilterState>({
@@ -109,14 +110,12 @@ export default function Vendas() {
   const loadData = async () => {
     setLoading(true)
     try {
-      const sortString =
-        sortField === 'default'
-          ? '-data_lancamento'
-          : `${sortDir === 'desc' ? '-' : ''}${String(sortField)}`
       const res = await fetchVendasList({
         page,
         perPage: PAGE_SIZE,
-        sort: sortString,
+        // Ordenação padrão por data; a ordenação por clique nos cabeçalhos
+        // é feita no frontend (sortData) sobre os dados já carregados.
+        sort: '-data_lancamento',
         filters: filters as unknown as Record<string, unknown>,
       })
       setPaginatedVendas(res.items || [])
@@ -140,12 +139,12 @@ export default function Vendas() {
 
   useEffect(() => {
     loadData()
-  }, [page, sortField, sortDir, filters])
+  }, [page, filters])
 
   // Reset pagination on filter change
   useEffect(() => {
     setPage(1)
-  }, [filters, sortField, sortDir])
+  }, [filters])
 
   // Realtime subscription
   useRealtime<VendaConsolidada>('vendas', () => {
@@ -153,13 +152,14 @@ export default function Vendas() {
     loadData()
   })
 
+  // Ordenação frontend (3 estados: asc → desc → padrão) sobre a página atual.
+  const sortedVendas = useMemo(
+    () => sortData(paginatedVendas, sort.field, sort.dir),
+    [paginatedVendas, sort.field, sort.dir],
+  )
+
   const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
-    } else {
-      setSortField(field)
-      setSortDir('asc')
-    }
+    sort.toggle(field)
   }
 
   // Column definitions for Table & Export (exact order requested)
@@ -325,11 +325,12 @@ export default function Vendas() {
                       >
                         <div className="flex items-center gap-1.5">
                           <span>{col.label}</span>
-                          <ArrowUpDown className="w-3 h-3 text-slate-400 group-hover:text-slate-700" />
-                          {sortField === col.key && (
+                          {sort.field === col.key ? (
                             <span className="text-[10px] text-indigo-600 font-bold">
-                              {sortDir === 'asc' ? '↑' : '↓'}
+                              {sort.dir === 'asc' ? '▲' : '▼'}
                             </span>
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 group-hover:text-slate-700" />
                           )}
                         </div>
                       </th>
@@ -337,7 +338,7 @@ export default function Vendas() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {paginatedVendas.map((item) => (
+                  {sortedVendas.map((item) => (
                     <tr key={item.id} className="hover:bg-indigo-50/20 transition-colors group">
                       {/* 1. Data de Lancamento */}
                       <td className="py-2.5 px-3.5 font-medium text-slate-700">

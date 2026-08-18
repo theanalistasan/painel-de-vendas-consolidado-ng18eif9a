@@ -11,6 +11,7 @@ import {
   PieChart as PieChartIcon,
   RefreshCw,
   RotateCcw,
+  ArrowUpDown,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -46,6 +47,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useTableSort } from '@/hooks/use-table-sort'
+import { sortData } from '@/lib/sort'
 
 const CHART_PALETTE = [
   '#4F46E5', // Indigo
@@ -71,9 +74,21 @@ const currencyFormatter =
   (val: number | string | undefined) =>
     [formatCurrency(typeof val === 'number' ? val : Number(val)), label] as [string, string]
 
+type DashboardSortField =
+  | 'data_lancamento'
+  | 'nome_cliente'
+  | 'vendedor_cliente'
+  | 'codigo_item'
+  | 'grupo_item'
+  | 'quantidade'
+  | 'total_linha'
+
 export default function Index() {
   const [data, setData] = useState<DashboardStatsResult | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Ordenação por clique nos cabeçalhos da tabela "Vendas Recentes" (frontend).
+  const sort = useTableSort<DashboardSortField>()
 
   const [filters, setFilters] = useState<FilterState>({
     dataDe: '',
@@ -144,6 +159,21 @@ export default function Index() {
   const chartTopClientes = data?.charts?.topClientes || []
   const chartEstado = data?.charts?.estado || []
   const recentSales = data?.recentSales || []
+
+  const sortedRecentSales = useMemo(
+    () => sortData(recentSales, sort.field, sort.dir),
+    [recentSales, sort.field, sort.dir],
+  )
+
+  const recentSalesColumns: { key: DashboardSortField; label: string; className?: string }[] = [
+    { key: 'data_lancamento', label: 'Data' },
+    { key: 'nome_cliente', label: 'Cliente' },
+    { key: 'vendedor_cliente', label: 'Vendedor > Cliente' },
+    { key: 'codigo_item', label: 'Item' },
+    { key: 'grupo_item', label: 'Grupo' },
+    { key: 'quantidade', label: 'Qtd', className: 'text-center' },
+    { key: 'total_linha', label: 'Total Linha', className: 'text-right' },
+  ]
 
   // Empty state check
   const isNoData =
@@ -531,17 +561,38 @@ export default function Index() {
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 text-slate-600 font-semibold border-y border-slate-200/80">
                     <tr>
-                      <th className="py-3 px-4">Data</th>
-                      <th className="py-3 px-4">Cliente</th>
-                      <th className="py-3 px-4">Vendedor &gt; Cliente</th>
-                      <th className="py-3 px-4">Item</th>
-                      <th className="py-3 px-4">Grupo</th>
-                      <th className="py-3 px-4 text-center">Qtd</th>
-                      <th className="py-3 px-4 text-right">Total Linha</th>
+                      {recentSalesColumns.map((col) => (
+                        <th
+                          key={col.key}
+                          onClick={() => sort.toggle(col.key)}
+                          className={`py-3 px-4 cursor-pointer hover:bg-slate-100/80 transition-colors select-none group ${
+                            col.className || ''
+                          }`}
+                        >
+                          <div
+                            className={`flex items-center gap-1.5 ${
+                              col.className === 'text-right'
+                                ? 'justify-end'
+                                : col.className === 'text-center'
+                                  ? 'justify-center'
+                                  : ''
+                            }`}
+                          >
+                            <span>{col.label}</span>
+                            {sort.field === col.key ? (
+                              <span className="text-[10px] text-indigo-600 font-bold">
+                                {sort.dir === 'asc' ? '▲' : '▼'}
+                              </span>
+                            ) : (
+                              <ArrowUpDown className="w-3 h-3 text-slate-400 group-hover:text-slate-700" />
+                            )}
+                          </div>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {recentSales.map((item) => (
+                    {sortedRecentSales.map((item) => (
                       <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
                         <td className="py-3 px-4 font-medium text-slate-700 whitespace-nowrap">
                           {formatDate(item.data_lancamento)}
