@@ -60,6 +60,26 @@ export async function consolidarVendasApi(): Promise<ConsolidarResult> {
   })
 }
 
+export interface ResetBasesResult {
+  success: boolean
+  alreadyEmpty: boolean
+  message: string
+  counts: {
+    produtos: number
+    racnew: number
+    netsales: number
+    vendas: number
+  }
+  total_removido: number
+}
+
+export async function resetBasesApi(password: string): Promise<ResetBasesResult> {
+  return pb.send<ResetBasesResult>('/backend/v1/admin/reset-bases', {
+    method: 'POST',
+    body: { password },
+  })
+}
+
 export async function getCountsSummary() {
   const [prodCount, racCount, netCount, venCount] = await Promise.all([
     pb.collection('produtos').getList(1, 1),

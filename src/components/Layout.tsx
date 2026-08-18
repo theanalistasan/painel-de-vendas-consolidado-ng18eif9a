@@ -64,6 +64,8 @@ export default function Layout() {
         return 'Relatório Consolidado de Vendas'
       case '/importar':
         return 'Importação e Consolidação de Bases'
+      case '/admin':
+        return 'Administração — Zerar Bases'
       default:
         return 'Painel de Vendas'
     }
