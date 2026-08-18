@@ -47,6 +47,8 @@ interface BatchResult {
   totalBatches: number
 }
 
+type BaseKey = 'produtos' | 'racnew' | 'netsales'
+
 interface CardImportProps {
   title: string
   subtitle: string
@@ -55,6 +57,10 @@ interface CardImportProps {
   badgeLabel: string
   badgeColor: string
   onConsolidationTrigger: () => Promise<void>
+  /** Total de registros atualmente na base (consultado do backend) */
+  baseCount?: number
+  /** Callback disparado ao final da importação com o resultado consolidado */
+  onImported?: (result: ImportResult) => void
 }
 
 function BaseImportCard({
@@ -65,6 +71,8 @@ function BaseImportCard({
   badgeLabel,
   badgeColor,
   onConsolidationTrigger,
+  baseCount,
+  onImported,
 }: CardImportProps) {
   const [file, setFile] = useState<File | null>(null)
   const [parsedRows, setParsedRows] = useState<Record<string, string>[]>([])
@@ -209,14 +217,19 @@ function BaseImportCard({
       setBatchResult(acc)
 
       // Resumo consolidado (compatível com o box de resultado existente)
-      setResult({
+      const finalResult: ImportResult = {
         success: acc.failedBatches.length === 0,
         importados: acc.importados,
         atualizados: acc.atualizados,
         ignorados: acc.ignorados,
         erros: acc.erros,
         data_carga: new Date().toISOString(),
-      })
+      }
+      setResult(finalResult)
+
+      // Notifica o parent para armazenar o resultado desta base específica
+      // e atualizar o total de registros na base consultando o backend.
+      if (onImported) onImported(finalResult)
 
       if (acc.failedBatches.length === 0) {
         toast({
@@ -279,6 +292,19 @@ function BaseImportCard({
       </CardHeader>
 
       <CardContent className="pt-4 space-y-4 flex-1">
+        {/* Total na base (consultado do backend) */}
+        {baseCount !== undefined && (
+          <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-slate-200/60">
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+              <Database className="w-3.5 h-3.5 text-slate-400" />
+              Total de registros na base
+            </span>
+            <span className="text-sm font-bold text-slate-900 tabular-nums">
+              {formatNumber(baseCount)}
+            </span>
+          </div>
+        )}
+
         {/* Expected columns info */}
         <div className="text-[11px] bg-slate-50 p-2.5 rounded-lg border border-slate-200/60 text-slate-600 space-y-1">
           <span className="font-semibold text-slate-800 block">Colunas esperadas:</span>
@@ -515,6 +541,13 @@ export default function Importar() {
   })
   const [consolidating, setConsolidating] = useState(false)
   const [consolidationResult, setConsolidationResult] = useState<ConsolidarResult | null>(null)
+  // Resultado de cada importação armazenado separadamente por base, de forma
+  // que RacNew e NetSales (e Produtos) nunca se sobrescrevam.
+  const [importResults, setImportResults] = useState<{
+    produtos?: ImportResult
+    racnew?: ImportResult
+    netsales?: ImportResult
+  }>({})
   const { toast } = useToast()
 
   const refreshCounts = async () => {
@@ -552,6 +585,20 @@ export default function Importar() {
       setConsolidating(false)
     }
   }
+
+  // Callback disparado ao final de cada importação: armazena o resultado
+  // desta base específica e atualiza o "Total na base" consultando o backend.
+  const handleImported = (base: BaseKey, result: ImportResult) => {
+    setImportResults((prev) => ({ ...prev, [base]: result }))
+    refreshCounts()
+  }
+
+  const summaryEntries: { base: BaseKey; label: string; color: string }[] = [
+    { base: 'produtos', label: 'Produtos', color: 'text-amber-700' },
+    { base: 'racnew', label: 'RacNew', color: 'text-indigo-700' },
+    { base: 'netsales', label: 'NetSales', color: 'text-teal-700' },
+  ]
+  const hasAnyImportResult = Object.values(importResults).some((r) => r)
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-8">
@@ -632,6 +679,13 @@ export default function Importar() {
               </span>
             </div>
           </div>
+
+          {/* Última carga */}
+          {counts.ultimaCarga && (
+            <div className="mt-3 text-[11px] text-slate-400">
+              Última consolidação: {formatDateTime(counts.ultimaCarga)}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -646,6 +700,8 @@ export default function Importar() {
           expectedColumns={['codigo_item', 'descricao_item', 'grupo_item', 'ativo']}
           onImport={(rows) => importProdutosApi(rows)}
           onConsolidationTrigger={handleConsolidar}
+          baseCount={counts.produtos}
+          onImported={(r) => handleImported('produtos', r)}
         />
 
         {/* Card 2: RacNew */}
@@ -670,6 +726,8 @@ export default function Importar() {
           ]}
           onImport={(rows) => importRacNewApi(rows)}
           onConsolidationTrigger={handleConsolidar}
+          baseCount={counts.racnew}
+          onImported={(r) => handleImported('racnew', r)}
         />
 
         {/* Card 3: NetSales */}
@@ -694,8 +752,105 @@ export default function Importar() {
           ]}
           onImport={(rows) => importNetSalesApi(rows)}
           onConsolidationTrigger={handleConsolidar}
+          baseCount={counts.netsales}
+          onImported={(r) => handleImported('netsales', r)}
         />
       </div>
+
+      {/* Resumo final por base — cada base mantém seu próprio resultado */}
+      {hasAnyImportResult && (
+        <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs">
+          <CardHeader className="pb-3 border-b border-slate-100">
+            <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Database className="w-4 h-4 text-indigo-600" />
+              Resumo das Importações
+            </CardTitle>
+            <CardDescription className="text-xs text-slate-500">
+              Resultado da última carga de cada base, armazenado independentemente.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {summaryEntries.map(({ base, label, color }) => {
+                const r = importResults[base]
+                const totalNaBase =
+                  base === 'produtos'
+                    ? counts.produtos
+                    : base === 'racnew'
+                      ? counts.racnew
+                      : counts.netsales
+                return (
+                  <div
+                    key={base}
+                    className={cn(
+                      'p-3 rounded-xl border space-y-2',
+                      r
+                        ? 'border-slate-200 bg-slate-50/60'
+                        : 'border-dashed border-slate-200 bg-white',
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className={cn('text-sm font-bold', color)}>{label}</span>
+                      {!r && (
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          Sem importação
+                        </span>
+                      )}
+                    </div>
+                    {r ? (
+                      <>
+                        <div className="grid grid-cols-3 gap-1.5 text-center">
+                          <div className="bg-white p-1.5 rounded-md border border-slate-100">
+                            <span className="text-[9px] text-slate-400 uppercase font-semibold block">
+                              Novos
+                            </span>
+                            <span className="text-xs font-bold text-emerald-600">
+                              {r.importados}
+                            </span>
+                          </div>
+                          <div className="bg-white p-1.5 rounded-md border border-slate-100">
+                            <span className="text-[9px] text-slate-400 uppercase font-semibold block">
+                              Atualizados
+                            </span>
+                            <span className="text-xs font-bold text-indigo-600">
+                              {r.atualizados}
+                            </span>
+                          </div>
+                          <div className="bg-white p-1.5 rounded-md border border-slate-100">
+                            <span className="text-[9px] text-slate-400 uppercase font-semibold block">
+                              Ignorados
+                            </span>
+                            <span className="text-xs font-bold text-amber-600">{r.ignorados}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-1 text-[10px] text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <Database className="w-3 h-3" />
+                            Total na base
+                          </span>
+                          <span className="font-bold text-slate-800 tabular-nums">
+                            {formatNumber(totalNaBase)}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                        <span className="flex items-center gap-1">
+                          <Database className="w-3 h-3" />
+                          Total na base
+                        </span>
+                        <span className="font-bold text-slate-600 tabular-nums">
+                          {formatNumber(totalNaBase)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Info notice about Join Rules */}
       <Alert className="bg-slate-50 border-slate-200">

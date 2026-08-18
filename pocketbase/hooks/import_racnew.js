@@ -146,7 +146,7 @@ routerAdd(
         )
         record.set('numero_sap', numeroSap)
         record.set('numero_nfe', numeroNfe)
-        record.set('data_lancamento', dataLancamento || nowIso)
+        record.set('data_lancamento', dataLancamento || '')
         record.set(
           'ultima_data_vencimento',
           parseDateStr(

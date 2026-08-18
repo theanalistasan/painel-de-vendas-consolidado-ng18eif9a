@@ -161,7 +161,7 @@ routerAdd(
             .toString()
             .trim(),
         )
-        record.set('docdate', docDate || nowIso)
+        record.set('docdate', docDate || '')
         record.set('chave_documento', chaveDocumento)
         record.set(
           'descrip',
