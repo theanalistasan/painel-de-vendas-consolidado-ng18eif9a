@@ -1,0 +1,156 @@
+import type { RecordModel } from 'pocketbase'
+
+export interface Produto extends RecordModel {
+  codigo_item: string
+  descricao_item: string
+  grupo_item: string
+  ativo: string
+  origem: string
+  data_carga: string
+}
+
+export interface RacNew extends RecordModel {
+  tipo_documento: string
+  nf_entrega_futura: string
+  numero_sap: string
+  numero_nfe: string
+  data_lancamento: string
+  ultima_data_vencimento: string
+  docto_origem_destino: string
+  data_origem_destino: string
+  condicao_pagamento: string
+  codigo_cliente: string
+  nome_cliente: string
+  numero_linha: number
+  codigo_item: string
+  descricao_item: string
+  quantidade: number
+  qty_kg_lt: number
+  preco_item: number
+  desconto_linha: number
+  icms: number
+  pis: number
+  cofins: number
+  ipi: number
+  icms_partilha: number
+  total_linha: number
+  utilizacao: string
+  nome_vendedor: string
+  custo_item: number
+  nome_filial: string
+  conta: string
+  estado: string
+  cidade: string
+  origem: string
+  data_carga: string
+}
+
+export interface NetSales extends RecordModel {
+  tipo: string
+  codigo_cliente: string
+  nome_cliente: string
+  grupo_cliente: string
+  mercado: string
+  usuario_emissor: string
+  docdate: string
+  chave_documento: string
+  descrip: string
+  itms_grp_nam: string
+  codigo_item: string
+  numero_documento: string
+  quantidade: number
+  preco_unitario: number
+  valor_mercadoria: number
+  total_nf_sem_frete: number
+  total_nf_novo: number
+  valor_liquido: number
+  serial: string
+  custo_total: number
+  usage: string
+  classificacao: string
+  revenda: string
+  vendedor_revenda: string
+  municipio: string
+  estado: string
+  origem: string
+  data_carga: string
+}
+
+export interface VendaConsolidada extends RecordModel {
+  tipo_documento: string
+  nf_entrega_futura: string
+  numero_sap: string
+  numero_nfe: string
+  data_lancamento: string
+  ultima_data_vencimento: string
+  docto_origem_destino: string
+  data_origem_destino: string
+  condicao_pagamento: string
+  codigo_cliente: string
+  nome_cliente: string
+  numero_linha: number
+  codigo_item: string
+  descricao_item: string
+  quantidade: number
+  qty_kg_lt: number
+  preco_item: number
+  desconto_linha: number
+  icms: number
+  pis: number
+  cofins: number
+  ipi: number
+  icms_partilha: number
+  total_linha: number
+  utilizacao: string
+  nome_vendedor: string
+  custo_item: number
+  nome_filial: string
+  conta: string
+  estado: string
+  cidade: string
+  // NetSales exclusive
+  grupo_cliente: string
+  mercado: string
+  usuario_emissor_pedido: string
+  itms_grp_nam: string
+  numero_documento_netsales: string
+  preco_unitario: number
+  total_nf_sem_frete: number
+  total_nf_novo: number
+  valor_liquido: number
+  custo_total: number
+  classificacao: string
+  vendedor_revenda: string
+  // Enriched
+  grupo_item: string
+  vendedor_cliente: string
+  origem: string
+  data_carga: string
+}
+
+export interface FilterState {
+  dataDe: string
+  dataAte: string
+  vendedorCliente: string[]
+  vendedor: string[]
+  grupoItem: string[]
+  estado: string[]
+  utilizacao: string[]
+  search: string
+}
+
+export interface ImportResult {
+  success: boolean
+  importados: number
+  atualizados: number
+  ignorados: number
+  erros: string[]
+  data_carga: string
+  message?: string
+}
+
+export interface ConsolidarResult {
+  success: boolean
+  total_consolidado: number
+  data_carga: string
+}
