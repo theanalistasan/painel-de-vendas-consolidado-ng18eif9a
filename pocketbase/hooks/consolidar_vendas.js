@@ -52,14 +52,24 @@ routerAdd(
         '  r.data_lancamento, r.ultima_data_vencimento, r.docto_origem_destino, ' +
         '  r.data_origem_destino, r.condicao_pagamento, r.codigo_cliente, ' +
         '  r.nome_cliente, r.numero_linha, r.codigo_item, r.descricao_item, ' +
-        '  r.quantidade, r.qty_kg_lt, r.preco_item, r.desconto_linha, r.icms, r.pis, ' +
-        '  r.cofins, r.ipi, r.icms_partilha, r.total_linha, r.utilizacao, ' +
-        '  r.nome_vendedor, r.custo_item, r.nome_filial, r.conta, r.estado, r.cidade, ' +
-        // Campos da NetSales (LEFT JOIN — NULL quando não há match)
-        '  n.grupo_cliente, n.mercado, n.usuario_emissor, n.itms_grp_nam, ' +
-        '  n.numero_documento, n.preco_unitario, n.total_nf_sem_frete, ' +
-        '  n.total_nf_novo, n.valor_liquido, n.custo_total, n.classificacao, ' +
-        '  n.vendedor_revenda, ' +
+        // Campos numéricos da RacNew — COALESCE para 0 quando vierem vazios
+        // (evita NULL em colunas eventualmente NOT NULL e normaliza o dado).
+        '  r.quantidade, COALESCE(r.qty_kg_lt, 0), COALESCE(r.preco_item, 0), ' +
+        '  COALESCE(r.desconto_linha, 0), COALESCE(r.icms, 0), COALESCE(r.pis, 0), ' +
+        '  COALESCE(r.cofins, 0), COALESCE(r.ipi, 0), COALESCE(r.icms_partilha, 0), ' +
+        '  r.total_linha, r.utilizacao, ' +
+        '  r.nome_vendedor, COALESCE(r.custo_item, 0), r.nome_filial, r.conta, ' +
+        '  r.estado, r.cidade, ' +
+        // Campos da NetSales (LEFT JOIN — NULL quando não há match).
+        // COALESCE em TODOS para nunca inserir NULL (textos -> '', números -> 0),
+        // evitando `NOT NULL constraint failed` mesmo que alguma coluna ainda
+        // esteja marcada como NOT NULL no SQLite.
+        "  COALESCE(n.grupo_cliente, ''), COALESCE(n.mercado, ''), " +
+        "  COALESCE(n.usuario_emissor, ''), COALESCE(n.itms_grp_nam, ''), " +
+        "  COALESCE(n.numero_documento, ''), COALESCE(n.preco_unitario, 0), " +
+        '  COALESCE(n.total_nf_sem_frete, 0), COALESCE(n.total_nf_novo, 0), ' +
+        '  COALESCE(n.valor_liquido, 0), COALESCE(n.custo_total, 0), ' +
+        "  COALESCE(n.classificacao, ''), COALESCE(n.vendedor_revenda, ''), " +
         // grupo_item da Produtos (LEFT JOIN por codigo_item com fallback)
         "  COALESCE(NULLIF(p.grupo_item, ''), 'Não Categorizado'), " +
         // vendedor_cliente = "nome_vendedor > nome_cliente" (concat)
