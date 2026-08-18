@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -49,7 +50,21 @@ export default function Admin() {
   })
   const [lastResult, setLastResult] = useState<ResetBasesResult | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [selected, setSelected] = useState<Record<string, boolean>>({
+    produtos: true,
+    racnew: true,
+    netsales: true,
+    vendas: true,
+  })
   const { toast } = useToast()
+
+  const selectedKeys = BASES.filter((b) => selected[b.key]).map((b) => b.key)
+  const allSelected = selectedKeys.length === BASES.length
+  const selectedTotal = selectedKeys.reduce((sum, k) => sum + (counts[k] || 0), 0)
+
+  const toggleBase = (key: string, checked: boolean) => {
+    setSelected((prev) => ({ ...prev, [key]: checked }))
+  }
 
   const refreshCounts = async () => {
     try {
@@ -85,7 +100,7 @@ export default function Admin() {
     setConfirmOpen(false)
     setLoading(true)
     try {
-      const res = await resetBasesApi(password)
+      const res = await resetBasesApi(password, allSelected ? undefined : selectedKeys)
       setLastResult(res)
       await refreshCounts()
 
@@ -166,19 +181,48 @@ export default function Admin() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {BASES.map((b) => (
-              <div key={b.key} className="bg-slate-50 p-3 rounded-lg border border-slate-200/70">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className={cn('w-2 h-2 rounded-full', b.color)} />
-                  <span className="text-[11px] text-slate-500 font-medium truncate">{b.label}</span>
-                </div>
-                <span className="text-lg font-bold text-slate-900 tabular-nums">
-                  {formatNumber(counts[b.key])}
-                </span>
-                <span className="text-[10px] text-slate-400 block">{b.desc}</span>
-              </div>
-            ))}
+            {BASES.map((b) => {
+              const isSelected = selected[b.key]
+              return (
+                <label
+                  key={b.key}
+                  htmlFor={`sel-${b.key}`}
+                  className={cn(
+                    'bg-slate-50 p-3 rounded-lg border cursor-pointer transition-colors',
+                    isSelected ? 'border-rose-300 bg-rose-50/50' : 'border-slate-200/70 opacity-60',
+                  )}
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Checkbox
+                      id={`sel-${b.key}`}
+                      checked={isSelected}
+                      onCheckedChange={(checked) => toggleBase(b.key, checked === true)}
+                      className="w-3.5 h-3.5 data-[state=checked]:bg-rose-600 data-[state=checked]:border-rose-600"
+                    />
+                    <span className={cn('w-2 h-2 rounded-full', b.color)} />
+                    <span className="text-[11px] text-slate-500 font-medium truncate">
+                      {b.label}
+                    </span>
+                  </div>
+                  <span className="text-lg font-bold text-slate-900 tabular-nums">
+                    {formatNumber(counts[b.key])}
+                  </span>
+                  <span className="text-[10px] text-slate-400 block">{b.desc}</span>
+                </label>
+              )
+            })}
           </div>
+          <p className="text-[11px] text-slate-500 mt-3">
+            Selecione quais bases zerar. Por padrão, todas são selecionadas.
+            {!allSelected && (
+              <>
+                {' '}
+                <span className="text-rose-600 font-medium">
+                  ({selectedKeys.length} de {BASES.length} selecionadas)
+                </span>
+              </>
+            )}
+          </p>
         </CardContent>
       </Card>
 
@@ -278,7 +322,7 @@ export default function Admin() {
             {lastResult.message}
             {!lastResult.alreadyEmpty && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
-                {BASES.map((b) => (
+                {BASES.filter((b) => lastResult.counts[b.key] != null).map((b) => (
                   <div
                     key={b.key}
                     className="bg-white p-2 rounded-lg border border-slate-100 text-center"
@@ -317,7 +361,7 @@ export default function Admin() {
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-2 py-1">
-            {BASES.map((b) => (
+            {BASES.filter((b) => selected[b.key]).map((b) => (
               <div
                 key={b.key}
                 className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-lg border border-slate-200"
@@ -335,11 +379,8 @@ export default function Admin() {
 
           <Alert className="bg-rose-50 border-rose-200 py-2">
             <AlertDescription className="text-[11px] text-rose-700">
-              Total a remover:{' '}
-              <strong>
-                {formatNumber(counts.produtos + counts.racnew + counts.netsales + counts.vendas)}
-              </strong>{' '}
-              registros.
+              Total a remover: <strong>{formatNumber(selectedTotal)}</strong> registros em{' '}
+              <strong>{selectedKeys.length}</strong> {selectedKeys.length === 1 ? 'base' : 'bases'}.
             </AlertDescription>
           </Alert>
 
@@ -354,11 +395,11 @@ export default function Admin() {
             </Button>
             <Button
               onClick={handleConfirmReset}
-              disabled={loading}
+              disabled={loading || selectedKeys.length === 0}
               className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold"
             >
               <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-              Sim, zerar tudo
+              {allSelected ? 'Sim, zerar tudo' : 'Sim, zerar selecionadas'}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -73,10 +73,17 @@ export interface ResetBasesResult {
   total_removido: number
 }
 
-export async function resetBasesApi(password: string): Promise<ResetBasesResult> {
+export async function resetBasesApi(
+  password: string,
+  collections?: string[],
+): Promise<ResetBasesResult> {
+  const body: { password: string; collections?: string[] } = { password }
+  if (collections && collections.length > 0) {
+    body.collections = collections
+  }
   return pb.send<ResetBasesResult>('/backend/v1/admin/reset-bases', {
     method: 'POST',
-    body: { password },
+    body,
   })
 }
 
