@@ -20,7 +20,7 @@ import {
   consolidarVendasApi,
   getCountsSummary,
 } from '@/services/sales'
-import { parseCSV, formatNumber, formatDateTime } from '@/lib/formatters'
+import { parseCSV, parseXLSX, formatNumber, formatDateTime } from '@/lib/formatters'
 import type { ImportResult, ConsolidarResult } from '@/types/sales'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -57,12 +57,17 @@ function BaseImportCard({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
+  const isAcceptedFormat = (name: string) => {
+    const lower = name.toLowerCase()
+    return lower.endsWith('.csv') || lower.endsWith('.xlsx') || lower.endsWith('.xls')
+  }
+
   const handleFile = (f: File) => {
-    if (!f.name.endsWith('.csv')) {
+    if (!isAcceptedFormat(f.name)) {
       toast({
         variant: 'destructive',
         title: 'Formato inválido',
-        description: 'Por favor envie apenas arquivos .csv (separador ; ou ,).',
+        description: 'Por favor envie apenas arquivos .csv ou .xlsx (Excel).',
       })
       return
     }
@@ -70,21 +75,62 @@ function BaseImportCard({
     setFile(f)
     setResult(null)
 
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const text = e.target?.result as string
-      try {
-        const rows = parseCSV(text)
-        setParsedRows(rows)
-      } catch (err) {
-        toast({
-          variant: 'destructive',
-          title: 'Erro ao ler CSV',
-          description: 'Não foi possível processar as linhas do arquivo.',
-        })
+    const isExcel = f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.xls')
+
+    if (isExcel) {
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        try {
+          const data = e.target?.result as ArrayBuffer
+          const rows = await parseXLSX(data)
+          if (rows.length === 0) {
+            toast({
+              variant: 'destructive',
+              title: 'Arquivo vazio',
+              description: 'Nenhuma linha de dados encontrada na planilha.',
+            })
+            clearSelection()
+            return
+          }
+          setParsedRows(rows)
+        } catch (err) {
+          console.error('Erro ao ler XLSX:', err)
+          toast({
+            variant: 'destructive',
+            title: 'Erro ao ler XLSX',
+            description: 'Não foi possível processar a planilha do Excel.',
+          })
+          clearSelection()
+        }
       }
+      reader.readAsArrayBuffer(f)
+    } else {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const text = e.target?.result as string
+        try {
+          const rows = parseCSV(text)
+          if (rows.length === 0) {
+            toast({
+              variant: 'destructive',
+              title: 'Arquivo vazio',
+              description: 'Nenhuma linha de dados encontrada no CSV.',
+            })
+            clearSelection()
+            return
+          }
+          setParsedRows(rows)
+        } catch (err) {
+          toast({
+            variant: 'destructive',
+            title: 'Erro ao ler CSV',
+            description: 'Não foi possível processar as linhas do arquivo.',
+          })
+          clearSelection()
+        }
+      }
+      reader.readAsText(f, 'UTF-8')
     }
-    reader.readAsText(f, 'UTF-8')
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -180,7 +226,7 @@ function BaseImportCard({
             <input
               type="file"
               ref={fileInputRef}
-              accept=".csv"
+              accept=".csv,.xlsx,.xls"
               onChange={(e) => {
                 if (e.target.files?.[0]) handleFile(e.target.files[0])
               }}
@@ -190,10 +236,10 @@ function BaseImportCard({
               <UploadCloud className="w-5 h-5" />
             </div>
             <p className="text-xs font-semibold text-slate-800">
-              Arraste seu arquivo CSV ou clique para selecionar
+              Arraste seu arquivo CSV ou XLSX ou clique para selecionar
             </p>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              Suporta delimitador ponto-e-vírgula (;) ou vírgula (,)
+              Formatos aceitos: .csv ( ; ou , ) e .xlsx (Excel)
             </p>
           </div>
         ) : (

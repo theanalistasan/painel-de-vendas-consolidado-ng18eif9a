@@ -101,6 +101,40 @@ export function getGrupoColor(grupo: string): string {
 }
 
 /**
+ * Parser de arquivos XLSX (Excel) usando SheetJS.
+ * Lê o ArrayBuffer e devolve um array de objetos { coluna: valor },
+ * convertendo todos os valores para string (compatível com parseCSV).
+ */
+export async function parseXLSX(data: ArrayBuffer): Promise<Record<string, string>[]> {
+  const XLSX = await import('xlsx')
+  const workbook = XLSX.read(data, { type: 'array', cellDates: true })
+  const firstSheetName = workbook.SheetNames[0]
+  if (!firstSheetName) return []
+  const sheet = workbook.Sheets[firstSheetName]
+  // raw:false força o XLSX a formatar datas/números como strings conforme a formatação da célula
+  const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+    defval: '',
+    raw: false,
+  })
+  return json.map((row) => {
+    const out: Record<string, string> = {}
+    for (const key of Object.keys(row)) {
+      const v = row[key]
+      if (v === null || v === undefined) {
+        out[key] = ''
+      } else if (v instanceof Date) {
+        // yyyy-mm-dd
+        const iso = v.toISOString()
+        out[key] = iso.slice(0, 10)
+      } else {
+        out[key] = String(v).trim()
+      }
+    }
+    return out
+  })
+}
+
+/**
  * Parser de arquivos CSV flexível (detecta delimitador ; ou ,)
  */
 export function parseCSV(csvText: string): Record<string, string>[] {
