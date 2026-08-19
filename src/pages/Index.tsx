@@ -66,16 +66,27 @@ const CHART_PALETTE = [
   '#10B981', // Green
 ]
 
-// Paleta indigo/violeta para o gráfico "Venda Mensal por Grupo do Item".
+// Ordem fixa dos grupos e paleta indigo/violeta para o gráfico "Venda Mensal por Grupo do Item".
+const MENSAL_GRUPOS_ORDEM = ['EQUIPAMENTOS', 'TINTAS', 'PEÇAS', 'ACESSÓRIOS'] as const
+
+const MENSAL_GRUPO_COLORS: Record<string, string> = {
+  EQUIPAMENTOS: '#4F46E5', // Indigo 600 (Barra 1)
+  TINTAS: '#7C3AED', // Violet 600 (Barra 2)
+  PEÇAS: '#6366F1', // Indigo 500 (Barra 3)
+  PECAS: '#6366F1',
+  ACESSÓRIOS: '#A78BFA', // Violet 400 (Barra 4)
+  ACESSORIOS: '#A78BFA',
+}
+
 const MENSAL_GRUPO_PALETTE = [
   '#4F46E5', // Indigo 600
   '#7C3AED', // Violet 600
   '#6366F1', // Indigo 500
+  '#A78BFA', // Violet 400
   '#8B5CF6', // Violet 500
   '#4338CA', // Indigo 700
   '#9333EA', // Purple 600
   '#818CF8', // Indigo 400
-  '#A78BFA', // Violet 400
 ]
 
 const tooltipContentStyle = {
@@ -217,17 +228,32 @@ export default function Index() {
     [recentSales, sort.field, sort.dir],
   )
 
-  // Grupos (ordem de primeira aparição) e dados pivôs (1 linha por mês,
-  // 1 coluna por grupo) para o gráfico "Venda Mensal por Grupo do Item".
+  // Grupos fixos (ordem fixa: EQUIPAMENTOS, TINTAS, PEÇAS, ACESSÓRIOS + outros eventuais)
+  // e dados pivôs (1 linha por mês, 1 coluna por grupo) para o gráfico "Venda Mensal por Grupo do Item".
   const mensalGrupos = useMemo(() => {
-    const seen = new Set<string>()
-    const list: string[] = []
+    const backendGrupos = new Set<string>()
     for (const m of chartVendasPorGrupoItemMensal) {
       for (const g of m.grupos) {
-        if (!seen.has(g.grupo)) {
-          seen.add(g.grupo)
-          list.push(g.grupo)
-        }
+        if (g.grupo) backendGrupos.add(g.grupo)
+      }
+    }
+
+    // Normalizador para casar variações de grafia/acentuação com os 4 grupos fixos
+    const matchFixedGroup = (grupoName: string): string | null => {
+      const upper = (grupoName || '').toUpperCase().trim()
+      if (upper === 'EQUIPAMENTOS') return 'EQUIPAMENTOS'
+      if (upper === 'TINTAS') return 'TINTAS'
+      if (upper === 'PEÇAS' || upper === 'PECAS') return 'PEÇAS'
+      if (upper === 'ACESSÓRIOS' || upper === 'ACESSORIOS') return 'ACESSÓRIOS'
+      return null
+    }
+
+    const list: string[] = [...MENSAL_GRUPOS_ORDEM]
+    // Se houver algum outro grupo no backend que não esteja nos 4 fixos, inclui no final
+    for (const bg of backendGrupos) {
+      const fixed = matchFixedGroup(bg)
+      if (!fixed && !list.includes(bg)) {
+        list.push(bg)
       }
     }
     return list
@@ -236,8 +262,23 @@ export default function Index() {
   const mensalGrupoData = useMemo(() => {
     return chartVendasPorGrupoItemMensal.map((m) => {
       const row: Record<string, number | string> = { mes: m.mes }
+      // Inicializa os 4 grupos fixos com 0
+      for (const g of MENSAL_GRUPOS_ORDEM) {
+        row[g] = 0
+      }
       for (const g of m.grupos) {
-        row[g.grupo] = g.total
+        const upper = (g.grupo || '').toUpperCase().trim()
+        if (upper === 'PEÇAS' || upper === 'PECAS') {
+          row['PEÇAS'] = (Number(row['PEÇAS']) || 0) + g.total
+        } else if (upper === 'ACESSÓRIOS' || upper === 'ACESSORIOS') {
+          row['ACESSÓRIOS'] = (Number(row['ACESSÓRIOS']) || 0) + g.total
+        } else if (upper === 'EQUIPAMENTOS') {
+          row['EQUIPAMENTOS'] = (Number(row['EQUIPAMENTOS']) || 0) + g.total
+        } else if (upper === 'TINTAS') {
+          row['TINTAS'] = (Number(row['TINTAS']) || 0) + g.total
+        } else {
+          row[g.grupo] = g.total
+        }
       }
       return row
     })
@@ -593,26 +634,22 @@ export default function Index() {
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  layout="vertical"
                   data={mensalGrupoData}
-                  margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                   <XAxis
-                    type="number"
+                    dataKey="mes"
+                    tickLine={false}
+                    axisLine={{ stroke: '#E2E8F0' }}
+                    tick={{ fill: '#64748B', fontSize: 12 }}
+                    tickFormatter={(val) => formatMesAnoCurto(String(val))}
+                  />
+                  <YAxis
                     tickLine={false}
                     axisLine={false}
                     tick={{ fill: '#64748B', fontSize: 11 }}
                     tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="mes"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fill: '#334155', fontSize: 12 }}
-                    width={64}
-                    tickFormatter={(val) => formatMesAnoCurto(String(val))}
                   />
                   <Tooltip
                     content={<MensalGrupoTooltip />}
@@ -629,9 +666,13 @@ export default function Index() {
                     <Bar
                       key={grupo}
                       dataKey={grupo}
-                      stackId="a"
-                      fill={MENSAL_GRUPO_PALETTE[index % MENSAL_GRUPO_PALETTE.length]}
-                      radius={[0, 4, 4, 0]}
+                      name={grupo}
+                      fill={
+                        MENSAL_GRUPO_COLORS[grupo] ||
+                        MENSAL_GRUPO_PALETTE[index % MENSAL_GRUPO_PALETTE.length]
+                      }
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={28}
                     />
                   ))}
                 </BarChart>
