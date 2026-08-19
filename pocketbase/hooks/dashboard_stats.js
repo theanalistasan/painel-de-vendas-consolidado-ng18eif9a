@@ -372,12 +372,25 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     return out
   }
 
+  const cleanFilterOptions = (arr, isVendedorCliente = false) => {
+    const set = new Set()
+    for (let i = 0; i < arr.length; i++) {
+      let v = String(arr[i] || '').trim()
+      if (!v) continue
+      if (v === '-Nenhum vendedor / comprador-' || v.startsWith('-Nenhum vendedor / comprador-'))
+        continue
+      if (isVendedorCliente && v.startsWith(' > ')) continue
+      set.add(v)
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }
+
   const filterOptions = {
-    vendedorCliente: distinctCol('vendedor_cliente'),
-    vendedor: distinctCol('nome_vendedor'),
-    grupoItem: distinctCol('grupo_item'),
-    estado: distinctCol('estado'),
-    utilizacao: distinctCol('utilizacao'),
+    vendedorCliente: cleanFilterOptions(distinctCol('vendedor_cliente'), true),
+    vendedor: cleanFilterOptions(distinctCol('nome_vendedor')),
+    grupoItem: cleanFilterOptions(distinctCol('grupo_item')),
+    estado: cleanFilterOptions(distinctCol('estado')),
+    utilizacao: cleanFilterOptions(distinctCol('utilizacao')),
     anos: distinctSubstr(1, 4),
     meses: distinctSubstr(6, 2),
     dias: distinctSubstr(9, 2),

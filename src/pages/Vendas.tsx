@@ -86,9 +86,9 @@ export default function Vendas() {
   })
 
   // Carrega opções de filtro e KPIs via endpoint do dashboard
-  const loadStats = async () => {
+  const loadStats = async (activeFilters = filters) => {
     try {
-      const stats = await fetchDashboardStats(filters as unknown as Record<string, unknown>)
+      const stats = await fetchDashboardStats(activeFilters as unknown as Record<string, unknown>)
       if (stats) {
         setKpis({
           faturamento: stats.kpis?.faturamento || 0,
@@ -107,16 +107,16 @@ export default function Vendas() {
   }
 
   // Carrega a página atual de vendas via endpoint paginado
-  const loadData = async () => {
+  const loadData = async (activeFilters = filters, targetPage = page) => {
     setLoading(true)
     try {
       const res = await fetchVendasList({
-        page,
+        page: targetPage,
         perPage: PAGE_SIZE,
         // Ordenação padrão por data; a ordenação por clique nos cabeçalhos
         // é feita no frontend (sortData) sobre os dados já carregados.
         sort: '-data_lancamento',
-        filters: filters as unknown as Record<string, unknown>,
+        filters: activeFilters as unknown as Record<string, unknown>,
       })
       setPaginatedVendas(res.items || [])
       setTotalItems(res.totalItems || 0)
@@ -134,11 +134,11 @@ export default function Vendas() {
   }
 
   useEffect(() => {
-    loadStats()
+    loadStats(filters)
   }, [filters])
 
   useEffect(() => {
-    loadData()
+    loadData(filters, page)
   }, [page, filters])
 
   // Reset pagination on filter change
@@ -221,7 +221,16 @@ export default function Vendas() {
   return (
     <div className="space-y-6">
       {/* Filters Bar with Text Search */}
-      <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} showSearch />
+      <FilterBar
+        filters={filters}
+        setFilters={setFilters}
+        options={filterOptions}
+        showSearch
+        onApplyFilters={(applied) => {
+          loadStats(applied)
+          loadData(applied, 1)
+        }}
+      />
 
       {/* 5 KPIs Section */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">

@@ -109,10 +109,10 @@ export default function Index() {
   })
 
   // Load aggregated dashboard stats from server
-  const loadData = async () => {
+  const loadData = async (activeFilters = filters) => {
     setLoading(true)
     try {
-      const res = await fetchDashboardStats(filters as unknown as Record<string, unknown>)
+      const res = await fetchDashboardStats(activeFilters as unknown as Record<string, unknown>)
       setData(res)
     } catch (err) {
       console.error('Erro ao buscar estatísticas do dashboard:', err)
@@ -122,7 +122,7 @@ export default function Index() {
   }
 
   useEffect(() => {
-    loadData()
+    loadData(filters)
   }, [filters])
 
   // Realtime subscription for sales updates
@@ -186,7 +186,12 @@ export default function Index() {
   return (
     <div className="space-y-6">
       {/* Filters Bar */}
-      <FilterBar filters={filters} setFilters={setFilters} options={filterOptions} />
+      <FilterBar
+        filters={filters}
+        setFilters={setFilters}
+        options={filterOptions}
+        onApplyFilters={(applied) => loadData(applied)}
+      />
 
       {/* Loading Skeleton */}
       {loading ? (
