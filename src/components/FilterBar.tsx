@@ -97,7 +97,7 @@ function MultiSelectDropdown({
   }
 
   const selectAll = () => {
-    onChange(cleanOptions)
+    onChange(filteredOptions)
   }
 
   const clearAll = () => {
