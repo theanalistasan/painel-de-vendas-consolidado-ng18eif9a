@@ -215,16 +215,18 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // Série de ano anterior: mesmo mês/ano-1, com os mesmos filtros de
   // DIMENSÃO (sem os filtros de data) — caso contrário ano/mês/data
   // excluiriam sempre o período anterior.
-  // O GROUP BY usa (ano-1) || "-mm", de modo que a chave já aponta para
-  // o mesmo mês no ano anterior e pode ser cruzada diretamente com a
-  // série atual.
+  // Agrupa pela chave real "yyyy-mm" (SEM deslocar o ano). O lookup JS
+  // abaixo monta prevKey = (ano-1) + "-mm" e busca essa chave no map —
+  // como o map agora contém chaves reais (ex: "2025-06" com vendas reais
+  // de 2025-06), o cruzamento funciona corretamente. Sem vendas no mês
+  // anterior, retorna 0. (Antes o SQL deslocava o ano em -1 em TODAS as
+  // vendas, fazendo o "ano anterior" repetir os dados do ano atual.)
   const prevYearSql =
-    'SELECT (CAST(substr(data_lancamento,1,4) AS INTEGER) - 1) || substr(data_lancamento,5,3) AS a, COALESCE(SUM(total_linha),0) AS b ' +
+    'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b ' +
     'FROM vendas WHERE ' +
     sqlWhereBase +
     ' AND length(data_lancamento) >= 7 ' +
-    'GROUP BY (CAST(substr(data_lancamento,1,4) AS INTEGER) - 1) || substr(data_lancamento,5,3) ' +
-    'ORDER BY 1 ASC'
+    'GROUP BY substr(data_lancamento,1,7) ORDER BY 1 ASC'
   const prevYearRows = runAgg(prevYearSql)
 
   const monthNames = [
@@ -262,8 +264,9 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     vendasPorMes.splice(0, vendasPorMes.length - 6)
   }
 
-  // Mapeia a chave "aaa-mm" (ano deslocado -1) -> faturamento do ano anterior,
-  // e injeta o valor em cada um dos últimos 6 meses da série atual.
+  // Mapeia a chave real "yyyy-mm" -> faturamento daquele mês, e injeta em
+  // cada um dos últimos 6 meses da série atual o valor do mesmo mês no
+  // ano anterior (prevKey = (ano-1) + "-mm").
   const prevYearMap = {}
   for (let i = 0; i < prevYearRows.length; i++) {
     const ym = prevYearRows[i].a

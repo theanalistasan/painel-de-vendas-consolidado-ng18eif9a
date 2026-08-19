@@ -74,6 +74,9 @@ export async function createUser(payload: CreateUserPayload): Promise<UserRecord
     passwordConfirm: payload.password,
     role: payload.role,
     active: payload.active !== false,
+    // O email DEVE ser visível nas listagens da tela de Gestão de Usuários;
+    // sem isso o campo vem vazio e não dá para identificar/logar/buscar.
+    emailVisibility: true,
   })
 }
 
@@ -98,6 +101,9 @@ export async function updateUser(id: string, payload: UpdateUserPayload): Promis
     data.password = payload.password
     data.passwordConfirm = payload.password
   }
+  // Garante que o email continue visível nas listagens (corrige registros
+  // criados anteriormente com emailVisibility=false, ex: Nicolas Brito).
+  data.emailVisibility = true
   return pb.collection<UserRecord>('users').update(id, data)
 }
 
