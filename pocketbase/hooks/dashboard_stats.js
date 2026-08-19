@@ -216,7 +216,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // vendasPorAno (GROUP BY ano, ordenado ASC, com variação percentual)
   // ============================================================
   const anoSql =
-    'SELECT substr(data_lancamento,1,4) AS a, COALESCE(SUM(total_linha),0) AS b ' +
+    'SELECT substr(data_lancamento,1,4) AS a, COALESCE(SUM(total_linha),0) AS b, ' +
+    "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS c " +
     'FROM vendas WHERE ' +
     sqlWhere +
     ' AND length(data_lancamento) >= 4 ' +
@@ -227,6 +228,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   for (let i = 0; i < anoRows.length; i++) {
     const ano = anoRows[i].a
     const faturamento = toNum(anoRows[i].b)
+    const devolucoes = toNum(anoRows[i].c)
     let variacao = null
     if (anoAnterior !== null && anoAnterior !== 0) {
       variacao = ((faturamento - anoAnterior) / anoAnterior) * 100
@@ -234,6 +236,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     vendasPorAno.push({
       ano: ano,
       faturamento: faturamento,
+      devolucoes: devolucoes,
       variacao: variacao,
     })
     anoAnterior = faturamento

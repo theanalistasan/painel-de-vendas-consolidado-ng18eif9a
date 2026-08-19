@@ -399,16 +399,43 @@ export default function Index() {
                       if (name === 'variacao') {
                         return [`${n >= 0 ? '+' : ''}${n.toFixed(1)}%`, 'Variação vs. ano anterior']
                       }
+                      if (name === 'devolucoes') {
+                        return [formatCurrency(n), 'Devoluções']
+                      }
                       return [formatCurrency(n), 'Faturamento']
                     }}
                     contentStyle={tooltipContentStyle}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    height={36}
+                    formatter={(value) => {
+                      const labels: Record<string, string> = {
+                        faturamento: 'Faturamento',
+                        devolucoes: 'Devoluções',
+                        variacao: 'Variação %',
+                      }
+                      return (
+                        <span className="text-xs font-semibold text-slate-700">
+                          {labels[value] ?? value}
+                        </span>
+                      )
+                    }}
                   />
                   <ReferenceLine yAxisId="right" y={0} stroke="#CBD5E1" strokeDasharray="3 3" />
                   <Bar
                     yAxisId="left"
                     dataKey="faturamento"
                     name="faturamento"
-                    fill="#10B981"
+                    fill="#4F46E5"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={56}
+                  />
+                  <Bar
+                    yAxisId="left"
+                    dataKey="devolucoes"
+                    name="devolucoes"
+                    fill="#EF4444"
                     radius={[4, 4, 0, 0]}
                     maxBarSize={56}
                   />
