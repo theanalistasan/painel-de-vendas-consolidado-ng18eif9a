@@ -43,6 +43,7 @@ import {
   extractMes,
   extractDia,
 } from '@/lib/formatters'
+import { saveFiltersToSession, loadFiltersFromSession } from '@/lib/filter-persistence'
 import FilterBar from '@/components/FilterBar'
 import KpiCard from '@/components/KpiCard'
 import ChartCard from '@/components/ChartCard'
@@ -93,21 +94,13 @@ export default function Index() {
   // Ordenação por clique nos cabeçalhos da tabela "Vendas Recentes" (frontend).
   const sort = useTableSort<DashboardSortField>()
 
-  const [filters, setFilters] = useState<FilterState>({
-    dataDe: '',
-    dataAte: '',
-    vendedorCliente: [],
-    vendedor: [],
-    grupoItem: [],
-    estado: [],
-    utilizacao: [],
-    tipoDocumento: [],
-    search: '',
-    ano: '',
-    mes: '',
-    dia: '',
-    tipoDevolucao: '',
-  })
+  const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
+
+  // Persistir filtros no sessionStorage sempre que mudarem (após aplicar),
+  // para que o estado seja compartilhado com a página de Vendas.
+  useEffect(() => {
+    saveFiltersToSession(filters)
+  }, [filters])
 
   // Load aggregated dashboard stats from server
   const loadData = async (activeFilters = filters) => {

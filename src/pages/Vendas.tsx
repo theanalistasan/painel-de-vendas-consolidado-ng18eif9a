@@ -28,6 +28,7 @@ import {
   extractMes,
   extractDia,
 } from '@/lib/formatters'
+import { saveFiltersToSession, loadFiltersFromSession } from '@/lib/filter-persistence'
 import FilterBar from '@/components/FilterBar'
 import KpiCard from '@/components/KpiCard'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -51,21 +52,13 @@ export default function Vendas() {
   const sort = useTableSort<SortField>()
   const { toast } = useToast()
 
-  const [filters, setFilters] = useState<FilterState>({
-    dataDe: '',
-    dataAte: '',
-    vendedorCliente: [],
-    vendedor: [],
-    grupoItem: [],
-    estado: [],
-    utilizacao: [],
-    tipoDocumento: [],
-    search: '',
-    ano: '',
-    mes: '',
-    dia: '',
-    tipoDevolucao: '',
-  })
+  const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
+
+  // Persistir filtros no sessionStorage sempre que mudarem (após aplicar),
+  // para que o estado seja compartilhado com o Dashboard.
+  useEffect(() => {
+    saveFiltersToSession(filters)
+  }, [filters])
 
   const [kpis, setKpis] = useState({
     faturamento: 0,

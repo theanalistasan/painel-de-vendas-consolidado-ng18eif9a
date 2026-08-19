@@ -3,6 +3,7 @@ import type { AuthRecord } from 'pocketbase'
 import pb from '@/lib/pocketbase/client'
 import { logAudit } from '@/services/audit'
 import { setAdminUnlocked } from '@/components/AdminGuard'
+import { clearFiltersFromSession } from '@/lib/filter-persistence'
 
 interface AuthContextType {
   user: AuthRecord | null
@@ -63,6 +64,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     void logAudit('logout', 'Logout realizado')
     // Remove o flag admin ao sair — exige a senha novamente na próxima sessão.
     setAdminUnlocked(false)
+    // Limpa os filtros persistidos em sessionStorage ao sair.
+    clearFiltersFromSession()
     pb.authStore.clear()
     setUser(null)
     setToken(null)
