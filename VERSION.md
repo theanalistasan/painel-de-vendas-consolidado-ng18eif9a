@@ -1,92 +1,27 @@
-# VERSION.md — Estado Estável do Projeto
+# Painel de Vendas Consolidado — Backup Documental
 
-**Versão:** `v0.0.26` (backup estável)
-**Backup anterior:** `v0.0.25` (commit `6efe576`)
-**Data do backup:** estado consolidado atual do repositório.
+## Versão
 
----
+**v0.0.29**
 
-## Visão Geral
+## Funcionalidades implementadas
 
-**Painel de Vendas Consolidado** — dashboard de vendas construído sobre Skip Cloud
-(PocketBase) com SQL puro, operando aproximadamente **126.000 registros** consolidados.
+1. **Dashboard** com SQL puro sobre ~126k registros, 5 KPIs (Faturamento, Valor Líquido, Itens, Documentos, Devoluções) e 6 gráficos.
+2. **Filtros** de ano/mês/dia/vendedor/estado/grupo_item/classificação, com colapso de pílulas (mostra 3 + "+X filtros") e botão "Limpar Todos".
+3. **Vendas paginadas** com 24 colunas, ordenação por clique nos cabeçalhos (asc/desc/sem ordenação), exportação CSV em padrão brasileiro.
+4. **Importação de bases** (Produtos, RacNew, NetSales) em lotes de 5.000 com barra de progresso.
+5. **Consolidação via SQL único** (`INSERT ... SELECT ... LEFT JOIN`) sem timeout, com `COALESCE` para campos da NetSales.
+6. **Regra de negócio**: RacNew como base mestra (dados prevalecem); NetSales complementa com 12 campos exclusivos; Produtos fornece Grupo do Item.
+7. **Correção definitiva de datas XLSX**: valor serial bruto → ISO → DD/MM/AAAA, NFE 790 validada como 12/06/2026.
+8. **Proteção admin** nas rotas `/importar`, `/admin`, `/usuarios`, `/auditoria` (modal com senha `Reset@Painel2025`, válido por sessão).
+9. **Gestão de Usuários** (`/usuarios`): CRUD completo (nome, email, senha, perfil admin/usuário, status ativo/inativo), envio de convite com link copiável, busca e paginação.
+10. **Auditoria** (`/auditoria`): registra `login`, `logout`, `admin_access` (qual página), `import_access`; badges coloridos, filtros por ação/usuário/período, paginação.
+11. **Hooks deployados**: `stats_counts`, `vendas_list`, `dashboard_stats`, e hooks de consolidação.
 
-A versão estável atual é totalmente funcional: o Dashboard renderiza KPIs e gráficos,
-os filtros respondem, a aba Vendas pagina e exporta CSV (padrão brasileiro), a importação
-de bases processa arquivos XLSX/CSV em lotes de 5.000 com barra de progresso e a
-consolidação roda via SQL sem timeout.
+## Backup anterior
 
----
+**v0.0.27** (commit `784a1f9`)
 
-## Funcionalidades Estáveis
+## QA
 
-### Dashboard
-
-- Consultas em **SQL puro** sobre ~126k registros consolidados.
-- **5 KPIs**: Faturamento, Valor Líquido, Itens, Documentos, Devoluções.
-- **6 gráficos** (renderizados via `ChartCard`).
-- Filtros combinados:
-  - Ano
-  - Mês
-  - Dia
-  - Vendedor
-  - Estado
-  - Grupo item
-  - Classificação
-- Filtros com **colapso de pílulas** (mostra 3 + "+ X filtros") e botão **"Limpar Todos"**.
-
-### Vendas
-
-- Tabela **paginada** de vendas.
-- **Exportação CSV** dos dados filtrados em padrão brasileiro.
-
-### Importação
-
-- Importação de bases: **Produtos**, **RacNew**, **NetSales**.
-- **Barra de progresso** em lotes de 5.000 registros.
-- Suporte a arquivos XLSX e CSV.
-
-### Consolidação
-
-- Consolidação via **SQL** (`INSERT ... SELECT ... LEFT JOIN`), sem timeout.
-- `COALESCE` aplicado aos campos da NetSales.
-- **Regra de negócio:** RacNew é a base mestra (prevalece sempre); NetSales complementa
-  apenas quando não há correspondência, adicionando **12 campos exclusivos**.
-
-### Datas
-
-- **Correção definitiva aplicada** no parser XLSX: captura o valor serial bruto da data
-  (ignora formatação visual do Excel) e converte matematicamente para data real no JS.
-- Datas armazenadas em **ISO (`YYYY-MM-DD`)** e exibidas em **DD/MM/AAAA brasileiro**.
-- NFE 790 validada como **12/06/2026**.
-
-### Backend
-
-- **Hooks pb_hooks deployados** no Skip Cloud: `stats_counts`, `vendas_list`, `dashboard_stats`.
-- Migrações aplicadas (schema consolidado).
-
----
-
-## Estrutura Principal (não alterada neste backup)
-
-- `src/App.tsx` — roteamento e layout principal.
-- `src/pages/Index.tsx` — Dashboard.
-- `src/pages/Vendas.tsx` — listagem paginada + export CSV.
-- `src/pages/Importar.tsx` — importação de bases com progresso.
-- `src/pages/Admin.tsx` — administração.
-- `src/pages/Login.tsx` — autenticação.
-- `src/components/` — `ChartCard`, `FilterBar`, `KpiCard`, `Layout`.
-- `src/services/sales.ts` — camada de dados / SQL.
-- `src/lib/pocketbase/client.ts` — cliente PocketBase.
-- `src/lib/formatters.ts` — formatadores (incl. datas BR).
-- `pocketbase/migrations/` — migrações JS do schema.
-- `pocketbase/hooks/` — hooks server-side (incl. import/consolidação).
-
----
-
-## Observação
-
-Este commit é um **backup de ponto estável**. Nenhum código foi alterado —
-apenas este arquivo `VERSION.md` foi atualizado para documentar o estado funcional atual.
-
-Tag sugerida: `backup-estavel` apontando para este commit.
+lint, typecheck e build devem passar limpos (apenas `VERSION.md` sendo alterado).

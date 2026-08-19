@@ -609,14 +609,12 @@ export default function Usuarios() {
                   className="h-7 w-7 shrink-0"
                   onClick={() => {
                     if (inviteTarget) {
-                      navigator.clipboard
-                        .writeText(buildInviteLink(inviteTarget.email))
-                        .then(() =>
-                          toast({
-                            title: 'Link copiado!',
-                            description: 'Link na área de transferência.',
-                          }),
-                        )
+                      navigator.clipboard.writeText(buildInviteLink(inviteTarget.email)).then(() =>
+                        toast({
+                          title: 'Link copiado!',
+                          description: 'Link na área de transferência.',
+                        }),
+                      )
                     }
                   }}
                 >
