@@ -299,7 +299,7 @@ export default function Index() {
               iconColor="text-indigo-600"
             >
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
+                <ComposedChart
                   data={chartVendasPorMes}
                   margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                 >
@@ -323,18 +323,39 @@ export default function Index() {
                     tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
                   />
                   <Tooltip
-                    formatter={currencyFormatter('Faturamento')}
+                    formatter={(val: number | string | undefined, name: string) => {
+                      const n = typeof val === 'number' ? val : Number(val)
+                      const label = name === 'devolucoes' ? 'Devoluções' : 'Faturamento'
+                      return [formatCurrency(n), label]
+                    }}
                     contentStyle={tooltipContentStyle}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    height={36}
+                    formatter={(value) => (
+                      <span className="text-xs font-semibold text-slate-700 capitalize">
+                        {value === 'faturamento' ? 'Faturamento' : 'Devoluções'}
+                      </span>
+                    )}
                   />
                   <Area
                     type="monotone"
                     dataKey="faturamento"
+                    name="faturamento"
                     stroke="#4F46E5"
                     strokeWidth={2.5}
                     fillOpacity={1}
                     fill="url(#colorFaturamento)"
                   />
-                </AreaChart>
+                  <Bar
+                    dataKey="devolucoes"
+                    name="devolucoes"
+                    fill="#EF4444"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={24}
+                  />
+                </ComposedChart>
               </ResponsiveContainer>
             </ChartCard>
 

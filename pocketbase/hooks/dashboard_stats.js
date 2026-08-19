@@ -171,7 +171,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // ============================================================
   // vendasPorMes (GROUP BY ano-mês, ordenado ASC)
   const mesSql =
-    'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b, COALESCE(SUM(valor_liquido),0) AS c ' +
+    'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b, COALESCE(SUM(valor_liquido),0) AS c, ' +
+    "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS d " +
     'FROM vendas WHERE ' +
     sqlWhere +
     ' AND length(data_lancamento) >= 7 ' +
@@ -203,6 +204,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       mes: monthNames[mo - 1] + '/' + y.slice(2),
       faturamento: toNum(mesRows[i].b),
       liquido: toNum(mesRows[i].c),
+      devolucoes: toNum(mesRows[i].d),
     })
   }
   // Limita aos últimos 6 meses a partir da data mais recente dos dados consolidados.

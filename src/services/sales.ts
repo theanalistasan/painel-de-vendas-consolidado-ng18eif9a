@@ -129,7 +129,7 @@ export interface DashboardStatsResult {
     devolucoes: number
   }
   charts: {
-    vendasPorMes: Array<{ mes: string; faturamento: number; liquido: number }>
+    vendasPorMes: Array<{ mes: string; faturamento: number; liquido: number; devolucoes: number }>
     vendasPorAno: Array<{ ano: string; faturamento: number; variacao: number | null }>
     grupoItem: Array<{ name: string; value: number }>
     topVendedores: Array<{ name: string; total: number }>
