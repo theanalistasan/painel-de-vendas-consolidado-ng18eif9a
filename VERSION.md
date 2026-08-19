@@ -2,26 +2,24 @@
 
 ## Versão
 
-**v0.0.29**
+**v0.0.36**
 
-## Funcionalidades implementadas
+## Status da Versão
 
-1. **Dashboard** com SQL puro sobre ~126k registros, 5 KPIs (Faturamento, Valor Líquido, Itens, Documentos, Devoluções) e 6 gráficos.
-2. **Filtros** de ano/mês/dia/vendedor/estado/grupo_item/classificação, com colapso de pílulas (mostra 3 + "+X filtros") e botão "Limpar Todos".
-3. **Vendas paginadas** com 24 colunas, ordenação por clique nos cabeçalhos (asc/desc/sem ordenação), exportação CSV em padrão brasileiro.
-4. **Importação de bases** (Produtos, RacNew, NetSales) em lotes de 5.000 com barra de progresso.
-5. **Consolidação via SQL único** (`INSERT ... SELECT ... LEFT JOIN`) sem timeout, com `COALESCE` para campos da NetSales.
-6. **Regra de negócio**: RacNew como base mestra (dados prevalecem); NetSales complementa com 12 campos exclusivos; Produtos fornece Grupo do Item.
-7. **Correção definitiva de datas XLSX**: valor serial bruto → ISO → DD/MM/AAAA, NFE 790 validada como 12/06/2026.
-8. **Proteção admin** nas rotas `/importar`, `/admin`, `/usuarios`, `/auditoria` (modal com senha `Reset@Painel2025`, válido por sessão).
-9. **Gestão de Usuários** (`/usuarios`): CRUD completo (nome, email, senha, perfil admin/usuário, status ativo/inativo), envio de convite com link copiável, busca e paginação.
-10. **Auditoria** (`/auditoria`): registra `login`, `logout`, `admin_access` (qual página), `import_access`; badges coloridos, filtros por ação/usuário/período, paginação.
-11. **Hooks deployados**: `stats_counts`, `vendas_list`, `dashboard_stats`, e hooks de consolidação.
+- **Recuperação do Backend**: Concluída com sucesso. Migrações, hooks (`pb_hooks`), configurações de autenticação e conta de superusuário/admin foram totalmente restaurados e operacionais.
+- **Funcionalidades Operacionais**:
+  1. **Dashboard**: Métricas consolidadas (Faturamento Total, Valor Líquido, Itens Vendidos, Documentos NFE, Devoluções) e gráficos operacionais com suporte a alto volume de registros.
+  2. **Vendas**: Tabela consolidada com paginação, 24 colunas de detalhamento, ordenação, colunas customizáveis e exportação CSV.
+  3. **Importação de Bases**: Suporte ao carregamento e processamento das bases de dados (Produtos, RacNew, NetSales) com controle de progresso.
+  4. **Auditoria**: Registro detalhado e rastreabilidade de ações do sistema (login, logout, acesso admin e importações).
+  5. **Gestão de Usuários**: CRUD completo de usuários, perfis de acesso, alteração de status e controle de permissões.
 
-## Backup anterior
+## Bugs / Limitações Conhecidas
 
-**v0.0.27** (commit `784a1f9`)
+- **Filtro de Vendedor / Cliente**: O botão **"Selecionar todos"** no dropdown do filtro de Vendedor/Cliente marca todos os itens da lista completa, em vez de marcar apenas os itens filtrados resultantes da busca digitada pelo usuário.
 
-## QA
+## Histórico de Backups
 
-lint, typecheck e build devem passar limpos (apenas `VERSION.md` sendo alterado).
+- **v0.0.36**: Backup estável pós-recuperação do backend (migrações, hooks, auth e superusuário restaurados).
+- **v0.0.29**: Backup documental anterior com rotas e filtros consolidados.
+- **v0.0.27**: Backup estável de referência anterior.
