@@ -30,93 +30,72 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // sqlWhereBase: apenas filtros de DIMENSÃO (sem data) — usado pela série
   //   de "ano anterior" do gráfico mensal, já que filtros de ano/mês/data
   //   excluiriam sempre o período anterior.
-  // pbFilter: sintaxe PocketBase (mantido p/ compat, não consumido —
-  //   findRecordsByFilter não suporta o operador IN multi-valor).
   const sqlParts = []
   const sqlDimParts = []
-  const pbParts = []
 
   // --- Filtros de DATA (não entram em sqlDimParts) ---
   if (f.dataDe) {
     sqlParts.push("data_lancamento >= '" + sqlEsc(f.dataDe) + " 00:00:00'")
-    pbParts.push('data_lancamento >= "' + f.dataDe + ' 00:00:00"')
   }
   if (f.dataAte) {
     sqlParts.push("data_lancamento <= '" + sqlEsc(f.dataAte) + " 23:59:59'")
-    pbParts.push('data_lancamento <= "' + f.dataAte + ' 23:59:59"')
   }
   if (f.ano) {
     const a = sqlEsc(f.ano)
     sqlParts.push("data_lancamento LIKE '" + a + "-%'")
-    pbParts.push('data_lancamento ~ "' + f.ano + '-"')
   }
   if (f.mes) {
     const mm = String(f.mes).padStart(2, '0')
     sqlParts.push("data_lancamento LIKE '%-" + mm + "-%'")
-    pbParts.push('data_lancamento ~ "-' + mm + '-"')
   }
   if (f.dia) {
     const dd = String(f.dia).padStart(2, '0')
     sqlParts.push("data_lancamento LIKE '%-" + dd + " %'")
-    pbParts.push('data_lancamento ~ "-' + dd + ' "')
   }
 
   // --- Filtros de DIMENSÃO (reutilizados pela série de ano anterior) ---
   if (Array.isArray(f.vendedorCliente) && f.vendedorCliente.length > 0) {
     const sqlArr = f.vendedorCliente.map((v) => "'" + sqlEsc(v) + "'").join(',')
-    const pbArr = f.vendedorCliente.map((v) => '"' + v + '"').join(',')
     const clause = 'vendedor_cliente IN (' + sqlArr + ')'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
-    pbParts.push('vendedor_cliente in (' + pbArr + ')')
   }
   if (Array.isArray(f.vendedor) && f.vendedor.length > 0) {
     const sqlArr = f.vendedor.map((v) => "'" + sqlEsc(v) + "'").join(',')
-    const pbArr = f.vendedor.map((v) => '"' + v + '"').join(',')
     const clause = 'nome_vendedor IN (' + sqlArr + ')'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
-    pbParts.push('nome_vendedor in (' + pbArr + ')')
   }
   if (Array.isArray(f.grupoItem) && f.grupoItem.length > 0) {
     const sqlArr = f.grupoItem.map((v) => "'" + sqlEsc(v) + "'").join(',')
-    const pbArr = f.grupoItem.map((v) => '"' + v + '"').join(',')
     const clause = 'grupo_item IN (' + sqlArr + ')'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
-    pbParts.push('grupo_item in (' + pbArr + ')')
   }
   if (Array.isArray(f.estado) && f.estado.length > 0) {
     const sqlArr = f.estado.map((v) => "'" + sqlEsc(v) + "'").join(',')
-    const pbArr = f.estado.map((v) => '"' + v + '"').join(',')
     const clause = 'estado IN (' + sqlArr + ')'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
-    pbParts.push('estado in (' + pbArr + ')')
   }
   if (Array.isArray(f.utilizacao) && f.utilizacao.length > 0) {
     const sqlArr = f.utilizacao.map((v) => "'" + sqlEsc(v) + "'").join(',')
-    const pbArr = f.utilizacao.map((v) => '"' + v + '"').join(',')
     const clause = 'utilizacao IN (' + sqlArr + ')'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
-    pbParts.push('utilizacao in (' + pbArr + ')')
   }
   // Filtro Tipo de Documento (multi-valor) — campo `tipo_documento`.
   if (Array.isArray(f.tipoDocumento) && f.tipoDocumento.length > 0) {
     const sqlArr = f.tipoDocumento.map((v) => "'" + sqlEsc(v) + "'").join(',')
-    const pbArr = f.tipoDocumento.map((v) => '"' + v + '"').join(',')
     const clause = 'tipo_documento IN (' + sqlArr + ')'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
-    pbParts.push('tipo_documento in (' + pbArr + ')')
   }
   if (f.tipoDevolucao) {
     const td = sqlEsc(f.tipoDevolucao)
     const clause = "tipo_documento = '" + td + "'"
     sqlParts.push(clause)
     sqlDimParts.push(clause)
-    pbParts.push('tipo_documento = "' + f.tipoDevolucao + '"')
   }
   if (f.search) {
     const q = sqlEsc(f.search)
@@ -137,29 +116,11 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       ')'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
-    const pbq = f.search.toString().replace(/"/g, '\\"')
-    const term = '"' + pbq + '"'
-    pbParts.push(
-      '(nome_cliente ~ ' +
-        term +
-        ' || codigo_cliente ~ ' +
-        term +
-        ' || codigo_item ~ ' +
-        term +
-        ' || descricao_item ~ ' +
-        term +
-        ' || numero_nfe ~ ' +
-        term +
-        ' || numero_sap ~ ' +
-        term +
-        ')',
-    )
   }
 
   const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'
   // Apenas filtros de dimensão (sem data) — usado pela série de ano anterior.
   const sqlWhereBase = sqlDimParts.length > 0 ? sqlDimParts.join(' AND ') : '1=1'
-  const pbFilter = pbParts.length > 0 ? pbParts.join(' && ') : "id != ''"
 
   // ---- Helper: roda SELECT e devolve array de DynamicModel (campos a..f) ----
   const runAgg = (sql) => {
@@ -364,7 +325,85 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   }
 
   // ============================================================
+  // vendasPorGrupoItemMensal — últimos 3 meses yyyy-mm a partir da
+  // data mais recente dos dados consolidados, GROUP BY mês + grupo_item.
+  // (Antes este array nunca era computado, fazendo o endpoint inteiro
+  // falhar com ReferenceError no return final.)
+  // ============================================================
+  const vendasPorGrupoItemMensal = []
+  try {
+    // 1) Data mais recente (qualquer linha com yyyy-mm-dd completa)
+    const maxDateRows = arrayOf(new DynamicModel({ a: '' }))
+    $app
+      .db()
+      .newQuery('SELECT MAX(data_lancamento) AS a FROM vendas WHERE length(data_lancamento) >= 7')
+      .all(maxDateRows)
+    const maxDate = maxDateRows.length > 0 && maxDateRows[0].a ? maxDateRows[0].a : ''
+    if (maxDate && maxDate.indexOf('-') >= 0) {
+      const parts = maxDate.split('-') // ["yyyy","mm","dd ..."]
+      const maxYear = parseInt(parts[0], 10)
+      const maxMonth = parseInt(parts[1], 10)
+      if (!isNaN(maxYear) && !isNaN(maxMonth) && maxMonth >= 1 && maxMonth <= 12) {
+        // 2) Determina os últimos 3 meses yyyy-mm a partir da data mais recente.
+        const mesesAlvo = []
+        for (let i = 2; i >= 0; i--) {
+          // total de meses desde 0000-01 (ano*12 + (mês-1))
+          const totalMeses = maxYear * 12 + (maxMonth - 1) - i
+          const y = Math.floor(totalMeses / 12)
+          const m = (totalMeses % 12) + 1
+          mesesAlvo.push(String(y) + '-' + String(m).padStart(2, '0'))
+        }
+
+        // 3) GROUP BY substr(data_lancamento,1,7), grupo_item — só os
+        //    meses-alvo, respeitando sqlWhere. Ignora sum=0/vazio depois.
+        const mesesInList = mesesAlvo.map((m) => "'" + m + "'").join(',')
+        const gmSql =
+          'SELECT substr(data_lancamento,1,7) AS a, ' +
+          "COALESCE(NULLIF(grupo_item,''),'Outros') AS b, " +
+          'COALESCE(SUM(total_linha),0) AS c ' +
+          'FROM vendas WHERE ' +
+          sqlWhere +
+          ' AND length(data_lancamento) >= 7 ' +
+          ' AND substr(data_lancamento,1,7) IN (' +
+          mesesInList +
+          ') ' +
+          "GROUP BY substr(data_lancamento,1,7), COALESCE(NULLIF(grupo_item,''),'Outros') " +
+          'ORDER BY 1 ASC'
+        const gmRows = runAgg(gmSql)
+
+        // 4) Agrupa por mês (a) e monta a estrutura esperada pelo front.
+        //    Grupos com SUM = 0 ou vazios são ignorados.
+        const porMes = {}
+        for (let i = 0; i < gmRows.length; i++) {
+          const mes = gmRows[i].a
+          const grupo = gmRows[i].b
+          const total = toNum(gmRows[i].c)
+          if (!mes || !grupo) continue
+          if (total === 0) continue
+          if (!porMes[mes]) porMes[mes] = []
+          porMes[mes].push({ grupo: grupo, total: total })
+        }
+
+        // 5) Garante que TODOS os meses-alvo apareçam (mesmo sem vendas)
+        //    na ordem ASC, conforme esperado pelo gráfico do front.
+        for (let i = 0; i < mesesAlvo.length; i++) {
+          const mes = mesesAlvo[i]
+          vendasPorGrupoItemMensal.push({
+            mes: mes,
+            grupos: porMes[mes] || [],
+          })
+        }
+      }
+    }
+  } catch (err) {
+    console.error('dashboard_stats: vendasPorGrupoItemMensal falhou:', err)
+  }
+
+  // ============================================================
   // 3) recentSales — LIMIT 8 (SQL puro)
+  //    Não usa findRecordsByFilter, que não suporta o operador IN
+  //    multi-valor e quebrava o endpoint com
+  //    "invalid filter expression: expected a sign operator, got in".
   // ============================================================
   const recentSales = []
   try {
