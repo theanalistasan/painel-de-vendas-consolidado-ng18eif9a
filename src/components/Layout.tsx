@@ -11,11 +11,14 @@ import {
   Calendar,
   Layers,
   ShieldAlert,
+  Users as UsersIcon,
+  History,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
+import { isAdminUnlocked } from '@/components/AdminGuard'
 
 export default function Layout() {
   const { user, logout, isLoading } = useAuth()
@@ -38,7 +41,14 @@ export default function Layout() {
     return <Navigate to="/login" replace state={{ from: location }} />
   }
 
-  const navItems = [
+  const adminUnlocked = isAdminUnlocked()
+
+  const navItems: Array<{
+    title: string
+    href: string
+    icon: typeof LayoutDashboard
+    adminOnly?: boolean
+  }> = [
     {
       title: 'Dashboard',
       href: '/',
@@ -53,13 +63,27 @@ export default function Layout() {
       title: 'Importar Dados',
       href: '/importar',
       icon: UploadCloud,
+      adminOnly: true,
     },
     {
       title: 'Administração',
       href: '/admin',
       icon: ShieldAlert,
+      adminOnly: true,
     },
-  ]
+    {
+      title: 'Usuários',
+      href: '/usuarios',
+      icon: UsersIcon,
+      adminOnly: true,
+    },
+    {
+      title: 'Auditoria',
+      href: '/auditoria',
+      icon: History,
+      adminOnly: true,
+    },
+  ].filter((item) => !item.adminOnly || adminUnlocked)
 
   // Page title mapping
   const getPageTitle = () => {
@@ -72,6 +96,10 @@ export default function Layout() {
         return 'Importação e Consolidação de Bases'
       case '/admin':
         return 'Administração — Zerar Bases'
+      case '/usuarios':
+        return 'Gestão de Usuários'
+      case '/auditoria':
+        return 'Auditoria de Acessos'
       default:
         return 'Painel de Vendas'
     }

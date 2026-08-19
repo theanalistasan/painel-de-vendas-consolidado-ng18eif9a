@@ -4,10 +4,13 @@ import { Toaster } from '@/components/ui/toaster'
 import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider } from '@/context/AuthContext'
+import GuardedRoute from '@/components/GuardedRoute'
 import Index from './pages/Index'
 import Vendas from './pages/Vendas'
 import Importar from './pages/Importar'
 import Admin from './pages/Admin'
+import Usuarios from './pages/Usuarios'
+import Auditoria from './pages/Auditoria'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
@@ -25,8 +28,39 @@ const App = () => (
           <Route element={<Layout />}>
             <Route path="/" element={<Index />} />
             <Route path="/vendas" element={<Vendas />} />
-            <Route path="/importar" element={<Importar />} />
-            <Route path="/admin" element={<Admin />} />
+            {/* Rotas protegidas por senha de administrador (AdminGuard) */}
+            <Route
+              path="/importar"
+              element={
+                <GuardedRoute page="importar">
+                  <Importar />
+                </GuardedRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <GuardedRoute page="admin">
+                  <Admin />
+                </GuardedRoute>
+              }
+            />
+            <Route
+              path="/usuarios"
+              element={
+                <GuardedRoute page="usuarios">
+                  <Usuarios />
+                </GuardedRoute>
+              }
+            />
+            <Route
+              path="/auditoria"
+              element={
+                <GuardedRoute page="auditoria">
+                  <Auditoria />
+                </GuardedRoute>
+              }
+            />
           </Route>
 
           <Route path="*" element={<NotFound />} />

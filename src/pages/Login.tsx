@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { BarChart3, Lock, Mail, ArrowRight, ShieldCheck } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
@@ -21,6 +21,15 @@ export default function Login() {
   const { toast } = useToast()
 
   const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || '/'
+
+  // Link de convite (?invite=EMAIL) apenas preenche o e-mail — não é um token mágico.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const inviteEmail = params.get('invite')
+    if (inviteEmail) {
+      setEmail(inviteEmail)
+    }
+  }, [location.search])
 
   const validate = () => {
     let isValid = true

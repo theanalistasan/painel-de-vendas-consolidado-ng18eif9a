@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import type { AuthRecord } from 'pocketbase'
 import pb from '@/lib/pocketbase/client'
+import { logAudit } from '@/services/audit'
+import { setAdminUnlocked } from '@/components/AdminGuard'
 
 interface AuthContextType {
   user: AuthRecord | null
@@ -52,9 +54,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const res = await pb.collection('users').authWithPassword(email, pass)
     setUser(res.record)
     setToken(res.token)
+    // Auditoria: registra o login bem-sucedido (best-effort).
+    void logAudit('login', 'Login realizado')
   }
 
   const logout = () => {
+    // Auditoria: registra o logout antes de limpar a sessão (best-effort).
+    void logAudit('logout', 'Logout realizado')
+    // Remove o flag admin ao sair — exige a senha novamente na próxima sessão.
+    setAdminUnlocked(false)
     pb.authStore.clear()
     setUser(null)
     setToken(null)
