@@ -26,6 +26,7 @@ interface FilterBarProps {
     grupoItem: string[]
     estado: string[]
     utilizacao: string[]
+    tipoDocumento: string[]
     anos: number[]
     meses: number[]
     dias: number[]
@@ -240,6 +241,7 @@ export default function FilterBar({
       filters.grupoItem.length +
       filters.estado.length +
       filters.utilizacao.length +
+      filters.tipoDocumento.length +
       (filters.search ? 1 : 0) +
       (filters.ano ? 1 : 0) +
       (filters.mes ? 1 : 0) +
@@ -264,6 +266,7 @@ export default function FilterBar({
       grupoItem: [],
       estado: [],
       utilizacao: [],
+      tipoDocumento: [],
       search: '',
       ano: '',
       mes: '',
@@ -290,7 +293,15 @@ export default function FilterBar({
       type === 'tipoDevolucao'
     ) {
       nextState = { ...nextState, [type]: '' }
-    } else if (value && Array.isArray(filters[type])) {
+    } else if (
+      value &&
+      (type === 'vendedorCliente' ||
+        type === 'vendedor' ||
+        type === 'grupoItem' ||
+        type === 'estado' ||
+        type === 'utilizacao' ||
+        type === 'tipoDocumento')
+    ) {
       nextState = {
         ...nextState,
         [type]: (filters[type] as string[]).filter((item) => item !== value),
@@ -396,6 +407,16 @@ export default function FilterBar({
         type: 'utilizacao',
         value: item,
         bgClass: 'bg-slate-50 border-slate-200 text-slate-700',
+      })
+    })
+
+    filters.tipoDocumento.forEach((item) => {
+      list.push({
+        id: `tipoDocumento-${item}`,
+        label: `Doc: ${item}`,
+        type: 'tipoDocumento',
+        value: item,
+        bgClass: 'bg-indigo-50 border-indigo-200 text-indigo-900',
       })
     })
 
@@ -663,6 +684,21 @@ export default function FilterBar({
             selected={localFilters.estado}
             onChange={(values) => setLocalFilters((prev) => ({ ...prev, estado: values }))}
             placeholder="Todos"
+          />
+        </div>
+
+        {/* Tipo de Documento */}
+        <div>
+          <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+            Tipo de Documento
+          </Label>
+          <MultiSelectDropdown
+            label="Documento"
+            options={options.tipoDocumento || []}
+            selected={localFilters.tipoDocumento}
+            onChange={(values) => setLocalFilters((prev) => ({ ...prev, tipoDocumento: values }))}
+            placeholder="Todos"
+            highlight={localFilters.tipoDocumento.length > 0}
           />
         </div>
       </div>

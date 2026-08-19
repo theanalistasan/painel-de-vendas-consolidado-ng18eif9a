@@ -15,7 +15,7 @@
 // Body:
 //   filters (object, opcional) — mesmos campos suportados por /vendas/list:
 //     dataDe, dataAte, ano, mes, dia, vendedorCliente[], vendedor[],
-//     grupoItem[], estado[], utilizacao[], search, tipoDevolucao
+//     grupoItem[], estado[], utilizacao[], tipoDocumento[], search, tipoDevolucao
 //
 // Retorna: { kpis, charts, recentSales, filterOptions }
 routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
@@ -26,12 +26,17 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const sqlEsc = (s) => String(s).replace(/'/g, "''")
 
   // ---- Constrói cláusula WHERE (SQL) e filtro PocketBase em paralelo ----
-  // sqlWhere é usado em TODAS as queries (KPIs, charts, recentSales).
-  // pbFilter é mantido para compatibilidade, mas não é mais consumido —
-  // findRecordsByFilter não suporta o operador IN multi-valor.
+  // sqlWhere: usado em TODAS as queries (KPIs, charts, recentSales).
+  // sqlWhereBase: apenas filtros de DIMENSÃO (sem data) — usado pela série
+  //   de "ano anterior" do gráfico mensal, já que filtros de ano/mês/data
+  //   excluiriam sempre o período anterior.
+  // pbFilter: sintaxe PocketBase (mantido p/ compat, não consumido —
+  //   findRecordsByFilter não suporta o operador IN multi-valor).
   const sqlParts = []
+  const sqlDimParts = []
   const pbParts = []
 
+  // --- Filtros de DATA (não entram em sqlDimParts) ---
   if (f.dataDe) {
     sqlParts.push("data_lancamento >= '" + sqlEsc(f.dataDe) + " 00:00:00'")
     pbParts.push('data_lancamento >= "' + f.dataDe + ' 00:00:00"')
@@ -55,59 +60,83 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     sqlParts.push("data_lancamento LIKE '%-" + dd + " %'")
     pbParts.push('data_lancamento ~ "-' + dd + ' "')
   }
+
+  // --- Filtros de DIMENSÃO (reutilizados pela série de ano anterior) ---
   if (Array.isArray(f.vendedorCliente) && f.vendedorCliente.length > 0) {
     const sqlArr = f.vendedorCliente.map((v) => "'" + sqlEsc(v) + "'").join(',')
     const pbArr = f.vendedorCliente.map((v) => '"' + v + '"').join(',')
-    sqlParts.push('vendedor_cliente IN (' + sqlArr + ')')
+    const clause = 'vendedor_cliente IN (' + sqlArr + ')'
+    sqlParts.push(clause)
+    sqlDimParts.push(clause)
     pbParts.push('vendedor_cliente in (' + pbArr + ')')
   }
   if (Array.isArray(f.vendedor) && f.vendedor.length > 0) {
     const sqlArr = f.vendedor.map((v) => "'" + sqlEsc(v) + "'").join(',')
     const pbArr = f.vendedor.map((v) => '"' + v + '"').join(',')
-    sqlParts.push('nome_vendedor IN (' + sqlArr + ')')
+    const clause = 'nome_vendedor IN (' + sqlArr + ')'
+    sqlParts.push(clause)
+    sqlDimParts.push(clause)
     pbParts.push('nome_vendedor in (' + pbArr + ')')
   }
   if (Array.isArray(f.grupoItem) && f.grupoItem.length > 0) {
     const sqlArr = f.grupoItem.map((v) => "'" + sqlEsc(v) + "'").join(',')
     const pbArr = f.grupoItem.map((v) => '"' + v + '"').join(',')
-    sqlParts.push('grupo_item IN (' + sqlArr + ')')
+    const clause = 'grupo_item IN (' + sqlArr + ')'
+    sqlParts.push(clause)
+    sqlDimParts.push(clause)
     pbParts.push('grupo_item in (' + pbArr + ')')
   }
   if (Array.isArray(f.estado) && f.estado.length > 0) {
     const sqlArr = f.estado.map((v) => "'" + sqlEsc(v) + "'").join(',')
     const pbArr = f.estado.map((v) => '"' + v + '"').join(',')
-    sqlParts.push('estado IN (' + sqlArr + ')')
+    const clause = 'estado IN (' + sqlArr + ')'
+    sqlParts.push(clause)
+    sqlDimParts.push(clause)
     pbParts.push('estado in (' + pbArr + ')')
   }
   if (Array.isArray(f.utilizacao) && f.utilizacao.length > 0) {
     const sqlArr = f.utilizacao.map((v) => "'" + sqlEsc(v) + "'").join(',')
     const pbArr = f.utilizacao.map((v) => '"' + v + '"').join(',')
-    sqlParts.push('utilizacao IN (' + sqlArr + ')')
+    const clause = 'utilizacao IN (' + sqlArr + ')'
+    sqlParts.push(clause)
+    sqlDimParts.push(clause)
     pbParts.push('utilizacao in (' + pbArr + ')')
+  }
+  // Filtro Tipo de Documento (multi-valor) — campo `tipo_documento`.
+  if (Array.isArray(f.tipoDocumento) && f.tipoDocumento.length > 0) {
+    const sqlArr = f.tipoDocumento.map((v) => "'" + sqlEsc(v) + "'").join(',')
+    const pbArr = f.tipoDocumento.map((v) => '"' + v + '"').join(',')
+    const clause = 'tipo_documento IN (' + sqlArr + ')'
+    sqlParts.push(clause)
+    sqlDimParts.push(clause)
+    pbParts.push('tipo_documento in (' + pbArr + ')')
   }
   if (f.tipoDevolucao) {
     const td = sqlEsc(f.tipoDevolucao)
-    sqlParts.push("tipo_documento = '" + td + "'")
+    const clause = "tipo_documento = '" + td + "'"
+    sqlParts.push(clause)
+    sqlDimParts.push(clause)
     pbParts.push('tipo_documento = "' + f.tipoDevolucao + '"')
   }
   if (f.search) {
     const q = sqlEsc(f.search)
     const like = " LIKE '%" + q + "%'"
-    sqlParts.push(
+    const clause =
       '(nome_cliente' +
-        like +
-        ' OR codigo_cliente' +
-        like +
-        ' OR codigo_item' +
-        like +
-        ' OR descricao_item' +
-        like +
-        ' OR numero_nfe' +
-        like +
-        ' OR numero_sap' +
-        like +
-        ')',
-    )
+      like +
+      ' OR codigo_cliente' +
+      like +
+      ' OR codigo_item' +
+      like +
+      ' OR descricao_item' +
+      like +
+      ' OR numero_nfe' +
+      like +
+      ' OR numero_sap' +
+      like +
+      ')'
+    sqlParts.push(clause)
+    sqlDimParts.push(clause)
     const pbq = f.search.toString().replace(/"/g, '\\"')
     const term = '"' + pbq + '"'
     pbParts.push(
@@ -128,6 +157,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   }
 
   const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'
+  // Apenas filtros de dimensão (sem data) — usado pela série de ano anterior.
+  const sqlWhereBase = sqlDimParts.length > 0 ? sqlDimParts.join(' AND ') : '1=1'
   const pbFilter = pbParts.length > 0 ? pbParts.join(' && ') : "id != ''"
 
   // ---- Helper: roda SELECT e devolve array de DynamicModel (campos a..f) ----
@@ -180,6 +211,22 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     ' AND length(data_lancamento) >= 7 ' +
     'GROUP BY substr(data_lancamento,1,7) ORDER BY 1 ASC'
   const mesRows = runAgg(mesSql)
+
+  // Série de ano anterior: mesmo mês/ano-1, com os mesmos filtros de
+  // DIMENSÃO (sem os filtros de data) — caso contrário ano/mês/data
+  // excluiriam sempre o período anterior.
+  // O GROUP BY usa (ano-1) || "-mm", de modo que a chave já aponta para
+  // o mesmo mês no ano anterior e pode ser cruzada diretamente com a
+  // série atual.
+  const prevYearSql =
+    'SELECT (CAST(substr(data_lancamento,1,4) AS INTEGER) - 1) || substr(data_lancamento,5,3) AS a, COALESCE(SUM(total_linha),0) AS b ' +
+    'FROM vendas WHERE ' +
+    sqlWhereBase +
+    ' AND length(data_lancamento) >= 7 ' +
+    'GROUP BY (CAST(substr(data_lancamento,1,4) AS INTEGER) - 1) || substr(data_lancamento,5,3) ' +
+    'ORDER BY 1 ASC'
+  const prevYearRows = runAgg(prevYearSql)
+
   const monthNames = [
     'Jan',
     'Fev',
@@ -207,11 +254,32 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       faturamento: toNum(mesRows[i].b),
       liquido: toNum(mesRows[i].c),
       devolucoes: toNum(mesRows[i].d),
+      faturamento_ano_anterior: 0,
     })
   }
   // Limita aos últimos 6 meses a partir da data mais recente dos dados consolidados.
   if (vendasPorMes.length > 6) {
     vendasPorMes.splice(0, vendasPorMes.length - 6)
+  }
+
+  // Mapeia a chave "aaa-mm" (ano deslocado -1) -> faturamento do ano anterior,
+  // e injeta o valor em cada um dos últimos 6 meses da série atual.
+  const prevYearMap = {}
+  for (let i = 0; i < prevYearRows.length; i++) {
+    const ym = prevYearRows[i].a
+    if (!ym) continue
+    prevYearMap[ym] = toNum(prevYearRows[i].b)
+  }
+  const mesOffset = mesRows.length - vendasPorMes.length
+  for (let i = 0; i < vendasPorMes.length; i++) {
+    const ym = mesRows[i + mesOffset].a
+    if (!ym || ym.indexOf('-') < 0) continue
+    const p = ym.split('-')
+    const y = parseInt(p[0], 10)
+    const mo = parseInt(p[1], 10)
+    if (isNaN(y) || isNaN(mo)) continue
+    const prevKey = String(y - 1) + '-' + String(mo).padStart(2, '0')
+    vendasPorMes[i].faturamento_ano_anterior = prevYearMap[prevKey] || 0
   }
 
   // ============================================================
@@ -293,14 +361,10 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   }
 
   // ============================================================
-  // 3) recentSales — findRecordsByFilter com LIMIT 8 (rápido)
+  // 3) recentSales — LIMIT 8 (SQL puro)
   // ============================================================
   const recentSales = []
   try {
-    // SQL puro em vez de findRecordsByFilter: o filtro PB não suporta o
-    // operador `IN` multi-valor enviado pelo frontend (vendedorCliente[],
-    // vendedor[], etc.), que o rejeita com "expected a sign operator, got 'in'".
-    // sqlWhere já está em sintaxe SQL (IN/AND/LIKE), então reutilizamos aqui.
     const recentSql =
       'SELECT id, data_lancamento, nome_cliente, vendedor_cliente, codigo_item, descricao_item, grupo_item, quantidade, total_linha ' +
       'FROM vendas WHERE ' +
@@ -415,6 +479,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     grupoItem: cleanFilterOptions(distinctCol('grupo_item')),
     estado: cleanFilterOptions(distinctCol('estado')),
     utilizacao: cleanFilterOptions(distinctCol('utilizacao')),
+    tipoDocumento: cleanFilterOptions(distinctCol('tipo_documento')),
     anos: distinctSubstr(1, 4),
     meses: distinctSubstr(6, 2),
     dias: distinctSubstr(9, 2),

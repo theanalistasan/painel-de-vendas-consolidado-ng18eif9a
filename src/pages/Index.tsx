@@ -101,6 +101,7 @@ export default function Index() {
     grupoItem: [],
     estado: [],
     utilizacao: [],
+    tipoDocumento: [],
     search: '',
     ano: '',
     mes: '',
@@ -138,6 +139,7 @@ export default function Index() {
         grupoItem: [],
         estado: [],
         utilizacao: [],
+        tipoDocumento: [],
         anos: [],
         meses: [],
         dias: [],
@@ -229,6 +231,7 @@ export default function Index() {
                   grupoItem: [],
                   estado: [],
                   utilizacao: [],
+                  tipoDocumento: [],
                   search: '',
                   ano: '',
                   mes: '',
@@ -299,21 +302,15 @@ export default function Index() {
             {/* Chart 1: Vendas por Mês (últimos 6 meses) */}
             <ChartCard
               title="Evolução de Vendas por Mês"
-              description="Últimos 6 meses a partir da data mais recente dos dados"
+              description="Últimos 6 meses com comparação do mesmo mês no ano anterior"
               icon={BarChart2}
               iconColor="text-indigo-600"
             >
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
+                <BarChart
                   data={chartVendasPorMes}
                   margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                 >
-                  <defs>
-                    <linearGradient id="colorFaturamento" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#4F46E5" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#4F46E5" stopOpacity={0.0} />
-                    </linearGradient>
-                  </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                   <XAxis
                     dataKey="mes"
@@ -330,37 +327,52 @@ export default function Index() {
                   <Tooltip
                     formatter={(val: number | string | undefined, name: string) => {
                       const n = typeof val === 'number' ? val : Number(val)
-                      const label = name === 'devolucoes' ? 'Devoluções' : 'Faturamento'
-                      return [formatCurrency(n), label]
+                      if (name === 'faturamento') return [formatCurrency(n), 'Faturamento (atual)']
+                      if (name === 'faturamento_ano_anterior')
+                        return [formatCurrency(n), 'Faturamento (ano anterior)']
+                      if (name === 'devolucoes') return [formatCurrency(n), 'Devoluções']
+                      return [formatCurrency(n), name]
                     }}
                     contentStyle={tooltipContentStyle}
                   />
                   <Legend
                     verticalAlign="top"
                     height={36}
-                    formatter={(value) => (
-                      <span className="text-xs font-semibold text-slate-700 capitalize">
-                        {value === 'faturamento' ? 'Faturamento' : 'Devoluções'}
-                      </span>
-                    )}
+                    formatter={(value) => {
+                      const labels: Record<string, string> = {
+                        faturamento: 'Faturamento (atual)',
+                        faturamento_ano_anterior: 'Faturamento (ano anterior)',
+                        devolucoes: 'Devoluções',
+                      }
+                      return (
+                        <span className="text-xs font-semibold text-slate-700">
+                          {labels[value] ?? value}
+                        </span>
+                      )
+                    }}
                   />
-                  <Area
-                    type="monotone"
+                  <Bar
+                    dataKey="faturamento_ano_anterior"
+                    name="faturamento_ano_anterior"
+                    fill="#A5B4FC"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={28}
+                  />
+                  <Bar
                     dataKey="faturamento"
                     name="faturamento"
-                    stroke="#4F46E5"
-                    strokeWidth={2.5}
-                    fillOpacity={1}
-                    fill="url(#colorFaturamento)"
+                    fill="#4F46E5"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={28}
                   />
                   <Bar
                     dataKey="devolucoes"
                     name="devolucoes"
                     fill="#EF4444"
                     radius={[4, 4, 0, 0]}
-                    maxBarSize={24}
+                    maxBarSize={28}
                   />
-                </ComposedChart>
+                </BarChart>
               </ResponsiveContainer>
             </ChartCard>
 

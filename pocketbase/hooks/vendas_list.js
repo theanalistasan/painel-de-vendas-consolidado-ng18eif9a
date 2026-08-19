@@ -79,6 +79,11 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
     const sqlArr = f.utilizacao.map((v) => "'" + sqlEsc(v) + "'").join(',')
     sqlParts.push('utilizacao IN (' + sqlArr + ')')
   }
+  // Filtro Tipo de Documento (multi-valor) — campo `tipo_documento`.
+  if (Array.isArray(f.tipoDocumento) && f.tipoDocumento.length > 0) {
+    const sqlArr = f.tipoDocumento.map((v) => "'" + sqlEsc(v) + "'").join(',')
+    sqlParts.push('tipo_documento IN (' + sqlArr + ')')
+  }
   if (f.tipoDevolucao) {
     sqlParts.push("tipo_documento = '" + sqlEsc(f.tipoDevolucao) + "'")
     pbParts.push('tipo_documento = "' + f.tipoDevolucao + '"')

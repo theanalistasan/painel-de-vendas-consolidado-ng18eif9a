@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-19T11:37:17.728Z",
+  "generatedAt": "2026-08-19T13:23:23.599Z",
   "collections": [
     {
       "name": "users",
@@ -870,7 +870,8 @@
         "CREATE INDEX idx_vendas_estado ON vendas (estado)",
         "CREATE INDEX idx_vendas_cidade ON vendas (cidade)",
         "CREATE INDEX idx_vendas_utilizacao ON vendas (utilizacao)",
-        "CREATE INDEX idx_vendas_numero_nfe ON vendas (numero_nfe)"
+        "CREATE INDEX idx_vendas_numero_nfe ON vendas (numero_nfe)",
+        "CREATE INDEX `idx_vendas_tipo_documento` ON `vendas` (tipo_documento)"
       ]
     },
     {

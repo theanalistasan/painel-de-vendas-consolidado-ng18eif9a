@@ -145,6 +145,8 @@ export interface FilterState {
   dia: string
   /** Tipo de Devolução: '' = Todas, ou um de 'Dev. Entrega' | 'Dev. NF' | 'DEVNF' */
   tipoDevolucao: string
+  /** Tipos de documento (multi-valor) vindos de `tipo_documento` (ex: "NF de Saída", "Dev. NF", ...) */
+  tipoDocumento: string[]
 }
 
 /** Tipos de documento considerados devolução */
