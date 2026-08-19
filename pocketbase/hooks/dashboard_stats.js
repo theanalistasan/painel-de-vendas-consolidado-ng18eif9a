@@ -26,7 +26,9 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const sqlEsc = (s) => String(s).replace(/'/g, "''")
 
   // ---- Constrói cláusula WHERE (SQL) e filtro PocketBase em paralelo ----
-  // O filtro PB é usado apenas para recentSales (findRecordsByFilter).
+  // sqlWhere é usado em TODAS as queries (KPIs, charts, recentSales).
+  // pbFilter é mantido para compatibilidade, mas não é mais consumido —
+  // findRecordsByFilter não suporta o operador IN multi-valor.
   const sqlParts = []
   const pbParts = []
 
@@ -295,19 +297,41 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // ============================================================
   const recentSales = []
   try {
-    const recent = $app.findRecordsByFilter('vendas', pbFilter, '-created', 8, 0)
-    for (let i = 0; i < recent.length; i++) {
-      const r = recent[i]
+    // SQL puro em vez de findRecordsByFilter: o filtro PB não suporta o
+    // operador `IN` multi-valor enviado pelo frontend (vendedorCliente[],
+    // vendedor[], etc.), que o rejeita com "expected a sign operator, got 'in'".
+    // sqlWhere já está em sintaxe SQL (IN/AND/LIKE), então reutilizamos aqui.
+    const recentSql =
+      'SELECT id, data_lancamento, nome_cliente, vendedor_cliente, codigo_item, descricao_item, grupo_item, quantidade, total_linha ' +
+      'FROM vendas WHERE ' +
+      sqlWhere +
+      ' ORDER BY created DESC LIMIT 8'
+    const recentRows = arrayOf(
+      new DynamicModel({
+        id: '',
+        data_lancamento: '',
+        nome_cliente: '',
+        vendedor_cliente: '',
+        codigo_item: '',
+        descricao_item: '',
+        grupo_item: '',
+        quantidade: '',
+        total_linha: '',
+      }),
+    )
+    $app.db().newQuery(recentSql).all(recentRows)
+    for (let i = 0; i < recentRows.length; i++) {
+      const r = recentRows[i]
       recentSales.push({
         id: r.id,
-        data_lancamento: r.getString('data_lancamento'),
-        nome_cliente: r.getString('nome_cliente'),
-        vendedor_cliente: r.getString('vendedor_cliente'),
-        codigo_item: r.getString('codigo_item'),
-        descricao_item: r.getString('descricao_item'),
-        grupo_item: r.getString('grupo_item'),
-        quantidade: r.getFloat('quantidade'),
-        total_linha: r.getFloat('total_linha'),
+        data_lancamento: r.data_lancamento,
+        nome_cliente: r.nome_cliente,
+        vendedor_cliente: r.vendedor_cliente,
+        codigo_item: r.codigo_item,
+        descricao_item: r.descricao_item,
+        grupo_item: r.grupo_item,
+        quantidade: toNum(r.quantidade),
+        total_linha: toNum(r.total_linha),
       })
     }
   } catch (err) {
