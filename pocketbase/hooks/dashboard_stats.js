@@ -205,6 +205,37 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       liquido: toNum(mesRows[i].c),
     })
   }
+  // Limita aos últimos 6 meses a partir da data mais recente dos dados consolidados.
+  if (vendasPorMes.length > 6) {
+    vendasPorMes.splice(0, vendasPorMes.length - 6)
+  }
+
+  // ============================================================
+  // vendasPorAno (GROUP BY ano, ordenado ASC, com variação percentual)
+  // ============================================================
+  const anoSql =
+    'SELECT substr(data_lancamento,1,4) AS a, COALESCE(SUM(total_linha),0) AS b ' +
+    'FROM vendas WHERE ' +
+    sqlWhere +
+    ' AND length(data_lancamento) >= 4 ' +
+    'GROUP BY substr(data_lancamento,1,4) ORDER BY 1 ASC'
+  const anoRows = runAgg(anoSql)
+  const vendasPorAno = []
+  let anoAnterior = null
+  for (let i = 0; i < anoRows.length; i++) {
+    const ano = anoRows[i].a
+    const faturamento = toNum(anoRows[i].b)
+    let variacao = null
+    if (anoAnterior !== null && anoAnterior !== 0) {
+      variacao = ((faturamento - anoAnterior) / anoAnterior) * 100
+    }
+    vendasPorAno.push({
+      ano: ano,
+      faturamento: faturamento,
+      variacao: variacao,
+    })
+    anoAnterior = faturamento
+  }
 
   // grupoItem (todos, value = SUM total_linha; vazio -> "Outros")
   const grupoSql =
@@ -351,6 +382,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     kpis: kpis,
     charts: {
       vendasPorMes: vendasPorMes,
+      vendasPorAno: vendasPorAno,
       grupoItem: grupoItem,
       topVendedores: topVendedores,
       topClientes: topClientes,

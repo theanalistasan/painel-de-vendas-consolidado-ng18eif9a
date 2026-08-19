@@ -27,6 +27,9 @@ import {
   BarChart,
   Bar,
   Legend,
+  ComposedChart,
+  Line,
+  ReferenceLine,
 } from 'recharts'
 import { fetchDashboardStats, type DashboardStatsResult } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -154,6 +157,7 @@ export default function Index() {
   }, [data])
 
   const chartVendasPorMes = data?.charts?.vendasPorMes || []
+  const chartVendasPorAno = data?.charts?.vendasPorAno || []
   const chartGrupoItem = data?.charts?.grupoItem || []
   const chartTopVendedores = data?.charts?.topVendedores || []
   const chartTopClientes = data?.charts?.topClientes || []
@@ -287,10 +291,10 @@ export default function Index() {
 
           {/* Charts Grid Row 1 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Chart 1: Vendas por Mês */}
+            {/* Chart 1: Vendas por Mês (últimos 6 meses) */}
             <ChartCard
               title="Evolução de Vendas por Mês"
-              description="Soma de faturamento consolidado ao longo do tempo"
+              description="Últimos 6 meses a partir da data mais recente dos dados"
               icon={BarChart2}
               iconColor="text-indigo-600"
             >
@@ -331,6 +335,73 @@ export default function Index() {
                     fill="url(#colorFaturamento)"
                   />
                 </AreaChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            {/* Chart 1.5: Evolução de Vendas por Ano */}
+            <ChartCard
+              title="Evolução de Vendas por Ano"
+              description="Faturamento total por ano e variação percentual em relação ao ano anterior"
+              icon={TrendingUp}
+              iconColor="text-emerald-600"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart
+                  data={chartVendasPorAno}
+                  margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis
+                    dataKey="ano"
+                    tickLine={false}
+                    axisLine={{ stroke: '#E2E8F0' }}
+                    tick={{ fill: '#64748B', fontSize: 12 }}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={(val) => `${val.toFixed(0)}%`}
+                  />
+                  <Tooltip
+                    formatter={(val: number | string | undefined, name: string) => {
+                      const n = typeof val === 'number' ? val : Number(val)
+                      if (name === 'variacao') {
+                        return [`${n >= 0 ? '+' : ''}${n.toFixed(1)}%`, 'Variação vs. ano anterior']
+                      }
+                      return [formatCurrency(n), 'Faturamento']
+                    }}
+                    contentStyle={tooltipContentStyle}
+                  />
+                  <ReferenceLine yAxisId="right" y={0} stroke="#CBD5E1" strokeDasharray="3 3" />
+                  <Bar
+                    yAxisId="left"
+                    dataKey="faturamento"
+                    name="faturamento"
+                    fill="#10B981"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={56}
+                  />
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="variacao"
+                    name="variacao"
+                    stroke="#F59E0B"
+                    strokeWidth={2.5}
+                    dot={{ r: 4, fill: '#F59E0B' }}
+                    activeDot={{ r: 5 }}
+                  />
+                </ComposedChart>
               </ResponsiveContainer>
             </ChartCard>
 
