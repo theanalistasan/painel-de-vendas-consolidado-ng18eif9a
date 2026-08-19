@@ -6,6 +6,7 @@ import type {
   VendaConsolidada,
   ImportResult,
   ConsolidarResult,
+  VendaGrupoMensal,
 } from '@/types/sales'
 
 export async function fetchProdutos(): Promise<Produto[]> {
@@ -143,6 +144,7 @@ export interface DashboardStatsResult {
       variacao: number | null
     }>
     grupoItem: Array<{ name: string; value: number }>
+    vendasPorGrupoItemMensal: VendaGrupoMensal[]
     topVendedores: Array<{ name: string; total: number }>
     topClientes: Array<{ name: string; total: number }>
     estado: Array<{ uf: string; total: number }>

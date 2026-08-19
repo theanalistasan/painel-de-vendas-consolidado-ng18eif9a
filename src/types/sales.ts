@@ -149,6 +149,14 @@ export interface FilterState {
   tipoDocumento: string[]
 }
 
+/** Venda mensal por grupo do item (últimos 3 meses) */
+export interface VendaGrupoMensal {
+  /** Mês no formato ISO "yyyy-mm", ex: "2025-06" */
+  mes: string
+  /** Faturamento (SUM(total_linha)) por grupo do item no mês */
+  grupos: Array<{ grupo: string; total: number }>
+}
+
 /** Tipos de documento considerados devolução */
 export const DEVOLUCAO_TIPOS = ['Dev. Entrega', 'Dev. NF', 'DEVNF'] as const
 

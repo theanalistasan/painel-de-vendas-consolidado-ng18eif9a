@@ -42,6 +42,7 @@ import {
   extractAno,
   extractMes,
   extractDia,
+  MESES_CURTOS,
 } from '@/lib/formatters'
 import { saveFiltersToSession, loadFiltersFromSession } from '@/lib/filter-persistence'
 import FilterBar from '@/components/FilterBar'
@@ -65,6 +66,18 @@ const CHART_PALETTE = [
   '#10B981', // Green
 ]
 
+// Paleta indigo/violeta para o gráfico "Venda Mensal por Grupo do Item".
+const MENSAL_GRUPO_PALETTE = [
+  '#4F46E5', // Indigo 600
+  '#7C3AED', // Violet 600
+  '#6366F1', // Indigo 500
+  '#8B5CF6', // Violet 500
+  '#4338CA', // Indigo 700
+  '#9333EA', // Purple 600
+  '#818CF8', // Indigo 400
+  '#A78BFA', // Violet 400
+]
+
 const tooltipContentStyle = {
   backgroundColor: '#0F172A',
   borderRadius: '8px',
@@ -77,6 +90,45 @@ const currencyFormatter =
   (label = 'Total') =>
   (val: number | string | undefined) =>
     [formatCurrency(typeof val === 'number' ? val : Number(val)), label] as [string, string]
+
+/** Formata "yyyy-mm" (ex: "2025-06") como "Jun/25". */
+const formatMesAnoCurto = (ym: string) => {
+  if (!ym) return ''
+  const p = ym.split('-')
+  if (p.length < 2) return ym
+  const mo = parseInt(p[1], 10)
+  if (isNaN(mo) || mo < 1 || mo > 12) return ym
+  return MESES_CURTOS[mo - 1] + '/' + p[0].slice(2)
+}
+
+/** Tooltip customizado do gráfico "Venda Mensal por Grupo do Item":
+ *  mostra o mês, o grupo (com cor) e o valor em R$. */
+interface MensalGrupoTooltipProps {
+  active?: boolean
+  payload?: Array<{ name?: string; value?: number | string; color?: string }>
+  label?: string | number
+}
+
+function MensalGrupoTooltip({ active, payload, label }: MensalGrupoTooltipProps) {
+  if (!active || !payload || payload.length === 0) return null
+  return (
+    <div className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white shadow-lg">
+      <div className="font-semibold mb-1">{formatMesAnoCurto(String(label ?? ''))}</div>
+      {payload.map((entry, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <span
+            className="inline-block w-2.5 h-2.5 rounded-sm"
+            style={{ backgroundColor: entry.color }}
+          />
+          <span className="text-slate-300">{entry.name}</span>
+          <span className="font-semibold ml-auto">
+            {formatCurrency(typeof entry.value === 'number' ? entry.value : Number(entry.value))}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 type DashboardSortField =
   | 'data_lancamento'
@@ -157,12 +209,39 @@ export default function Index() {
   const chartTopVendedores = data?.charts?.topVendedores || []
   const chartTopClientes = data?.charts?.topClientes || []
   const chartEstado = data?.charts?.estado || []
+  const chartVendasPorGrupoItemMensal = data?.charts?.vendasPorGrupoItemMensal || []
   const recentSales = data?.recentSales || []
 
   const sortedRecentSales = useMemo(
     () => sortData(recentSales, sort.field, sort.dir),
     [recentSales, sort.field, sort.dir],
   )
+
+  // Grupos (ordem de primeira aparição) e dados pivôs (1 linha por mês,
+  // 1 coluna por grupo) para o gráfico "Venda Mensal por Grupo do Item".
+  const mensalGrupos = useMemo(() => {
+    const seen = new Set<string>()
+    const list: string[] = []
+    for (const m of chartVendasPorGrupoItemMensal) {
+      for (const g of m.grupos) {
+        if (!seen.has(g.grupo)) {
+          seen.add(g.grupo)
+          list.push(g.grupo)
+        }
+      }
+    }
+    return list
+  }, [chartVendasPorGrupoItemMensal])
+
+  const mensalGrupoData = useMemo(() => {
+    return chartVendasPorGrupoItemMensal.map((m) => {
+      const row: Record<string, number | string> = { mes: m.mes }
+      for (const g of m.grupos) {
+        row[g.grupo] = g.total
+      }
+      return row
+    })
+  }, [chartVendasPorGrupoItemMensal])
 
   const recentSalesColumns: { key: DashboardSortField; label: string; className?: string }[] = [
     { key: 'data_lancamento', label: 'Data' },
@@ -502,6 +581,60 @@ export default function Index() {
                     )}
                   />
                 </PieChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            {/* Chart 2.5: Venda Mensal por Grupo do Item (últimos 3 meses) */}
+            <ChartCard
+              title="Venda Mensal por Grupo do Item"
+              description="Faturamento por grupo de item nos últimos 3 meses"
+              icon={BarChart2}
+              iconColor="text-violet-600"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  layout="vertical"
+                  data={mensalGrupoData}
+                  margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                  <XAxis
+                    type="number"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                  />
+                  <YAxis
+                    type="category"
+                    dataKey="mes"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#334155', fontSize: 12 }}
+                    width={64}
+                    tickFormatter={(val) => formatMesAnoCurto(String(val))}
+                  />
+                  <Tooltip
+                    content={<MensalGrupoTooltip />}
+                    cursor={{ fill: 'rgba(99,102,241,0.08)' }}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    height={36}
+                    formatter={(value) => (
+                      <span className="text-xs font-semibold text-slate-700">{value}</span>
+                    )}
+                  />
+                  {mensalGrupos.map((grupo, index) => (
+                    <Bar
+                      key={grupo}
+                      dataKey={grupo}
+                      stackId="a"
+                      fill={MENSAL_GRUPO_PALETTE[index % MENSAL_GRUPO_PALETTE.length]}
+                      radius={[0, 4, 4, 0]}
+                    />
+                  ))}
+                </BarChart>
               </ResponsiveContainer>
             </ChartCard>
           </div>

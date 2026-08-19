@@ -494,6 +494,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       vendasPorMes: vendasPorMes,
       vendasPorAno: vendasPorAno,
       grupoItem: grupoItem,
+      vendasPorGrupoItemMensal: vendasPorGrupoItemMensal,
       topVendedores: topVendedores,
       topClientes: topClientes,
       estado: estado,
