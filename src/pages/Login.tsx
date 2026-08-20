@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast'
 
 export default function Login() {
   const [email, setEmail] = useState('silvio.mattos@rolanddg.com.br')
-  const [password, setPassword] = useState('Skip@Pass')
+  const [password, setPassword] = useState('Roland@1234')
   const [emailError, setEmailError] = useState('')
   const [passwordError, setPasswordError] = useState('')
   const [loading, setLoading] = useState(false)
