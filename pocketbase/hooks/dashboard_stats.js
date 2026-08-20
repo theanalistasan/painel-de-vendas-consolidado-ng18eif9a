@@ -257,13 +257,12 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
 
   // ============================================================
   // vendasPorAno (GROUP BY ano, ordenado ASC, com variação percentual)
+  // Gráfico histórico/estratégico: NÃO respeita filtros do usuário (sempre consulta a base inteira).
   // ============================================================
   const anoSql =
     'SELECT substr(data_lancamento,1,4) AS a, COALESCE(SUM(total_linha),0) AS b, ' +
     "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS c " +
-    'FROM vendas WHERE ' +
-    sqlWhere +
-    ' AND length(data_lancamento) >= 4 ' +
+    'FROM vendas WHERE 1=1 AND length(data_lancamento) >= 4 ' +
     'GROUP BY substr(data_lancamento,1,4) ORDER BY 1 ASC'
   const anoRows = runAgg(anoSql)
   const vendasPorAno = []
