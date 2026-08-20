@@ -40,17 +40,26 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   if (f.dataAte) {
     sqlParts.push("data_lancamento <= '" + sqlEsc(f.dataAte) + " 23:59:59'")
   }
-  if (f.ano) {
-    const a = sqlEsc(f.ano)
-    sqlParts.push("data_lancamento LIKE '" + a + "-%'")
+  const anosFilter = Array.isArray(f.ano) ? f.ano : f.ano ? [f.ano] : []
+  if (anosFilter.length > 0) {
+    const anos = anosFilter
+      .map((a) => "data_lancamento LIKE '" + sqlEsc(String(a)) + "-%'")
+      .join(' OR ')
+    sqlParts.push('(' + anos + ')')
   }
-  if (f.mes) {
-    const mm = String(f.mes).padStart(2, '0')
-    sqlParts.push("data_lancamento LIKE '%-" + mm + "-%'")
+  const mesesFilter = Array.isArray(f.mes) ? f.mes : f.mes ? [f.mes] : []
+  if (mesesFilter.length > 0) {
+    const meses = mesesFilter
+      .map((m) => "data_lancamento LIKE '%-" + String(m).padStart(2, '0') + "-%'")
+      .join(' OR ')
+    sqlParts.push('(' + meses + ')')
   }
-  if (f.dia) {
-    const dd = String(f.dia).padStart(2, '0')
-    sqlParts.push("data_lancamento LIKE '%-" + dd + " %'")
+  const diasFilter = Array.isArray(f.dia) ? f.dia : f.dia ? [f.dia] : []
+  if (diasFilter.length > 0) {
+    const dias = diasFilter
+      .map((d) => "data_lancamento LIKE '%-" + String(d).padStart(2, '0') + " %'")
+      .join(' OR ')
+    sqlParts.push('(' + dias + ')')
   }
 
   // --- Filtros de DIMENSÃO (reutilizados pela série de ano anterior) ---

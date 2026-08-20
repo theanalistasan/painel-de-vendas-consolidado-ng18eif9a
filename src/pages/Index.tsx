@@ -350,9 +350,9 @@ export default function Index() {
                   utilizacao: [],
                   tipoDocumento: [],
                   search: '',
-                  ano: '',
-                  mes: '',
-                  dia: '',
+                  ano: [],
+                  mes: [],
+                  dia: [],
                   tipoDevolucao: '',
                 })
               }

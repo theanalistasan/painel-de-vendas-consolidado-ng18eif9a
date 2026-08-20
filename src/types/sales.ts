@@ -137,12 +137,12 @@ export interface FilterState {
   estado: string[]
   utilizacao: string[]
   search: string
-  /** Ano (string) extraído da Data de Lançamento, ex: "2024" */
-  ano: string
-  /** Mês (1-12) como string, exibido como nome */
-  mes: string
-  /** Dia (1-31) como string */
-  dia: string
+  /** Anos (string[]) extraídos da Data de Lançamento, ex: ["2024", "2025"] */
+  ano: string[]
+  /** Meses (1-12 como string[]) */
+  mes: string[]
+  /** Dias (1-31 como string[]) */
+  dia: string[]
   /** Tipo de Devolução: '' = Todas, ou um de 'Dev. Entrega' | 'Dev. NF' | 'DEVNF' */
   tipoDevolucao: string
   /** Tipos de documento (multi-valor) vindos de `tipo_documento` (ex: "NF de Saída", "Dev. NF", ...) */

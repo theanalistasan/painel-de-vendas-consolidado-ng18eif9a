@@ -43,6 +43,7 @@ function MultiSelectDropdown({
   onChange,
   placeholder,
   highlight = false,
+  getOptionLabel,
 }: {
   label: string
   options: string[]
@@ -50,6 +51,7 @@ function MultiSelectDropdown({
   onChange: (values: string[]) => void
   placeholder: string
   highlight?: boolean
+  getOptionLabel?: (option: string) => string
 }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -86,8 +88,11 @@ function MultiSelectDropdown({
   const filteredOptions = useMemo(() => {
     if (!search) return cleanOptions
     const s = search.toLowerCase()
-    return cleanOptions.filter((opt) => opt.toLowerCase().includes(s))
-  }, [cleanOptions, search])
+    return cleanOptions.filter((opt) => {
+      const displayLabel = getOptionLabel ? getOptionLabel(opt) : opt
+      return opt.toLowerCase().includes(s) || displayLabel.toLowerCase().includes(s)
+    })
+  }, [cleanOptions, search, getOptionLabel])
 
   const toggleOption = (option: string) => {
     if (selected.includes(option)) {
@@ -124,7 +129,11 @@ function MultiSelectDropdown({
             <span className="text-slate-400 font-normal">{placeholder}</span>
           ) : (
             <span className="text-indigo-700 font-medium truncate">
-              {selected.length === 1 ? selected[0] : `${selected.length} selecionados`}
+              {selected.length === 1
+                ? getOptionLabel
+                  ? getOptionLabel(selected[0])
+                  : selected[0]
+                : `${selected.length} selecionados`}
             </span>
           )}
         </div>
@@ -179,7 +188,9 @@ function MultiSelectDropdown({
                         : 'text-slate-700 hover:bg-slate-100',
                     )}
                   >
-                    <span className="truncate pr-2">{option}</span>
+                    <span className="truncate pr-2">
+                      {getOptionLabel ? getOptionLabel(option) : option}
+                    </span>
                     <div
                       className={cn(
                         'w-4 h-4 rounded-sm border flex items-center justify-center shrink-0',
@@ -243,9 +254,9 @@ export default function FilterBar({
       filters.utilizacao.length +
       filters.tipoDocumento.length +
       (filters.search ? 1 : 0) +
-      (filters.ano ? 1 : 0) +
-      (filters.mes ? 1 : 0) +
-      (filters.dia ? 1 : 0) +
+      filters.ano.length +
+      filters.mes.length +
+      filters.dia.length +
       (filters.tipoDevolucao ? 1 : 0)
     )
   }, [filters])
@@ -268,9 +279,9 @@ export default function FilterBar({
       utilizacao: [],
       tipoDocumento: [],
       search: '',
-      ano: '',
-      mes: '',
-      dia: '',
+      ano: [],
+      mes: [],
+      dia: [],
       tipoDevolucao: '',
     }
     setLocalFilters(emptyState)
@@ -283,19 +294,14 @@ export default function FilterBar({
   const removeSingleFilter = (type: keyof FilterState, value?: string) => {
     let nextState: FilterState = { ...filters }
 
-    if (
-      type === 'dataDe' ||
-      type === 'dataAte' ||
-      type === 'search' ||
-      type === 'ano' ||
-      type === 'mes' ||
-      type === 'dia' ||
-      type === 'tipoDevolucao'
-    ) {
+    if (type === 'dataDe' || type === 'dataAte' || type === 'search' || type === 'tipoDevolucao') {
       nextState = { ...nextState, [type]: '' }
     } else if (
       value &&
-      (type === 'vendedorCliente' ||
+      (type === 'ano' ||
+        type === 'mes' ||
+        type === 'dia' ||
+        type === 'vendedorCliente' ||
         type === 'vendedor' ||
         type === 'grupoItem' ||
         type === 'estado' ||
@@ -335,30 +341,38 @@ export default function FilterBar({
         bgClass: 'bg-slate-50 border-slate-200 text-slate-700',
       })
     }
-    if (filters.ano) {
+
+    filters.ano.forEach((item) => {
       list.push({
-        id: 'ano',
-        label: `Ano: ${filters.ano}`,
+        id: `ano-${item}`,
+        label: `Ano: ${item}`,
         type: 'ano',
+        value: item,
         bgClass: 'bg-indigo-50 border-indigo-200 text-indigo-900',
       })
-    }
-    if (filters.mes) {
+    })
+
+    filters.mes.forEach((item) => {
+      const numMes = Number(item)
+      const labelMes = !isNaN(numMes) && numMes >= 1 && numMes <= 12 ? nomeMes(numMes) : item
       list.push({
-        id: 'mes',
-        label: `Mês: ${nomeMes(Number(filters.mes))}`,
+        id: `mes-${item}`,
+        label: `Mês: ${labelMes}`,
         type: 'mes',
+        value: item,
         bgClass: 'bg-indigo-50 border-indigo-200 text-indigo-900',
       })
-    }
-    if (filters.dia) {
+    })
+
+    filters.dia.forEach((item) => {
       list.push({
-        id: 'dia',
-        label: `Dia: ${String(filters.dia).padStart(2, '0')}`,
+        id: `dia-${item}`,
+        label: `Dia: ${String(item).padStart(2, '0')}`,
         type: 'dia',
+        value: item,
         bgClass: 'bg-indigo-50 border-indigo-200 text-indigo-900',
       })
-    }
+    })
 
     filters.vendedorCliente.forEach((item) => {
       list.push({
@@ -544,93 +558,40 @@ export default function FilterBar({
         <div className="grid grid-cols-3 gap-2">
           <div>
             <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Ano</Label>
-            <Select
-              value={localFilters.ano || '__all'}
-              onValueChange={(v) =>
-                setLocalFilters((prev) => ({ ...prev, ano: v === '__all' ? '' : v }))
-              }
-            >
-              <SelectTrigger
-                className={cn(
-                  'h-10 text-xs rounded-lg',
-                  localFilters.ano
-                    ? 'border-indigo-400 font-medium text-slate-900 bg-indigo-50/20'
-                    : 'border-slate-200 text-slate-600',
-                )}
-              >
-                <SelectValue placeholder="Ano" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all" className="text-xs">
-                  Todos
-                </SelectItem>
-                {options.anos.map((ano) => (
-                  <SelectItem key={ano} value={String(ano)} className="text-xs">
-                    {ano}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelectDropdown
+              label="Ano"
+              options={options.anos.map(String)}
+              selected={localFilters.ano}
+              onChange={(values) => setLocalFilters((prev) => ({ ...prev, ano: values }))}
+              placeholder="Todos"
+              highlight={localFilters.ano.length > 0}
+            />
           </div>
           <div>
             <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Mês</Label>
-            <Select
-              value={localFilters.mes || '__all'}
-              onValueChange={(v) =>
-                setLocalFilters((prev) => ({ ...prev, mes: v === '__all' ? '' : v }))
-              }
-            >
-              <SelectTrigger
-                className={cn(
-                  'h-10 text-xs rounded-lg',
-                  localFilters.mes
-                    ? 'border-indigo-400 font-medium text-slate-900 bg-indigo-50/20'
-                    : 'border-slate-200 text-slate-600',
-                )}
-              >
-                <SelectValue placeholder="Mês" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all" className="text-xs">
-                  Todos
-                </SelectItem>
-                {options.meses.map((m) => (
-                  <SelectItem key={m} value={String(m)} className="text-xs">
-                    {MESES_PT_BR[m - 1]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelectDropdown
+              label="Mês"
+              options={options.meses.map(String)}
+              selected={localFilters.mes}
+              onChange={(values) => setLocalFilters((prev) => ({ ...prev, mes: values }))}
+              placeholder="Todos"
+              highlight={localFilters.mes.length > 0}
+              getOptionLabel={(val) => {
+                const n = Number(val)
+                return !isNaN(n) && n >= 1 && n <= 12 ? MESES_PT_BR[n - 1] || val : val
+              }}
+            />
           </div>
           <div>
             <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Dia</Label>
-            <Select
-              value={localFilters.dia || '__all'}
-              onValueChange={(v) =>
-                setLocalFilters((prev) => ({ ...prev, dia: v === '__all' ? '' : v }))
-              }
-            >
-              <SelectTrigger
-                className={cn(
-                  'h-10 text-xs rounded-lg',
-                  localFilters.dia
-                    ? 'border-indigo-400 font-medium text-slate-900 bg-indigo-50/20'
-                    : 'border-slate-200 text-slate-600',
-                )}
-              >
-                <SelectValue placeholder="Dia" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all" className="text-xs">
-                  Todos
-                </SelectItem>
-                {options.dias.map((d) => (
-                  <SelectItem key={d} value={String(d)} className="text-xs">
-                    {String(d).padStart(2, '0')}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <MultiSelectDropdown
+              label="Dia"
+              options={options.dias.map((d) => String(d).padStart(2, '0'))}
+              selected={localFilters.dia}
+              onChange={(values) => setLocalFilters((prev) => ({ ...prev, dia: values }))}
+              placeholder="Todos"
+              highlight={localFilters.dia.length > 0}
+            />
           </div>
         </div>
 
