@@ -1,11 +1,10 @@
-// Endpoint: POST /backend/v1/vendas/list
-// Lista paginada server-side da coleção `vendas` com filtros opcionais e ordenação dinâmica.
+// Endpoint: POST /backend/v1/vendas/export
+// Retorna TODOS os registros de vendas que atendem aos filtros ativos (sem paginação),
+// ordenados para exportação completa em CSV.
 //
 // Body:
-//   page          (number, default 1)
-//   perPage       (number, default 20, max 200)
-//   sort          (string, opcional, ex: "-data_lancamento" ou "total_linha")
-//   sortField     (string, opcional, ex: "total_linha", "vendedor_cliente")
+//   sort          (string, opcional, ex: "-data_lancamento")
+//   sortField     (string, opcional, ex: "total_linha")
 //   sortDirection (string, opcional: "asc" | "desc")
 //   filters       (object, opcional):
 //     dataDe, dataAte         (yyyy-mm-dd)
@@ -19,13 +18,10 @@
 //     tipoDevolucao           (string)
 //     search                  (string)
 //
-// Retorna: { items, page, perPage, totalItems, totalPages }
-routerAdd('POST', '/backend/v1/vendas/list', (e) => {
+// Retorna: { items, totalItems }
+routerAdd('POST', '/backend/v1/vendas/export', (e) => {
   const body = e.requestInfo().body || {}
-  const page = Math.max(1, parseInt(body.page, 10) || 1)
-  const perPage = Math.min(200, Math.max(1, parseInt(body.perPage, 10) || 20))
 
-  // Mapeamento e validação de ordenação server-side
   const validSortFields = {
     data_lancamento: 'data_lancamento',
     numero_nfe: 'numero_nfe',
@@ -80,7 +76,6 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
 
   const f = body.filters || {}
 
-  // ---- Escape SQL (aspas simples duplicadas) ----
   const sqlEsc = (s) => String(s).replace(/'/g, "''")
 
   const sqlParts = []
@@ -238,29 +233,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
         'FROM vendas WHERE ' +
         sqlWhere +
         ' ORDER BY ' +
-        sortClause +
-        ' LIMIT ' +
-        perPage +
-        ' OFFSET ' +
-        (page - 1) * perPage,
+        sortClause,
     )
     .all(dataRows)
-
-  let totalItems = 0
-  try {
-    const countRows = arrayOf(new DynamicModel({ total: '' }))
-    $app
-      .db()
-      .newQuery('SELECT COUNT(*) as total FROM vendas WHERE ' + sqlWhere)
-      .all(countRows)
-    if (countRows.length > 0) {
-      const n = parseInt(countRows[0].total, 10)
-      if (!isNaN(n)) totalItems = n
-    }
-  } catch (err) {
-    console.error('vendas_list: COUNT falhou:', err)
-    totalItems = dataRows.length
-  }
 
   const items = []
   for (let i = 0; i < dataRows.length; i++) {
@@ -321,9 +296,6 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
 
   return e.json(200, {
     items: items,
-    page: page,
-    perPage: perPage,
-    totalItems: totalItems,
-    totalPages: Math.max(1, Math.ceil(totalItems / perPage)),
+    totalItems: items.length,
   })
 })

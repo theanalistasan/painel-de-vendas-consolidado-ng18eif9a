@@ -33,9 +33,9 @@ import {
   Line,
   ReferenceLine,
 } from 'recharts'
-import { fetchDashboardStats, type DashboardStatsResult } from '@/services/sales'
+import { fetchDashboardStats, fetchVendasList, type DashboardStatsResult } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { FilterState } from '@/types/sales'
+import type { FilterState, VendaConsolidada } from '@/types/sales'
 import {
   formatCurrency,
   formatNumber,
@@ -159,8 +159,22 @@ type DashboardSortField =
 export default function Index() {
   const [data, setData] = useState<DashboardStatsResult | null>(null)
   const [loading, setLoading] = useState(true)
+  const [recentSalesList, setRecentSalesList] = useState<
+    Array<{
+      id: string
+      data_lancamento: string
+      nome_cliente: string
+      vendedor_cliente: string
+      codigo_item: string
+      descricao_item: string
+      grupo_item: string
+      quantidade: number
+      total_linha: number
+    }>
+  >([])
+  const [recentSalesLoading, setRecentSalesLoading] = useState(false)
 
-  // Ordenação por clique nos cabeçalhos da tabela "Vendas Recentes" (frontend).
+  // Ordenação server-side por clique nos cabeçalhos da tabela "Vendas Recentes".
   const sort = useTableSort<DashboardSortField>()
 
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
@@ -177,6 +191,9 @@ export default function Index() {
     try {
       const res = await fetchDashboardStats(activeFilters as unknown as Record<string, unknown>)
       setData(res)
+      if (!sort.field) {
+        setRecentSalesList(res?.recentSales || [])
+      }
     } catch (err) {
       console.error('Erro ao buscar estatísticas do dashboard:', err)
     } finally {
@@ -184,9 +201,58 @@ export default function Index() {
     }
   }
 
+  // Se houver ordenação ativa pelo usuário, busca as 8 primeiras ordenadas server-side
+  const loadRecentSalesWithSort = async (
+    activeFilters = filters,
+    field = sort.field,
+    dir = sort.dir,
+  ) => {
+    if (!field) {
+      if (data?.recentSales) {
+        setRecentSalesList(data.recentSales)
+      }
+      return
+    }
+    setRecentSalesLoading(true)
+    try {
+      const res = await fetchVendasList({
+        page: 1,
+        perPage: 8,
+        sortField: field,
+        sortDirection: dir,
+        filters: activeFilters as unknown as Record<string, unknown>,
+      })
+      setRecentSalesList(
+        (res.items || []).map((item) => ({
+          id: item.id,
+          data_lancamento: item.data_lancamento,
+          nome_cliente: item.nome_cliente,
+          vendedor_cliente: item.vendedor_cliente,
+          codigo_item: item.codigo_item,
+          descricao_item: item.descricao_item,
+          grupo_item: item.grupo_item,
+          quantidade: item.quantidade,
+          total_linha: item.total_linha,
+        })),
+      )
+    } catch (err) {
+      console.error('Erro ao carregar vendas recentes ordenadas:', err)
+    } finally {
+      setRecentSalesLoading(false)
+    }
+  }
+
   useEffect(() => {
     loadData(filters)
   }, [filters])
+
+  useEffect(() => {
+    if (sort.field) {
+      loadRecentSalesWithSort(filters, sort.field, sort.dir)
+    } else if (data?.recentSales) {
+      setRecentSalesList(data.recentSales)
+    }
+  }, [sort.field, sort.dir, filters])
 
   // Realtime subscription for sales updates
   useRealtime('vendas', () => {
@@ -233,12 +299,8 @@ export default function Index() {
     data?.charts?.vendasInsumosHistorico || data?.charts?.vendasInsumosPorAno || []
   const chartClientesAtivosEquipamentos = data?.charts?.clientesAtivosEquipamentos || []
   const chartClientesAtivosInsumos = data?.charts?.clientesAtivosInsumos || []
-  const recentSales = data?.recentSales || []
-
-  const sortedRecentSales = useMemo(
-    () => sortData(recentSales, sort.field, sort.dir),
-    [recentSales, sort.field, sort.dir],
-  )
+  const recentSales =
+    recentSalesList.length > 0 || sort.field ? recentSalesList : data?.recentSales || []
 
   // Normalização para série temporal contínua de Equipamentos (linha única)
   const dataTendenciaEquipamentos = useMemo(() => {
@@ -1239,47 +1301,64 @@ export default function Index() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {sortedRecentSales.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                        <td className="py-3 px-4 font-medium text-slate-700 whitespace-nowrap">
-                          {formatDate(item.data_lancamento)}
-                        </td>
-                        <td className="py-3 px-4 font-semibold text-slate-900 max-w-[200px] truncate">
-                          {item.nome_cliente || '-'}
-                        </td>
-                        <td className="py-3 px-4 text-slate-600 max-w-[240px] truncate font-medium">
-                          {item.vendedor_cliente || '-'}
-                        </td>
-                        <td className="py-3 px-4 text-slate-700 max-w-[200px] truncate">
-                          <span className="font-mono font-semibold text-slate-800">
-                            {item.codigo_item}
-                          </span>
-                          {item.descricao_item && (
-                            <span className="text-slate-500 block text-[11px] truncate">
-                              {item.descricao_item}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 whitespace-nowrap">
-                          {item.grupo_item ? (
-                            <Badge
-                              className="text-[10px] font-semibold text-white"
-                              style={{ backgroundColor: getGrupoColor(item.grupo_item) }}
-                            >
-                              {item.grupo_item}
-                            </Badge>
-                          ) : (
-                            <span className="text-slate-400">-</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-center font-medium text-slate-800">
-                          {formatNumber(item.quantidade)}
-                        </td>
-                        <td className="py-3 px-4 text-right font-bold text-slate-900 tabular-nums">
-                          {formatCurrency(item.total_linha)}
+                    {recentSalesLoading ? (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-slate-400">
+                          <div className="flex items-center justify-center gap-2">
+                            <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
+                            <span>Carregando vendas ordenadas...</span>
+                          </div>
                         </td>
                       </tr>
-                    ))}
+                    ) : recentSales.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-6 text-center text-slate-400">
+                          Nenhum registro encontrado
+                        </td>
+                      </tr>
+                    ) : (
+                      recentSales.map((item) => (
+                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="py-3 px-4 font-medium text-slate-700 whitespace-nowrap">
+                            {formatDate(item.data_lancamento)}
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-slate-900 max-w-[200px] truncate">
+                            {item.nome_cliente || '-'}
+                          </td>
+                          <td className="py-3 px-4 text-slate-600 max-w-[240px] truncate font-medium">
+                            {item.vendedor_cliente || '-'}
+                          </td>
+                          <td className="py-3 px-4 text-slate-700 max-w-[200px] truncate">
+                            <span className="font-mono font-semibold text-slate-800">
+                              {item.codigo_item}
+                            </span>
+                            {item.descricao_item && (
+                              <span className="text-slate-500 block text-[11px] truncate">
+                                {item.descricao_item}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 whitespace-nowrap">
+                            {item.grupo_item ? (
+                              <Badge
+                                className="text-[10px] font-semibold text-white"
+                                style={{ backgroundColor: getGrupoColor(item.grupo_item) }}
+                              >
+                                {item.grupo_item}
+                              </Badge>
+                            ) : (
+                              <span className="text-slate-400">-</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-center font-medium text-slate-800">
+                            {formatNumber(item.quantidade)}
+                          </td>
+                          <td className="py-3 px-4 text-right font-bold text-slate-900 tabular-nums">
+                            {formatCurrency(item.total_linha)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

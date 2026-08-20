@@ -204,9 +204,28 @@ export async function fetchVendasList(params?: {
   page?: number
   perPage?: number
   sort?: string
+  sortField?: string
+  sortDirection?: 'asc' | 'desc'
   filters?: Record<string, unknown>
 }): Promise<VendasListResult> {
   return pb.send<VendasListResult>('/backend/v1/vendas/list', {
+    method: 'POST',
+    body: params || {},
+  })
+}
+
+export interface VendasExportResult {
+  items: VendaConsolidada[]
+  totalItems: number
+}
+
+export async function fetchVendasExport(params?: {
+  sort?: string
+  sortField?: string
+  sortDirection?: 'asc' | 'desc'
+  filters?: Record<string, unknown>
+}): Promise<VendasExportResult> {
+  return pb.send<VendasExportResult>('/backend/v1/vendas/export', {
     method: 'POST',
     body: params || {},
   })
