@@ -541,6 +541,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // ============================================================
 
   // 5.1) vendasEquipamentosPorAno — Tendência de Vendas de Equipamentos
+  // Gráfico histórico/estratégico: NÃO respeita filtros do usuário (sempre consulta a base inteira).
   // Uma linha por ano existente na base, meses 1 a 12, soma total_linha
   // WHERE UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS'
   const vendasEquipamentosPorAno = []
@@ -548,8 +549,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const equipSql =
       'SELECT substr(data_lancamento,1,4) AS a, substr(data_lancamento,6,2) AS b, COALESCE(SUM(total_linha),0) AS c ' +
       'FROM vendas WHERE ' +
-      sqlWhere +
-      " AND UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
+      "UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
       'AND length(data_lancamento) >= 7 ' +
       'GROUP BY substr(data_lancamento,1,4), substr(data_lancamento,6,2) ' +
       'ORDER BY 1 ASC, 2 ASC'
@@ -583,14 +583,14 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   }
 
   // 5.2) vendasInsumosPorAno — Acumulado de Vendas de Insumos
+  // Gráfico histórico/estratégico: NÃO respeita filtros do usuário (sempre consulta a base inteira).
   // WHERE UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS')
   const vendasInsumosPorAno = []
   try {
     const insumoSql =
       'SELECT substr(data_lancamento,1,4) AS a, substr(data_lancamento,6,2) AS b, COALESCE(SUM(total_linha),0) AS c ' +
       'FROM vendas WHERE ' +
-      sqlWhere +
-      " AND UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+      "UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
       'AND length(data_lancamento) >= 7 ' +
       'GROUP BY substr(data_lancamento,1,4), substr(data_lancamento,6,2) ' +
       'ORDER BY 1 ASC, 2 ASC'
