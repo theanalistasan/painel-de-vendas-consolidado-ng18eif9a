@@ -170,6 +170,7 @@ export interface VendaPorAnoMes {
 export interface ClientesAtivosEquipamentos {
   mes: string
   clientes: number
+  clientesAnoAnterior: number
 }
 
 export interface ClientesAtivosInsumos {

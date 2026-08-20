@@ -636,10 +636,10 @@ export default function Index() {
               )}
             </ChartCard>
 
-            {/* Gráfico 3: Clientes Ativos — Equipamentos (Barras) */}
+            {/* Gráfico 3: Clientes Ativos — Equipamentos (Barras lado a lado) */}
             <ChartCard
               title="Clientes Ativos — Equipamentos"
-              description="Contagem de clientes únicos compradores de equipamentos nos últimos 6 meses"
+              description="Comparativo de clientes ativos de equipamentos nos últimos 6 meses vs. ano anterior"
               icon={Users}
               iconColor="text-indigo-600"
             >
@@ -668,19 +668,33 @@ export default function Index() {
                       allowDecimals={false}
                     />
                     <Tooltip
-                      formatter={(val: number | string | undefined) => [
-                        formatNumber(typeof val === 'number' ? val : Number(val)),
-                        'Clientes Ativos',
-                      ]}
+                      formatter={(val: number | string | undefined, name: string) => {
+                        const n = typeof val === 'number' ? val : Number(val)
+                        return [formatNumber(n), name]
+                      }}
                       labelFormatter={(label) => formatMesAnoCurto(String(label))}
                       contentStyle={tooltipContentStyle}
                     />
+                    <Legend
+                      verticalAlign="top"
+                      height={36}
+                      formatter={(value) => (
+                        <span className="text-xs font-semibold text-slate-700">{value}</span>
+                      )}
+                    />
+                    <Bar
+                      dataKey="clientesAnoAnterior"
+                      name="Ano Anterior"
+                      fill="#A5B4FC"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={32}
+                    />
                     <Bar
                       dataKey="clientes"
-                      name="Clientes Ativos"
+                      name="Atual"
                       fill="#4F46E5"
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={48}
+                      maxBarSize={32}
                     />
                   </BarChart>
                 </ResponsiveContainer>

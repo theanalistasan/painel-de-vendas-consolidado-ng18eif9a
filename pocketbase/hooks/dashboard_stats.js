@@ -628,6 +628,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         }
 
         // --- 5.3 Clientes Ativos Equipamentos ---
+        // Série atual (respeitando sqlWhere com os últimos 6 meses)
         const mesesInListEquip = ultimos6Meses.map((m) => "'" + m + "'").join(',')
         const cliEquipSql =
           'SELECT substr(data_lancamento,1,7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
@@ -644,11 +645,40 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         for (let i = 0; i < cliEquipRows.length; i++) {
           cliEquipMap[cliEquipRows[i].a] = parseInt(cliEquipRows[i].b, 10) || 0
         }
+
+        // Série ano anterior (usando sqlWhereBase para não conflitar com datas filtradas)
+        const mesesAnoAnteriorEquip = ultimos6Meses.map((m) => {
+          const p = m.split('-')
+          const y = parseInt(p[0], 10) - 1
+          return String(y) + '-' + p[1]
+        })
+        const mesesAnoAnteriorEquipInList = mesesAnoAnteriorEquip
+          .map((m) => "'" + m + "'")
+          .join(',')
+        const cliEquipPrevSql =
+          'SELECT substr(data_lancamento,1,7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+          'FROM vendas WHERE ' +
+          sqlWhereBase +
+          " AND UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
+          'AND length(data_lancamento) >= 7 ' +
+          'AND substr(data_lancamento,1,7) IN (' +
+          mesesAnoAnteriorEquipInList +
+          ') ' +
+          'GROUP BY substr(data_lancamento,1,7) ORDER BY 1 ASC'
+        const cliEquipPrevRows = runAgg(cliEquipPrevSql)
+        const cliEquipPrevMap = {}
+        for (let i = 0; i < cliEquipPrevRows.length; i++) {
+          cliEquipPrevMap[cliEquipPrevRows[i].a] = parseInt(cliEquipPrevRows[i].b, 10) || 0
+        }
+
         for (let i = 0; i < ultimos6Meses.length; i++) {
           const m = ultimos6Meses[i]
+          const p = m.split('-')
+          const prevM = String(parseInt(p[0], 10) - 1) + '-' + p[1]
           clientesAtivosEquipamentos.push({
             mes: m,
             clientes: cliEquipMap[m] || 0,
+            clientesAnoAnterior: cliEquipPrevMap[prevM] || 0,
           })
         }
 
