@@ -67,22 +67,26 @@ const CHART_PALETTE = [
 ]
 
 // Ordem fixa dos grupos e paleta indigo/violeta para o gráfico "Venda Mensal por Grupo do Item".
-const MENSAL_GRUPOS_ORDEM = ['EQUIPAMENTOS', 'TINTAS', 'PEÇAS', 'ACESSÓRIOS'] as const
+// 1. EQUIPAMENTOS (indigo escuro #4F46E5)
+// 2. PEÇAS (indigo médio #6366F1)
+// 3. TINTAS (violeta #7C3AED)
+// 4. ACESSÓRIOS (violeta claro #A78BFA)
+const MENSAL_GRUPOS_ORDEM = ['EQUIPAMENTOS', 'PEÇAS', 'TINTAS', 'ACESSÓRIOS'] as const
 
 const MENSAL_GRUPO_COLORS: Record<string, string> = {
-  EQUIPAMENTOS: '#4F46E5', // Indigo 600 (Barra 1)
-  TINTAS: '#7C3AED', // Violet 600 (Barra 2)
-  PEÇAS: '#6366F1', // Indigo 500 (Barra 3)
+  EQUIPAMENTOS: '#4F46E5', // Indigo escuro (Barra 1)
+  PEÇAS: '#6366F1', // Indigo médio (Barra 2)
   PECAS: '#6366F1',
-  ACESSÓRIOS: '#A78BFA', // Violet 400 (Barra 4)
+  TINTAS: '#7C3AED', // Violeta (Barra 3)
+  ACESSÓRIOS: '#A78BFA', // Violeta claro (Barra 4)
   ACESSORIOS: '#A78BFA',
 }
 
 const MENSAL_GRUPO_PALETTE = [
-  '#4F46E5', // Indigo 600
-  '#7C3AED', // Violet 600
-  '#6366F1', // Indigo 500
-  '#A78BFA', // Violet 400
+  '#4F46E5', // Indigo escuro
+  '#6366F1', // Indigo médio
+  '#7C3AED', // Violeta
+  '#A78BFA', // Violeta claro
   '#8B5CF6', // Violet 500
   '#4338CA', // Indigo 700
   '#9333EA', // Purple 600
@@ -242,8 +246,8 @@ export default function Index() {
     const matchFixedGroup = (grupoName: string): string | null => {
       const upper = (grupoName || '').toUpperCase().trim()
       if (upper === 'EQUIPAMENTOS') return 'EQUIPAMENTOS'
-      if (upper === 'TINTAS') return 'TINTAS'
       if (upper === 'PEÇAS' || upper === 'PECAS') return 'PEÇAS'
+      if (upper === 'TINTAS') return 'TINTAS'
       if (upper === 'ACESSÓRIOS' || upper === 'ACESSORIOS') return 'ACESSÓRIOS'
       return null
     }
@@ -625,10 +629,10 @@ export default function Index() {
               </ResponsiveContainer>
             </ChartCard>
 
-            {/* Chart 2.5: Venda Mensal por Grupo do Item (últimos 3 meses) */}
+            {/* Chart 2.5: Venda Mensal por Grupo do Item (últimos 6 meses) */}
             <ChartCard
               title="Venda Mensal por Grupo do Item"
-              description="Faturamento por grupo de item nos últimos 3 meses"
+              description="Faturamento por grupo de item nos últimos 6 meses"
               icon={BarChart2}
               iconColor="text-violet-600"
             >

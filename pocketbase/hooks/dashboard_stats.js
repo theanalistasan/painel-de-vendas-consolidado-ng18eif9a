@@ -325,7 +325,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   }
 
   // ============================================================
-  // vendasPorGrupoItemMensal — últimos 3 meses yyyy-mm a partir da
+  // vendasPorGrupoItemMensal — últimos 6 meses yyyy-mm a partir da
   // data mais recente dos dados consolidados, GROUP BY mês + grupo_item.
   // (Antes este array nunca era computado, fazendo o endpoint inteiro
   // falhar com ReferenceError no return final.)
@@ -344,9 +344,9 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       const maxYear = parseInt(parts[0], 10)
       const maxMonth = parseInt(parts[1], 10)
       if (!isNaN(maxYear) && !isNaN(maxMonth) && maxMonth >= 1 && maxMonth <= 12) {
-        // 2) Determina os últimos 3 meses yyyy-mm a partir da data mais recente.
+        // 2) Determina os últimos 6 meses yyyy-mm a partir da data mais recente.
         const mesesAlvo = []
-        for (let i = 2; i >= 0; i--) {
+        for (let i = 5; i >= 0; i--) {
           // total de meses desde 0000-01 (ano*12 + (mês-1))
           const totalMeses = maxYear * 12 + (maxMonth - 1) - i
           const y = Math.floor(totalMeses / 12)
