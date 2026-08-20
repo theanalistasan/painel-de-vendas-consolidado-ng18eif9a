@@ -1,5 +1,6 @@
 // Endpoint: POST /backend/v1/dashboard/stats
 // Agrega no servidor os KPIs, gráficos e opções de filtro da coleção `vendas`.
+// Execução via SQL puro ($app.db().newQuery) para alta performance e suporte a múltiplos filtros.
 //
 // IMPLEMENTAÇÃO: TODAS as agregações (KPIs, charts, filterOptions) são feitas
 // com SQL puro via $app.db().newQuery() — SUM/COUNT/GROUP BY/DISTINCT rodam
