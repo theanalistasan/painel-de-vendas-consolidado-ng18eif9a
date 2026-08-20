@@ -7,6 +7,7 @@ import type {
   ImportResult,
   ConsolidarResult,
   VendaGrupoMensal,
+  VendaHistoricoPeriodo,
   VendaPorAnoMes,
   ClientesAtivosEquipamentos,
   ClientesAtivosInsumos,
@@ -148,8 +149,10 @@ export interface DashboardStatsResult {
     }>
     grupoItem: Array<{ name: string; value: number }>
     vendasPorGrupoItemMensal: VendaGrupoMensal[]
-    vendasEquipamentosPorAno?: VendaPorAnoMes[]
-    vendasInsumosPorAno?: VendaPorAnoMes[]
+    vendasEquipamentosPorAno?: VendaHistoricoPeriodo[] | VendaPorAnoMes[]
+    vendasInsumosPorAno?: VendaHistoricoPeriodo[] | VendaPorAnoMes[]
+    vendasEquipamentosHistorico?: VendaHistoricoPeriodo[]
+    vendasInsumosHistorico?: VendaHistoricoPeriodo[]
     clientesAtivosEquipamentos?: ClientesAtivosEquipamentos[]
     clientesAtivosInsumos?: ClientesAtivosInsumos[]
     topVendedores: Array<{ name: string; total: number }>

@@ -157,6 +157,11 @@ export interface VendaGrupoMensal {
   grupos: Array<{ grupo: string; total: number }>
 }
 
+export interface VendaHistoricoPeriodo {
+  periodo: string
+  total: number
+}
+
 export interface VendaPorAnoMes {
   ano: string
   valores: Array<{ mes: number; total: number }>

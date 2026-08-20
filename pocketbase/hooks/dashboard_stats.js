@@ -540,86 +540,58 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // 5) Novas Queries de Análise
   // ============================================================
 
-  // 5.1) vendasEquipamentosPorAno — Tendência de Vendas de Equipamentos
+  // 5.1) vendasEquipamentosHistorico / vendasEquipamentosPorAno — Tendência Histórica Contínua de Equipamentos
   // Gráfico histórico/estratégico: NÃO respeita filtros do usuário (sempre consulta a base inteira).
-  // Uma linha por ano existente na base, meses 1 a 12, soma total_linha
+  // Linha do tempo única e contínua do primeiro ao último período (yyyy-mm), cronológico ASC.
   // WHERE UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS'
-  const vendasEquipamentosPorAno = []
+  const vendasEquipamentosHistorico = []
   try {
     const equipSql =
-      'SELECT substr(data_lancamento,1,4) AS a, substr(data_lancamento,6,2) AS b, COALESCE(SUM(total_linha),0) AS c ' +
+      'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b ' +
       'FROM vendas WHERE ' +
       "UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
       'AND length(data_lancamento) >= 7 ' +
-      'GROUP BY substr(data_lancamento,1,4), substr(data_lancamento,6,2) ' +
-      'ORDER BY 1 ASC, 2 ASC'
+      'GROUP BY substr(data_lancamento,1,7) ' +
+      'ORDER BY 1 ASC'
     const equipRows = runAgg(equipSql)
 
-    // Agrupa por ano e monta array de meses 1..12
-    const anoMap = {}
     for (let i = 0; i < equipRows.length; i++) {
-      const ano = equipRows[i].a
-      const mesNum = parseInt(equipRows[i].b, 10)
-      const total = toNum(equipRows[i].c)
-      if (!ano || isNaN(mesNum) || mesNum < 1 || mesNum > 12) continue
-      if (!anoMap[ano]) anoMap[ano] = {}
-      anoMap[ano][mesNum] = total
-    }
-
-    const anosSorted = Object.keys(anoMap).sort()
-    for (let i = 0; i < anosSorted.length; i++) {
-      const a = anosSorted[i]
-      const valores = []
-      for (let m = 1; m <= 12; m++) {
-        valores.push({ mes: m, total: anoMap[a][m] || 0 })
-      }
-      vendasEquipamentosPorAno.push({
-        ano: a,
-        valores: valores,
+      const periodo = equipRows[i].a
+      if (!periodo || periodo.indexOf('-') < 0) continue
+      vendasEquipamentosHistorico.push({
+        periodo: periodo,
+        total: toNum(equipRows[i].b),
       })
     }
   } catch (err) {
-    console.error('dashboard_stats: vendasEquipamentosPorAno falhou:', err)
+    console.error('dashboard_stats: vendasEquipamentosHistorico falhou:', err)
   }
 
-  // 5.2) vendasInsumosPorAno — Acumulado de Vendas de Insumos
+  // 5.2) vendasInsumosHistorico / vendasInsumosPorAno — Histórico Contínuo de Insumos
   // Gráfico histórico/estratégico: NÃO respeita filtros do usuário (sempre consulta a base inteira).
+  // Linha do tempo única e contínua do primeiro ao último período (yyyy-mm), cronológico ASC.
   // WHERE UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS')
-  const vendasInsumosPorAno = []
+  const vendasInsumosHistorico = []
   try {
     const insumoSql =
-      'SELECT substr(data_lancamento,1,4) AS a, substr(data_lancamento,6,2) AS b, COALESCE(SUM(total_linha),0) AS c ' +
+      'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b ' +
       'FROM vendas WHERE ' +
       "UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
       'AND length(data_lancamento) >= 7 ' +
-      'GROUP BY substr(data_lancamento,1,4), substr(data_lancamento,6,2) ' +
-      'ORDER BY 1 ASC, 2 ASC'
+      'GROUP BY substr(data_lancamento,1,7) ' +
+      'ORDER BY 1 ASC'
     const insumoRows = runAgg(insumoSql)
 
-    const insumoAnoMap = {}
     for (let i = 0; i < insumoRows.length; i++) {
-      const ano = insumoRows[i].a
-      const mesNum = parseInt(insumoRows[i].b, 10)
-      const total = toNum(insumoRows[i].c)
-      if (!ano || isNaN(mesNum) || mesNum < 1 || mesNum > 12) continue
-      if (!insumoAnoMap[ano]) insumoAnoMap[ano] = {}
-      insumoAnoMap[ano][mesNum] = total
-    }
-
-    const insumoAnosSorted = Object.keys(insumoAnoMap).sort()
-    for (let i = 0; i < insumoAnosSorted.length; i++) {
-      const a = insumoAnosSorted[i]
-      const valores = []
-      for (let m = 1; m <= 12; m++) {
-        valores.push({ mes: m, total: insumoAnoMap[a][m] || 0 })
-      }
-      vendasInsumosPorAno.push({
-        ano: a,
-        valores: valores,
+      const periodo = insumoRows[i].a
+      if (!periodo || periodo.indexOf('-') < 0) continue
+      vendasInsumosHistorico.push({
+        periodo: periodo,
+        total: toNum(insumoRows[i].b),
       })
     }
   } catch (err) {
-    console.error('dashboard_stats: vendasInsumosPorAno falhou:', err)
+    console.error('dashboard_stats: vendasInsumosHistorico falhou:', err)
   }
 
   // 5.3) clientesAtivosEquipamentos — Clientes Ativos Equipamentos (últimos 6 meses)
@@ -746,8 +718,10 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       vendasPorAno: vendasPorAno,
       grupoItem: grupoItem,
       vendasPorGrupoItemMensal: vendasPorGrupoItemMensal,
-      vendasEquipamentosPorAno: vendasEquipamentosPorAno,
-      vendasInsumosPorAno: vendasInsumosPorAno,
+      vendasEquipamentosPorAno: vendasEquipamentosHistorico,
+      vendasInsumosPorAno: vendasInsumosHistorico,
+      vendasEquipamentosHistorico: vendasEquipamentosHistorico,
+      vendasInsumosHistorico: vendasInsumosHistorico,
       clientesAtivosEquipamentos: clientesAtivosEquipamentos,
       clientesAtivosInsumos: clientesAtivosInsumos,
       topVendedores: topVendedores,

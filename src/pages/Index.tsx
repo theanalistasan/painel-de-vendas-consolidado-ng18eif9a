@@ -227,8 +227,10 @@ export default function Index() {
   const chartTopClientes = data?.charts?.topClientes || []
   const chartEstado = data?.charts?.estado || []
   const chartVendasPorGrupoItemMensal = data?.charts?.vendasPorGrupoItemMensal || []
-  const chartVendasEquipamentosPorAno = data?.charts?.vendasEquipamentosPorAno || []
-  const chartVendasInsumosPorAno = data?.charts?.vendasInsumosPorAno || []
+  const chartVendasEquipamentosRaw =
+    data?.charts?.vendasEquipamentosHistorico || data?.charts?.vendasEquipamentosPorAno || []
+  const chartVendasInsumosRaw =
+    data?.charts?.vendasInsumosHistorico || data?.charts?.vendasInsumosPorAno || []
   const chartClientesAtivosEquipamentos = data?.charts?.clientesAtivosEquipamentos || []
   const chartClientesAtivosInsumos = data?.charts?.clientesAtivosInsumos || []
   const recentSales = data?.recentSales || []
@@ -238,49 +240,68 @@ export default function Index() {
     [recentSales, sort.field, sort.dir],
   )
 
-  // Anos disponíveis para Equipamentos e Insumos
-  const anosEquipamentos = useMemo(() => {
-    return chartVendasEquipamentosPorAno.map((item) => item.ano)
-  }, [chartVendasEquipamentosPorAno])
-
-  const anosInsumos = useMemo(() => {
-    return chartVendasInsumosPorAno.map((item) => item.ano)
-  }, [chartVendasInsumosPorAno])
-
-  // Dados transformados para Recharts LineChart (12 meses, cada ano como chave)
+  // Normalização para série temporal contínua de Equipamentos (linha única)
   const dataTendenciaEquipamentos = useMemo(() => {
-    if (chartVendasEquipamentosPorAno.length === 0) return []
-    const rows = Array.from({ length: 12 }, (_, i) => {
-      const mesNum = i + 1
-      const row: Record<string, number | string> = {
-        mes: MESES_CURTOS[i],
-        mesNum: mesNum,
-      }
-      for (const item of chartVendasEquipamentosPorAno) {
-        const valObj = item.valores.find((v) => v.mes === mesNum)
-        row[item.ano] = valObj ? valObj.total : 0
-      }
-      return row
-    })
-    return rows
-  }, [chartVendasEquipamentosPorAno])
+    if (!Array.isArray(chartVendasEquipamentosRaw) || chartVendasEquipamentosRaw.length === 0)
+      return []
 
+    // Caso seja a nova estrutura { periodo: 'yyyy-mm', total: number }
+    if ('periodo' in chartVendasEquipamentosRaw[0]) {
+      return (chartVendasEquipamentosRaw as { periodo: string; total: number }[]).map((item) => ({
+        periodo: item.periodo,
+        label: formatMesAnoCurto(item.periodo),
+        total: item.total,
+      }))
+    }
+
+    // Fallback retrocompatível se vier no formato antigo { ano: '2023', valores: [...] }
+    const list: { periodo: string; label: string; total: number }[] = []
+    for (const item of chartVendasEquipamentosRaw as unknown as {
+      ano: string
+      valores: { mes: number; total: number }[]
+    }[]) {
+      for (const v of item.valores || []) {
+        const p = `${item.ano}-${String(v.mes).padStart(2, '0')}`
+        list.push({
+          periodo: p,
+          label: formatMesAnoCurto(p),
+          total: v.total,
+        })
+      }
+    }
+    return list.sort((a, b) => a.periodo.localeCompare(b.periodo))
+  }, [chartVendasEquipamentosRaw])
+
+  // Normalização para série temporal contínua de Insumos (linha única)
   const dataAcumuladoInsumos = useMemo(() => {
-    if (chartVendasInsumosPorAno.length === 0) return []
-    const rows = Array.from({ length: 12 }, (_, i) => {
-      const mesNum = i + 1
-      const row: Record<string, number | string> = {
-        mes: MESES_CURTOS[i],
-        mesNum: mesNum,
+    if (!Array.isArray(chartVendasInsumosRaw) || chartVendasInsumosRaw.length === 0) return []
+
+    // Caso seja a nova estrutura { periodo: 'yyyy-mm', total: number }
+    if ('periodo' in chartVendasInsumosRaw[0]) {
+      return (chartVendasInsumosRaw as { periodo: string; total: number }[]).map((item) => ({
+        periodo: item.periodo,
+        label: formatMesAnoCurto(item.periodo),
+        total: item.total,
+      }))
+    }
+
+    // Fallback retrocompatível
+    const list: { periodo: string; label: string; total: number }[] = []
+    for (const item of chartVendasInsumosRaw as unknown as {
+      ano: string
+      valores: { mes: number; total: number }[]
+    }[]) {
+      for (const v of item.valores || []) {
+        const p = `${item.ano}-${String(v.mes).padStart(2, '0')}`
+        list.push({
+          periodo: p,
+          label: formatMesAnoCurto(p),
+          total: v.total,
+        })
       }
-      for (const item of chartVendasInsumosPorAno) {
-        const valObj = item.valores.find((v) => v.mes === mesNum)
-        row[item.ano] = valObj ? valObj.total : 0
-      }
-      return row
-    })
-    return rows
-  }, [chartVendasInsumosPorAno])
+    }
+    return list.sort((a, b) => a.periodo.localeCompare(b.periodo))
+  }, [chartVendasInsumosRaw])
 
   // Grupos fixos (ordem fixa: EQUIPAMENTOS, TINTAS, PEÇAS, ACESSÓRIOS + outros eventuais)
   // e dados pivôs (1 linha por mês, 1 coluna por grupo) para o gráfico "Venda Mensal por Grupo do Item".
@@ -437,14 +458,14 @@ export default function Index() {
         <>
           {/* 4 Novos Gráficos no Topo (Linha 1: Tendência Equipamentos + Acumulado Insumos | Linha 2: Clientes Ativos Equipamentos + Clientes Ativos Insumos) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Gráfico 1: Tendência de Vendas — Equipamentos (Linhas) */}
+            {/* Gráfico 1: Tendência de Vendas — Equipamentos (Linha Única Contínua) */}
             <ChartCard
               title="Tendência de Vendas — Equipamentos"
-              description="Comparativo de vendas mensais (Jan-Dez) de Equipamentos por ano"
+              description="Evolução histórica contínua de vendas de Equipamentos"
               icon={TrendingUp}
               iconColor="text-indigo-600"
             >
-              {dataTendenciaEquipamentos.length === 0 || anosEquipamentos.length === 0 ? (
+              {dataTendenciaEquipamentos.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
                   Nenhum dado disponível
                 </div>
@@ -452,14 +473,20 @@ export default function Index() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
                     data={dataTendenciaEquipamentos}
-                    margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                    margin={{ top: 10, right: 20, left: 10, bottom: 20 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                     <XAxis
-                      dataKey="mes"
+                      dataKey="periodo"
                       tickLine={false}
                       axisLine={{ stroke: '#E2E8F0' }}
-                      tick={{ fill: '#64748B', fontSize: 12 }}
+                      tick={{ fill: '#64748B', fontSize: 11 }}
+                      tickFormatter={(val) => formatMesAnoCurto(String(val))}
+                      interval="preserveStartEnd"
+                      minTickGap={28}
+                      angle={-35}
+                      textAnchor="end"
+                      height={40}
                     />
                     <YAxis
                       tickLine={false}
@@ -468,45 +495,35 @@ export default function Index() {
                       tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
                     />
                     <Tooltip
-                      formatter={(val: number | string | undefined, name: string) => [
+                      formatter={(val: number | string | undefined) => [
                         formatCurrency(typeof val === 'number' ? val : Number(val)),
-                        `Ano ${name}`,
+                        'Vendas Equipamentos',
                       ]}
-                      labelFormatter={(label) => `Mês: ${label}`}
+                      labelFormatter={(label) => `Período: ${formatMesAnoCurto(String(label))}`}
                       contentStyle={tooltipContentStyle}
                     />
-                    <Legend
-                      verticalAlign="top"
-                      height={36}
-                      formatter={(value) => (
-                        <span className="text-xs font-semibold text-slate-700">{value}</span>
-                      )}
+                    <Line
+                      type="monotone"
+                      dataKey="total"
+                      name="Equipamentos"
+                      stroke="#4F46E5"
+                      strokeWidth={2.5}
+                      dot={{ r: 2.5, fill: '#4F46E5' }}
+                      activeDot={{ r: 5, fill: '#4F46E5', stroke: '#FFFFFF', strokeWidth: 2 }}
                     />
-                    {anosEquipamentos.map((ano, idx) => (
-                      <Line
-                        key={ano}
-                        type="monotone"
-                        dataKey={ano}
-                        name={ano}
-                        stroke={LINE_COLORS[idx % LINE_COLORS.length]}
-                        strokeWidth={2.5}
-                        dot={{ r: 3, fill: LINE_COLORS[idx % LINE_COLORS.length] }}
-                        activeDot={{ r: 5 }}
-                      />
-                    ))}
                   </LineChart>
                 </ResponsiveContainer>
               )}
             </ChartCard>
 
-            {/* Gráfico 2: Acumulado de Vendas — Insumos (Linhas) */}
+            {/* Gráfico 2: Acumulado de Vendas — Insumos (Linha Única Contínua) */}
             <ChartCard
               title="Acumulado de Vendas — Insumos"
-              description="Vendas mensais de Tintas, Peças e Acessórios por ano"
+              description="Evolução histórica contínua de Peças, Tintas e Acessórios"
               icon={TrendingUp}
               iconColor="text-violet-600"
             >
-              {dataAcumuladoInsumos.length === 0 || anosInsumos.length === 0 ? (
+              {dataAcumuladoInsumos.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
                   Nenhum dado disponível
                 </div>
@@ -514,14 +531,20 @@ export default function Index() {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
                     data={dataAcumuladoInsumos}
-                    margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                    margin={{ top: 10, right: 20, left: 10, bottom: 20 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
                     <XAxis
-                      dataKey="mes"
+                      dataKey="periodo"
                       tickLine={false}
                       axisLine={{ stroke: '#E2E8F0' }}
-                      tick={{ fill: '#64748B', fontSize: 12 }}
+                      tick={{ fill: '#64748B', fontSize: 11 }}
+                      tickFormatter={(val) => formatMesAnoCurto(String(val))}
+                      interval="preserveStartEnd"
+                      minTickGap={28}
+                      angle={-35}
+                      textAnchor="end"
+                      height={40}
                     />
                     <YAxis
                       tickLine={false}
@@ -530,32 +553,22 @@ export default function Index() {
                       tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
                     />
                     <Tooltip
-                      formatter={(val: number | string | undefined, name: string) => [
+                      formatter={(val: number | string | undefined) => [
                         formatCurrency(typeof val === 'number' ? val : Number(val)),
-                        `Ano ${name}`,
+                        'Vendas Insumos',
                       ]}
-                      labelFormatter={(label) => `Mês: ${label}`}
+                      labelFormatter={(label) => `Período: ${formatMesAnoCurto(String(label))}`}
                       contentStyle={tooltipContentStyle}
                     />
-                    <Legend
-                      verticalAlign="top"
-                      height={36}
-                      formatter={(value) => (
-                        <span className="text-xs font-semibold text-slate-700">{value}</span>
-                      )}
+                    <Line
+                      type="monotone"
+                      dataKey="total"
+                      name="Insumos"
+                      stroke="#7C3AED"
+                      strokeWidth={2.5}
+                      dot={{ r: 2.5, fill: '#7C3AED' }}
+                      activeDot={{ r: 5, fill: '#7C3AED', stroke: '#FFFFFF', strokeWidth: 2 }}
                     />
-                    {anosInsumos.map((ano, idx) => (
-                      <Line
-                        key={ano}
-                        type="monotone"
-                        dataKey={ano}
-                        name={ano}
-                        stroke={LINE_COLORS[idx % LINE_COLORS.length]}
-                        strokeWidth={2.5}
-                        dot={{ r: 3, fill: LINE_COLORS[idx % LINE_COLORS.length] }}
-                        activeDot={{ r: 5 }}
-                      />
-                    ))}
                   </LineChart>
                 </ResponsiveContainer>
               )}
