@@ -1,76 +1,109 @@
-# Painel de Vendas Consolidado — Backup Documental
+# Painel de Vendas Consolidado — Release Oficial
 
-## Versão
+## Versão e Status
 
-**v0.0.39**
+- **Versão**: 1.0
+- **Data**: 14/04/2025
+- **Status**: Estável / Release Oficial
 
-## Status da Versão
+---
 
-- **Recuperação do Backend**: Concluída com sucesso. Migrações, hooks (`pb_hooks`), configurações de autenticação e conta de superusuário/admin foram totalmente restaurados e operacionais.
-- **Volume de Dados**: Dashboard operacional com aproximadamente **126.000 registros** consolidados, com desempenho adequado para consulta, filtragem e exportação.
-- **Contador de Usuários**: Contador "**4372 ativos**" exibido na interface.
+## Credenciais de Acesso Administrativo
 
-## Funcionalidades Ativas
+- **Administrador 1**: `silvio.mattos@rolanddg.com.br` | Senha: `Skip@Pass`
+- **Administrador 2**: `nicolas.brito@rolanddg.com.br` | Senha: `Skip@Pass`
+- **Senha de Acesso Admin (Modal de Proteção)**: `Reset@Painel2025`
 
-### Dashboard
+---
 
-- **5 KPIs**: Faturamento, Valor Líquido, Itens, Documentos e Devoluções.
-- **6 gráficos** operacionais com suporte a alto volume de registros.
+## Resumo das Funcionalidades Implementadas
 
-### Vendas
+1. **Dashboard com KPIs Consolidados**:
+   - Faturamento Bruto
+   - Valor Líquido
+   - Devoluções
+   - Ticket Médio
+   - Quantidade de Vendas (Documentos/Pedidos)
 
-- Tabela consolidada com paginação, colunas de detalhamento, **ordenação por clique nos cabeçalhos** e exportação **CSV padrão brasileiro** (separador `;`, codificação compatível com Excel pt-BR).
+2. **9 Gráficos Analíticos e Históricos**:
+   - **Evolução de Vendas por Ano**: Visão histórica anual com faturamento e devoluções.
+   - **Tendência de Vendas — Equipamentos**: Linha contínua histórica de desempenho de máquinas/equipamentos.
+   - **Acumulado de Vendas — Insumos**: Linha contínua histórica de consumo acumulado de insumos.
+   - **Evolução de Vendas por Mês**: Visão mensal detalhada com devoluções e comparativo em relação ao mesmo período do ano anterior.
+   - **Venda Mensal por Grupo do Item**: Comparativo dos últimos 6 meses com barras lado a lado por grupo.
+   - **Vendas por Grupo do Item**: Distribuição consolidada de participação por categoria de produto.
+   - **Clientes Ativos — Equipamentos**: Monitoramento e evolução da base de clientes ativos compradores de equipamentos.
+   - **Clientes Ativos — Insumos**: Monitoramento e evolução da base de clientes ativos compradores de insumos.
 
-### Importação de Bases
+3. **Página de Vendas Avançada**:
+   - Tabela analítica completa com paginação sob demanda.
+   - Ordenação server-side por qualquer coluna com feedback visual nos cabeçalhos.
+   - Agrupamento colapsável por Nº NFe com somatório de itens e valores.
 
-- Suporte ao carregamento e processamento das bases de dados (Produtos, RacNew, NetSales) com controle de progresso.
-- **RacNew como base mestra**, com NetSales complementar via `COALESCE` nos **12 campos exclusivos**.
-- **Consolidação SQL sem erro de constraint**: todos os campos da NetSales foram flexibilizados para permitir a consolidação.
-- **Datas no formato DD/MM/AAAA corrigidas**: parser XLSX sem `cellDates` no frontend e `parseDateStr` no backend.
+4. **Exportação CSV Completa**:
+   - Exportação de todos os registros filtrados (sem limite de paginação).
+   - Formato CSV padrão brasileiro (separador `;`, formatação numérica pt-BR e codificação compatível com Microsoft Excel).
 
-### Auditoria
+5. **Filtros Globais Multi-Seleção com Persistência**:
+   - Dimensões de filtro: Vendedor > Cliente (árvore hierárquica), Ano, Mês, Dia, Grupo de Item, Tipo de Documento, Utilização.
+   - Persistência sincronizada via `sessionStorage` entre o Dashboard e a página de Vendas.
 
-- Registro detalhado e rastreabilidade de ações do sistema (login, logout, acesso admin e importações).
-- **Badges coloridos** por tipo de evento e **filtros** de auditoria.
+6. **Filtros Padrão Inteligentes na Inicialização**:
+   - Utilização: `"Venda de Mercadoria"`
+   - Ano: Ano atual vigente
+   - Grupos de Item: `PEÇAS`, `TINTAS`, `ACESSÓRIOS`, `EQUIPAMENTOS`
+   - Tipo de Documento: `"NF de Saída"`
 
-### Gestão de Usuários
+7. **Módulo de Importação de Dados**:
+   - Suporte a múltiplas bases: Produtos, RacNew e NetSales.
+   - Preview interativo de dados antes do processamento.
+   - Barra de progresso em tempo real e validação de schema.
 
-- **CRUD completo** de usuários, perfis de acesso, alteração de status e controle de permissões.
-- **Envio de convite** a novos usuários.
+8. **Consolidação SQL Avançada de Bases**:
+   - Base mestra definida como **RacNew** com enriquecimento complementar da **NetSales** (12 campos exclusivos mapeados via `COALESCE`).
+   - Flexibilização de constraints e integridade relacional sem perda de dados.
 
-### Gráficos de Evolução
+9. **Proteção de Rotas Administrativas com Senha**:
+   - Modal de segurança para acesso a rotas restritas: `/importar`, `/admin`, `/usuarios` e `/auditoria`.
+   - Autenticação de segundo fator com senha administrativa mestre.
 
-- **Evolução de Vendas por Ano**: barras de faturamento + devoluções + linha de variação percentual.
-- **Evolução de Vendas por Mês**: últimos 6 meses, com faturamento + devoluções.
-- **Limite de 6 meses** aplicado aos gráficos mensais.
+10. **Gestão Completa de Usuários**:
+    - CRUD completo (criação, edição, desativação/ativação e exclusão).
+    - Convite de novos usuários por link direto.
+    - Perfis de acesso diferenciados: Administrador e Usuário comum.
 
-### Filtros e Interface
+11. **Auditoria e Rastreabilidade Completa**:
+    - Logs detalhados de login, logout, tentativas de autenticação e acessos administrativos.
+    - Badges visuais por severidade/tipo de evento e filtros de pesquisa nos registros de log.
 
-- **Colapso de filtros**: 5 pílulas visíveis e indicação "+ N filtros" para os demais.
-- **Botão "Aplicar Filtros"** para confirmar a seleção.
-- **Ordenação por clique nos cabeçalhos** nas telas de Vendas e Dashboard.
-- **Deduplicação automática de nomes** com espaços extras e/ou caracteres invisíveis.
-- **Limpeza permanente de dados vazios** (entrada "-Nenhum vendedor / comprador-" removida).
-- **Lista DISTINCT** no filtro Vendedor > Cliente.
+12. **Autenticação e Sessão de Usuários**:
+    - Fluxo seguro de login e logout com tokens persistentes e proteção contra expiração.
 
-### Segurança e Administração
+13. **Layout Responsivo e Otimizado**:
+    - Sidebar colapsável, cabeçalho dinâmico com perfil do usuário e drawer mobile para navegação em tablets e smartphones.
 
-- **Proteção admin com modal de senha** nas rotas `/importar`, `/admin`, `/usuarios` e `/auditoria`.
-- **"Selecionar todos" respeita a busca ativa** (corrigido na v0.0.38) — o botão marca apenas os itens filtrados resultantes da busca digitada pelo usuário.
-- **Autenticação ativa** (auth habilitada no backend).
+14. **Localização e Formatação Brasileira (pt-BR)**:
+    - Padrão de datas `DD/MM/AAAA` em todas as tabelas, formulários, filtros e gráficos.
+    - Moeda formatada em `R$` com separadores de milhar e decimais da norma brasileira.
 
-### Backend
+15. **Correção de Datas na Importação**:
+    - Tratamento robusto para serial dates do Microsoft Excel e strings de data em múltiplos formatos no parser frontend/backend.
 
-- **5 migrações** aplicadas.
-- **8 hooks** (`pb_hooks`) operacionais.
+16. **Colapso Inteligente de Pílulas de Filtro**:
+    - Exibição limpa das primeiras pílulas com contador colapsável `+N filtros` para otimizar espaço de tela.
 
-## Bugs / Limitações Conhecidas
+17. **Botão de Ação "Aplicar Filtros"**:
+    - Controle manual de disparo de consultas para evitar recálculos desnecessários e requisições repetidas a cada seleção.
 
-- Nenhuma limitação conhecida registrada nesta versão.
+18. **Deduplicação de Nomes no Filtro Vendedor > Cliente**:
+    - Normalização automática de espaços extras, caracteres invisíveis e casing para evitar duplicidade de vendedores e clientes na listagem.
 
-## Histórico de Backups
+---
 
-- **v0.0.39**: Backup estável com documentação completa das funcionalidades ativas (dashboard ~126k registros, 5 KPIs, 6 gráficos, datas DD/MM/AAAA, RacNew mestra + NetSales complementar, ordenação por clique, proteção admin, CRUD de usuários com convite, auditoria com badges, evolução de vendas por ano/mês, filtros colapsáveis, deduplicação de nomes, exportação CSV pt-BR, 5 migrações, 8 hooks).
-- **v0.0.36**: Backup estável pós-recuperação do backend (migrações, hooks, auth e superusuário restaurados).
-- **v0.0.29**: Backup documental anterior com rotas e filtros consolidados.
-- **v0.0.27**: Backup estável de referência anterior.
+## Histórico de Versões
+
+- **v1.0 (14/04/2025)**: **Release Oficial Estável** com todas as 18 frentes funcionais consolidadas (Dashboard completo, 9 gráficos, tabela de vendas avançada, filtros multi-seleção persistentes, importação/consolidação SQL, auditoria, CRUD de usuários, segurança admin, responsividade e padrão pt-BR).
+- **v0.0.39**: Backup documental com funcionalidades ativas, ~126k registros consolidados, RacNew + NetSales, 5 KPIs e 6 gráficos.
+- **v0.0.36**: Backup pós-recuperação do backend (migrações, hooks, auth e superusuário restaurados).
+- **v0.0.29**: Backup com rotas e filtros consolidados.
+- **v0.0.27**: Backup de referência da arquitetura inicial.
