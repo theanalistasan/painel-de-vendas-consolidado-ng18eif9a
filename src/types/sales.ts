@@ -157,6 +157,22 @@ export interface VendaGrupoMensal {
   grupos: Array<{ grupo: string; total: number }>
 }
 
+export interface VendaPorAnoMes {
+  ano: string
+  valores: Array<{ mes: number; total: number }>
+}
+
+export interface ClientesAtivosEquipamentos {
+  mes: string
+  clientes: number
+}
+
+export interface ClientesAtivosInsumos {
+  mes: string
+  clientes: number
+  clientesAnoAnterior: number
+}
+
 /** Tipos de documento considerados devolução */
 export const DEVOLUCAO_TIPOS = ['Dev. Entrega', 'Dev. NF', 'DEVNF'] as const
 

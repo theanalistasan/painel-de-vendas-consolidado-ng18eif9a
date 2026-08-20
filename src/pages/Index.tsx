@@ -12,6 +12,7 @@ import {
   RefreshCw,
   RotateCcw,
   ArrowUpDown,
+  Users,
 } from 'lucide-react'
 import {
   AreaChart,
@@ -28,6 +29,7 @@ import {
   Bar,
   Legend,
   ComposedChart,
+  LineChart,
   Line,
   ReferenceLine,
 } from 'recharts'
@@ -225,12 +227,60 @@ export default function Index() {
   const chartTopClientes = data?.charts?.topClientes || []
   const chartEstado = data?.charts?.estado || []
   const chartVendasPorGrupoItemMensal = data?.charts?.vendasPorGrupoItemMensal || []
+  const chartVendasEquipamentosPorAno = data?.charts?.vendasEquipamentosPorAno || []
+  const chartVendasInsumosPorAno = data?.charts?.vendasInsumosPorAno || []
+  const chartClientesAtivosEquipamentos = data?.charts?.clientesAtivosEquipamentos || []
+  const chartClientesAtivosInsumos = data?.charts?.clientesAtivosInsumos || []
   const recentSales = data?.recentSales || []
 
   const sortedRecentSales = useMemo(
     () => sortData(recentSales, sort.field, sort.dir),
     [recentSales, sort.field, sort.dir],
   )
+
+  // Anos disponíveis para Equipamentos e Insumos
+  const anosEquipamentos = useMemo(() => {
+    return chartVendasEquipamentosPorAno.map((item) => item.ano)
+  }, [chartVendasEquipamentosPorAno])
+
+  const anosInsumos = useMemo(() => {
+    return chartVendasInsumosPorAno.map((item) => item.ano)
+  }, [chartVendasInsumosPorAno])
+
+  // Dados transformados para Recharts LineChart (12 meses, cada ano como chave)
+  const dataTendenciaEquipamentos = useMemo(() => {
+    if (chartVendasEquipamentosPorAno.length === 0) return []
+    const rows = Array.from({ length: 12 }, (_, i) => {
+      const mesNum = i + 1
+      const row: Record<string, number | string> = {
+        mes: MESES_CURTOS[i],
+        mesNum: mesNum,
+      }
+      for (const item of chartVendasEquipamentosPorAno) {
+        const valObj = item.valores.find((v) => v.mes === mesNum)
+        row[item.ano] = valObj ? valObj.total : 0
+      }
+      return row
+    })
+    return rows
+  }, [chartVendasEquipamentosPorAno])
+
+  const dataAcumuladoInsumos = useMemo(() => {
+    if (chartVendasInsumosPorAno.length === 0) return []
+    const rows = Array.from({ length: 12 }, (_, i) => {
+      const mesNum = i + 1
+      const row: Record<string, number | string> = {
+        mes: MESES_CURTOS[i],
+        mesNum: mesNum,
+      }
+      for (const item of chartVendasInsumosPorAno) {
+        const valObj = item.valores.find((v) => v.mes === mesNum)
+        row[item.ano] = valObj ? valObj.total : 0
+      }
+      return row
+    })
+    return rows
+  }, [chartVendasInsumosPorAno])
 
   // Grupos fixos (ordem fixa: EQUIPAMENTOS, TINTAS, PEÇAS, ACESSÓRIOS + outros eventuais)
   // e dados pivôs (1 linha por mês, 1 coluna por grupo) para o gráfico "Venda Mensal por Grupo do Item".
@@ -302,6 +352,18 @@ export default function Index() {
   const isNoData =
     !data || (kpis.faturamento === 0 && kpis.documentos === 0 && recentSales.length === 0)
 
+  // Cores para linhas de anos (paleta indigos/violetas/azuis)
+  const LINE_COLORS = [
+    '#4F46E5', // Indigo 600
+    '#7C3AED', // Violet 600
+    '#2563EB', // Blue 600
+    '#0D9488', // Teal 600
+    '#9333EA', // Purple 600
+    '#EC4899', // Pink 600
+    '#F59E0B', // Amber 500
+    '#6366F1', // Indigo 500
+  ]
+
   return (
     <div className="space-y-6">
       {/* Filters Bar */}
@@ -315,6 +377,13 @@ export default function Index() {
       {/* Loading Skeleton */}
       {loading ? (
         <div className="space-y-6">
+          {/* Top 4 Charts Skeleton */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Skeleton className="h-80 w-full rounded-xl" />
+            <Skeleton className="h-80 w-full rounded-xl" />
+            <Skeleton className="h-80 w-full rounded-xl" />
+            <Skeleton className="h-80 w-full rounded-xl" />
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             {[1, 2, 3, 4, 5].map((i) => (
               <Skeleton key={i} className="h-32 w-full rounded-xl" />
@@ -366,6 +435,249 @@ export default function Index() {
         </Card>
       ) : (
         <>
+          {/* 4 Novos Gráficos no Topo (Linha 1: Tendência Equipamentos + Acumulado Insumos | Linha 2: Clientes Ativos Equipamentos + Clientes Ativos Insumos) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Gráfico 1: Tendência de Vendas — Equipamentos (Linhas) */}
+            <ChartCard
+              title="Tendência de Vendas — Equipamentos"
+              description="Comparativo de vendas mensais (Jan-Dez) de Equipamentos por ano"
+              icon={TrendingUp}
+              iconColor="text-indigo-600"
+            >
+              {dataTendenciaEquipamentos.length === 0 || anosEquipamentos.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                  Nenhum dado disponível
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={dataTendenciaEquipamentos}
+                    margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                    <XAxis
+                      dataKey="mes"
+                      tickLine={false}
+                      axisLine={{ stroke: '#E2E8F0' }}
+                      tick={{ fill: '#64748B', fontSize: 12 }}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: '#64748B', fontSize: 11 }}
+                      tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      formatter={(val: number | string | undefined, name: string) => [
+                        formatCurrency(typeof val === 'number' ? val : Number(val)),
+                        `Ano ${name}`,
+                      ]}
+                      labelFormatter={(label) => `Mês: ${label}`}
+                      contentStyle={tooltipContentStyle}
+                    />
+                    <Legend
+                      verticalAlign="top"
+                      height={36}
+                      formatter={(value) => (
+                        <span className="text-xs font-semibold text-slate-700">{value}</span>
+                      )}
+                    />
+                    {anosEquipamentos.map((ano, idx) => (
+                      <Line
+                        key={ano}
+                        type="monotone"
+                        dataKey={ano}
+                        name={ano}
+                        stroke={LINE_COLORS[idx % LINE_COLORS.length]}
+                        strokeWidth={2.5}
+                        dot={{ r: 3, fill: LINE_COLORS[idx % LINE_COLORS.length] }}
+                        activeDot={{ r: 5 }}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </ChartCard>
+
+            {/* Gráfico 2: Acumulado de Vendas — Insumos (Linhas) */}
+            <ChartCard
+              title="Acumulado de Vendas — Insumos"
+              description="Vendas mensais de Tintas, Peças e Acessórios por ano"
+              icon={TrendingUp}
+              iconColor="text-violet-600"
+            >
+              {dataAcumuladoInsumos.length === 0 || anosInsumos.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                  Nenhum dado disponível
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={dataAcumuladoInsumos}
+                    margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                    <XAxis
+                      dataKey="mes"
+                      tickLine={false}
+                      axisLine={{ stroke: '#E2E8F0' }}
+                      tick={{ fill: '#64748B', fontSize: 12 }}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: '#64748B', fontSize: 11 }}
+                      tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      formatter={(val: number | string | undefined, name: string) => [
+                        formatCurrency(typeof val === 'number' ? val : Number(val)),
+                        `Ano ${name}`,
+                      ]}
+                      labelFormatter={(label) => `Mês: ${label}`}
+                      contentStyle={tooltipContentStyle}
+                    />
+                    <Legend
+                      verticalAlign="top"
+                      height={36}
+                      formatter={(value) => (
+                        <span className="text-xs font-semibold text-slate-700">{value}</span>
+                      )}
+                    />
+                    {anosInsumos.map((ano, idx) => (
+                      <Line
+                        key={ano}
+                        type="monotone"
+                        dataKey={ano}
+                        name={ano}
+                        stroke={LINE_COLORS[idx % LINE_COLORS.length]}
+                        strokeWidth={2.5}
+                        dot={{ r: 3, fill: LINE_COLORS[idx % LINE_COLORS.length] }}
+                        activeDot={{ r: 5 }}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </ChartCard>
+
+            {/* Gráfico 3: Clientes Ativos — Equipamentos (Barras) */}
+            <ChartCard
+              title="Clientes Ativos — Equipamentos"
+              description="Contagem de clientes únicos compradores de equipamentos nos últimos 6 meses"
+              icon={Users}
+              iconColor="text-indigo-600"
+            >
+              {chartClientesAtivosEquipamentos.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                  Nenhum dado disponível
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={chartClientesAtivosEquipamentos}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                    <XAxis
+                      dataKey="mes"
+                      tickLine={false}
+                      axisLine={{ stroke: '#E2E8F0' }}
+                      tick={{ fill: '#64748B', fontSize: 12 }}
+                      tickFormatter={(val) => formatMesAnoCurto(String(val))}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: '#64748B', fontSize: 11 }}
+                      allowDecimals={false}
+                    />
+                    <Tooltip
+                      formatter={(val: number | string | undefined) => [
+                        formatNumber(typeof val === 'number' ? val : Number(val)),
+                        'Clientes Ativos',
+                      ]}
+                      labelFormatter={(label) => formatMesAnoCurto(String(label))}
+                      contentStyle={tooltipContentStyle}
+                    />
+                    <Bar
+                      dataKey="clientes"
+                      name="Clientes Ativos"
+                      fill="#4F46E5"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={48}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </ChartCard>
+
+            {/* Gráfico 4: Clientes Ativos — Insumos (Barras lado a lado) */}
+            <ChartCard
+              title="Clientes Ativos — Insumos"
+              description="Comparativo de clientes ativos de insumos nos últimos 6 meses vs. ano anterior"
+              icon={Users}
+              iconColor="text-violet-600"
+            >
+              {chartClientesAtivosInsumos.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                  Nenhum dado disponível
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={chartClientesAtivosInsumos}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                    <XAxis
+                      dataKey="mes"
+                      tickLine={false}
+                      axisLine={{ stroke: '#E2E8F0' }}
+                      tick={{ fill: '#64748B', fontSize: 12 }}
+                      tickFormatter={(val) => formatMesAnoCurto(String(val))}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: '#64748B', fontSize: 11 }}
+                      allowDecimals={false}
+                    />
+                    <Tooltip
+                      formatter={(val: number | string | undefined, name: string) => {
+                        const n = typeof val === 'number' ? val : Number(val)
+                        return [formatNumber(n), name]
+                      }}
+                      labelFormatter={(label) => formatMesAnoCurto(String(label))}
+                      contentStyle={tooltipContentStyle}
+                    />
+                    <Legend
+                      verticalAlign="top"
+                      height={36}
+                      formatter={(value) => (
+                        <span className="text-xs font-semibold text-slate-700">{value}</span>
+                      )}
+                    />
+                    <Bar
+                      dataKey="clientesAnoAnterior"
+                      name="Ano Anterior"
+                      fill="#A5B4FC"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={32}
+                    />
+                    <Bar
+                      dataKey="clientes"
+                      name="Atual"
+                      fill="#6366F1"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={32}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </ChartCard>
+          </div>
+
           {/* 5 KPIs Section */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             <KpiCard

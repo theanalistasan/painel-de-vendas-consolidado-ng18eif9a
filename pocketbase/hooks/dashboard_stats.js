@@ -536,6 +536,209 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     dias: distinctSubstr(9, 2),
   }
 
+  // ============================================================
+  // 5) Novas Queries de Análise
+  // ============================================================
+
+  // 5.1) vendasEquipamentosPorAno — Tendência de Vendas de Equipamentos
+  // Uma linha por ano existente na base, meses 1 a 12, soma total_linha
+  // WHERE UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS'
+  const vendasEquipamentosPorAno = []
+  try {
+    const equipSql =
+      'SELECT substr(data_lancamento,1,4) AS a, substr(data_lancamento,6,2) AS b, COALESCE(SUM(total_linha),0) AS c ' +
+      'FROM vendas WHERE ' +
+      sqlWhere +
+      " AND UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
+      'AND length(data_lancamento) >= 7 ' +
+      'GROUP BY substr(data_lancamento,1,4), substr(data_lancamento,6,2) ' +
+      'ORDER BY 1 ASC, 2 ASC'
+    const equipRows = runAgg(equipSql)
+
+    // Agrupa por ano e monta array de meses 1..12
+    const anoMap = {}
+    for (let i = 0; i < equipRows.length; i++) {
+      const ano = equipRows[i].a
+      const mesNum = parseInt(equipRows[i].b, 10)
+      const total = toNum(equipRows[i].c)
+      if (!ano || isNaN(mesNum) || mesNum < 1 || mesNum > 12) continue
+      if (!anoMap[ano]) anoMap[ano] = {}
+      anoMap[ano][mesNum] = total
+    }
+
+    const anosSorted = Object.keys(anoMap).sort()
+    for (let i = 0; i < anosSorted.length; i++) {
+      const a = anosSorted[i]
+      const valores = []
+      for (let m = 1; m <= 12; m++) {
+        valores.push({ mes: m, total: anoMap[a][m] || 0 })
+      }
+      vendasEquipamentosPorAno.push({
+        ano: a,
+        valores: valores,
+      })
+    }
+  } catch (err) {
+    console.error('dashboard_stats: vendasEquipamentosPorAno falhou:', err)
+  }
+
+  // 5.2) vendasInsumosPorAno — Acumulado de Vendas de Insumos
+  // WHERE UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS')
+  const vendasInsumosPorAno = []
+  try {
+    const insumoSql =
+      'SELECT substr(data_lancamento,1,4) AS a, substr(data_lancamento,6,2) AS b, COALESCE(SUM(total_linha),0) AS c ' +
+      'FROM vendas WHERE ' +
+      sqlWhere +
+      " AND UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+      'AND length(data_lancamento) >= 7 ' +
+      'GROUP BY substr(data_lancamento,1,4), substr(data_lancamento,6,2) ' +
+      'ORDER BY 1 ASC, 2 ASC'
+    const insumoRows = runAgg(insumoSql)
+
+    const insumoAnoMap = {}
+    for (let i = 0; i < insumoRows.length; i++) {
+      const ano = insumoRows[i].a
+      const mesNum = parseInt(insumoRows[i].b, 10)
+      const total = toNum(insumoRows[i].c)
+      if (!ano || isNaN(mesNum) || mesNum < 1 || mesNum > 12) continue
+      if (!insumoAnoMap[ano]) insumoAnoMap[ano] = {}
+      insumoAnoMap[ano][mesNum] = total
+    }
+
+    const insumoAnosSorted = Object.keys(insumoAnoMap).sort()
+    for (let i = 0; i < insumoAnosSorted.length; i++) {
+      const a = insumoAnosSorted[i]
+      const valores = []
+      for (let m = 1; m <= 12; m++) {
+        valores.push({ mes: m, total: insumoAnoMap[a][m] || 0 })
+      }
+      vendasInsumosPorAno.push({
+        ano: a,
+        valores: valores,
+      })
+    }
+  } catch (err) {
+    console.error('dashboard_stats: vendasInsumosPorAno falhou:', err)
+  }
+
+  // 5.3) clientesAtivosEquipamentos — Clientes Ativos Equipamentos (últimos 6 meses)
+  // Últimos 6 meses a partir da data mais recente na base
+  // COUNT(DISTINCT codigo_cliente) por mês
+  // WHERE UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS'
+  const clientesAtivosEquipamentos = []
+  // 5.4) clientesAtivosInsumos — Clientes Ativos Insumos (últimos 6 meses + ano anterior)
+  // Últimos 6 meses + mesmos meses do ano anterior
+  // COUNT(DISTINCT codigo_cliente) por mês
+  // WHERE UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS')
+  const clientesAtivosInsumos = []
+
+  try {
+    // 1) Data mais recente (qualquer linha com data_lancamento válida)
+    const maxDateRows2 = arrayOf(new DynamicModel({ a: '' }))
+    $app
+      .db()
+      .newQuery('SELECT MAX(data_lancamento) AS a FROM vendas WHERE length(data_lancamento) >= 7')
+      .all(maxDateRows2)
+    const maxDate2 = maxDateRows2.length > 0 && maxDateRows2[0].a ? maxDateRows2[0].a : ''
+
+    if (maxDate2 && maxDate2.indexOf('-') >= 0) {
+      const parts = maxDate2.split('-')
+      const maxYear = parseInt(parts[0], 10)
+      const maxMonth = parseInt(parts[1], 10)
+      if (!isNaN(maxYear) && !isNaN(maxMonth) && maxMonth >= 1 && maxMonth <= 12) {
+        // Últimos 6 meses yyyy-mm
+        const ultimos6Meses = []
+        for (let i = 5; i >= 0; i--) {
+          const totalMeses = maxYear * 12 + (maxMonth - 1) - i
+          const y = Math.floor(totalMeses / 12)
+          const m = (totalMeses % 12) + 1
+          ultimos6Meses.push(String(y) + '-' + String(m).padStart(2, '0'))
+        }
+
+        // --- 5.3 Clientes Ativos Equipamentos ---
+        const mesesInListEquip = ultimos6Meses.map((m) => "'" + m + "'").join(',')
+        const cliEquipSql =
+          'SELECT substr(data_lancamento,1,7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+          'FROM vendas WHERE ' +
+          sqlWhere +
+          " AND UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
+          'AND length(data_lancamento) >= 7 ' +
+          'AND substr(data_lancamento,1,7) IN (' +
+          mesesInListEquip +
+          ') ' +
+          'GROUP BY substr(data_lancamento,1,7) ORDER BY 1 ASC'
+        const cliEquipRows = runAgg(cliEquipSql)
+        const cliEquipMap = {}
+        for (let i = 0; i < cliEquipRows.length; i++) {
+          cliEquipMap[cliEquipRows[i].a] = parseInt(cliEquipRows[i].b, 10) || 0
+        }
+        for (let i = 0; i < ultimos6Meses.length; i++) {
+          const m = ultimos6Meses[i]
+          clientesAtivosEquipamentos.push({
+            mes: m,
+            clientes: cliEquipMap[m] || 0,
+          })
+        }
+
+        // --- 5.4 Clientes Ativos Insumos ---
+        // Série atual (respeitando sqlWhere com os últimos 6 meses)
+        const mesesInListInsumos = ultimos6Meses.map((m) => "'" + m + "'").join(',')
+        const cliInsumosSql =
+          'SELECT substr(data_lancamento,1,7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+          'FROM vendas WHERE ' +
+          sqlWhere +
+          " AND UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+          'AND length(data_lancamento) >= 7 ' +
+          'AND substr(data_lancamento,1,7) IN (' +
+          mesesInListInsumos +
+          ') ' +
+          'GROUP BY substr(data_lancamento,1,7) ORDER BY 1 ASC'
+        const cliInsumosRows = runAgg(cliInsumosSql)
+        const cliInsumosMap = {}
+        for (let i = 0; i < cliInsumosRows.length; i++) {
+          cliInsumosMap[cliInsumosRows[i].a] = parseInt(cliInsumosRows[i].b, 10) || 0
+        }
+
+        // Série ano anterior (usando sqlWhereBase para não conflitar com datas filtradas)
+        const mesesAnoAnterior = ultimos6Meses.map((m) => {
+          const p = m.split('-')
+          const y = parseInt(p[0], 10) - 1
+          return String(y) + '-' + p[1]
+        })
+        const mesesAnoAnteriorInList = mesesAnoAnterior.map((m) => "'" + m + "'").join(',')
+        const cliInsumosPrevSql =
+          'SELECT substr(data_lancamento,1,7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+          'FROM vendas WHERE ' +
+          sqlWhereBase +
+          " AND UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+          'AND length(data_lancamento) >= 7 ' +
+          'AND substr(data_lancamento,1,7) IN (' +
+          mesesAnoAnteriorInList +
+          ') ' +
+          'GROUP BY substr(data_lancamento,1,7) ORDER BY 1 ASC'
+        const cliInsumosPrevRows = runAgg(cliInsumosPrevSql)
+        const cliInsumosPrevMap = {}
+        for (let i = 0; i < cliInsumosPrevRows.length; i++) {
+          cliInsumosPrevMap[cliInsumosPrevRows[i].a] = parseInt(cliInsumosPrevRows[i].b, 10) || 0
+        }
+
+        for (let i = 0; i < ultimos6Meses.length; i++) {
+          const m = ultimos6Meses[i]
+          const p = m.split('-')
+          const prevM = String(parseInt(p[0], 10) - 1) + '-' + p[1]
+          clientesAtivosInsumos.push({
+            mes: m,
+            clientes: cliInsumosMap[m] || 0,
+            clientesAnoAnterior: cliInsumosPrevMap[prevM] || 0,
+          })
+        }
+      }
+    }
+  } catch (err) {
+    console.error('dashboard_stats: clientesAtivos queries falharam:', err)
+  }
+
   return e.json(200, {
     kpis: kpis,
     charts: {
@@ -543,6 +746,10 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       vendasPorAno: vendasPorAno,
       grupoItem: grupoItem,
       vendasPorGrupoItemMensal: vendasPorGrupoItemMensal,
+      vendasEquipamentosPorAno: vendasEquipamentosPorAno,
+      vendasInsumosPorAno: vendasInsumosPorAno,
+      clientesAtivosEquipamentos: clientesAtivosEquipamentos,
+      clientesAtivosInsumos: clientesAtivosInsumos,
       topVendedores: topVendedores,
       topClientes: topClientes,
       estado: estado,
