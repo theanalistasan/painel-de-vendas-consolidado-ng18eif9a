@@ -662,8 +662,23 @@ export default function Index() {
                   <Legend
                     verticalAlign="top"
                     height={36}
-                    formatter={(value) => (
-                      <span className="text-xs font-semibold text-slate-700">{value}</span>
+                    content={() => (
+                      <div className="flex flex-wrap items-center justify-center gap-4 pb-3">
+                        {mensalGrupos.map((grupo, i) => {
+                          const color =
+                            MENSAL_GRUPO_COLORS[grupo] ||
+                            MENSAL_GRUPO_PALETTE[i % MENSAL_GRUPO_PALETTE.length]
+                          return (
+                            <div key={grupo} className="flex items-center gap-1.5">
+                              <span
+                                className="inline-block w-3 h-3 rounded-[2px]"
+                                style={{ backgroundColor: color }}
+                              />
+                              <span className="text-xs font-semibold text-slate-700">{grupo}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
                     )}
                   />
                   {mensalGrupos.map((grupo, index) => (
