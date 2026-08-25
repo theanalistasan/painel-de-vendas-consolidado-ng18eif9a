@@ -74,10 +74,28 @@ export async function fetchAuditLogs(params: FetchAuditLogsParams): Promise<Audi
     filters.push(`created <= '${params.endDate}T23:59:59.999Z'`)
   }
 
-  const result = await pb.collection('audit_logs').getList<AuditLog>(page, perPage, {
-    sort: '-created',
-    filter: filters.length > 0 ? filters.join(' && ') : undefined,
-  })
+  const runQuery = () =>
+    pb.collection('audit_logs').getList<AuditLog>(page, perPage, {
+      sort: '-created',
+      filter: filters.length > 0 ? filters.join(' && ') : undefined,
+    })
+
+  let result
+  try {
+    result = await runQuery()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if ((status === 401 || status === 403) && pb.authStore.isValid) {
+      try {
+        await pb.collection('users').authRefresh()
+        result = await runQuery()
+      } catch {
+        throw err
+      }
+    } else {
+      throw err
+    }
+  }
 
   return {
     items: result.items,

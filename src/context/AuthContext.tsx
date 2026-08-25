@@ -34,10 +34,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(res.record)
           setToken(res.token)
         })
-        .catch(() => {
-          pb.authStore.clear()
+        .catch((err) => {
+          // NUNCA limpar pb.authStore no catch de refresh:
+          // Apenas define user=null no estado React se o refresh falhar
+          console.warn('Auth refresh falhou:', err)
           setUser(null)
-          setToken(null)
         })
         .finally(() => {
           setIsLoading(false)
@@ -73,9 +74,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshAuth = async () => {
     if (pb.authStore.isValid) {
-      const res = await pb.collection('users').authRefresh()
-      setUser(res.record)
-      setToken(res.token)
+      try {
+        const res = await pb.collection('users').authRefresh()
+        setUser(res.record)
+        setToken(res.token)
+      } catch (err) {
+        console.warn('refreshAuth falhou:', err)
+        setUser(null)
+      }
     }
   }
 

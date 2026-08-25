@@ -41,10 +41,28 @@ export async function fetchUsers(params: FetchUsersParams): Promise<UsersListRes
     filter = `name ~ '${term}' || email ~ '${term}'`
   }
 
-  const result = await pb.collection<UserRecord>('users').getList(page, perPage, {
-    sort: '-created',
-    filter,
-  })
+  const runQuery = () =>
+    pb.collection<UserRecord>('users').getList(page, perPage, {
+      sort: '-created',
+      filter,
+    })
+
+  let result
+  try {
+    result = await runQuery()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if ((status === 401 || status === 403) && pb.authStore.isValid) {
+      try {
+        await pb.collection('users').authRefresh()
+        result = await runQuery()
+      } catch {
+        throw err
+      }
+    } else {
+      throw err
+    }
+  }
 
   return {
     items: result.items,
