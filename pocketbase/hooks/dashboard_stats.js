@@ -40,12 +40,12 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
 
   // --- Filtro de BASE (Seleção de Bases: ambos | racnew | netsales) ---
   if (f.base === 'racnew') {
-    const clause = 'tem_racnew = 1 AND (tem_netsales = 0 OR tem_netsales IS NULL)'
+    const clause = '(tem_netsales = 0 OR tem_netsales IS NULL)'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
     sqlBaseOnlyParts.push(clause)
   } else if (f.base === 'netsales') {
-    const clause = 'tem_netsales = 1 AND (tem_racnew = 0 OR tem_racnew IS NULL)'
+    const clause = 'tem_netsales = 1'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
     sqlBaseOnlyParts.push(clause)

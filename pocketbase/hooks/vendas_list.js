@@ -90,9 +90,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
 
   // Filtro de BASE (Seleção de Bases: ambos | racnew | netsales)
   if (f.base === 'racnew') {
-    sqlParts.push('tem_racnew = 1 AND (tem_netsales = 0 OR tem_netsales IS NULL)')
+    sqlParts.push('(tem_netsales = 0 OR tem_netsales IS NULL)')
   } else if (f.base === 'netsales') {
-    sqlParts.push('tem_netsales = 1 AND (tem_racnew = 0 OR tem_racnew IS NULL)')
+    sqlParts.push('tem_netsales = 1')
   }
 
   if (f.dataDe) {
