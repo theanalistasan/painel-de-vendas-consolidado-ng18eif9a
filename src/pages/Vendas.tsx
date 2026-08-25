@@ -166,6 +166,7 @@ export default function Vendas() {
     { key: 'data_lancamento', label: 'Data de Lançamento', type: 'date' },
     { key: 'numero_nfe', label: 'Nº NFe', type: 'text' },
     { key: 'numero_sap', label: 'Número SAP', type: 'text' },
+    { key: 'tipo_documento', label: 'Tipo de Documento', type: 'text' },
     { key: 'codigo_cliente', label: 'Código do Cliente', type: 'text' },
     { key: 'nome_cliente', label: 'Nome do Cliente', type: 'text' },
     { key: 'vendedor_cliente', label: 'Vendedor > Cliente', type: 'text' },
@@ -564,7 +565,12 @@ export default function Vendas() {
                                 {item.numero_sap || '-'}
                               </td>
 
-                              {/* 4. Código do Cliente */}
+                              {/* 4. Tipo de Documento */}
+                              <td className="py-2.5 px-3.5 text-slate-700">
+                                {item.tipo_documento || '-'}
+                              </td>
+
+                              {/* 5. Código do Cliente */}
                               <td className="py-2.5 px-3.5 font-mono text-slate-700">
                                 {item.codigo_cliente || '-'}
                               </td>
