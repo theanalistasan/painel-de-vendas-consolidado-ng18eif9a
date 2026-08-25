@@ -15,7 +15,7 @@
 //
 // Body:
 //   filters (object, opcional) — mesmos campos suportados por /vendas/list:
-//     dataDe, dataAte, ano, mes, dia, vendedorCliente[], vendedor[],
+//     base, dataDe, dataAte, ano, mes, dia, vendedorCliente[], vendedor[],
 //     grupoItem[], estado[], utilizacao[], tipoDocumento[], search, tipoDevolucao
 //
 // Retorna: { kpis, charts, recentSales, filterOptions }
@@ -29,10 +29,27 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // ---- Constrói cláusula WHERE (SQL) e filtro PocketBase em paralelo ----
   // sqlWhere: usado em TODAS as queries (KPIs, charts, recentSales).
   // sqlWhereBase: apenas filtros de DIMENSÃO (sem data) — usado pela série
-  //   de "ano anterior" do gráfico mensal, já que filtros de ano/mês/data
+  //   de "ano anterior" do gráfico mensal e clientes ativos, já que filtros de ano/mês/data
   //   excluiriam sempre o período anterior.
+  // sqlWhereBaseOnly: apenas o filtro de `base` (sem outros filtros de dimensão ou data) —
+  //   usado pelos gráficos históricos/estratégicos (vendasPorAno, vendasEquipamentosHistorico,
+  //   vendasInsumosHistorico), que respeitam a base de dados selecionada mas ignoram os demais filtros.
   const sqlParts = []
   const sqlDimParts = []
+  const sqlBaseOnlyParts = []
+
+  // --- Filtro de BASE (Seleção de Bases: ambos | racnew | netsales) ---
+  if (f.base === 'racnew') {
+    const clause = 'tem_racnew = 1 AND (tem_netsales = 0 OR tem_netsales IS NULL)'
+    sqlParts.push(clause)
+    sqlDimParts.push(clause)
+    sqlBaseOnlyParts.push(clause)
+  } else if (f.base === 'netsales') {
+    const clause = 'tem_netsales = 1 AND (tem_racnew = 0 OR tem_racnew IS NULL)'
+    sqlParts.push(clause)
+    sqlDimParts.push(clause)
+    sqlBaseOnlyParts.push(clause)
+  }
 
   // --- Filtros de DATA (não entram em sqlDimParts) ---
   if (f.dataDe) {
@@ -131,6 +148,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'
   // Apenas filtros de dimensão (sem data) — usado pela série de ano anterior.
   const sqlWhereBase = sqlDimParts.length > 0 ? sqlDimParts.join(' AND ') : '1=1'
+  // Apenas filtro de base — usado pelos gráficos históricos/estratégicos (vendasPorAno, vendasEquipamentosHistorico, vendasInsumosHistorico)
+  const sqlWhereHistorical = sqlBaseOnlyParts.length > 0 ? sqlBaseOnlyParts.join(' AND ') : '1=1'
 
   // ---- Helper: roda SELECT e devolve array de DynamicModel (campos a..f) ----
   const runAgg = (sql) => {
@@ -186,12 +205,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // Série de ano anterior: mesmo mês/ano-1, com os mesmos filtros de
   // DIMENSÃO (sem os filtros de data) — caso contrário ano/mês/data
   // excluiriam sempre o período anterior.
-  // Agrupa pela chave real "yyyy-mm" (SEM deslocar o ano). O lookup JS
-  // abaixo monta prevKey = (ano-1) + "-mm" e busca essa chave no map —
-  // como o map agora contém chaves reais (ex: "2025-06" com vendas reais
-  // de 2025-06), o cruzamento funciona corretamente. Sem vendas no mês
-  // anterior, retorna 0. (Antes o SQL deslocava o ano em -1 em TODAS as
-  // vendas, fazendo o "ano anterior" repetir os dados do ano atual.)
   const prevYearSql =
     'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b ' +
     'FROM vendas WHERE ' +
@@ -258,12 +271,14 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
 
   // ============================================================
   // vendasPorAno (GROUP BY ano, ordenado ASC, com variação percentual)
-  // Gráfico histórico/estratégico: NÃO respeita filtros do usuário (sempre consulta a base inteira).
+  // Gráfico histórico/estratégico: respeita o filtro de base (sqlWhereHistorical)
   // ============================================================
   const anoSql =
     'SELECT substr(data_lancamento,1,4) AS a, COALESCE(SUM(total_linha),0) AS b, ' +
     "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS c " +
-    'FROM vendas WHERE 1=1 AND length(data_lancamento) >= 4 ' +
+    'FROM vendas WHERE ' +
+    sqlWhereHistorical +
+    ' AND length(data_lancamento) >= 4 ' +
     'GROUP BY substr(data_lancamento,1,4) ORDER BY 1 ASC'
   const anoRows = runAgg(anoSql)
   const vendasPorAno = []
@@ -336,16 +351,18 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // ============================================================
   // vendasPorGrupoItemMensal — últimos 6 meses yyyy-mm a partir da
   // data mais recente dos dados consolidados, GROUP BY mês + grupo_item.
-  // (Antes este array nunca era computado, fazendo o endpoint inteiro
-  // falhar com ReferenceError no return final.)
   // ============================================================
   const vendasPorGrupoItemMensal = []
   try {
-    // 1) Data mais recente (qualquer linha com yyyy-mm-dd completa)
+    // 1) Data mais recente
     const maxDateRows = arrayOf(new DynamicModel({ a: '' }))
     $app
       .db()
-      .newQuery('SELECT MAX(data_lancamento) AS a FROM vendas WHERE length(data_lancamento) >= 7')
+      .newQuery(
+        'SELECT MAX(data_lancamento) AS a FROM vendas WHERE ' +
+          sqlWhere +
+          ' AND length(data_lancamento) >= 7',
+      )
       .all(maxDateRows)
     const maxDate = maxDateRows.length > 0 && maxDateRows[0].a ? maxDateRows[0].a : ''
     if (maxDate && maxDate.indexOf('-') >= 0) {
@@ -356,7 +373,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         // 2) Determina os últimos 6 meses yyyy-mm a partir da data mais recente.
         const mesesAlvo = []
         for (let i = 5; i >= 0; i--) {
-          // total de meses desde 0000-01 (ano*12 + (mês-1))
           const totalMeses = maxYear * 12 + (maxMonth - 1) - i
           const y = Math.floor(totalMeses / 12)
           const m = (totalMeses % 12) + 1
@@ -364,7 +380,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         }
 
         // 3) GROUP BY substr(data_lancamento,1,7), grupo_item — só os
-        //    meses-alvo, respeitando sqlWhere. Ignora sum=0/vazio depois.
+        //    meses-alvo, respeitando sqlWhere.
         const mesesInList = mesesAlvo.map((m) => "'" + m + "'").join(',')
         const gmSql =
           'SELECT substr(data_lancamento,1,7) AS a, ' +
@@ -381,7 +397,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         const gmRows = runAgg(gmSql)
 
         // 4) Agrupa por mês (a) e monta a estrutura esperada pelo front.
-        //    Grupos com SUM = 0 ou vazios são ignorados.
         const porMes = {}
         for (let i = 0; i < gmRows.length; i++) {
           const mes = gmRows[i].a
@@ -393,8 +408,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           porMes[mes].push({ grupo: grupo, total: total })
         }
 
-        // 5) Garante que TODOS os meses-alvo apareçam (mesmo sem vendas)
-        //    na ordem ASC, conforme esperado pelo gráfico do front.
+        // 5) Garante que TODOS os meses-alvo apareçam na ordem ASC
         for (let i = 0; i < mesesAlvo.length; i++) {
           const mes = mesesAlvo[i]
           vendasPorGrupoItemMensal.push({
@@ -410,9 +424,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
 
   // ============================================================
   // 3) recentSales — LIMIT 8 (SQL puro)
-  //    Não usa findRecordsByFilter, que não suporta o operador IN
-  //    multi-valor e quebrava o endpoint com
-  //    "invalid filter expression: expected a sign operator, got in".
   // ============================================================
   const recentSales = []
   try {
@@ -455,7 +466,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
 
   // ============================================================
   // 4) filterOptions (DISTINCT sobre a BASE INTEIRA — sem filtros)
-  //    Uma query DISTINCT por campo; todas as colunas têm índice.
   // ============================================================
   const distinctCol = (col) => {
     const rows = arrayOf(new DynamicModel({ a: '' }))
@@ -537,19 +547,18 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   }
 
   // ============================================================
-  // 5) Novas Queries de Análise
+  // 5) Queries de Análise
   // ============================================================
 
-  // 5.1) vendasEquipamentosHistorico / vendasEquipamentosPorAno — Tendência Histórica Contínua de Equipamentos
-  // Gráfico histórico/estratégico: NÃO respeita filtros do usuário (sempre consulta a base inteira).
-  // Linha do tempo única e contínua do primeiro ao último período (yyyy-mm), cronológico ASC.
-  // WHERE UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS'
+  // 5.1) vendasEquipamentosHistorico — Tendência Histórica Contínua de Equipamentos
+  // Respeita o filtro de base (sqlWhereHistorical)
   const vendasEquipamentosHistorico = []
   try {
     const equipSql =
       'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b ' +
       'FROM vendas WHERE ' +
-      "UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
+      sqlWhereHistorical +
+      " AND UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
       'AND length(data_lancamento) >= 7 ' +
       'GROUP BY substr(data_lancamento,1,7) ' +
       'ORDER BY 1 ASC'
@@ -567,16 +576,15 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     console.error('dashboard_stats: vendasEquipamentosHistorico falhou:', err)
   }
 
-  // 5.2) vendasInsumosHistorico / vendasInsumosPorAno — Histórico Contínuo de Insumos
-  // Gráfico histórico/estratégico: NÃO respeita filtros do usuário (sempre consulta a base inteira).
-  // Linha do tempo única e contínua do primeiro ao último período (yyyy-mm), cronológico ASC.
-  // WHERE UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS')
+  // 5.2) vendasInsumosHistorico — Histórico Contínuo de Insumos
+  // Respeita o filtro de base (sqlWhereHistorical)
   const vendasInsumosHistorico = []
   try {
     const insumoSql =
       'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b ' +
       'FROM vendas WHERE ' +
-      "UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+      sqlWhereHistorical +
+      " AND UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
       'AND length(data_lancamento) >= 7 ' +
       'GROUP BY substr(data_lancamento,1,7) ' +
       'ORDER BY 1 ASC'
@@ -595,22 +603,20 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   }
 
   // 5.3) clientesAtivosEquipamentos — Clientes Ativos Equipamentos (últimos 6 meses)
-  // Últimos 6 meses a partir da data mais recente na base
-  // COUNT(DISTINCT codigo_cliente) por mês
-  // WHERE UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS'
   const clientesAtivosEquipamentos = []
   // 5.4) clientesAtivosInsumos — Clientes Ativos Insumos (últimos 6 meses + ano anterior)
-  // Últimos 6 meses + mesmos meses do ano anterior
-  // COUNT(DISTINCT codigo_cliente) por mês
-  // WHERE UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS')
   const clientesAtivosInsumos = []
 
   try {
-    // 1) Data mais recente (qualquer linha com data_lancamento válida)
+    // 1) Data mais recente
     const maxDateRows2 = arrayOf(new DynamicModel({ a: '' }))
     $app
       .db()
-      .newQuery('SELECT MAX(data_lancamento) AS a FROM vendas WHERE length(data_lancamento) >= 7')
+      .newQuery(
+        'SELECT MAX(data_lancamento) AS a FROM vendas WHERE ' +
+          sqlWhere +
+          ' AND length(data_lancamento) >= 7',
+      )
       .all(maxDateRows2)
     const maxDate2 = maxDateRows2.length > 0 && maxDateRows2[0].a ? maxDateRows2[0].a : ''
 
@@ -629,7 +635,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         }
 
         // --- 5.3 Clientes Ativos Equipamentos ---
-        // Série atual (respeitando sqlWhere com os últimos 6 meses)
         const mesesInListEquip = ultimos6Meses.map((m) => "'" + m + "'").join(',')
         const cliEquipSql =
           'SELECT substr(data_lancamento,1,7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
@@ -684,7 +689,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         }
 
         // --- 5.4 Clientes Ativos Insumos ---
-        // Série atual (respeitando sqlWhere com os últimos 6 meses)
         const mesesInListInsumos = ultimos6Meses.map((m) => "'" + m + "'").join(',')
         const cliInsumosSql =
           'SELECT substr(data_lancamento,1,7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +

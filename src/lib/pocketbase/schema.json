@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-20T17:52:59.336Z",
+  "generatedAt": "2026-08-25T15:05:16.807Z",
   "collections": [
     {
       "name": "users",
@@ -860,6 +860,18 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "tem_racnew",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tem_netsales",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

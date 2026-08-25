@@ -493,6 +493,7 @@ export default function Index() {
               variant="outline"
               onClick={() =>
                 setFilters({
+                  base: 'ambos',
                   dataDe: '',
                   dataAte: '',
                   vendedorCliente: [],

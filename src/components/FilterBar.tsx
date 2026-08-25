@@ -245,6 +245,7 @@ export default function FilterBar({
   // Contagem total de itens/valores ativos nos filtros aplicados atualmente
   const activeFiltersCount = useMemo(() => {
     return (
+      (filters.base && filters.base !== 'ambos' ? 1 : 0) +
       (filters.dataDe ? 1 : 0) +
       (filters.dataAte ? 1 : 0) +
       filters.vendedorCliente.length +
@@ -270,6 +271,7 @@ export default function FilterBar({
 
   const clearAllFilters = () => {
     const emptyState: FilterState = {
+      base: 'ambos',
       dataDe: '',
       dataAte: '',
       vendedorCliente: [],
@@ -294,7 +296,14 @@ export default function FilterBar({
   const removeSingleFilter = (type: keyof FilterState, value?: string) => {
     let nextState: FilterState = { ...filters }
 
-    if (type === 'dataDe' || type === 'dataAte' || type === 'search' || type === 'tipoDevolucao') {
+    if (type === 'base') {
+      nextState = { ...nextState, base: 'ambos' }
+    } else if (
+      type === 'dataDe' ||
+      type === 'dataAte' ||
+      type === 'search' ||
+      type === 'tipoDevolucao'
+    ) {
       nextState = { ...nextState, [type]: '' }
     } else if (
       value &&
@@ -324,6 +333,16 @@ export default function FilterBar({
   // Gera lista completa de pílulas para visualização contida (máx 5 pílulas)
   const allActivePills = useMemo<ActivePill[]>(() => {
     const list: ActivePill[] = []
+
+    if (filters.base && filters.base !== 'ambos') {
+      const baseLabel = filters.base === 'racnew' ? 'RacNew' : 'NetSales'
+      list.push({
+        id: 'base',
+        label: `Base: ${baseLabel}`,
+        type: 'base',
+        bgClass: 'bg-indigo-50 border-indigo-200 text-indigo-900',
+      })
+    }
 
     if (filters.dataDe) {
       list.push({
@@ -664,13 +683,48 @@ export default function FilterBar({
         </div>
       </div>
 
-      {/* Linha 2: Utilização e Busca Opcional */}
+      {/* Linha 2: Seleção de Bases, Utilização e Busca Opcional */}
       <div
         className={cn(
           'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 pt-3',
           collapsed && 'hidden lg:grid',
         )}
       >
+        {/* Seleção de Bases (Primeiro filtro da linha antes de Utilização) */}
+        <div>
+          <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+            Seleção de Bases
+          </Label>
+          <Select
+            value={localFilters.base || 'ambos'}
+            onValueChange={(v: 'ambos' | 'racnew' | 'netsales') =>
+              setLocalFilters((prev) => ({ ...prev, base: v }))
+            }
+          >
+            <SelectTrigger
+              className={cn(
+                'h-10 text-xs rounded-lg',
+                localFilters.base && localFilters.base !== 'ambos'
+                  ? 'border-indigo-400 font-medium text-slate-900 bg-indigo-50/20'
+                  : 'border-slate-200 text-slate-600',
+              )}
+            >
+              <SelectValue placeholder="Ambos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ambos" className="text-xs">
+                Ambos
+              </SelectItem>
+              <SelectItem value="racnew" className="text-xs">
+                RacNew
+              </SelectItem>
+              <SelectItem value="netsales" className="text-xs">
+                NetSales
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <div className="sm:col-span-2">
           <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Utilização</Label>
           <MultiSelectDropdown
@@ -716,8 +770,8 @@ export default function FilterBar({
           </Select>
         </div>
 
-        {showSearch && (
-          <div className="sm:col-span-3">
+        {showSearch ? (
+          <div className="sm:col-span-2">
             <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
               Busca Textual (Cliente, Item, Nº NFe, SAP)
             </Label>
@@ -740,6 +794,8 @@ export default function FilterBar({
               )}
             </div>
           </div>
+        ) : (
+          <div className="hidden sm:block sm:col-span-2" />
         )}
       </div>
 

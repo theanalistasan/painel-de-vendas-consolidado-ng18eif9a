@@ -2,11 +2,9 @@
 // Consolida a coleção `vendas` a partir de RacNew (base mestra) enriquecida
 // com os 12 campos exclusivos da NetSales e o grupo_item da Produtos.
 //
-// O JOIN é feito em SQL nativo (INSERT ... SELECT ... LEFT JOIN), o que é
-// O(maginitude) mais rápido que iterar 125k registros em JS fazendo uma
-// consulta findRecordsByFilter por linha (que é a causa dos timeouts e dos
-// campos da NetSales em branco — o filtro antigo usava aspas simples, que o
-// PocketBase não interpreta como string literal, retornando 0 matches).
+// Inclui os marcadores booleanos:
+//   tem_racnew = true (já que r é racnew)
+//   tem_netsales = (CASE WHEN n.chave_documento IS NOT NULL THEN 1 ELSE 0 END)
 //
 // Chave de join RacNew -> NetSales:
 //   racnew.numero_sap   = netsales.chave_documento
@@ -30,8 +28,8 @@ routerAdd(
       //    - racnew é a base mestra (todas as linhas viram vendas)
       //    - netsales enriquece com os campos exclusivos (quando há match)
       //    - produtos traz o grupo_item pelo codigo_item
-      //    Em SQL, literais de texto usam aspas SIMPLES (não duplas) — este é
-      //    o oposto do filtro do findRecordsByFilter, que usa aspas duplas.
+      //    - tem_racnew = 1 (true)
+      //    - tem_netsales = 1 se houve match com netsales, 0 se não
       const insertSql =
         'INSERT INTO vendas (' +
         '  tipo_documento, nf_entrega_futura, numero_sap, numero_nfe, ' +
@@ -45,6 +43,7 @@ routerAdd(
         '  numero_documento_netsales, preco_unitario, total_nf_sem_frete, ' +
         '  total_nf_novo, valor_liquido, custo_total, classificacao, ' +
         '  vendedor_revenda, grupo_item, vendedor_cliente, origem, ' +
+        '  tem_racnew, tem_netsales, ' +
         '  data_carga, created, updated' +
         ') ' +
         'SELECT ' +
@@ -53,7 +52,6 @@ routerAdd(
         '  r.data_origem_destino, r.condicao_pagamento, r.codigo_cliente, ' +
         '  r.nome_cliente, r.numero_linha, r.codigo_item, r.descricao_item, ' +
         // Campos numéricos da RacNew — COALESCE para 0 quando vierem vazios
-        // (evita NULL em colunas eventualmente NOT NULL e normaliza o dado).
         '  r.quantidade, COALESCE(r.qty_kg_lt, 0), COALESCE(r.preco_item, 0), ' +
         '  COALESCE(r.desconto_linha, 0), COALESCE(r.icms, 0), COALESCE(r.pis, 0), ' +
         '  COALESCE(r.cofins, 0), COALESCE(r.ipi, 0), COALESCE(r.icms_partilha, 0), ' +
@@ -61,9 +59,6 @@ routerAdd(
         '  r.nome_vendedor, COALESCE(r.custo_item, 0), r.nome_filial, r.conta, ' +
         '  r.estado, r.cidade, ' +
         // Campos da NetSales (LEFT JOIN — NULL quando não há match).
-        // COALESCE em TODOS para nunca inserir NULL (textos -> '', números -> 0),
-        // evitando `NOT NULL constraint failed` mesmo que alguma coluna ainda
-        // esteja marcada como NOT NULL no SQLite.
         "  COALESCE(n.grupo_cliente, ''), COALESCE(n.mercado, ''), " +
         "  COALESCE(n.usuario_emissor, ''), COALESCE(n.itms_grp_nam, ''), " +
         "  COALESCE(n.numero_documento, ''), COALESCE(n.preco_unitario, 0), " +
@@ -75,6 +70,8 @@ routerAdd(
         // vendedor_cliente = "nome_vendedor > nome_cliente" (concat)
         "  (r.nome_vendedor || ' > ' || r.nome_cliente), " +
         "  'Consolidado', " +
+        // tem_racnew / tem_netsales
+        "  1, (CASE WHEN n.chave_documento IS NOT NULL AND n.chave_documento != '' THEN 1 ELSE 0 END), " +
         // data_carga / created / updated — timestamp desta consolidação
         '  {:now}, {:now}, {:now} ' +
         'FROM racnew r ' +

@@ -3,6 +3,7 @@ import type { FilterState } from '@/types/sales'
 const STORAGE_KEY = 'paineis_vendas_filters'
 
 const EMPTY_FILTERS: FilterState = {
+  base: 'ambos',
   dataDe: '',
   dataAte: '',
   vendedorCliente: [],
@@ -24,6 +25,7 @@ const EMPTY_FILTERS: FilterState = {
  * reais no banco de dados.
  */
 const DEFAULT_FILTERS: FilterState = {
+  base: 'ambos',
   dataDe: '',
   dataAte: '',
   vendedorCliente: [],
@@ -62,9 +64,15 @@ export function loadFiltersFromSession(): FilterState {
       return []
     }
 
+    const normalizeBase = (val: unknown): 'ambos' | 'racnew' | 'netsales' => {
+      if (val === 'racnew' || val === 'netsales' || val === 'ambos') return val
+      return 'ambos'
+    }
+
     const merged: FilterState = {
       ...EMPTY_FILTERS,
       ...parsed,
+      base: normalizeBase(parsed.base),
       ano: normalizeArray(parsed.ano),
       mes: normalizeArray(parsed.mes),
       dia: normalizeArray(parsed.dia),

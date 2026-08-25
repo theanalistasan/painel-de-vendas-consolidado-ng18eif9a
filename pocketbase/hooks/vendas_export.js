@@ -7,6 +7,7 @@
 //   sortField     (string, opcional, ex: "total_linha")
 //   sortDirection (string, opcional: "asc" | "desc")
 //   filters       (object, opcional):
+//     base                    ('ambos' | 'racnew' | 'netsales')
 //     dataDe, dataAte         (yyyy-mm-dd)
 //     ano, mes, dia           (string / string[])
 //     vendedorCliente[]       (string[])
@@ -47,6 +48,8 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
     grupo_cliente: 'grupo_cliente',
     mercado: 'mercado',
     usuario_emissor_pedido: 'usuario_emissor_pedido',
+    tem_racnew: 'tem_racnew',
+    tem_netsales: 'tem_netsales',
     created: 'created',
     updated: 'updated',
   }
@@ -79,6 +82,13 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
   const sqlEsc = (s) => String(s).replace(/'/g, "''")
 
   const sqlParts = []
+
+  // Filtro de BASE (Seleção de Bases: ambos | racnew | netsales)
+  if (f.base === 'racnew') {
+    sqlParts.push('tem_racnew = 1 AND (tem_netsales = 0 OR tem_netsales IS NULL)')
+  } else if (f.base === 'netsales') {
+    sqlParts.push('tem_netsales = 1 AND (tem_racnew = 0 OR tem_racnew IS NULL)')
+  }
 
   if (f.dataDe) {
     sqlParts.push("data_lancamento >= '" + sqlEsc(f.dataDe) + " 00:00:00'")
@@ -220,6 +230,8 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
       grupo_item: '',
       vendedor_cliente: '',
       origem: '',
+      tem_racnew: '',
+      tem_netsales: '',
       data_carga: '',
       created: '',
       updated: '',
@@ -229,7 +241,7 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
   $app
     .db()
     .newQuery(
-      'SELECT id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe, data_lancamento, ultima_data_vencimento, docto_origem_destino, data_origem_destino, condicao_pagamento, codigo_cliente, nome_cliente, numero_linha, codigo_item, descricao_item, quantidade, qty_kg_lt, preco_item, desconto_linha, icms, pis, cofins, ipi, icms_partilha, total_linha, utilizacao, nome_vendedor, custo_item, nome_filial, conta, estado, cidade, grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam, numero_documento_netsales, preco_unitario, total_nf_sem_frete, total_nf_novo, valor_liquido, custo_total, classificacao, vendedor_revenda, grupo_item, vendedor_cliente, origem, data_carga, created, updated ' +
+      'SELECT id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe, data_lancamento, ultima_data_vencimento, docto_origem_destino, data_origem_destino, condicao_pagamento, codigo_cliente, nome_cliente, numero_linha, codigo_item, descricao_item, quantidade, qty_kg_lt, preco_item, desconto_linha, icms, pis, cofins, ipi, icms_partilha, total_linha, utilizacao, nome_vendedor, custo_item, nome_filial, conta, estado, cidade, grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam, numero_documento_netsales, preco_unitario, total_nf_sem_frete, total_nf_novo, valor_liquido, custo_total, classificacao, vendedor_revenda, grupo_item, vendedor_cliente, origem, tem_racnew, tem_netsales, data_carga, created, updated ' +
         'FROM vendas WHERE ' +
         sqlWhere +
         ' ORDER BY ' +
@@ -288,6 +300,16 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
       grupo_item: r.grupo_item,
       vendedor_cliente: r.vendedor_cliente,
       origem: r.origem,
+      tem_racnew:
+        r.tem_racnew === '1' ||
+        r.tem_racnew === 1 ||
+        r.tem_racnew === 'true' ||
+        r.tem_racnew === true,
+      tem_netsales:
+        r.tem_netsales === '1' ||
+        r.tem_netsales === 1 ||
+        r.tem_netsales === 'true' ||
+        r.tem_netsales === true,
       data_carga: r.data_carga,
       created: r.created,
       updated: r.updated,

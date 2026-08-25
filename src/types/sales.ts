@@ -125,10 +125,14 @@ export interface VendaConsolidada extends RecordModel {
   grupo_item: string
   vendedor_cliente: string
   origem: string
+  tem_racnew?: boolean
+  tem_netsales?: boolean
   data_carga: string
 }
 
 export interface FilterState {
+  /** Seleção de Bases: 'ambos' (default) | 'racnew' | 'netsales' */
+  base?: 'ambos' | 'racnew' | 'netsales'
   dataDe: string
   dataAte: string
   vendedorCliente: string[]
