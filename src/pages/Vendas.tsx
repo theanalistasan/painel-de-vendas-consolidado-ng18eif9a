@@ -188,6 +188,7 @@ export default function Vendas() {
     { key: 'grupo_cliente', label: 'Grupo do Cliente', type: 'text' },
     { key: 'mercado', label: 'Mercado', type: 'text' },
     { key: 'usuario_emissor_pedido', label: 'Usuário Emitente do Pedido', type: 'text' },
+    { key: 'origem', label: 'Origem', type: 'text' },
   ]
 
   // Estrutura de grupos por Nº NFe para a página atual
@@ -304,10 +305,15 @@ export default function Vendas() {
         label: c.label,
       }))
 
+      const formattedRows = rowsToExport.map((row) => ({
+        ...row,
+        origem: row.tem_netsales ? 'NetSales' : 'RacNew',
+      }))
+
       const dateStr = new Date().toISOString().slice(0, 10)
       exportToCSV(
         `vendas_consolidadas_completa_${dateStr}`,
-        rowsToExport as unknown as Record<string, unknown>[],
+        formattedRows as unknown as Record<string, unknown>[],
         exportColumns,
       )
 
@@ -682,6 +688,25 @@ export default function Vendas() {
                               {/* 24. Usuário Emitente (NetSales) */}
                               <td className="py-2.5 px-3.5 text-slate-500 font-mono text-[11px]">
                                 {item.usuario_emissor_pedido || '-'}
+                              </td>
+
+                              {/* 25. Origem */}
+                              <td className="py-2.5 px-3.5">
+                                {item.tem_netsales ? (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] font-semibold bg-indigo-50/70 text-indigo-700 border-indigo-200/80 px-2 py-0.5"
+                                  >
+                                    NetSales
+                                  </Badge>
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[10px] font-semibold bg-slate-100 text-slate-700 border-slate-200 px-2 py-0.5"
+                                  >
+                                    RacNew
+                                  </Badge>
+                                )}
                               </td>
                             </tr>
                           )
