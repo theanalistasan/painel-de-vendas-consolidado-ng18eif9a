@@ -197,6 +197,8 @@ export interface VendasListResult {
   page: number
   perPage: number
   totalItems: number
+  totalNetsales?: number
+  totalRacnew?: number
   totalPages: number
 }
 

@@ -259,15 +259,34 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
     .all(dataRows)
 
   let totalItems = 0
+  let totalNetsales = 0
+  let totalRacnew = 0
   try {
-    const countRows = arrayOf(new DynamicModel({ total: '' }))
+    const countRows = arrayOf(
+      new DynamicModel({
+        total: '',
+        total_netsales: '',
+        total_racnew: '',
+      }),
+    )
     $app
       .db()
-      .newQuery('SELECT COUNT(*) as total FROM vendas WHERE ' + sqlWhere)
+      .newQuery(
+        'SELECT ' +
+          'COUNT(*) as total, ' +
+          'COUNT(CASE WHEN tem_netsales = 1 THEN 1 END) as total_netsales, ' +
+          'COUNT(CASE WHEN tem_netsales = 0 OR tem_netsales IS NULL THEN 1 END) as total_racnew ' +
+          'FROM vendas WHERE ' +
+          sqlWhere,
+      )
       .all(countRows)
     if (countRows.length > 0) {
       const n = parseInt(countRows[0].total, 10)
       if (!isNaN(n)) totalItems = n
+      const ns = parseInt(countRows[0].total_netsales, 10)
+      if (!isNaN(ns)) totalNetsales = ns
+      const rn = parseInt(countRows[0].total_racnew, 10)
+      if (!isNaN(rn)) totalRacnew = rn
     }
   } catch (err) {
     console.error('vendas_list: COUNT falhou:', err)
@@ -346,6 +365,8 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
     page: page,
     perPage: perPage,
     totalItems: totalItems,
+    totalNetsales: totalNetsales,
+    totalRacnew: totalRacnew,
     totalPages: Math.max(1, Math.ceil(totalItems / perPage)),
   })
 })
