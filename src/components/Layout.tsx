@@ -20,7 +20,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { isAdminUnlocked } from '@/components/AdminGuard'
 import RolandLogo from '@/components/RolandLogo'
-import { fetchSalesCounts } from '@/services/sales'
+import { getCountsSummary } from '@/services/sales'
 import { formatDateTime } from '@/lib/formatters'
 import { useRealtime } from '@/hooks/use-realtime'
 
@@ -34,7 +34,7 @@ export default function Layout() {
   // Buscar data da última carga para exibir no footer
   const loadStats = async () => {
     try {
-      const counts = await fetchSalesCounts()
+      const counts = await getCountsSummary()
       if (counts?.ultimaCarga) {
         setUltimaCarga(counts.ultimaCarga)
       }
