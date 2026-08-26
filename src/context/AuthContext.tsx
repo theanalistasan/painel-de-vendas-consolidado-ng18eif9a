@@ -35,9 +35,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setToken(res.token)
         })
         .catch((err) => {
-          // NUNCA limpar pb.authStore no catch de refresh:
-          // Apenas define user=null no estado React se o refresh falhar
           console.warn('Auth refresh falhou:', err)
+          pb.authStore.clear()
           setUser(null)
         })
         .finally(() => {
@@ -80,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(res.token)
       } catch (err) {
         console.warn('refreshAuth falhou:', err)
+        pb.authStore.clear()
         setUser(null)
       }
     }
