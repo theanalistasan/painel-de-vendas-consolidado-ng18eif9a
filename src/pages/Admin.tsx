@@ -32,7 +32,7 @@ import { formatNumber } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 
 const BASES = [
-  { key: 'produtos', label: 'Produtos', desc: 'Catálogo de itens', color: 'bg-amber-500' },
+  { key: 'produtos', label: 'Produtos', desc: 'Catálogo de itens', color: 'bg-cyan-500' },
   { key: 'racnew', label: 'RacNew', desc: 'Base mestra fiscal/financeira', color: 'bg-indigo-500' },
   { key: 'netsales', label: 'NetSales', desc: 'Campos comerciais', color: 'bg-teal-500' },
   { key: 'vendas', label: 'Vendas', desc: 'Base consolidada', color: 'bg-rose-500' },
@@ -301,19 +301,19 @@ export default function Admin() {
           className={cn(
             'rounded-xl',
             lastResult.alreadyEmpty
-              ? 'bg-amber-50 border-amber-200'
+              ? 'bg-cyan-50 border-cyan-200'
               : 'bg-emerald-50 border-emerald-200',
           )}
         >
           {lastResult.alreadyEmpty ? (
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTriangle className="h-4 w-4 text-cyan-600" />
           ) : (
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           )}
           <AlertTitle
             className={cn(
-              'text-sm font-semibold',
-              lastResult.alreadyEmpty ? 'text-amber-800' : 'text-emerald-800',
+              'text-xs font-semibold',
+              lastResult.alreadyEmpty ? 'text-cyan-800' : 'text-emerald-800',
             )}
           >
             {lastResult.alreadyEmpty ? 'Bases já limpas' : 'Limpeza concluída'}

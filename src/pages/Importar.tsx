@@ -486,8 +486,8 @@ function BaseImportCard({
             <div className="flex items-center gap-1.5 font-bold">
               {batchResult && batchResult.failedBatches.length > 0 ? (
                 <>
-                  <AlertCircle className="w-4 h-4 text-amber-600" />
-                  <span className="text-amber-700">Importação Parcial:</span>
+                  <AlertCircle className="w-4 h-4 text-cyan-600" />
+                  <span className="text-cyan-700">Importação Parcial:</span>
                 </>
               ) : (
                 <>
@@ -527,7 +527,7 @@ function BaseImportCard({
                   {formatNumber(parsedRows.length - (baseCount ?? 0))} vs arquivo)
                 </span>
                 {result.ignorados > 0 && (
-                  <span className="text-amber-600 font-medium ml-auto">
+                  <span className="text-cyan-600 font-medium ml-auto">
                     {formatNumber(result.ignorados)} ignorados
                   </span>
                 )}
@@ -550,7 +550,7 @@ function BaseImportCard({
                 <span className="text-[10px] text-slate-400 uppercase font-semibold block">
                   Ignorados
                 </span>
-                <span className="text-sm font-bold text-amber-600">{result.ignorados}</span>
+                <span className="text-sm font-bold text-cyan-600">{result.ignorados}</span>
               </div>
             </div>
 
@@ -639,7 +639,7 @@ export default function Importar() {
   }
 
   const summaryEntries: { base: BaseKey; label: string; color: string }[] = [
-    { base: 'produtos', label: 'Produtos', color: 'text-amber-700' },
+    { base: 'produtos', label: 'Produtos', color: 'text-cyan-700' },
     { base: 'racnew', label: 'RacNew', color: 'text-indigo-700' },
     { base: 'netsales', label: 'NetSales', color: 'text-teal-700' },
   ]
@@ -741,7 +741,7 @@ export default function Importar() {
           title="Produtos"
           subtitle="Catálogo de itens e categorias"
           badgeLabel="Produtos"
-          badgeColor="bg-amber-600"
+          badgeColor="bg-cyan-600"
           expectedColumns={['codigo_item', 'descricao_item', 'grupo_item', 'ativo']}
           onImport={(rows) => importProdutosApi(rows)}
           baseCount={counts.produtos}
@@ -862,7 +862,7 @@ export default function Importar() {
                             <span className="text-[9px] text-slate-400 uppercase font-semibold block">
                               Ignorados
                             </span>
-                            <span className="text-xs font-bold text-amber-600">{r.ignorados}</span>
+                            <span className="text-xs font-bold text-cyan-600">{r.ignorados}</span>
                           </div>
                         </div>
                         <div className="flex items-center justify-between pt-1 text-[10px] text-slate-500">

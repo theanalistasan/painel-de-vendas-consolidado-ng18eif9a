@@ -43,8 +43,8 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-[#0F172A] p-4 relative overflow-hidden">
       {/* Background Subtle Gradient Overlay */}
       <div className="absolute inset-0 bg-radial-at-t from-slate-900 via-[#0F172A] to-black opacity-90" />
-      <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-[#F47920]/10 blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-[#F47920]/5 blur-3xl pointer-events-none" />
+      <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-[#0B6E99]/10 blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-[#0B6E99]/5 blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10">
         {/* Top Brand Logo */}
@@ -92,7 +92,7 @@ export default function Login() {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     autoComplete="email"
-                    className="pl-9 bg-slate-950/60 border-slate-800 text-white placeholder:text-slate-500 focus-visible:ring-[#F47920] h-10 text-xs rounded-xl"
+                    className="pl-9 bg-slate-950/60 border-slate-800 text-white placeholder:text-slate-500 focus-visible:ring-[#0B6E99] h-10 text-xs rounded-xl"
                   />
                 </div>
               </div>
@@ -111,14 +111,14 @@ export default function Login() {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     autoComplete="current-password"
-                    className="pl-9 bg-slate-950/60 border-slate-800 text-white placeholder:text-slate-500 focus-visible:ring-[#F47920] h-10 text-xs rounded-xl"
+                    className="pl-9 bg-slate-950/60 border-slate-800 text-white placeholder:text-slate-500 focus-visible:ring-[#0B6E99] h-10 text-xs rounded-xl"
                   />
                 </div>
               </div>
 
               <Button
                 type="submit"
-                className="w-full bg-[#F47920] hover:bg-[#EA580C] text-white font-bold h-10 rounded-xl transition-all shadow-md mt-2 flex items-center justify-center gap-2"
+                className="w-full bg-[#0B6E99] hover:bg-[#084F6E] text-white font-bold h-10 rounded-xl transition-all shadow-md mt-2 flex items-center justify-center gap-2"
                 disabled={loading}
               >
                 {loading ? (

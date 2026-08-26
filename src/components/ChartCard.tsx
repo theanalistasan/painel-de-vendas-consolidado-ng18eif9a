@@ -30,7 +30,7 @@ export default function ChartCard({
             <div>
               {/* Título do Card de Gráfico com font-extrabold / font-bold */}
               <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2 tracking-tight">
-                {Icon && <Icon className={cn('w-4 h-4', iconColor || 'text-[#F47920]')} />}
+                {Icon && <Icon className={cn('w-4 h-4', iconColor || 'text-[#0B8A9E]')} />}
                 {title}
               </CardTitle>
               {description && (
@@ -44,7 +44,7 @@ export default function ChartCard({
               onClick={() => setExpanded(true)}
               aria-label={`Expandir ${title}`}
               title="Expandir em tela cheia"
-              className="p-1.5 rounded-lg text-slate-300 hover:text-[#F47920] hover:bg-orange-50 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#F47920]/40 shrink-0"
+              className="p-1.5 rounded-lg text-slate-300 hover:text-[#0B8A9E] hover:bg-cyan-50 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#0B8A9E]/40 shrink-0"
             >
               <Expand className="w-4 h-4" />
             </button>
@@ -61,7 +61,7 @@ export default function ChartCard({
           <div className="flex items-center gap-3 px-6 pt-6 pb-3 border-b border-slate-100">
             {Icon && (
               <div className="shrink-0">
-                <Icon className={cn('w-5 h-5', iconColor || 'text-[#F47920]')} />
+                <Icon className={cn('w-5 h-5', iconColor || 'text-[#0B8A9E]')} />
               </div>
             )}
             <div>

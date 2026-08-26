@@ -55,7 +55,7 @@ export default function Layout() {
     return (
       <div className="flex items-center justify-center min-h-screen bg-[#0F172A] text-white">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 border-4 border-[#F47920] border-t-transparent rounded-full animate-spin" />
+          <div className="w-10 h-10 border-4 border-[#0B6E99] border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-slate-400 font-medium">Carregando painel...</p>
         </div>
       </div>
@@ -171,7 +171,7 @@ export default function Layout() {
             <span className="font-extrabold text-white text-xs tracking-tight uppercase">
               Painel de Vendas
             </span>
-            <span className="text-[10px] text-[#F47920] font-bold tracking-wide">
+            <span className="text-[10px] text-[#0B6E99] font-bold tracking-wide">
               • Consolidado
             </span>
           </div>
@@ -189,7 +189,7 @@ export default function Layout() {
                 className={cn(
                   'flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium transition-all duration-200',
                   isActive
-                    ? 'bg-[#F47920] text-white shadow-sm font-bold'
+                    ? 'bg-[#0B6E99] text-white shadow-sm font-bold'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
                 )}
               >
@@ -202,7 +202,7 @@ export default function Layout() {
 
         {/* Integration Status Badge */}
         <div className="px-4 py-3 mx-3 mb-3 rounded-xl bg-slate-800/60 border border-slate-700/50 flex items-center gap-2.5">
-          <div className="p-1.5 rounded-lg bg-[#F47920]/20 text-[#F47920]">
+          <div className="p-1.5 rounded-lg bg-[#0B6E99]/20 text-[#0B6E99]">
             <Layers className="w-4 h-4" />
           </div>
           <div className="flex flex-col text-xs">
@@ -215,8 +215,8 @@ export default function Layout() {
         <div className="p-3 border-t border-slate-800/80 bg-slate-950/60">
           <div className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-slate-800/50 transition-colors">
             <div className="flex items-center gap-2.5 min-w-0">
-              <Avatar className="w-8 h-8 border border-slate-700 bg-slate-900 text-[#F47920]">
-                <AvatarFallback className="text-xs font-extrabold bg-[#F47920] text-white">
+              <Avatar className="w-8 h-8 border border-slate-700 bg-slate-900 text-[#0B6E99]">
+                <AvatarFallback className="text-xs font-extrabold bg-[#0B6E99] text-white">
                   {userInitials || 'U'}
                 </AvatarFallback>
               </Avatar>
@@ -264,7 +264,7 @@ export default function Layout() {
                   <X className="w-5 h-5" />
                 </Button>
               </div>
-              <div className="text-[11px] font-bold text-[#F47920] uppercase tracking-wider text-center pt-1 border-t border-slate-800/80">
+              <div className="text-[11px] font-bold text-[#0B6E99] uppercase tracking-wider text-center pt-1 border-t border-slate-800/80">
                 Painel de Vendas Consolidado
               </div>
             </div>
@@ -282,7 +282,7 @@ export default function Layout() {
                     className={cn(
                       'flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium transition-all',
                       isActive
-                        ? 'bg-[#F47920] text-white font-bold'
+                        ? 'bg-[#0B6E99] text-white font-bold'
                         : 'text-slate-400 hover:text-white hover:bg-slate-800',
                     )}
                   >
@@ -297,7 +297,7 @@ export default function Layout() {
             <div className="p-4 border-t border-slate-800 bg-slate-950/60">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <Avatar className="w-8 h-8 bg-[#F47920] text-white">
+                  <Avatar className="w-8 h-8 bg-[#0B6E99] text-white">
                     <AvatarFallback className="text-xs font-bold">
                       {userInitials || 'U'}
                     </AvatarFallback>
@@ -332,7 +332,7 @@ export default function Layout() {
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden text-white hover:text-[#F47920] hover:bg-slate-800 -ml-1"
+              className="lg:hidden text-white hover:text-[#0B6E99] hover:bg-slate-800 -ml-1"
               onClick={() => setMobileMenuOpen(true)}
               aria-label="Abrir menu"
             >
@@ -344,7 +344,7 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-slate-300 bg-slate-800/90 px-3.5 py-1.5 rounded-full border border-slate-700 shadow-xs">
-            <Calendar className="w-4 h-4 text-[#F47920] shrink-0" />
+            <Calendar className="w-4 h-4 text-[#0B6E99] shrink-0" />
             <span className="hidden sm:inline">{formattedDateCapitalized}</span>
             <span className="sm:hidden">
               {new Intl.DateTimeFormat('pt-BR', {
@@ -366,7 +366,7 @@ export default function Layout() {
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span className="inline-flex items-center gap-1.5 text-slate-200 font-bold">
-                <span className="w-2 h-2 rounded-full bg-[#F47920] animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-[#0B6E99] animate-pulse" />
                 Roland DG Brasil
               </span>
               <span className="text-slate-600 hidden sm:inline">•</span>
@@ -374,10 +374,10 @@ export default function Layout() {
             </div>
 
             <div className="flex items-center gap-2 text-slate-300 font-medium bg-slate-800/80 px-3 py-1 rounded-md border border-slate-700/60">
-              <Database className="w-3.5 h-3.5 text-[#F47920]" />
+              <Database className="w-3.5 h-3.5 text-[#0B6E99]" />
               <span>
                 Dados consolidados — última carga:{' '}
-                <strong className="text-[#F47920] font-bold">{formattedUltimaCarga}</strong>
+                <strong className="text-[#0B6E99] font-bold">{formattedUltimaCarga}</strong>
               </span>
             </div>
           </div>

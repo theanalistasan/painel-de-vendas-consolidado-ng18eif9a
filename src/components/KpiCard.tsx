@@ -98,7 +98,7 @@ export default function KpiCard({
               onClick={() => setExpanded(true)}
               aria-label={`Expandir ${title}`}
               title="Expandir em tela cheia"
-              className="p-1.5 rounded-lg text-slate-300 hover:text-[#F47920] hover:bg-orange-50 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#F47920]/40"
+              className="p-1.5 rounded-lg text-slate-300 hover:text-[#0B6E99] hover:bg-cyan-50 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#0B6E99]/40"
             >
               <Expand className="w-4 h-4" />
             </button>

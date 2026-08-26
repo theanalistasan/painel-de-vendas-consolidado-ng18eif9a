@@ -115,11 +115,11 @@ function MultiSelectDropdown({
         type="button"
         onClick={() => setOpen(!open)}
         className={cn(
-          'flex items-center justify-between w-full h-10 px-3 py-2 text-xs rounded-lg border bg-white transition-colors text-left focus:outline-hidden focus:ring-2 focus:ring-[#F47920]/40',
+          'flex items-center justify-between w-full h-10 px-3 py-2 text-xs rounded-lg border bg-white transition-colors text-left focus:outline-hidden focus:ring-2 focus:ring-[#0B6E99]/40',
           selected.length > 0
-            ? 'border-[#F47920]/60 font-semibold text-slate-900 bg-orange-50/30'
+            ? 'border-[#0B6E99]/60 font-semibold text-slate-900 bg-cyan-50/30'
             : 'border-gray-200 text-slate-600 hover:border-slate-300',
-          highlight && 'border-[#F47920] ring-1 ring-[#F47920]/30',
+          highlight && 'border-[#0B6E99] ring-1 ring-[#0B6E99]/30',
         )}
       >
         <div className="flex items-center gap-1.5 truncate pr-2">
@@ -127,7 +127,7 @@ function MultiSelectDropdown({
           {selected.length === 0 ? (
             <span className="text-slate-400 font-normal">{placeholder}</span>
           ) : (
-            <span className="text-[#EA580C] font-bold truncate">
+            <span className="text-[#0B6E99] font-bold truncate">
               {selected.length === 1
                 ? getOptionLabel
                   ? getOptionLabel(selected[0])
@@ -147,7 +147,7 @@ function MultiSelectDropdown({
               placeholder={`Pesquisar ${label.toLowerCase()}...`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-8 text-xs rounded-md border-gray-200 focus-visible:ring-[#F47920]"
+              className="h-8 text-xs rounded-md border-gray-200 focus-visible:ring-[#0B6E99]"
               autoFocus
             />
           </div>
@@ -156,7 +156,7 @@ function MultiSelectDropdown({
             <button
               type="button"
               onClick={selectAll}
-              className="text-[#F47920] hover:underline font-bold"
+              className="text-[#0B6E99] hover:underline font-bold"
             >
               Selecionar todos
             </button>
@@ -183,7 +183,7 @@ function MultiSelectDropdown({
                     className={cn(
                       'flex items-center justify-between w-full px-2.5 py-1.5 rounded-md text-left transition-colors font-medium',
                       isSelected
-                        ? 'bg-orange-50 text-orange-950 font-bold'
+                        ? 'bg-cyan-50 text-cyan-950 font-bold'
                         : 'text-slate-700 hover:bg-slate-100',
                     )}
                   >
@@ -192,12 +192,13 @@ function MultiSelectDropdown({
                     </span>
                     <div
                       className={cn(
-                        'w-4 h-4 rounded-sm border flex items-center justify-center shrink-0',
+                        'w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors',
                         isSelected
-                          ? 'bg-[#F47920] border-[#F47920] text-white'
-                          : 'border-slate-300 bg-white',
+                          ? 'bg-[#0B6E99] border-[#0B6E99] text-white'
+                          : 'border-gray-300 bg-white',
                       )}
                     >
+                      {' '}
                       {isSelected && <Check className="w-3 h-3" />}
                     </div>
                   </button>
@@ -334,7 +335,7 @@ export default function FilterBar({
         id: 'base',
         label: `Base: ${baseLabel}`,
         type: 'base',
-        bgClass: 'bg-orange-50 border-orange-200 text-orange-950 font-semibold',
+        bgClass: 'bg-cyan-50 border-cyan-200 text-cyan-950 font-semibold',
       })
     }
 
@@ -361,7 +362,7 @@ export default function FilterBar({
         label: `Ano: ${item}`,
         type: 'ano',
         value: item,
-        bgClass: 'bg-orange-50 border-orange-200 text-orange-950 font-semibold',
+        bgClass: 'bg-cyan-50 border-cyan-200 text-cyan-950 font-semibold',
       })
     })
 
@@ -373,7 +374,7 @@ export default function FilterBar({
         label: `Mês: ${labelMes}`,
         type: 'mes',
         value: item,
-        bgClass: 'bg-orange-50 border-orange-200 text-orange-950 font-semibold',
+        bgClass: 'bg-cyan-50 border-cyan-200 text-cyan-950 font-semibold',
       })
     })
 
@@ -383,7 +384,7 @@ export default function FilterBar({
         label: `Dia: ${String(item).padStart(2, '0')}`,
         type: 'dia',
         value: item,
-        bgClass: 'bg-orange-50 border-orange-200 text-orange-950 font-semibold',
+        bgClass: 'bg-cyan-50 border-cyan-200 text-cyan-950 font-semibold',
       })
     })
 
@@ -393,7 +394,7 @@ export default function FilterBar({
         label: item,
         type: 'vendedorCliente',
         value: item,
-        bgClass: 'bg-orange-50 border-orange-200 text-orange-950 font-semibold',
+        bgClass: 'bg-cyan-50 border-cyan-200 text-cyan-950 font-semibold',
       })
     })
 
@@ -443,7 +444,7 @@ export default function FilterBar({
         label: `Doc: ${item}`,
         type: 'tipoDocumento',
         value: item,
-        bgClass: 'bg-orange-50 border-orange-200 text-orange-950 font-semibold',
+        bgClass: 'bg-cyan-50 border-cyan-200 text-cyan-950 font-semibold',
       })
     })
 
@@ -452,7 +453,7 @@ export default function FilterBar({
         id: 'search',
         label: `Busca: "${filters.search}"`,
         type: 'search',
-        bgClass: 'bg-amber-50 border-amber-200 text-amber-900 font-medium',
+        bgClass: 'bg-cyan-50 border-cyan-200 text-cyan-900 font-medium',
       })
     }
 
@@ -477,7 +478,7 @@ export default function FilterBar({
       {/* Header com Título e Contador Roland DG */}
       <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 gap-2">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-orange-50 text-[#F47920]">
+          <div className="p-1.5 rounded-lg bg-cyan-50 text-[#0B6E99]">
             <Filter className="w-4 h-4" />
           </div>
           <div>
@@ -485,7 +486,7 @@ export default function FilterBar({
             {activeFiltersCount > 0 && (
               <Badge
                 variant="secondary"
-                className="ml-2 bg-orange-100 text-orange-900 text-[11px] font-bold"
+                className="ml-2 bg-cyan-100 text-cyan-900 text-[11px] font-bold"
               >
                 {activeFiltersCount} ativo{activeFiltersCount > 1 ? 's' : ''}
               </Badge>
@@ -502,7 +503,7 @@ export default function FilterBar({
             className={cn(
               'h-8 px-4 text-xs font-bold rounded-lg transition-all',
               hasPendingChanges
-                ? 'bg-[#F47920] hover:bg-[#EA580C] text-white ring-2 ring-[#F47920]/30 animate-pulse'
+                ? 'bg-[#0B6E99] hover:bg-[#084F6E] text-white ring-2 ring-[#0B6E99]/30 animate-pulse'
                 : 'bg-slate-900 hover:bg-slate-800 text-white',
             )}
           >
@@ -551,7 +552,7 @@ export default function FilterBar({
               type="date"
               value={localFilters.dataDe}
               onChange={(e) => setLocalFilters((prev) => ({ ...prev, dataDe: e.target.value }))}
-              className="h-10 text-xs rounded-lg border-gray-200 focus-visible:ring-[#F47920]"
+              className="h-10 text-xs rounded-lg border-gray-200 focus-visible:ring-[#0B6E99]"
             />
           </div>
           <div>
@@ -562,7 +563,7 @@ export default function FilterBar({
               type="date"
               value={localFilters.dataAte}
               onChange={(e) => setLocalFilters((prev) => ({ ...prev, dataAte: e.target.value }))}
-              className="h-10 text-xs rounded-lg border-gray-200 focus-visible:ring-[#F47920]"
+              className="h-10 text-xs rounded-lg border-gray-200 focus-visible:ring-[#0B6E99]"
             />
           </div>
         </div>
@@ -697,7 +698,7 @@ export default function FilterBar({
               className={cn(
                 'h-10 text-xs rounded-lg',
                 localFilters.base && localFilters.base !== 'ambos'
-                  ? 'border-[#F47920]/60 font-bold text-slate-900 bg-orange-50/30'
+                  ? 'border-[#0B6E99]/60 font-bold text-slate-900 bg-cyan-50/30'
                   : 'border-gray-200 text-slate-600',
               )}
             >
@@ -743,7 +744,7 @@ export default function FilterBar({
               className={cn(
                 'h-10 text-xs rounded-lg',
                 localFilters.tipoDevolucao
-                  ? 'border-[#F47920]/60 font-bold text-slate-900 bg-orange-50/30'
+                  ? 'border-[#0B6E99]/60 font-bold text-slate-900 bg-cyan-50/30'
                   : 'border-gray-200 text-slate-600',
               )}
             >
@@ -773,7 +774,7 @@ export default function FilterBar({
                 placeholder="Ex.: DIAMANTE, GS-24, 56316..."
                 value={localFilters.search}
                 onChange={(e) => setLocalFilters((prev) => ({ ...prev, search: e.target.value }))}
-                className="h-10 text-xs rounded-lg border-gray-200 focus-visible:ring-[#F47920] pr-8"
+                className="h-10 text-xs rounded-lg border-gray-200 focus-visible:ring-[#0B6E99] pr-8"
               />
               {localFilters.search && (
                 <button
@@ -822,7 +823,7 @@ export default function FilterBar({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 px-2.5 text-xs rounded-full border-orange-200 bg-orange-50 text-orange-800 hover:bg-orange-100 font-bold gap-1"
+                  className="h-7 px-2.5 text-xs rounded-full border-cyan-200 bg-cyan-50 text-cyan-800 hover:bg-cyan-100 font-bold gap-1"
                 >
                   <span>
                     +{remainingPills.length} filtro{remainingPills.length > 1 ? 's' : ''}

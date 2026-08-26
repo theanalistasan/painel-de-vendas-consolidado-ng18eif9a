@@ -36,7 +36,7 @@
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 25 91% 54%;
+    --ring: 209 100% 32%;
 
     --radius: 0.5rem;
 
@@ -44,7 +44,7 @@
 
     --sidebar-foreground: 215 20.2% 65.1%;
 
-    --sidebar-primary: 25 91% 54%;
+    --sidebar-primary: 209 100% 32%;
 
     --sidebar-primary-foreground: 0 0% 100%;
 
@@ -54,13 +54,13 @@
 
     --sidebar-border: 217 33% 17%;
 
-    --sidebar-ring: 25 91% 54%;
+    --sidebar-ring: 209 100% 32%;
 
-    --chart-1: 189 100% 38%;
-    --chart-2: 189 70% 48%;
-    --chart-3: 189 50% 58%;
-    --chart-4: 189 90% 30%;
-    --chart-5: 189 60% 42%;
+    --chart-1: 209 100% 32%;
+    --chart-2: 189 100% 38%;
+    --chart-3: 209 85% 45%;
+    --chart-4: 189 80% 50%;
+    --chart-5: 209 70% 25%;
   }
 
   .dark {
@@ -101,11 +101,11 @@
     --sidebar-border: 222.2 84% 4.9%;
     --sidebar-ring: 222.2 84% 4.9%;
 
-    --chart-1: 270 100% 44%;
-    --chart-2: 164 100% 38%;
-    --chart-3: 43 100% 32%;
-    --chart-4: 340 100% 50%;
-    --chart-5: 10 100% 50%;
+    --chart-1: 209 100% 45%;
+    --chart-2: 189 100% 45%;
+    --chart-3: 209 85% 55%;
+    --chart-4: 189 80% 60%;
+    --chart-5: 209 70% 35%;
   }
 
   /* NEVER REMOVE THIS */

@@ -186,8 +186,8 @@ export function formatMonthYear(isoDate: string): string {
 export const GRUPO_COLORS: Record<string, string> = {
   EQUIPAMENTOS: '#4F46E5', // Indigo
   TINTAS: '#0D9488', // Teal
-  ACESSÓRIOS: '#F59E0B', // Amber
-  ACESSORIOS: '#F59E0B',
+  ACESSÓRIOS: '#1895A8', // Ciano
+  ACESSORIOS: '#1895A8',
   SOFTWARE: '#8B5CF6', // Purple
   PEÇAS: '#EF4444', // Red
   PECAS: '#EF4444',

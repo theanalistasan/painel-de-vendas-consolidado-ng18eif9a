@@ -51,43 +51,43 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTableSort } from '@/hooks/use-table-sort'
 
-// Roland DG Amber/Orange Accent as primary palette highlight
-const ROLAND_ORANGE = '#F47920'
-const ROLAND_ORANGE_LIGHT = '#FDBA74'
-const ROLAND_ORANGE_DARK = '#EA580C'
+const COLOR_BLUE = '#0B6E99'
+const COLOR_CYAN = '#1895A8'
+const COLOR_CYAN_DARK = '#106A82'
+const COLOR_CYAN_LIGHT = '#67D2E2'
 
 const CHART_PALETTE = [
-  '#F47920', // Roland DG Orange
-  '#0D9488', // Teal
-  '#F59E0B', // Amber
-  '#EF4444', // Red
-  '#8B5CF6', // Purple
-  '#EC4899', // Pink
-  '#3B82F6', // Blue
-  '#10B981', // Green
+  '#0B6E99', // Azul
+  '#1895A8', // Ciano
+  '#106A82', // Ciano Escuro
+  '#67D2E2', // Ciano Claro
+  '#084F6E', // Azul Escuro
+  '#38BDF8', // Sky
+  '#0284C7', // Azul Médio
+  '#14B8A6', // Teal
 ]
 
-// Ordem fixa dos grupos e paleta alinhada com identidade Roland DG
+// Ordem fixa dos grupos e paleta de cores
 const MENSAL_GRUPOS_ORDEM = ['EQUIPAMENTOS', 'PEÇAS', 'TINTAS', 'ACESSÓRIOS'] as const
 
 const MENSAL_GRUPO_COLORS: Record<string, string> = {
-  EQUIPAMENTOS: '#F47920', // Roland DG Amber/Orange (Barra 1)
-  PEÇAS: '#FB923C', // Laranja médio (Barra 2)
-  PECAS: '#FB923C',
-  TINTAS: '#C2410C', // Laranja escuro / âmbar profundo (Barra 3)
-  ACESSÓRIOS: '#FED7AA', // Âmbar claro (Barra 4)
-  ACESSORIOS: '#FED7AA',
+  EQUIPAMENTOS: '#0B6E99', // Azul (Barra 1)
+  PEÇAS: '#1895A8', // Ciano (Barra 2)
+  PECAS: '#1895A8',
+  TINTAS: '#106A82', // Ciano escuro (Barra 3)
+  ACESSÓRIOS: '#67D2E2', // Ciano claro (Barra 4)
+  ACESSORIOS: '#67D2E2',
 }
 
 const MENSAL_GRUPO_PALETTE = [
-  '#F47920', // Roland DG Orange
-  '#FB923C', // Laranja médio
-  '#C2410C', // Laranja escuro
-  '#FED7AA', // Âmbar suave
-  '#9A3412', // Castanho alaranjado
-  '#F97316', // Orange 500
-  '#EA580C', // Orange 600
-  '#FDBA74', // Orange 300
+  '#0B6E99', // Azul
+  '#1895A8', // Ciano
+  '#106A82', // Ciano escuro
+  '#67D2E2', // Ciano claro
+  '#084F6E', // Azul escuro
+  '#38BDF8', // Sky
+  '#0284C7', // Azul médio
+  '#14B8A6', // Teal
 ]
 
 const tooltipContentStyle = {
@@ -452,7 +452,7 @@ export default function Index() {
       ) : isNoData ? (
         /* Empty State */
         <Card className="rounded-xl border border-dashed border-gray-300 p-12 text-center bg-white">
-          <div className="w-16 h-16 mx-auto rounded-full bg-orange-50 flex items-center justify-center text-[#F47920] mb-4">
+          <div className="w-16 h-16 mx-auto rounded-full bg-cyan-50 flex items-center justify-center text-[#1895A8] mb-4">
             <Sparkles className="w-8 h-8" />
           </div>
           <h3 className="text-lg font-extrabold text-slate-900">Nenhuma venda encontrada</h3>
@@ -484,21 +484,21 @@ export default function Index() {
             >
               Limpar Filtros
             </Button>
-            <Button asChild className="bg-[#F47920] hover:bg-[#EA580C] text-white font-bold">
+            <Button asChild className="bg-[#0B6E99] hover:bg-[#084F6E] text-white font-bold">
               <Link to="/importar">Importar Dados</Link>
             </Button>
           </div>
         </Card>
       ) : (
         <>
-          {/* 4 Novos Gráficos no Topo com paleta Roland DG #F47920 */}
+          {/* 4 Novos Gráficos no Topo com paleta Azul e Ciano */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Gráfico 1: Tendência de Vendas — Equipamentos (Linha Única Contínua Roland DG Orange) */}
+            {/* Gráfico 1: Tendência de Vendas — Equipamentos (Linha Única Contínua Azul) */}
             <ChartCard
               title="Tendência de Vendas — Equipamentos"
               description="Evolução histórica contínua de vendas de Equipamentos"
               icon={TrendingUp}
-              iconColor="text-[#F47920]"
+              iconColor="text-[#0B6E99]"
             >
               {dataTendenciaEquipamentos.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
@@ -541,22 +541,22 @@ export default function Index() {
                       type="monotone"
                       dataKey="total"
                       name="Equipamentos"
-                      stroke={ROLAND_ORANGE}
+                      stroke={COLOR_BLUE}
                       strokeWidth={2.5}
-                      dot={{ r: 2.5, fill: ROLAND_ORANGE }}
-                      activeDot={{ r: 5, fill: ROLAND_ORANGE, stroke: '#FFFFFF', strokeWidth: 2 }}
+                      dot={{ r: 2.5, fill: COLOR_BLUE }}
+                      activeDot={{ r: 5, fill: COLOR_BLUE, stroke: '#FFFFFF', strokeWidth: 2 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
               )}
             </ChartCard>
 
-            {/* Gráfico 2: Acumulado de Vendas — Insumos (Linha Única Contínua Roland DG) */}
+            {/* Gráfico 2: Acumulado de Vendas — Insumos (Linha Única Contínua Ciano) */}
             <ChartCard
               title="Acumulado de Vendas — Insumos"
               description="Evolução histórica contínua de Peças, Tintas e Acessórios"
               icon={TrendingUp}
-              iconColor="text-[#EA580C]"
+              iconColor="text-[#1895A8]"
             >
               {dataAcumuladoInsumos.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
@@ -599,10 +599,10 @@ export default function Index() {
                       type="monotone"
                       dataKey="total"
                       name="Insumos"
-                      stroke="#C2410C"
+                      stroke={COLOR_CYAN_DARK}
                       strokeWidth={2.5}
-                      dot={{ r: 2.5, fill: '#C2410C' }}
-                      activeDot={{ r: 5, fill: '#C2410C', stroke: '#FFFFFF', strokeWidth: 2 }}
+                      dot={{ r: 2.5, fill: COLOR_CYAN_DARK }}
+                      activeDot={{ r: 5, fill: COLOR_CYAN_DARK, stroke: '#FFFFFF', strokeWidth: 2 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -614,7 +614,7 @@ export default function Index() {
               title="Clientes Ativos — Equipamentos"
               description="Comparativo de clientes ativos de equipamentos nos últimos 6 meses vs. ano anterior"
               icon={Users}
-              iconColor="text-[#F47920]"
+              iconColor="text-[#0B6E99]"
             >
               {chartClientesAtivosEquipamentos.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
@@ -658,14 +658,14 @@ export default function Index() {
                     <Bar
                       dataKey="clientesAnoAnterior"
                       name="Ano Anterior"
-                      fill="#FED7AA"
+                      fill="#67D2E2"
                       radius={[4, 4, 0, 0]}
                       maxBarSize={32}
                     />
                     <Bar
                       dataKey="clientes"
                       name="Atual"
-                      fill={ROLAND_ORANGE}
+                      fill={COLOR_BLUE}
                       radius={[4, 4, 0, 0]}
                       maxBarSize={32}
                     />
@@ -679,7 +679,7 @@ export default function Index() {
               title="Clientes Ativos — Insumos"
               description="Comparativo de clientes ativos de insumos nos últimos 6 meses vs. ano anterior"
               icon={Users}
-              iconColor="text-[#EA580C]"
+              iconColor="text-[#1895A8]"
             >
               {chartClientesAtivosInsumos.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
@@ -723,14 +723,14 @@ export default function Index() {
                     <Bar
                       dataKey="clientesAnoAnterior"
                       name="Ano Anterior"
-                      fill="#FDBA74"
+                      fill="#67D2E2"
                       radius={[4, 4, 0, 0]}
                       maxBarSize={32}
                     />
                     <Bar
                       dataKey="clientes"
                       name="Atual"
-                      fill="#EA580C"
+                      fill={COLOR_CYAN}
                       radius={[4, 4, 0, 0]}
                       maxBarSize={32}
                     />
@@ -740,15 +740,15 @@ export default function Index() {
             </ChartCard>
           </div>
 
-          {/* 5 KPIs Section com Tipografia font-extrabold e cor Roland DG */}
+          {/* 5 KPIs Section */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             <KpiCard
               title="Faturamento Total"
               value={kpis.faturamento}
               isCurrency
               icon={DollarSign}
-              iconBgColor="bg-orange-50"
-              iconColor="text-[#F47920]"
+              iconBgColor="bg-cyan-50"
+              iconColor="text-[#0B6E99]"
               deltaPercent={12.4}
             />
             <KpiCard
@@ -765,10 +765,10 @@ export default function Index() {
               value={kpis.itensVendidos}
               decimals={0}
               icon={Package}
-              iconBgColor="bg-amber-50"
-              iconColor="text-amber-600"
+              iconBgColor="bg-cyan-50"
+              iconColor="text-cyan-600"
               deltaPercent={-2.3}
-            />
+            />{' '}
             <KpiCard
               title="Documentos (NFe)"
               value={kpis.documentos}
@@ -795,7 +795,7 @@ export default function Index() {
               title="Evolução de Vendas por Mês"
               description="Últimos 6 meses com comparação do mesmo mês no ano anterior"
               icon={BarChart2}
-              iconColor="text-[#F47920]"
+              iconColor="text-[#0B6E99]"
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
@@ -845,14 +845,14 @@ export default function Index() {
                   <Bar
                     dataKey="faturamento_ano_anterior"
                     name="faturamento_ano_anterior"
-                    fill="#FED7AA"
+                    fill="#67D2E2"
                     radius={[4, 4, 0, 0]}
                     maxBarSize={28}
                   />
                   <Bar
                     dataKey="faturamento"
                     name="faturamento"
-                    fill={ROLAND_ORANGE}
+                    fill={COLOR_BLUE}
                     radius={[4, 4, 0, 0]}
                     maxBarSize={28}
                   />
@@ -935,7 +935,7 @@ export default function Index() {
                     yAxisId="left"
                     dataKey="faturamento"
                     name="faturamento"
-                    fill={ROLAND_ORANGE}
+                    fill={COLOR_BLUE}
                     radius={[4, 4, 0, 0]}
                     maxBarSize={56}
                   />
@@ -952,9 +952,9 @@ export default function Index() {
                     type="monotone"
                     dataKey="variacao"
                     name="variacao"
-                    stroke="#F59E0B"
+                    stroke="#1895A8"
                     strokeWidth={2.5}
-                    dot={{ r: 4, fill: '#F59E0B' }}
+                    dot={{ r: 4, fill: '#1895A8' }}
                     activeDot={{ r: 5 }}
                   />
                 </ComposedChart>
@@ -1008,7 +1008,7 @@ export default function Index() {
               title="Venda Mensal por Grupo do Item"
               description="Faturamento por grupo de item nos últimos 6 meses"
               icon={BarChart2}
-              iconColor="text-[#F47920]"
+              iconColor="text-[#0B6E99]"
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
@@ -1031,7 +1031,7 @@ export default function Index() {
                   />
                   <Tooltip
                     content={<MensalGrupoTooltip />}
-                    cursor={{ fill: 'rgba(244,121,32,0.08)' }}
+                    cursor={{ fill: 'rgba(11,110,153,0.08)' }}
                   />
                   <Legend
                     verticalAlign="top"
@@ -1106,7 +1106,7 @@ export default function Index() {
                     formatter={currencyFormatter('Total')}
                     contentStyle={tooltipContentStyle}
                   />
-                  <Bar dataKey="total" fill={ROLAND_ORANGE} radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="total" fill={COLOR_BLUE} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -1174,7 +1174,7 @@ export default function Index() {
                     formatter={currencyFormatter('Faturamento')}
                     contentStyle={tooltipContentStyle}
                   />
-                  <Bar dataKey="total" fill="#EA580C" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="total" fill={COLOR_CYAN} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -1220,7 +1220,7 @@ export default function Index() {
                   <Bar
                     dataKey="faturamento"
                     name="faturamento"
-                    fill={ROLAND_ORANGE}
+                    fill={COLOR_BLUE}
                     radius={[4, 4, 0, 0]}
                   />
                   <Bar dataKey="liquido" name="liquido" fill="#0D9488" radius={[4, 4, 0, 0]} />
@@ -1244,7 +1244,7 @@ export default function Index() {
                 asChild
                 variant="ghost"
                 size="sm"
-                className="text-[#F47920] hover:text-[#EA580C] hover:bg-orange-50 font-bold gap-1"
+                className="text-[#0B6E99] hover:text-[#084F6E] hover:bg-cyan-50 font-bold gap-1"
               >
                 <Link to="/vendas">
                   Ver todas as vendas
@@ -1276,7 +1276,7 @@ export default function Index() {
                           >
                             <span>{col.label}</span>
                             {sort.field === col.key ? (
-                              <span className="text-[10px] text-[#F47920] font-extrabold">
+                              <span className="text-[10px] text-[#0B6E99] font-extrabold">
                                 {sort.dir === 'asc' ? '▲' : '▼'}
                               </span>
                             ) : (
@@ -1292,7 +1292,7 @@ export default function Index() {
                       <tr>
                         <td colSpan={7} className="py-8 text-center text-slate-400">
                           <div className="flex items-center justify-center gap-2">
-                            <RefreshCw className="w-4 h-4 animate-spin text-[#F47920]" />
+                            <RefreshCw className="w-4 h-4 animate-spin text-[#0B6E99]" />
                             <span className="font-medium">Carregando vendas ordenadas...</span>
                           </div>
                         </td>
@@ -1355,7 +1355,7 @@ export default function Index() {
           {/* Footer note */}
           <div className="flex items-center justify-between text-xs text-slate-400 pt-2 pb-6">
             <span className="flex items-center gap-1.5 font-medium">
-              <RefreshCw className="w-3.5 h-3.5 text-[#F47920]" />
+              <RefreshCw className="w-3.5 h-3.5 text-[#0B6E99]" />
               Sincronização em tempo real ativa
             </span>
             <span className="font-medium">

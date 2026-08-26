@@ -122,7 +122,7 @@ export default function Auditoria() {
       <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs">
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-orange-50 text-[#F47920]">
+            <div className="p-2 rounded-lg bg-cyan-50 text-[#0B6E99]">
               <History className="w-5 h-5" />
             </div>
             <div>
@@ -150,7 +150,7 @@ export default function Auditoria() {
                   setPage(1)
                 }}
               >
-                <SelectTrigger className="rounded-lg border-gray-200 focus-visible:ring-[#F47920] text-xs">
+                <SelectTrigger className="rounded-lg border-gray-200 focus-visible:ring-[#0B6E99] text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -172,7 +172,7 @@ export default function Auditoria() {
                   setPage(1)
                 }}
               >
-                <SelectTrigger className="rounded-lg border-gray-200 focus-visible:ring-[#F47920] text-xs">
+                <SelectTrigger className="rounded-lg border-gray-200 focus-visible:ring-[#0B6E99] text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -195,7 +195,7 @@ export default function Auditoria() {
                   setStartDate(e.target.value)
                   setPage(1)
                 }}
-                className="rounded-lg border-gray-200 focus-visible:ring-[#F47920] text-xs"
+                className="rounded-lg border-gray-200 focus-visible:ring-[#0B6E99] text-xs"
               />
             </div>
 
@@ -208,7 +208,7 @@ export default function Auditoria() {
                   setEndDate(e.target.value)
                   setPage(1)
                 }}
-                className="rounded-lg border-gray-200 focus-visible:ring-[#F47920] text-xs"
+                className="rounded-lg border-gray-200 focus-visible:ring-[#0B6E99] text-xs"
               />
             </div>
           </div>
@@ -219,7 +219,7 @@ export default function Auditoria() {
             </Button>
             <Button
               size="sm"
-              className="h-7 text-[11px] bg-[#F47920] hover:bg-[#EA580C] text-white font-bold"
+              className="h-7 text-[11px] bg-[#0B6E99] hover:bg-[#084F6E] text-white font-bold"
               onClick={applyFilters}
             >
               <Filter className="w-3 h-3 mr-1" />
@@ -234,7 +234,7 @@ export default function Auditoria() {
         <CardContent className="p-0">
           {loading ? (
             <div className="p-10 flex flex-col items-center gap-3 text-slate-400">
-              <Loader2 className="w-8 h-8 text-[#F47920] animate-spin" />
+              <Loader2 className="w-8 h-8 text-[#0B6E99] animate-spin" />
               <p className="text-xs font-medium">Carregando auditoria...</p>
             </div>
           ) : items.length === 0 ? (
