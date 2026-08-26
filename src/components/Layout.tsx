@@ -160,11 +160,11 @@ export default function Layout() {
     <div className="flex min-h-screen bg-[#F8FAFC] text-slate-900 antialiased font-sans">
       {/* Sidebar Desktop */}
       <aside className="hidden lg:flex flex-col w-[260px] fixed inset-y-0 left-0 z-30 bg-[#0F172A] text-[#94A3B8] border-r border-slate-800/80">
-        {/* Top Logo Roland DG + Brand Header */}
+        {/* Top Logo Roland + Brand Header */}
         <div className="pt-6 pb-4 px-6 flex flex-col items-center justify-center border-b border-slate-800/80 gap-3 bg-gradient-to-b from-[#141E33] to-[#0F172A]">
-          {/* Logo Roland DG proeminente no topo (~180px largura) */}
-          <div className="w-[180px] flex items-center justify-center py-1">
-            <RolandLogo variant="white" showSubtitle={true} subtitle="Brasil" />
+          {/* Logo Roland proeminente no topo */}
+          <div className="flex items-center justify-center py-1">
+            <RolandLogo variant="white" showSubtitle={false} />
           </div>
 
           <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 w-full justify-center">
@@ -254,7 +254,7 @@ export default function Layout() {
             {/* Top Brand with close button */}
             <div className="p-4 flex flex-col border-b border-slate-800 bg-[#141E33]">
               <div className="flex items-center justify-between mb-2">
-                <RolandLogo variant="white" showSubtitle={true} subtitle="Brasil" />
+                <RolandLogo variant="white" showSubtitle={false} />
                 <Button
                   variant="ghost"
                   size="icon"

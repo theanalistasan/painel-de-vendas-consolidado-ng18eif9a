@@ -49,8 +49,8 @@ export default function Login() {
       <div className="w-full max-w-md relative z-10">
         {/* Top Brand Logo */}
         <div className="text-center mb-8 flex flex-col items-center">
-          <div className="w-[200px] flex justify-center mb-2">
-            <RolandLogo variant="white" showSubtitle={true} subtitle="Brasil" />
+          <div className="flex justify-center mb-2">
+            <RolandLogo variant="white" showSubtitle={false} />
           </div>
           <p className="text-sm text-slate-400 font-medium mt-1">
             Painel Consolidado de Vendas &amp; Inteligência Comercial
