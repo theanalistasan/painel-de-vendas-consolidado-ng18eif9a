@@ -2,9 +2,9 @@
 
 ## Versão e Status Atual
 
-- **Versão**: v0.0.59 (Backup Estável pré-"Seleção de Bases")
+- **Versão**: v1.0.2
 - **Data do Backup**: 22/08/2026
-- **Status**: QA aprovado, estável, pronto para próxima feature
+- **Status**: QA aprovado, estável, correção de auth validada
 
 ---
 
@@ -69,6 +69,7 @@
 
 ## Histórico de Versões
 
+- **v1.0.2 (22/08/2026)**: Backup de segurança — correção crítica de autenticação (AuthContext limpa pb.authStore no catch do authRefresh, eliminando token inválido que causava dados zerados ao navegar/refresh), filtro Seleção de Bases funcional (RacNew/NetSales/Ambos) com correção da lógica tem_netsales, badges de origem (RacNew âmbar, NetSales indigo), resumo de origens acima da tabela, coluna Tipo de Documento e coluna Origem na tabela de Vendas e CSV, e senhas padronizadas Roland@1234 para todos os 7 usuários + admin.
 - **v0.0.59 (22/08/2026)**: Backup estável pré-"Seleção de Bases" — 5 KPIs, 9 gráficos, filtros multi-seleção persistentes, colapso por NFe, ordenação server-side, auditoria, exportação CSV completa, senhas padronizadas e QA aprovado.
 - **v1.0 (20/08/2026)**: Release oficial estável no commit 0.0.56 com 22 frentes de otimização consolidadas.
 - **v0.0.39**: Backup documental com funcionalidades ativas e bases consolidadas.
