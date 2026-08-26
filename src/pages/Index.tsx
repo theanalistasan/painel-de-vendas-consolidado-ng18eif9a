@@ -15,8 +15,6 @@ import {
   Users,
 } from 'lucide-react'
 import {
-  AreaChart,
-  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -35,15 +33,12 @@ import {
 } from 'recharts'
 import { fetchDashboardStats, fetchVendasList, type DashboardStatsResult } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { FilterState, VendaConsolidada } from '@/types/sales'
+import type { FilterState } from '@/types/sales'
 import {
   formatCurrency,
   formatNumber,
   formatDate,
   getGrupoColor,
-  extractAno,
-  extractMes,
-  extractDia,
   MESES_CURTOS,
 } from '@/lib/formatters'
 import { saveFiltersToSession, loadFiltersFromSession } from '@/lib/filter-persistence'
@@ -55,10 +50,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTableSort } from '@/hooks/use-table-sort'
-import { sortData } from '@/lib/sort'
+
+// Roland DG Amber/Orange Accent as primary palette highlight
+const ROLAND_ORANGE = '#F47920'
+const ROLAND_ORANGE_LIGHT = '#FDBA74'
+const ROLAND_ORANGE_DARK = '#EA580C'
 
 const CHART_PALETTE = [
-  '#4F46E5', // Indigo
+  '#F47920', // Roland DG Orange
   '#0D9488', // Teal
   '#F59E0B', // Amber
   '#EF4444', // Red
@@ -68,31 +67,27 @@ const CHART_PALETTE = [
   '#10B981', // Green
 ]
 
-// Ordem fixa dos grupos e paleta indigo/violeta para o gráfico "Venda Mensal por Grupo do Item".
-// 1. EQUIPAMENTOS (indigo escuro #4F46E5)
-// 2. PEÇAS (indigo médio #6366F1)
-// 3. TINTAS (violeta #7C3AED)
-// 4. ACESSÓRIOS (violeta claro #A78BFA)
+// Ordem fixa dos grupos e paleta alinhada com identidade Roland DG
 const MENSAL_GRUPOS_ORDEM = ['EQUIPAMENTOS', 'PEÇAS', 'TINTAS', 'ACESSÓRIOS'] as const
 
 const MENSAL_GRUPO_COLORS: Record<string, string> = {
-  EQUIPAMENTOS: '#4F46E5', // Indigo escuro (Barra 1)
-  PEÇAS: '#6366F1', // Indigo médio (Barra 2)
-  PECAS: '#6366F1',
-  TINTAS: '#7C3AED', // Violeta (Barra 3)
-  ACESSÓRIOS: '#A78BFA', // Violeta claro (Barra 4)
-  ACESSORIOS: '#A78BFA',
+  EQUIPAMENTOS: '#F47920', // Roland DG Amber/Orange (Barra 1)
+  PEÇAS: '#FB923C', // Laranja médio (Barra 2)
+  PECAS: '#FB923C',
+  TINTAS: '#C2410C', // Laranja escuro / âmbar profundo (Barra 3)
+  ACESSÓRIOS: '#FED7AA', // Âmbar claro (Barra 4)
+  ACESSORIOS: '#FED7AA',
 }
 
 const MENSAL_GRUPO_PALETTE = [
-  '#4F46E5', // Indigo escuro
-  '#6366F1', // Indigo médio
-  '#7C3AED', // Violeta
-  '#A78BFA', // Violeta claro
-  '#8B5CF6', // Violet 500
-  '#4338CA', // Indigo 700
-  '#9333EA', // Purple 600
-  '#818CF8', // Indigo 400
+  '#F47920', // Roland DG Orange
+  '#FB923C', // Laranja médio
+  '#C2410C', // Laranja escuro
+  '#FED7AA', // Âmbar suave
+  '#9A3412', // Castanho alaranjado
+  '#F97316', // Orange 500
+  '#EA580C', // Orange 600
+  '#FDBA74', // Orange 300
 ]
 
 const tooltipContentStyle = {
@@ -100,7 +95,7 @@ const tooltipContentStyle = {
   borderRadius: '8px',
   color: '#fff',
   fontSize: '12px',
-  border: 'none',
+  border: '1px solid #334155',
 }
 
 const currencyFormatter =
@@ -129,8 +124,8 @@ interface MensalGrupoTooltipProps {
 function MensalGrupoTooltip({ active, payload, label }: MensalGrupoTooltipProps) {
   if (!active || !payload || payload.length === 0) return null
   return (
-    <div className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white shadow-lg">
-      <div className="font-semibold mb-1">{formatMesAnoCurto(String(label ?? ''))}</div>
+    <div className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white border border-slate-700">
+      <div className="font-bold mb-1 text-slate-200">{formatMesAnoCurto(String(label ?? ''))}</div>
       {payload.map((entry, i) => (
         <div key={i} className="flex items-center gap-2">
           <span
@@ -138,7 +133,7 @@ function MensalGrupoTooltip({ active, payload, label }: MensalGrupoTooltipProps)
             style={{ backgroundColor: entry.color }}
           />
           <span className="text-slate-300">{entry.name}</span>
-          <span className="font-semibold ml-auto">
+          <span className="font-bold ml-auto text-white">
             {formatCurrency(typeof entry.value === 'number' ? entry.value : Number(entry.value))}
           </span>
         </div>
@@ -307,7 +302,6 @@ export default function Index() {
     if (!Array.isArray(chartVendasEquipamentosRaw) || chartVendasEquipamentosRaw.length === 0)
       return []
 
-    // Caso seja a nova estrutura { periodo: 'yyyy-mm', total: number }
     if ('periodo' in chartVendasEquipamentosRaw[0]) {
       return (chartVendasEquipamentosRaw as { periodo: string; total: number }[]).map((item) => ({
         periodo: item.periodo,
@@ -316,7 +310,6 @@ export default function Index() {
       }))
     }
 
-    // Fallback retrocompatível se vier no formato antigo { ano: '2023', valores: [...] }
     const list: { periodo: string; label: string; total: number }[] = []
     for (const item of chartVendasEquipamentosRaw as unknown as {
       ano: string
@@ -338,7 +331,6 @@ export default function Index() {
   const dataAcumuladoInsumos = useMemo(() => {
     if (!Array.isArray(chartVendasInsumosRaw) || chartVendasInsumosRaw.length === 0) return []
 
-    // Caso seja a nova estrutura { periodo: 'yyyy-mm', total: number }
     if ('periodo' in chartVendasInsumosRaw[0]) {
       return (chartVendasInsumosRaw as { periodo: string; total: number }[]).map((item) => ({
         periodo: item.periodo,
@@ -347,7 +339,6 @@ export default function Index() {
       }))
     }
 
-    // Fallback retrocompatível
     const list: { periodo: string; label: string; total: number }[] = []
     for (const item of chartVendasInsumosRaw as unknown as {
       ano: string
@@ -365,8 +356,6 @@ export default function Index() {
     return list.sort((a, b) => a.periodo.localeCompare(b.periodo))
   }, [chartVendasInsumosRaw])
 
-  // Grupos fixos (ordem fixa: EQUIPAMENTOS, TINTAS, PEÇAS, ACESSÓRIOS + outros eventuais)
-  // e dados pivôs (1 linha por mês, 1 coluna por grupo) para o gráfico "Venda Mensal por Grupo do Item".
   const mensalGrupos = useMemo(() => {
     const backendGrupos = new Set<string>()
     for (const m of chartVendasPorGrupoItemMensal) {
@@ -375,7 +364,6 @@ export default function Index() {
       }
     }
 
-    // Normalizador para casar variações de grafia/acentuação com os 4 grupos fixos
     const matchFixedGroup = (grupoName: string): string | null => {
       const upper = (grupoName || '').toUpperCase().trim()
       if (upper === 'EQUIPAMENTOS') return 'EQUIPAMENTOS'
@@ -386,7 +374,6 @@ export default function Index() {
     }
 
     const list: string[] = [...MENSAL_GRUPOS_ORDEM]
-    // Se houver algum outro grupo no backend que não esteja nos 4 fixos, inclui no final
     for (const bg of backendGrupos) {
       const fixed = matchFixedGroup(bg)
       if (!fixed && !list.includes(bg)) {
@@ -399,7 +386,6 @@ export default function Index() {
   const mensalGrupoData = useMemo(() => {
     return chartVendasPorGrupoItemMensal.map((m) => {
       const row: Record<string, number | string> = { mes: m.mes }
-      // Inicializa os 4 grupos fixos com 0
       for (const g of MENSAL_GRUPOS_ORDEM) {
         row[g] = 0
       }
@@ -431,21 +417,8 @@ export default function Index() {
     { key: 'total_linha', label: 'Total Linha', className: 'text-right' },
   ]
 
-  // Empty state check
   const isNoData =
     !data || (kpis.faturamento === 0 && kpis.documentos === 0 && recentSales.length === 0)
-
-  // Cores para linhas de anos (paleta indigos/violetas/azuis)
-  const LINE_COLORS = [
-    '#4F46E5', // Indigo 600
-    '#7C3AED', // Violet 600
-    '#2563EB', // Blue 600
-    '#0D9488', // Teal 600
-    '#9333EA', // Purple 600
-    '#EC4899', // Pink 600
-    '#F59E0B', // Amber 500
-    '#6366F1', // Indigo 500
-  ]
 
   return (
     <div className="space-y-6">
@@ -460,7 +433,6 @@ export default function Index() {
       {/* Loading Skeleton */}
       {loading ? (
         <div className="space-y-6">
-          {/* Top 4 Charts Skeleton */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Skeleton className="h-80 w-full rounded-xl" />
             <Skeleton className="h-80 w-full rounded-xl" />
@@ -479,12 +451,12 @@ export default function Index() {
         </div>
       ) : isNoData ? (
         /* Empty State */
-        <Card className="rounded-xl border border-dashed border-slate-300 p-12 text-center bg-white shadow-xs">
-          <div className="w-16 h-16 mx-auto rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600 mb-4">
+        <Card className="rounded-xl border border-dashed border-gray-300 p-12 text-center bg-white">
+          <div className="w-16 h-16 mx-auto rounded-full bg-orange-50 flex items-center justify-center text-[#F47920] mb-4">
             <Sparkles className="w-8 h-8" />
           </div>
-          <h3 className="text-lg font-bold text-slate-900">Nenhuma venda encontrada</h3>
-          <p className="text-sm text-slate-500 max-w-md mx-auto mt-1 mb-6">
+          <h3 className="text-lg font-extrabold text-slate-900">Nenhuma venda encontrada</h3>
+          <p className="text-sm text-slate-500 max-w-md mx-auto mt-1 mb-6 font-medium">
             Não há registros correspondentes aos filtros selecionados. Tente ajustar os filtros ou
             importar novos dados.
           </p>
@@ -512,21 +484,21 @@ export default function Index() {
             >
               Limpar Filtros
             </Button>
-            <Button asChild className="bg-indigo-600 hover:bg-indigo-700 text-white">
+            <Button asChild className="bg-[#F47920] hover:bg-[#EA580C] text-white font-bold">
               <Link to="/importar">Importar Dados</Link>
             </Button>
           </div>
         </Card>
       ) : (
         <>
-          {/* 4 Novos Gráficos no Topo (Linha 1: Tendência Equipamentos + Acumulado Insumos | Linha 2: Clientes Ativos Equipamentos + Clientes Ativos Insumos) */}
+          {/* 4 Novos Gráficos no Topo com paleta Roland DG #F47920 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Gráfico 1: Tendência de Vendas — Equipamentos (Linha Única Contínua) */}
+            {/* Gráfico 1: Tendência de Vendas — Equipamentos (Linha Única Contínua Roland DG Orange) */}
             <ChartCard
               title="Tendência de Vendas — Equipamentos"
               description="Evolução histórica contínua de vendas de Equipamentos"
               icon={TrendingUp}
-              iconColor="text-indigo-600"
+              iconColor="text-[#F47920]"
             >
               {dataTendenciaEquipamentos.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
@@ -569,22 +541,22 @@ export default function Index() {
                       type="monotone"
                       dataKey="total"
                       name="Equipamentos"
-                      stroke="#4F46E5"
+                      stroke={ROLAND_ORANGE}
                       strokeWidth={2.5}
-                      dot={{ r: 2.5, fill: '#4F46E5' }}
-                      activeDot={{ r: 5, fill: '#4F46E5', stroke: '#FFFFFF', strokeWidth: 2 }}
+                      dot={{ r: 2.5, fill: ROLAND_ORANGE }}
+                      activeDot={{ r: 5, fill: ROLAND_ORANGE, stroke: '#FFFFFF', strokeWidth: 2 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
               )}
             </ChartCard>
 
-            {/* Gráfico 2: Acumulado de Vendas — Insumos (Linha Única Contínua) */}
+            {/* Gráfico 2: Acumulado de Vendas — Insumos (Linha Única Contínua Roland DG) */}
             <ChartCard
               title="Acumulado de Vendas — Insumos"
               description="Evolução histórica contínua de Peças, Tintas e Acessórios"
               icon={TrendingUp}
-              iconColor="text-violet-600"
+              iconColor="text-[#EA580C]"
             >
               {dataAcumuladoInsumos.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
@@ -627,10 +599,10 @@ export default function Index() {
                       type="monotone"
                       dataKey="total"
                       name="Insumos"
-                      stroke="#7C3AED"
+                      stroke="#C2410C"
                       strokeWidth={2.5}
-                      dot={{ r: 2.5, fill: '#7C3AED' }}
-                      activeDot={{ r: 5, fill: '#7C3AED', stroke: '#FFFFFF', strokeWidth: 2 }}
+                      dot={{ r: 2.5, fill: '#C2410C' }}
+                      activeDot={{ r: 5, fill: '#C2410C', stroke: '#FFFFFF', strokeWidth: 2 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -642,7 +614,7 @@ export default function Index() {
               title="Clientes Ativos — Equipamentos"
               description="Comparativo de clientes ativos de equipamentos nos últimos 6 meses vs. ano anterior"
               icon={Users}
-              iconColor="text-indigo-600"
+              iconColor="text-[#F47920]"
             >
               {chartClientesAtivosEquipamentos.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
@@ -680,20 +652,20 @@ export default function Index() {
                       verticalAlign="top"
                       height={36}
                       formatter={(value) => (
-                        <span className="text-xs font-semibold text-slate-700">{value}</span>
+                        <span className="text-xs font-bold text-slate-700">{value}</span>
                       )}
                     />
                     <Bar
                       dataKey="clientesAnoAnterior"
                       name="Ano Anterior"
-                      fill="#A5B4FC"
+                      fill="#FED7AA"
                       radius={[4, 4, 0, 0]}
                       maxBarSize={32}
                     />
                     <Bar
                       dataKey="clientes"
                       name="Atual"
-                      fill="#4F46E5"
+                      fill={ROLAND_ORANGE}
                       radius={[4, 4, 0, 0]}
                       maxBarSize={32}
                     />
@@ -707,7 +679,7 @@ export default function Index() {
               title="Clientes Ativos — Insumos"
               description="Comparativo de clientes ativos de insumos nos últimos 6 meses vs. ano anterior"
               icon={Users}
-              iconColor="text-violet-600"
+              iconColor="text-[#EA580C]"
             >
               {chartClientesAtivosInsumos.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
@@ -745,20 +717,20 @@ export default function Index() {
                       verticalAlign="top"
                       height={36}
                       formatter={(value) => (
-                        <span className="text-xs font-semibold text-slate-700">{value}</span>
+                        <span className="text-xs font-bold text-slate-700">{value}</span>
                       )}
                     />
                     <Bar
                       dataKey="clientesAnoAnterior"
                       name="Ano Anterior"
-                      fill="#A5B4FC"
+                      fill="#FDBA74"
                       radius={[4, 4, 0, 0]}
                       maxBarSize={32}
                     />
                     <Bar
                       dataKey="clientes"
                       name="Atual"
-                      fill="#6366F1"
+                      fill="#EA580C"
                       radius={[4, 4, 0, 0]}
                       maxBarSize={32}
                     />
@@ -768,15 +740,15 @@ export default function Index() {
             </ChartCard>
           </div>
 
-          {/* 5 KPIs Section */}
+          {/* 5 KPIs Section com Tipografia font-extrabold e cor Roland DG */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
             <KpiCard
               title="Faturamento Total"
               value={kpis.faturamento}
               isCurrency
               icon={DollarSign}
-              iconBgColor="bg-indigo-50"
-              iconColor="text-indigo-600"
+              iconBgColor="bg-orange-50"
+              iconColor="text-[#F47920]"
               deltaPercent={12.4}
             />
             <KpiCard
@@ -802,8 +774,8 @@ export default function Index() {
               value={kpis.documentos}
               decimals={0}
               icon={FileText}
-              iconBgColor="bg-purple-50"
-              iconColor="text-purple-600"
+              iconBgColor="bg-slate-100"
+              iconColor="text-slate-700"
               deltaPercent={4.1}
             />
             <KpiCard
@@ -823,7 +795,7 @@ export default function Index() {
               title="Evolução de Vendas por Mês"
               description="Últimos 6 meses com comparação do mesmo mês no ano anterior"
               icon={BarChart2}
-              iconColor="text-indigo-600"
+              iconColor="text-[#F47920]"
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
@@ -864,7 +836,7 @@ export default function Index() {
                         devolucoes: 'Devoluções',
                       }
                       return (
-                        <span className="text-xs font-semibold text-slate-700">
+                        <span className="text-xs font-bold text-slate-700">
                           {labels[value] ?? value}
                         </span>
                       )
@@ -873,14 +845,14 @@ export default function Index() {
                   <Bar
                     dataKey="faturamento_ano_anterior"
                     name="faturamento_ano_anterior"
-                    fill="#A5B4FC"
+                    fill="#FED7AA"
                     radius={[4, 4, 0, 0]}
                     maxBarSize={28}
                   />
                   <Bar
                     dataKey="faturamento"
                     name="faturamento"
-                    fill="#4F46E5"
+                    fill={ROLAND_ORANGE}
                     radius={[4, 4, 0, 0]}
                     maxBarSize={28}
                   />
@@ -952,7 +924,7 @@ export default function Index() {
                         variacao: 'Variação %',
                       }
                       return (
-                        <span className="text-xs font-semibold text-slate-700">
+                        <span className="text-xs font-bold text-slate-700">
                           {labels[value] ?? value}
                         </span>
                       )
@@ -963,7 +935,7 @@ export default function Index() {
                     yAxisId="left"
                     dataKey="faturamento"
                     name="faturamento"
-                    fill="#4F46E5"
+                    fill={ROLAND_ORANGE}
                     radius={[4, 4, 0, 0]}
                     maxBarSize={56}
                   />
@@ -1024,7 +996,7 @@ export default function Index() {
                     verticalAlign="bottom"
                     height={36}
                     formatter={(value) => (
-                      <span className="text-xs font-medium text-slate-700">{value}</span>
+                      <span className="text-xs font-bold text-slate-700">{value}</span>
                     )}
                   />
                 </PieChart>
@@ -1036,7 +1008,7 @@ export default function Index() {
               title="Venda Mensal por Grupo do Item"
               description="Faturamento por grupo de item nos últimos 6 meses"
               icon={BarChart2}
-              iconColor="text-violet-600"
+              iconColor="text-[#F47920]"
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
@@ -1059,7 +1031,7 @@ export default function Index() {
                   />
                   <Tooltip
                     content={<MensalGrupoTooltip />}
-                    cursor={{ fill: 'rgba(99,102,241,0.08)' }}
+                    cursor={{ fill: 'rgba(244,121,32,0.08)' }}
                   />
                   <Legend
                     verticalAlign="top"
@@ -1076,7 +1048,7 @@ export default function Index() {
                                 className="inline-block w-3 h-3 rounded-[2px]"
                                 style={{ backgroundColor: color }}
                               />
-                              <span className="text-xs font-semibold text-slate-700">{grupo}</span>
+                              <span className="text-xs font-bold text-slate-700">{grupo}</span>
                             </div>
                           )
                         })}
@@ -1134,7 +1106,7 @@ export default function Index() {
                     formatter={currencyFormatter('Total')}
                     contentStyle={tooltipContentStyle}
                   />
-                  <Bar dataKey="total" fill="#4F46E5" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="total" fill={ROLAND_ORANGE} radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -1202,7 +1174,7 @@ export default function Index() {
                     formatter={currencyFormatter('Faturamento')}
                     contentStyle={tooltipContentStyle}
                   />
-                  <Bar dataKey="total" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="total" fill="#EA580C" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -1240,7 +1212,7 @@ export default function Index() {
                     verticalAlign="top"
                     height={36}
                     formatter={(value) => (
-                      <span className="text-xs font-semibold text-slate-700 capitalize">
+                      <span className="text-xs font-bold text-slate-700 capitalize">
                         {value === 'faturamento' ? 'Faturamento Total' : 'Valor Líquido'}
                       </span>
                     )}
@@ -1248,7 +1220,7 @@ export default function Index() {
                   <Bar
                     dataKey="faturamento"
                     name="faturamento"
-                    fill="#4F46E5"
+                    fill={ROLAND_ORANGE}
                     radius={[4, 4, 0, 0]}
                   />
                   <Bar dataKey="liquido" name="liquido" fill="#0D9488" radius={[4, 4, 0, 0]} />
@@ -1258,13 +1230,13 @@ export default function Index() {
           </div>
 
           {/* Highlights Table: 8 Most Recent Sales */}
-          <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
+          <Card className="rounded-xl border border-gray-200 bg-white overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between pb-4">
               <div>
-                <CardTitle className="text-base font-bold text-slate-900">
+                <CardTitle className="text-base font-extrabold text-slate-900">
                   Vendas Recentes
                 </CardTitle>
-                <CardDescription className="text-xs text-slate-500">
+                <CardDescription className="text-xs text-slate-500 font-medium">
                   Últimos 8 lançamentos consolidados no sistema
                 </CardDescription>
               </div>
@@ -1272,7 +1244,7 @@ export default function Index() {
                 asChild
                 variant="ghost"
                 size="sm"
-                className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 font-semibold gap-1"
+                className="text-[#F47920] hover:text-[#EA580C] hover:bg-orange-50 font-bold gap-1"
               >
                 <Link to="/vendas">
                   Ver todas as vendas
@@ -1283,7 +1255,7 @@ export default function Index() {
             <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-600 font-semibold border-y border-slate-200/80">
+                  <thead className="bg-slate-50 text-slate-700 font-bold border-y border-gray-200">
                     <tr>
                       {recentSalesColumns.map((col) => (
                         <th
@@ -1304,7 +1276,7 @@ export default function Index() {
                           >
                             <span>{col.label}</span>
                             {sort.field === col.key ? (
-                              <span className="text-[10px] text-indigo-600 font-bold">
+                              <span className="text-[10px] text-[#F47920] font-extrabold">
                                 {sort.dir === 'asc' ? '▲' : '▼'}
                               </span>
                             ) : (
@@ -1320,8 +1292,8 @@ export default function Index() {
                       <tr>
                         <td colSpan={7} className="py-8 text-center text-slate-400">
                           <div className="flex items-center justify-center gap-2">
-                            <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
-                            <span>Carregando vendas ordenadas...</span>
+                            <RefreshCw className="w-4 h-4 animate-spin text-[#F47920]" />
+                            <span className="font-medium">Carregando vendas ordenadas...</span>
                           </div>
                         </td>
                       </tr>
@@ -1337,14 +1309,14 @@ export default function Index() {
                           <td className="py-3 px-4 font-medium text-slate-700 whitespace-nowrap">
                             {formatDate(item.data_lancamento)}
                           </td>
-                          <td className="py-3 px-4 font-semibold text-slate-900 max-w-[200px] truncate">
+                          <td className="py-3 px-4 font-bold text-slate-900 max-w-[200px] truncate">
                             {item.nome_cliente || '-'}
                           </td>
                           <td className="py-3 px-4 text-slate-600 max-w-[240px] truncate font-medium">
                             {item.vendedor_cliente || '-'}
                           </td>
                           <td className="py-3 px-4 text-slate-700 max-w-[200px] truncate">
-                            <span className="font-mono font-semibold text-slate-800">
+                            <span className="font-mono font-bold text-slate-800">
                               {item.codigo_item}
                             </span>
                             {item.descricao_item && (
@@ -1356,7 +1328,7 @@ export default function Index() {
                           <td className="py-3 px-4 whitespace-nowrap">
                             {item.grupo_item ? (
                               <Badge
-                                className="text-[10px] font-semibold text-white"
+                                className="text-[10px] font-bold text-white"
                                 style={{ backgroundColor: getGrupoColor(item.grupo_item) }}
                               >
                                 {item.grupo_item}
@@ -1365,10 +1337,10 @@ export default function Index() {
                               <span className="text-slate-400">-</span>
                             )}
                           </td>
-                          <td className="py-3 px-4 text-center font-medium text-slate-800">
+                          <td className="py-3 px-4 text-center font-bold text-slate-800">
                             {formatNumber(item.quantidade)}
                           </td>
-                          <td className="py-3 px-4 text-right font-bold text-slate-900 tabular-nums">
+                          <td className="py-3 px-4 text-right font-extrabold text-slate-900 tabular-nums">
                             {formatCurrency(item.total_linha)}
                           </td>
                         </tr>
@@ -1382,11 +1354,13 @@ export default function Index() {
 
           {/* Footer note */}
           <div className="flex items-center justify-between text-xs text-slate-400 pt-2 pb-6">
-            <span className="flex items-center gap-1.5">
-              <RefreshCw className="w-3.5 h-3.5 text-slate-400" />
+            <span className="flex items-center gap-1.5 font-medium">
+              <RefreshCw className="w-3.5 h-3.5 text-[#F47920]" />
               Sincronização em tempo real ativa
             </span>
-            <span>Exibindo {recentSales.length} registros recentes consolidados</span>
+            <span className="font-medium">
+              Exibindo {recentSales.length} registros recentes consolidados
+            </span>
           </div>
         </>
       )}

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
-import { Check, ChevronDown, X, Filter, Layers } from 'lucide-react'
+import { Check, ChevronDown, X, Filter } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -35,7 +35,7 @@ interface FilterBarProps {
   onApplyFilters?: (appliedFilters: FilterState) => void
 }
 
-// Reusable MultiSelect Dropdown
+// Reusable MultiSelect Dropdown with Roland DG Accent
 function MultiSelectDropdown({
   label,
   options,
@@ -67,7 +67,6 @@ function MultiSelectDropdown({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Garantir remoção permanente de "-Nenhum vendedor / comprador-", strings vazias/nulas e obter valores ÚNICOS
   const cleanOptions = useMemo(() => {
     const set = new Set<string>()
     for (const opt of options) {
@@ -116,19 +115,19 @@ function MultiSelectDropdown({
         type="button"
         onClick={() => setOpen(!open)}
         className={cn(
-          'flex items-center justify-between w-full h-10 px-3 py-2 text-xs rounded-lg border bg-white transition-colors text-left shadow-2xs focus:outline-hidden focus:ring-2 focus:ring-indigo-500/40',
+          'flex items-center justify-between w-full h-10 px-3 py-2 text-xs rounded-lg border bg-white transition-colors text-left focus:outline-hidden focus:ring-2 focus:ring-[#F47920]/40',
           selected.length > 0
-            ? 'border-indigo-400 font-medium text-slate-900 bg-indigo-50/20'
-            : 'border-slate-200 text-slate-600 hover:border-slate-300',
-          highlight && 'border-indigo-500 ring-1 ring-indigo-500/30',
+            ? 'border-[#F47920]/60 font-semibold text-slate-900 bg-orange-50/30'
+            : 'border-gray-200 text-slate-600 hover:border-slate-300',
+          highlight && 'border-[#F47920] ring-1 ring-[#F47920]/30',
         )}
       >
         <div className="flex items-center gap-1.5 truncate pr-2">
-          <span className="font-semibold text-slate-700">{label}:</span>
+          <span className="font-bold text-slate-700">{label}:</span>
           {selected.length === 0 ? (
             <span className="text-slate-400 font-normal">{placeholder}</span>
           ) : (
-            <span className="text-indigo-700 font-medium truncate">
+            <span className="text-[#EA580C] font-bold truncate">
               {selected.length === 1
                 ? getOptionLabel
                   ? getOptionLabel(selected[0])
@@ -141,23 +140,23 @@ function MultiSelectDropdown({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full mt-1.5 w-72 max-w-[90vw] bg-white border border-slate-200 rounded-xl shadow-xl z-50 p-2 text-xs animate-in fade-in-50 zoom-in-95 duration-150">
+        <div className="absolute left-0 top-full mt-1.5 w-72 max-w-[90vw] bg-white border border-gray-200 rounded-xl shadow-lg z-50 p-2 text-xs animate-in fade-in-50 zoom-in-95 duration-150">
           <div className="mb-2">
             <Input
               type="text"
               placeholder={`Pesquisar ${label.toLowerCase()}...`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-8 text-xs rounded-md border-slate-200"
+              className="h-8 text-xs rounded-md border-gray-200 focus-visible:ring-[#F47920]"
               autoFocus
             />
           </div>
 
-          <div className="flex items-center justify-between px-1 py-1 border-b border-slate-100 mb-1 text-[11px] text-slate-500">
+          <div className="flex items-center justify-between px-1 py-1 border-b border-slate-100 mb-1 text-[11px] text-slate-500 font-medium">
             <button
               type="button"
               onClick={selectAll}
-              className="text-indigo-600 hover:underline font-medium"
+              className="text-[#F47920] hover:underline font-bold"
             >
               Selecionar todos
             </button>
@@ -182,9 +181,9 @@ function MultiSelectDropdown({
                     type="button"
                     onClick={() => toggleOption(option)}
                     className={cn(
-                      'flex items-center justify-between w-full px-2.5 py-1.5 rounded-md text-left transition-colors',
+                      'flex items-center justify-between w-full px-2.5 py-1.5 rounded-md text-left transition-colors font-medium',
                       isSelected
-                        ? 'bg-indigo-50 text-indigo-900 font-medium'
+                        ? 'bg-orange-50 text-orange-950 font-bold'
                         : 'text-slate-700 hover:bg-slate-100',
                     )}
                   >
@@ -195,7 +194,7 @@ function MultiSelectDropdown({
                       className={cn(
                         'w-4 h-4 rounded-sm border flex items-center justify-center shrink-0',
                         isSelected
-                          ? 'bg-indigo-600 border-indigo-600 text-white'
+                          ? 'bg-[#F47920] border-[#F47920] text-white'
                           : 'border-slate-300 bg-white',
                       )}
                     >
@@ -229,20 +228,16 @@ export default function FilterBar({
 }: FilterBarProps) {
   const [collapsed, setCollapsed] = useState(false)
 
-  // Estado local para edições pendentes antes do botão "Aplicar Filtros"
   const [localFilters, setLocalFilters] = useState<FilterState>(filters)
 
-  // Sincroniza estado local se o componente pai atualizar `filters` externamente
   useEffect(() => {
     setLocalFilters(filters)
   }, [filters])
 
-  // Identifica se há alterações pendentes
   const hasPendingChanges = useMemo(() => {
     return JSON.stringify(localFilters) !== JSON.stringify(filters)
   }, [localFilters, filters])
 
-  // Contagem total de itens/valores ativos nos filtros aplicados atualmente
   const activeFiltersCount = useMemo(() => {
     return (
       (filters.base && filters.base !== 'ambos' ? 1 : 0) +
@@ -330,7 +325,6 @@ export default function FilterBar({
     }
   }
 
-  // Gera lista completa de pílulas para visualização contida (máx 5 pílulas)
   const allActivePills = useMemo<ActivePill[]>(() => {
     const list: ActivePill[] = []
 
@@ -340,7 +334,7 @@ export default function FilterBar({
         id: 'base',
         label: `Base: ${baseLabel}`,
         type: 'base',
-        bgClass: 'bg-indigo-50 border-indigo-200 text-indigo-900',
+        bgClass: 'bg-orange-50 border-orange-200 text-orange-950 font-semibold',
       })
     }
 
@@ -349,7 +343,7 @@ export default function FilterBar({
         id: 'dataDe',
         label: `De: ${filters.dataDe}`,
         type: 'dataDe',
-        bgClass: 'bg-slate-50 border-slate-200 text-slate-700',
+        bgClass: 'bg-slate-50 border-slate-200 text-slate-700 font-medium',
       })
     }
     if (filters.dataAte) {
@@ -357,7 +351,7 @@ export default function FilterBar({
         id: 'dataAte',
         label: `Até: ${filters.dataAte}`,
         type: 'dataAte',
-        bgClass: 'bg-slate-50 border-slate-200 text-slate-700',
+        bgClass: 'bg-slate-50 border-slate-200 text-slate-700 font-medium',
       })
     }
 
@@ -367,7 +361,7 @@ export default function FilterBar({
         label: `Ano: ${item}`,
         type: 'ano',
         value: item,
-        bgClass: 'bg-indigo-50 border-indigo-200 text-indigo-900',
+        bgClass: 'bg-orange-50 border-orange-200 text-orange-950 font-semibold',
       })
     })
 
@@ -379,7 +373,7 @@ export default function FilterBar({
         label: `Mês: ${labelMes}`,
         type: 'mes',
         value: item,
-        bgClass: 'bg-indigo-50 border-indigo-200 text-indigo-900',
+        bgClass: 'bg-orange-50 border-orange-200 text-orange-950 font-semibold',
       })
     })
 
@@ -389,7 +383,7 @@ export default function FilterBar({
         label: `Dia: ${String(item).padStart(2, '0')}`,
         type: 'dia',
         value: item,
-        bgClass: 'bg-indigo-50 border-indigo-200 text-indigo-900',
+        bgClass: 'bg-orange-50 border-orange-200 text-orange-950 font-semibold',
       })
     })
 
@@ -399,7 +393,7 @@ export default function FilterBar({
         label: item,
         type: 'vendedorCliente',
         value: item,
-        bgClass: 'bg-indigo-50 border-indigo-200 text-indigo-900',
+        bgClass: 'bg-orange-50 border-orange-200 text-orange-950 font-semibold',
       })
     })
 
@@ -409,7 +403,7 @@ export default function FilterBar({
         label: `Vendedor: ${item}`,
         type: 'vendedor',
         value: item,
-        bgClass: 'bg-slate-50 border-slate-200 text-slate-700',
+        bgClass: 'bg-slate-50 border-slate-200 text-slate-700 font-medium',
       })
     })
 
@@ -419,7 +413,7 @@ export default function FilterBar({
         label: `Grupo: ${item}`,
         type: 'grupoItem',
         value: item,
-        bgClass: 'bg-slate-50 border-slate-200 text-slate-700',
+        bgClass: 'bg-slate-50 border-slate-200 text-slate-700 font-medium',
       })
     })
 
@@ -429,7 +423,7 @@ export default function FilterBar({
         label: `UF: ${item}`,
         type: 'estado',
         value: item,
-        bgClass: 'bg-slate-50 border-slate-200 text-slate-700',
+        bgClass: 'bg-slate-50 border-slate-200 text-slate-700 font-medium',
       })
     })
 
@@ -439,7 +433,7 @@ export default function FilterBar({
         label: `Uso: ${item}`,
         type: 'utilizacao',
         value: item,
-        bgClass: 'bg-slate-50 border-slate-200 text-slate-700',
+        bgClass: 'bg-slate-50 border-slate-200 text-slate-700 font-medium',
       })
     })
 
@@ -449,7 +443,7 @@ export default function FilterBar({
         label: `Doc: ${item}`,
         type: 'tipoDocumento',
         value: item,
-        bgClass: 'bg-indigo-50 border-indigo-200 text-indigo-900',
+        bgClass: 'bg-orange-50 border-orange-200 text-orange-950 font-semibold',
       })
     })
 
@@ -458,7 +452,7 @@ export default function FilterBar({
         id: 'search',
         label: `Busca: "${filters.search}"`,
         type: 'search',
-        bgClass: 'bg-amber-50 border-amber-200 text-amber-900',
+        bgClass: 'bg-amber-50 border-amber-200 text-amber-900 font-medium',
       })
     }
 
@@ -467,7 +461,7 @@ export default function FilterBar({
         id: 'tipoDevolucao',
         label: `Devolução: ${filters.tipoDevolucao}`,
         type: 'tipoDevolucao',
-        bgClass: 'bg-rose-50 border-rose-200 text-rose-900',
+        bgClass: 'bg-rose-50 border-rose-200 text-rose-900 font-medium',
       })
     }
 
@@ -479,19 +473,19 @@ export default function FilterBar({
   const remainingPills = allActivePills.slice(MAX_VISIBLE_PILLS)
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs p-4 mb-6 transition-all">
-      {/* Header com Título, Contador Autoridade de Filtros Ativos e Ações */}
+    <div className="bg-white rounded-xl border border-gray-200 p-4 mb-6 transition-all">
+      {/* Header com Título e Contador Roland DG */}
       <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 gap-2">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+          <div className="p-1.5 rounded-lg bg-orange-50 text-[#F47920]">
             <Filter className="w-4 h-4" />
           </div>
           <div>
-            <span className="text-sm font-semibold text-slate-900">Filtros Globais</span>
+            <span className="text-sm font-bold text-slate-900">Filtros Globais</span>
             {activeFiltersCount > 0 && (
               <Badge
                 variant="secondary"
-                className="ml-2 bg-indigo-100 text-indigo-800 text-[11px] font-semibold"
+                className="ml-2 bg-orange-100 text-orange-900 text-[11px] font-bold"
               >
                 {activeFiltersCount} ativo{activeFiltersCount > 1 ? 's' : ''}
               </Badge>
@@ -500,15 +494,15 @@ export default function FilterBar({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Botão Aplicar Filtros com destaque visual quando há mudanças pendentes */}
+          {/* Botão Aplicar Filtros com destaque visual Roland DG quando há mudanças pendentes */}
           <Button
             type="button"
             size="sm"
             onClick={handleApply}
             className={cn(
-              'h-8 px-4 text-xs font-medium rounded-lg transition-all',
+              'h-8 px-4 text-xs font-bold rounded-lg transition-all',
               hasPendingChanges
-                ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md ring-2 ring-indigo-500/30 animate-pulse'
+                ? 'bg-[#F47920] hover:bg-[#EA580C] text-white ring-2 ring-[#F47920]/30 animate-pulse'
                 : 'bg-slate-900 hover:bg-slate-800 text-white',
             )}
           >
@@ -523,7 +517,7 @@ export default function FilterBar({
               variant="ghost"
               size="sm"
               onClick={clearAllFilters}
-              className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 h-8 px-2.5 rounded-lg"
+              className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 h-8 px-2.5 rounded-lg font-semibold"
             >
               <X className="w-3.5 h-3.5 mr-1" />
               Limpar filtros
@@ -550,25 +544,25 @@ export default function FilterBar({
         {/* Data De / Até */}
         <div className="sm:col-span-2 grid grid-cols-2 gap-2">
           <div>
-            <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+            <Label className="text-[11px] font-bold text-slate-500 mb-1 block">
               Data de Lançamento (De)
             </Label>
             <Input
               type="date"
               value={localFilters.dataDe}
               onChange={(e) => setLocalFilters((prev) => ({ ...prev, dataDe: e.target.value }))}
-              className="h-10 text-xs rounded-lg border-slate-200"
+              className="h-10 text-xs rounded-lg border-gray-200 focus-visible:ring-[#F47920]"
             />
           </div>
           <div>
-            <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+            <Label className="text-[11px] font-bold text-slate-500 mb-1 block">
               Data de Lançamento (Até)
             </Label>
             <Input
               type="date"
               value={localFilters.dataAte}
               onChange={(e) => setLocalFilters((prev) => ({ ...prev, dataAte: e.target.value }))}
-              className="h-10 text-xs rounded-lg border-slate-200"
+              className="h-10 text-xs rounded-lg border-gray-200 focus-visible:ring-[#F47920]"
             />
           </div>
         </div>
@@ -576,7 +570,7 @@ export default function FilterBar({
         {/* Ano / Mês / Dia */}
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Ano</Label>
+            <Label className="text-[11px] font-bold text-slate-500 mb-1 block">Ano</Label>
             <MultiSelectDropdown
               label="Ano"
               options={options.anos.map(String)}
@@ -587,7 +581,7 @@ export default function FilterBar({
             />
           </div>
           <div>
-            <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Mês</Label>
+            <Label className="text-[11px] font-bold text-slate-500 mb-1 block">Mês</Label>
             <MultiSelectDropdown
               label="Mês"
               options={options.meses.map(String)}
@@ -602,7 +596,7 @@ export default function FilterBar({
             />
           </div>
           <div>
-            <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Dia</Label>
+            <Label className="text-[11px] font-bold text-slate-500 mb-1 block">Dia</Label>
             <MultiSelectDropdown
               label="Dia"
               options={options.dias.map((d) => String(d).padStart(2, '0'))}
@@ -616,7 +610,7 @@ export default function FilterBar({
 
         {/* Vendedor > Cliente (Principal) */}
         <div>
-          <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">
             Vendedor &gt; Cliente
           </Label>
           <MultiSelectDropdown
@@ -631,7 +625,7 @@ export default function FilterBar({
 
         {/* Vendedor */}
         <div>
-          <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Vendedor</Label>
+          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">Vendedor</Label>
           <MultiSelectDropdown
             label="Vendedor"
             options={options.vendedor}
@@ -643,9 +637,7 @@ export default function FilterBar({
 
         {/* Grupo do Item */}
         <div>
-          <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
-            Grupo do Item
-          </Label>
+          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">Grupo do Item</Label>
           <MultiSelectDropdown
             label="Grupo"
             options={options.grupoItem}
@@ -657,7 +649,7 @@ export default function FilterBar({
 
         {/* Estado */}
         <div>
-          <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Estado (UF)</Label>
+          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">Estado (UF)</Label>
           <MultiSelectDropdown
             label="Estado"
             options={options.estado}
@@ -669,7 +661,7 @@ export default function FilterBar({
 
         {/* Tipo de Documento */}
         <div>
-          <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">
             Tipo de Documento
           </Label>
           <MultiSelectDropdown
@@ -690,9 +682,9 @@ export default function FilterBar({
           collapsed && 'hidden lg:grid',
         )}
       >
-        {/* Seleção de Bases (Primeiro filtro da linha antes de Utilização) */}
+        {/* Seleção de Bases */}
         <div>
-          <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">
             Seleção de Bases
           </Label>
           <Select
@@ -705,20 +697,20 @@ export default function FilterBar({
               className={cn(
                 'h-10 text-xs rounded-lg',
                 localFilters.base && localFilters.base !== 'ambos'
-                  ? 'border-indigo-400 font-medium text-slate-900 bg-indigo-50/20'
-                  : 'border-slate-200 text-slate-600',
+                  ? 'border-[#F47920]/60 font-bold text-slate-900 bg-orange-50/30'
+                  : 'border-gray-200 text-slate-600',
               )}
             >
               <SelectValue placeholder="Ambos" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="ambos" className="text-xs">
+              <SelectItem value="ambos" className="text-xs font-medium">
                 Ambos
               </SelectItem>
-              <SelectItem value="racnew" className="text-xs">
+              <SelectItem value="racnew" className="text-xs font-medium">
                 RacNew
               </SelectItem>
-              <SelectItem value="netsales" className="text-xs">
+              <SelectItem value="netsales" className="text-xs font-medium">
                 NetSales
               </SelectItem>
             </SelectContent>
@@ -726,7 +718,7 @@ export default function FilterBar({
         </div>
 
         <div className="sm:col-span-2">
-          <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">Utilização</Label>
+          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">Utilização</Label>
           <MultiSelectDropdown
             label="Utilização"
             options={options.utilizacao}
@@ -738,7 +730,7 @@ export default function FilterBar({
 
         {/* Tipo de Devolução */}
         <div>
-          <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">
             Tipo de Devolução
           </Label>
           <Select
@@ -751,18 +743,18 @@ export default function FilterBar({
               className={cn(
                 'h-10 text-xs rounded-lg',
                 localFilters.tipoDevolucao
-                  ? 'border-indigo-400 font-medium text-slate-900 bg-indigo-50/20'
-                  : 'border-slate-200 text-slate-600',
+                  ? 'border-[#F47920]/60 font-bold text-slate-900 bg-orange-50/30'
+                  : 'border-gray-200 text-slate-600',
               )}
             >
               <SelectValue placeholder="Todas" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all" className="text-xs">
+              <SelectItem value="__all" className="text-xs font-medium">
                 Todas
               </SelectItem>
               {DEVOLUCAO_TIPOS.map((tipo) => (
-                <SelectItem key={tipo} value={tipo} className="text-xs">
+                <SelectItem key={tipo} value={tipo} className="text-xs font-medium">
                   {tipo}
                 </SelectItem>
               ))}
@@ -772,7 +764,7 @@ export default function FilterBar({
 
         {showSearch ? (
           <div className="sm:col-span-2">
-            <Label className="text-[11px] font-semibold text-slate-500 mb-1 block">
+            <Label className="text-[11px] font-bold text-slate-500 mb-1 block">
               Busca Textual (Cliente, Item, Nº NFe, SAP)
             </Label>
             <div className="relative">
@@ -781,7 +773,7 @@ export default function FilterBar({
                 placeholder="Ex.: DIAMANTE, GS-24, 56316..."
                 value={localFilters.search}
                 onChange={(e) => setLocalFilters((prev) => ({ ...prev, search: e.target.value }))}
-                className="h-10 text-xs rounded-lg border-slate-200 pr-8"
+                className="h-10 text-xs rounded-lg border-gray-200 focus-visible:ring-[#F47920] pr-8"
               />
               {localFilters.search && (
                 <button
@@ -799,18 +791,17 @@ export default function FilterBar({
         )}
       </div>
 
-      {/* Seção de Pílulas de Filtros Ativos (CONTAINED - Máximo 5 pílulas visíveis + Resumo/Popover "Ver todos") */}
+      {/* Seção de Pílulas de Filtros Ativos Roland DG */}
       {allActivePills.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 pt-3 mt-3 border-t border-slate-100">
-          <span className="text-[11px] font-medium text-slate-400 mr-1">Filtros ativos:</span>
+          <span className="text-[11px] font-bold text-slate-400 mr-1">Filtros ativos:</span>
 
-          {/* Primeiras 5 pílulas */}
           {visiblePills.map((pill) => (
             <Badge
               key={pill.id}
               variant="outline"
               className={cn(
-                'text-xs pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1 font-normal shadow-2xs',
+                'text-xs pl-2.5 pr-1 py-1 rounded-full flex items-center gap-1 font-semibold',
                 pill.bgClass,
               )}
             >
@@ -825,14 +816,13 @@ export default function FilterBar({
             </Badge>
           ))}
 
-          {/* Botão/Popover para mais pílulas quando houver mais de 5 */}
           {remainingPills.length > 0 && (
             <Popover>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 px-2.5 text-xs rounded-full border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-semibold gap-1"
+                  className="h-7 px-2.5 text-xs rounded-full border-orange-200 bg-orange-50 text-orange-800 hover:bg-orange-100 font-bold gap-1"
                 >
                   <span>
                     +{remainingPills.length} filtro{remainingPills.length > 1 ? 's' : ''}
@@ -840,12 +830,14 @@ export default function FilterBar({
                   <ChevronDown className="w-3 h-3" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-80 p-3 text-xs" align="start">
+              <PopoverContent className="w-80 p-3 text-xs border-gray-200" align="start">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
-                  <span className="font-semibold text-slate-800">
+                  <span className="font-bold text-slate-800">
                     Outros {remainingPills.length} filtros ativos
                   </span>
-                  <span className="text-[11px] text-slate-400">Total: {allActivePills.length}</span>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    Total: {allActivePills.length}
+                  </span>
                 </div>
                 <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
                   {remainingPills.map((pill) => (

@@ -86,9 +86,10 @@ export default function KpiCard({
 
   return (
     <>
-      <Card className="group relative rounded-xl border border-slate-200/80 bg-white shadow-xs hover:shadow-md transition-all duration-200 hover:-translate-y-0.5">
+      {/* Card limpo com borda sutil cinza, sem sombras pesadas (estilo Roland DG) */}
+      <Card className="group relative rounded-xl border border-gray-200 bg-white transition-all duration-200 hover:border-slate-300">
         <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-          <CardTitle className="text-xs font-semibold text-slate-500 tracking-wide uppercase">
+          <CardTitle className="text-xs font-bold text-slate-500 tracking-wide uppercase">
             {title}
           </CardTitle>
           <div className="flex items-center gap-1.5">
@@ -97,7 +98,7 @@ export default function KpiCard({
               onClick={() => setExpanded(true)}
               aria-label={`Expandir ${title}`}
               title="Expandir em tela cheia"
-              className="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+              className="p-1.5 rounded-lg text-slate-300 hover:text-[#F47920] hover:bg-orange-50 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#F47920]/40"
             >
               <Expand className="w-4 h-4" />
             </button>
@@ -107,7 +108,8 @@ export default function KpiCard({
           </div>
         </CardHeader>
         <CardContent>
-          <div className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 tabular-nums">
+          {/* Tipografia Extrabold nos números grandes do KPI */}
+          <div className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 tabular-nums">
             {!isCurrency && prefix}
             {formattedNumber()}
             {!isCurrency && suffix}
@@ -131,19 +133,20 @@ export default function KpiCard({
       </Card>
 
       <Dialog open={expanded} onOpenChange={setExpanded}>
-        <DialogContent className="max-w-none w-[95vw] h-[85vh] sm:rounded-2xl border-0 bg-white p-0 flex flex-col items-center justify-center gap-8 overflow-hidden">
+        <DialogContent className="max-w-none w-[95vw] h-[85vh] sm:rounded-2xl border border-gray-200 bg-white p-0 flex flex-col items-center justify-center gap-8 overflow-hidden">
           <DialogTitle className="sr-only">{title}</DialogTitle>
           <div className="flex flex-col items-center justify-center gap-6 px-6 text-center">
             <div className="flex items-center gap-3">
               <div className={cn('p-3 rounded-2xl flex items-center justify-center', iconBgColor)}>
                 <Icon className={cn('w-7 h-7', iconColor)} />
               </div>
-              <span className="text-base sm:text-lg font-semibold text-slate-500 tracking-wide uppercase">
+              <span className="text-base sm:text-lg font-bold text-slate-500 tracking-wide uppercase">
                 {title}
               </span>
             </div>
 
-            <div className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-bold tracking-tight text-slate-900 tabular-nums break-all leading-tight">
+            {/* Modal com tipografia extrabold */}
+            <div className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-extrabold tracking-tight text-slate-900 tabular-nums break-all leading-tight">
               {!isCurrency && prefix}
               {formattedNumber(value)}
               {!isCurrency && suffix}

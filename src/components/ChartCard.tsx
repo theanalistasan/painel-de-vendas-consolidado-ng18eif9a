@@ -23,16 +23,20 @@ export default function ChartCard({
 
   return (
     <>
-      <Card className="group relative rounded-xl border border-slate-200/80 bg-white shadow-xs">
+      {/* Card limpo com borda sutil cinza, sem sombras pesadas */}
+      <Card className="group relative rounded-xl border border-gray-200 bg-white transition-all duration-200 hover:border-slate-300">
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                {Icon && <Icon className={cn('w-4 h-4', iconColor)} />}
+              {/* Título do Card de Gráfico com font-extrabold / font-bold */}
+              <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2 tracking-tight">
+                {Icon && <Icon className={cn('w-4 h-4', iconColor || 'text-[#F47920]')} />}
                 {title}
               </CardTitle>
               {description && (
-                <CardDescription className="text-xs text-slate-500">{description}</CardDescription>
+                <CardDescription className="text-xs text-slate-500 font-medium">
+                  {description}
+                </CardDescription>
               )}
             </div>
             <button
@@ -40,7 +44,7 @@ export default function ChartCard({
               onClick={() => setExpanded(true)}
               aria-label={`Expandir ${title}`}
               title="Expandir em tela cheia"
-              className="p-1.5 rounded-lg text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 shrink-0"
+              className="p-1.5 rounded-lg text-slate-300 hover:text-[#F47920] hover:bg-orange-50 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#F47920]/40 shrink-0"
             >
               <Expand className="w-4 h-4" />
             </button>
@@ -52,16 +56,18 @@ export default function ChartCard({
       </Card>
 
       <Dialog open={expanded} onOpenChange={setExpanded}>
-        <DialogContent className="max-w-none w-[95vw] h-[85vh] sm:rounded-2xl border-0 bg-white p-0 flex flex-col overflow-hidden">
+        <DialogContent className="max-w-none w-[95vw] h-[85vh] sm:rounded-2xl border border-gray-200 bg-white p-0 flex flex-col overflow-hidden">
           <DialogTitle className="sr-only">{title}</DialogTitle>
           <div className="flex items-center gap-3 px-6 pt-6 pb-3 border-b border-slate-100">
             {Icon && (
               <div className="shrink-0">
-                <Icon className={cn('w-5 h-5', iconColor)} />
+                <Icon className={cn('w-5 h-5', iconColor || 'text-[#F47920]')} />
               </div>
             )}
             <div>
-              <CardTitle className="text-lg font-bold text-slate-900">{title}</CardTitle>
+              <CardTitle className="text-lg font-extrabold text-slate-900 tracking-tight">
+                {title}
+              </CardTitle>
               {description && (
                 <CardDescription className="text-sm text-slate-500 mt-0.5">
                   {description}

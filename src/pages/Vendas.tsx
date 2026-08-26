@@ -367,8 +367,8 @@ export default function Vendas() {
           value={kpis.faturamento}
           isCurrency
           icon={DollarSign}
-          iconBgColor="bg-indigo-50"
-          iconColor="text-indigo-600"
+          iconBgColor="bg-orange-50"
+          iconColor="text-[#F47920]"
         />
         <KpiCard
           title="Valor Líquido"
@@ -391,8 +391,8 @@ export default function Vendas() {
           value={kpis.documentos}
           decimals={0}
           icon={FileText}
-          iconBgColor="bg-purple-50"
-          iconColor="text-purple-600"
+          iconBgColor="bg-slate-100"
+          iconColor="text-slate-700"
         />
         <KpiCard
           title="Devoluções"
@@ -405,15 +405,15 @@ export default function Vendas() {
       </div>
 
       {/* Main Table Card */}
-      <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs overflow-hidden">
+      <Card className="rounded-xl border border-gray-200 bg-white overflow-hidden">
         <CardHeader className="border-b border-slate-100 pb-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <FileSpreadsheet className="w-5 h-5 text-indigo-600" />
+              <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-[#F47920]" />
                 Vendas Consolidadas (RacNew + NetSales + Produtos)
               </CardTitle>
-              <CardDescription className="text-xs text-slate-500">
+              <CardDescription className="text-xs text-slate-500 font-medium">
                 {totalItems} linhas encontradas • Base mestre RacNew com enriquecimento NetSales •
                 Ordenação server-side ativa
               </CardDescription>
@@ -425,16 +425,16 @@ export default function Vendas() {
                   variant="outline"
                   size="sm"
                   onClick={handleCollapseAll}
-                  className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold gap-1.5 shadow-2xs text-xs"
+                  className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 font-bold gap-1.5 text-xs"
                 >
                   {areAllCollapsed ? (
                     <>
-                      <ChevronsUpDown className="w-3.5 h-3.5 text-indigo-600" />
+                      <ChevronsUpDown className="w-3.5 h-3.5 text-[#F47920]" />
                       Expandir todos
                     </>
                   ) : (
                     <>
-                      <ChevronsDownUp className="w-3.5 h-3.5 text-indigo-600" />
+                      <ChevronsDownUp className="w-3.5 h-3.5 text-[#F47920]" />
                       Colapsar todos
                     </>
                   )}
@@ -446,16 +446,16 @@ export default function Vendas() {
                 size="sm"
                 onClick={handleExportCSV}
                 disabled={exporting || totalItems === 0}
-                className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold gap-1.5 shadow-2xs"
+                className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 font-bold gap-1.5"
               >
                 {exporting ? (
                   <>
-                    <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
+                    <RefreshCw className="w-4 h-4 animate-spin text-[#F47920]" />
                     Exportando...
                   </>
                 ) : (
                   <>
-                    <Download className="w-4 h-4 text-indigo-600" />
+                    <Download className="w-4 h-4 text-[#F47920]" />
                     Exportar CSV ({totalItems})
                   </>
                 )}
@@ -523,7 +523,7 @@ export default function Vendas() {
                         <div className="flex items-center gap-1.5">
                           <span>{col.label}</span>
                           {sort.field === col.key ? (
-                            <span className="text-[10px] text-indigo-600 font-bold">
+                            <span className="text-[10px] text-[#F47920] font-bold">
                               {sort.dir === 'asc' ? '▲' : '▼'}
                             </span>
                           ) : (
@@ -550,10 +550,10 @@ export default function Vendas() {
                               key={item.id}
                               className={`transition-colors group ${
                                 isGrouped && isFirstOfGroup && isCollapsed
-                                  ? 'bg-indigo-50/30 font-medium'
+                                  ? 'bg-orange-50/30 font-medium'
                                   : isGrouped && !isCollapsed
                                     ? 'hover:bg-slate-50/80'
-                                    : 'hover:bg-indigo-50/20'
+                                    : 'hover:bg-orange-50/10'
                               }`}
                             >
                               {/* Botão de Expandir / Colapsar Grupo NFe */}
@@ -562,7 +562,7 @@ export default function Vendas() {
                                   <button
                                     type="button"
                                     onClick={() => toggleCollapseNfe(group.nfeKey)}
-                                    className="p-1 rounded hover:bg-indigo-100 text-indigo-600 focus:outline-hidden transition-colors"
+                                    className="p-1 rounded hover:bg-orange-100 text-[#F47920] focus:outline-hidden transition-colors"
                                     title={
                                       isCollapsed
                                         ? `Expandir NF ${group.displayNfe} (${group.items.length} itens)`
@@ -592,7 +592,7 @@ export default function Vendas() {
                                   {isGrouped && isFirstOfGroup && isCollapsed && (
                                     <Badge
                                       variant="secondary"
-                                      className="text-[9px] px-1.5 py-0 h-4 bg-indigo-100 text-indigo-700 hover:bg-indigo-100 border-none font-sans"
+                                      className="text-[9px] px-1.5 py-0 h-4 bg-orange-100 text-orange-900 hover:bg-orange-100 border-none font-sans font-bold"
                                     >
                                       +{group.items.length - 1} itens
                                     </Badge>
@@ -621,7 +621,7 @@ export default function Vendas() {
                               </td>
 
                               {/* 6. Vendedor > Cliente */}
-                              <td className="py-2.5 px-3.5 text-indigo-950 font-medium max-w-[260px] truncate bg-slate-50/50">
+                              <td className="py-2.5 px-3.5 text-slate-900 font-medium max-w-[260px] truncate bg-slate-50/50">
                                 {item.vendedor_cliente || '-'}
                               </td>
 
@@ -672,7 +672,7 @@ export default function Vendas() {
                               </td>
 
                               {/* 14. Valor Mercadoria (Total Linha) */}
-                              <td className="py-2.5 px-3.5 text-right font-bold text-indigo-700 tabular-nums bg-indigo-50/30">
+                              <td className="py-2.5 px-3.5 text-right font-bold text-slate-900 tabular-nums bg-orange-50/20">
                                 {formatCurrency(item.total_linha)}
                               </td>
 
