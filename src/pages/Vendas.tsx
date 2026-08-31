@@ -420,27 +420,6 @@ export default function Vendas() {
             </div>
 
             <div className="flex items-center flex-wrap gap-2">
-              {multiItemNfeKeys.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCollapseAll}
-                  className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 font-bold gap-1.5 text-xs"
-                >
-                  {areAllCollapsed ? (
-                    <>
-                      <ChevronsUpDown className="w-3.5 h-3.5 text-[#0B6E99]" />
-                      Expandir todos
-                    </>
-                  ) : (
-                    <>
-                      <ChevronsDownUp className="w-3.5 h-3.5 text-[#0B6E99]" />
-                      Colapsar todos
-                    </>
-                  )}
-                </Button>
-              )}
-
               <Button
                 variant="outline"
                 size="sm"
@@ -464,25 +443,52 @@ export default function Vendas() {
           </div>
         </CardHeader>
 
-        {/* Resumo compacto de origens (NetSales vs RacNew) */}
-        <div className="px-6 py-2.5 bg-slate-50/60 border-b border-slate-100 flex items-center flex-wrap gap-2 text-xs">
-          <span className="text-slate-500 font-medium mr-1">Resumo por origem:</span>
-          <Badge
-            variant="outline"
-            className="bg-indigo-50/80 text-indigo-700 border-indigo-200/80 px-2.5 py-1 text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs"
-          >
-            <span className="inline-block w-2 h-2 rounded-full bg-indigo-600" />
-            <Database className="w-3.5 h-3.5 text-indigo-600" />
-            <span>NetSales: {formatNumber(totalNetsales)}</span>
-          </Badge>
-          <Badge
-            variant="outline"
-            className="bg-cyan-100 text-cyan-800 border-cyan-300 px-2.5 py-1 text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs"
-          >
-            <span className="inline-block w-2 h-2 rounded-full bg-cyan-500" />
-            <FileText className="w-3.5 h-3.5 text-cyan-700" />
-            <span>RacNew: {formatNumber(totalRacnew)}</span>
-          </Badge>
+        {/* Barra superior de ações e resumo (com botão Colapsar/Expandir à esquerda) */}
+        <div className="px-6 py-2.5 bg-slate-50/60 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+          {/* Lado esquerdo: Botão de Colapsar / Expandir itens de NFe */}
+          <div className="flex items-center gap-2">
+            {multiItemNfeKeys.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCollapseAll}
+                className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 hover:text-[#0B6E99] font-bold gap-1.5 text-xs shadow-2xs h-8"
+              >
+                {areAllCollapsed ? (
+                  <>
+                    <ChevronsUpDown className="w-3.5 h-3.5 text-[#0B6E99]" />
+                    Expandir todos
+                  </>
+                ) : (
+                  <>
+                    <ChevronsDownUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                    Colapsar todos
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+
+          {/* Lado direito: Resumo por origem */}
+          <div className="flex items-center flex-wrap gap-2">
+            <span className="text-slate-500 font-medium mr-1">Resumo por origem:</span>
+            <Badge
+              variant="outline"
+              className="bg-indigo-50/80 text-indigo-700 border-indigo-200/80 px-2.5 py-1 text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs"
+            >
+              <span className="inline-block w-2 h-2 rounded-full bg-indigo-600" />
+              <Database className="w-3.5 h-3.5 text-indigo-600" />
+              <span>NetSales: {formatNumber(totalNetsales)}</span>
+            </Badge>
+            <Badge
+              variant="outline"
+              className="bg-cyan-100 text-cyan-800 border-cyan-300 px-2.5 py-1 text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs"
+            >
+              <span className="inline-block w-2 h-2 rounded-full bg-cyan-500" />
+              <FileText className="w-3.5 h-3.5 text-cyan-700" />
+              <span>RacNew: {formatNumber(totalRacnew)}</span>
+            </Badge>
+          </div>
         </div>
 
         <CardContent className="p-0">

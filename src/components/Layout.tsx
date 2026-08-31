@@ -13,6 +13,8 @@ import {
   Users as UsersIcon,
   History,
   Database,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -26,10 +28,29 @@ import { useRealtime } from '@/hooks/use-realtime'
 
 export default function Layout() {
   const { user, logout, isLoading } = useAuth()
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem('sidebar_collapsed') === 'true'
+    } catch {
+      return false
+    }
+  })
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [ultimaCarga, setUltimaCarga] = useState<string | null>(null)
   const location = useLocation()
   const navigate = useNavigate()
+
+  const toggleDesktopSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('sidebar_collapsed', String(next))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
 
   // Buscar data da última carga para exibir no footer
   const loadStats = async () => {
@@ -159,22 +180,43 @@ export default function Layout() {
   return (
     <div className="flex min-h-screen bg-[#F8FAFC] text-slate-900 antialiased font-sans">
       {/* Sidebar Desktop */}
-      <aside className="hidden lg:flex flex-col w-[260px] fixed inset-y-0 left-0 z-30 bg-[#0F172A] text-[#94A3B8] border-r border-slate-800/80">
+      <aside
+        className={cn(
+          'hidden lg:flex flex-col fixed inset-y-0 left-0 z-30 bg-[#0F172A] text-[#94A3B8] border-r border-slate-800/80 transition-all duration-300 ease-in-out',
+          sidebarCollapsed ? 'w-[72px]' : 'w-[260px]',
+        )}
+      >
         {/* Top Logo Roland + Brand Header */}
-        <div className="pt-6 pb-4 px-6 flex flex-col items-center justify-center border-b border-slate-800/80 gap-3 bg-gradient-to-b from-[#141E33] to-[#0F172A]">
+        <div
+          className={cn(
+            'flex flex-col items-center justify-center border-b border-slate-800/80 bg-gradient-to-b from-[#141E33] to-[#0F172A] transition-all',
+            sidebarCollapsed ? 'pt-5 pb-4 px-2 gap-2' : 'pt-6 pb-4 px-6 gap-3',
+          )}
+        >
           {/* Logo Roland proeminente no topo */}
           <div className="flex items-center justify-center py-1">
-            <RolandLogo variant="white" showSubtitle={false} />
+            {sidebarCollapsed ? (
+              <span
+                className="font-black text-[#0B6E99] text-xl tracking-tighter"
+                title="Roland DG"
+              >
+                R
+              </span>
+            ) : (
+              <RolandLogo variant="white" showSubtitle={false} />
+            )}
           </div>
 
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 w-full justify-center">
-            <span className="font-extrabold text-white text-xs tracking-tight uppercase">
-              Painel de Vendas
-            </span>
-            <span className="text-[10px] text-[#0B6E99] font-bold tracking-wide">
-              • Consolidado
-            </span>
-          </div>
+          {!sidebarCollapsed && (
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/60 w-full justify-center">
+              <span className="font-extrabold text-white text-xs tracking-tight uppercase">
+                Painel de Vendas
+              </span>
+              <span className="text-[10px] text-[#0B6E99] font-bold tracking-wide">
+                • Consolidado
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Navigation */}
@@ -186,56 +228,85 @@ export default function Layout() {
               <NavLink
                 key={item.href}
                 to={item.href}
+                title={sidebarCollapsed ? item.title : undefined}
                 className={cn(
-                  'flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium transition-all duration-200',
+                  'flex items-center rounded-full text-sm font-medium transition-all duration-200',
+                  sidebarCollapsed
+                    ? 'justify-center w-10 h-10 mx-auto px-0'
+                    : 'gap-3 px-3.5 py-2.5',
                   isActive
                     ? 'bg-[#0B6E99] text-white shadow-sm font-bold'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
                 )}
               >
-                <Icon className={cn('w-4 h-4', isActive ? 'text-white' : 'text-slate-400')} />
-                {item.title}
+                <Icon
+                  className={cn('w-4 h-4 shrink-0', isActive ? 'text-white' : 'text-slate-400')}
+                />
+                {!sidebarCollapsed && <span className="truncate">{item.title}</span>}
               </NavLink>
             )
           })}
         </nav>
 
         {/* Integration Status Badge */}
-        <div className="px-4 py-3 mx-3 mb-3 rounded-xl bg-slate-800/60 border border-slate-700/50 flex items-center gap-2.5">
-          <div className="p-1.5 rounded-lg bg-[#0B6E99]/20 text-[#0B6E99]">
-            <Layers className="w-4 h-4" />
+        {!sidebarCollapsed ? (
+          <div className="px-4 py-3 mx-3 mb-3 rounded-xl bg-slate-800/60 border border-slate-700/50 flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-[#0B6E99]/20 text-[#0B6E99] shrink-0">
+              <Layers className="w-4 h-4" />
+            </div>
+            <div className="flex flex-col text-xs min-w-0">
+              <span className="text-slate-200 font-bold truncate">Bases Integradas</span>
+              <span className="text-slate-400 text-[11px] truncate">RacNew + NetSales + Prod</span>
+            </div>
           </div>
-          <div className="flex flex-col text-xs">
-            <span className="text-slate-200 font-bold">Bases Integradas</span>
-            <span className="text-slate-400 text-[11px]">RacNew + NetSales + Prod</span>
+        ) : (
+          <div
+            className="flex justify-center mb-3"
+            title="Bases Integradas: RacNew + NetSales + Prod"
+          >
+            <div className="p-2 rounded-xl bg-slate-800/60 border border-slate-700/50 text-[#0B6E99]">
+              <Layers className="w-4 h-4" />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* User Footer Sidebar */}
         <div className="p-3 border-t border-slate-800/80 bg-slate-950/60">
-          <div className="flex items-center justify-between gap-2 p-2 rounded-lg hover:bg-slate-800/50 transition-colors">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <Avatar className="w-8 h-8 border border-slate-700 bg-slate-900 text-[#0B6E99]">
+          <div
+            className={cn(
+              'flex items-center rounded-lg hover:bg-slate-800/50 transition-colors',
+              sidebarCollapsed ? 'justify-center p-1' : 'justify-between gap-2 p-2',
+            )}
+          >
+            <div
+              className="flex items-center gap-2.5 min-w-0"
+              title={sidebarCollapsed ? `${user.name || 'Usuário'} (${user.email})` : undefined}
+            >
+              <Avatar className="w-8 h-8 border border-slate-700 bg-slate-900 text-[#0B6E99] shrink-0">
                 <AvatarFallback className="text-xs font-extrabold bg-[#0B6E99] text-white">
                   {userInitials || 'U'}
                 </AvatarFallback>
               </Avatar>
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs font-bold text-white truncate">
-                  {user.name || 'Usuário'}
-                </span>
-                <span className="text-[11px] text-slate-400 truncate">{user.email}</span>
-              </div>
+              {!sidebarCollapsed && (
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-bold text-white truncate">
+                    {user.name || 'Usuário'}
+                  </span>
+                  <span className="text-[11px] text-slate-400 truncate">{user.email}</span>
+                </div>
+              )}
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleLogout}
-              className="w-8 h-8 text-slate-400 hover:text-red-400 hover:bg-red-950/30 rounded-lg shrink-0"
-              title="Sair da conta"
-            >
-              <LogOut className="w-4 h-4" />
-            </Button>
+            {!sidebarCollapsed && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleLogout}
+                className="w-8 h-8 text-slate-400 hover:text-red-400 hover:bg-red-950/30 rounded-lg shrink-0"
+                title="Sair da conta"
+              >
+                <LogOut className="w-4 h-4" />
+              </Button>
+            )}
           </div>
         </div>
       </aside>
@@ -325,19 +396,43 @@ export default function Layout() {
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-h-screen lg:pl-[260px]">
+      <div
+        className={cn(
+          'flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out',
+          sidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-[260px]',
+        )}
+      >
         {/* Header Escuro inspirado na identidade Roland DG Brasil (#0F172A / #141E33) */}
         <header className="sticky top-0 z-20 h-16 bg-[#0F172A] border-b border-slate-800 px-4 sm:px-6 lg:px-8 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-3">
+            {/* Botão Mobile para abrir o menu lateral */}
             <Button
               variant="ghost"
               size="icon"
               className="lg:hidden text-white hover:text-[#0B6E99] hover:bg-slate-800 -ml-1"
               onClick={() => setMobileMenuOpen(true)}
               aria-label="Abrir menu"
+              title="Abrir menu"
             >
               <Menu className="w-5 h-5 text-white" />
             </Button>
+
+            {/* Botão Desktop de Colapsar / Expandir Sidebar no lado esquerdo do Header */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleDesktopSidebar}
+              className="hidden lg:inline-flex text-slate-300 hover:text-white hover:bg-slate-800 -ml-2 h-9 w-9 rounded-lg"
+              aria-label={sidebarCollapsed ? 'Expandir barra lateral' : 'Colapsar barra lateral'}
+              title={sidebarCollapsed ? 'Expandir barra lateral' : 'Colapsar barra lateral'}
+            >
+              {sidebarCollapsed ? (
+                <PanelLeftOpen className="w-5 h-5 text-[#0B6E99]" />
+              ) : (
+                <PanelLeftClose className="w-5 h-5 text-slate-400" />
+              )}
+            </Button>
+
             <h1 className="text-lg sm:text-xl font-bold tracking-tight text-white truncate">
               {getPageTitle()}
             </h1>
