@@ -24,11 +24,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const initialRefreshDone = useRef(false)
 
   useEffect(() => {
+    let isMounted = true
+
     // Sincroniza estado React sempre que o authStore do PocketBase mudar (login, logout, refresh, clear)
     const unsub = pb.authStore.onChange((newToken, newRecord) => {
+      if (!isMounted) return
       setToken(newToken)
       setUser(newRecord)
     })
+
+    // Fallback de segurança: nunca permitir que isLoading fique preso em true por mais de 5s
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted) {
+        setIsLoading(false)
+      }
+    }, 5000)
 
     // Na inicialização, se houver token persistido no localStorage:
     if (pb.authStore.isValid && !initialRefreshDone.current) {
@@ -49,13 +59,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         })
         .finally(() => {
-          setIsLoading(false)
+          if (isMounted) {
+            setIsLoading(false)
+          }
         })
     } else {
       setIsLoading(false)
     }
 
     return () => {
+      isMounted = false
+      clearTimeout(safetyTimeout)
       unsub()
     }
   }, [])
