@@ -36,24 +36,18 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // sqlWhereBase: apenas filtros de DIMENSÃO (sem data) — usado pela série
   //   de "ano anterior" do gráfico mensal e clientes ativos, já que filtros de ano/mês/data
   //   excluiriam sempre o período anterior.
-  // sqlWhereBaseOnly: apenas o filtro de `base` (sem outros filtros de dimensão ou data) —
-  //   usado pelos gráficos históricos/estratégicos (vendasPorAno, vendasEquipamentosHistorico,
-  //   vendasInsumosHistorico), que respeitam a base de dados selecionada mas ignoram os demais filtros.
   const sqlParts = []
   const sqlDimParts = []
-  const sqlBaseOnlyParts = []
 
   // --- Filtro de BASE (Seleção de Bases: ambos | racnew | netsales) ---
   if (f.base === 'racnew') {
     const clause = '(tem_netsales = 0 OR tem_netsales IS NULL)'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
-    sqlBaseOnlyParts.push(clause)
   } else if (f.base === 'netsales') {
     const clause = 'tem_netsales = 1'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
-    sqlBaseOnlyParts.push(clause)
   }
 
   // --- Filtros de DATA (não entram em sqlDimParts) ---
@@ -153,8 +147,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'
   // Apenas filtros de dimensão (sem data) — usado pela série de ano anterior.
   const sqlWhereBase = sqlDimParts.length > 0 ? sqlDimParts.join(' AND ') : '1=1'
-  // Apenas filtro de base — usado pelos gráficos históricos/estratégicos (vendasPorAno, vendasEquipamentosHistorico, vendasInsumosHistorico)
-  const sqlWhereHistorical = sqlBaseOnlyParts.length > 0 ? sqlBaseOnlyParts.join(' AND ') : '1=1'
 
   // ---- Helper: roda SELECT e devolve array de DynamicModel (campos a..f) ----
   const runAgg = (sql) => {
@@ -276,13 +268,13 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
 
   // ============================================================
   // vendasPorAno (GROUP BY ano, ordenado ASC, com variação percentual)
-  // Gráfico histórico/estratégico: respeita o filtro de base (sqlWhereHistorical)
+  // Respeita todos os filtros ativos (sqlWhere)
   // ============================================================
   const anoSql =
     'SELECT substr(data_lancamento,1,4) AS a, COALESCE(SUM(total_linha),0) AS b, ' +
     "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS c " +
     'FROM vendas WHERE ' +
-    sqlWhereHistorical +
+    sqlWhere +
     ' AND length(data_lancamento) >= 4 ' +
     'GROUP BY substr(data_lancamento,1,4) ORDER BY 1 ASC'
   const anoRows = runAgg(anoSql)
@@ -355,7 +347,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
 
   // ============================================================
   // vendasPorGrupoItemMensal — últimos 6 meses yyyy-mm a partir da
-  // data mais recente dos dados consolidados, GROUP BY mês + grupo_item.
+  // data mais recente dos dados consolidados filtrados, GROUP BY mês + grupo_item.
   // ============================================================
   const vendasPorGrupoItemMensal = []
   try {
@@ -555,14 +547,14 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // 5) Queries de Análise
   // ============================================================
 
-  // 5.1) vendasEquipamentosHistorico — Tendência Histórica Contínua de Equipamentos
-  // Respeita o filtro de base (sqlWhereHistorical)
+  // 5.1) vendasEquipamentosHistorico — Tendência de Vendas de Equipamentos
+  // Respeita todos os filtros ativos (sqlWhere)
   const vendasEquipamentosHistorico = []
   try {
     const equipSql =
       'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b ' +
       'FROM vendas WHERE ' +
-      sqlWhereHistorical +
+      sqlWhere +
       " AND UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
       'AND length(data_lancamento) >= 7 ' +
       'GROUP BY substr(data_lancamento,1,7) ' +
@@ -581,14 +573,14 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     console.error('dashboard_stats: vendasEquipamentosHistorico falhou:', err)
   }
 
-  // 5.2) vendasInsumosHistorico — Histórico Contínuo de Insumos
-  // Respeita o filtro de base (sqlWhereHistorical)
+  // 5.2) vendasInsumosHistorico — Histórico/Tendência de Insumos
+  // Respeita todos os filtros ativos (sqlWhere)
   const vendasInsumosHistorico = []
   try {
     const insumoSql =
       'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b ' +
       'FROM vendas WHERE ' +
-      sqlWhereHistorical +
+      sqlWhere +
       " AND UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
       'AND length(data_lancamento) >= 7 ' +
       'GROUP BY substr(data_lancamento,1,7) ' +
@@ -613,7 +605,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const clientesAtivosInsumos = []
 
   try {
-    // 1) Data mais recente
+    // 1) Data mais recente considerando os filtros ativos
     const maxDateRows2 = arrayOf(new DynamicModel({ a: '' }))
     $app
       .db()
@@ -630,17 +622,41 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       const maxYear = parseInt(parts[0], 10)
       const maxMonth = parseInt(parts[1], 10)
       if (!isNaN(maxYear) && !isNaN(maxMonth) && maxMonth >= 1 && maxMonth <= 12) {
-        // Últimos 6 meses yyyy-mm
-        const ultimos6Meses = []
-        for (let i = 5; i >= 0; i--) {
-          const totalMeses = maxYear * 12 + (maxMonth - 1) - i
-          const y = Math.floor(totalMeses / 12)
-          const m = (totalMeses % 12) + 1
-          ultimos6Meses.push(String(y) + '-' + String(m).padStart(2, '0'))
+        // Se o usuário filtrou explicitamente um único ano e mês (ou período com poucos meses),
+        // ou se temos filtros de ano/mês:
+        // Vamos determinar a lista de meses a exibir respeitando o que está disponível no filtro
+        // ou os últimos 6 meses até maxDate2 se for um período contínuo.
+        // Mas note: se o usuário filtra mês 3 (Março) de 2025, maxDate2 será 2025-03-...
+        // Se gerarmos 6 meses retroativos (2024-10 a 2025-03), mas a query de 'clientes' usa `sqlWhere`
+        // (que restringe a 2025-03), os meses anteriores terão 0 clientes atuais, ou se usarmos os meses filtrados
+        // mesSql já agrega agrupado por substr(data_lancamento,1,7).
+        // Vejamos os meses encontrados em mesRows (que respeita sqlWhere):
+        const mesesFiltrados = mesRows.map((r) => r.a).filter((m) => !!m)
+
+        let mesesAlvo = []
+        if (mesesFiltrados.length > 0 && mesesFiltrados.length <= 6) {
+          // Se o filtro restringe para meses específicos (ex.: apenas 2025-03), usamos exatamente os meses filtrados
+          // garantindo que não exibamos 5 meses vazios desnecessariamente se o filtro for estrito de data.
+          // Mas se o usuário filtrou apenas ano 2025, mesesFiltrados terá todos os meses com venda em 2025 (até 12 meses, pegamos até 6 ou todos).
+          if (mesesFiltrados.length === 1) {
+            mesesAlvo = mesesFiltrados
+          } else if (mesesFiltrados.length <= 6) {
+            mesesAlvo = mesesFiltrados
+          } else {
+            mesesAlvo = mesesFiltrados.slice(mesesFiltrados.length - 6)
+          }
+        } else {
+          // Fallback padrão: últimos 6 meses a partir de maxDate2
+          for (let i = 5; i >= 0; i--) {
+            const totalMeses = maxYear * 12 + (maxMonth - 1) - i
+            const y = Math.floor(totalMeses / 12)
+            const m = (totalMeses % 12) + 1
+            mesesAlvo.push(String(y) + '-' + String(m).padStart(2, '0'))
+          }
         }
 
         // --- 5.3 Clientes Ativos Equipamentos ---
-        const mesesInListEquip = ultimos6Meses.map((m) => "'" + m + "'").join(',')
+        const mesesInListEquip = mesesAlvo.map((m) => "'" + m + "'").join(',')
         const cliEquipSql =
           'SELECT substr(data_lancamento,1,7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
           'FROM vendas WHERE ' +
@@ -657,8 +673,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           cliEquipMap[cliEquipRows[i].a] = parseInt(cliEquipRows[i].b, 10) || 0
         }
 
-        // Série ano anterior (usando sqlWhereBase para não conflitar com datas filtradas)
-        const mesesAnoAnteriorEquip = ultimos6Meses.map((m) => {
+        // Série ano anterior (usando sqlWhereBase para poder comparar o mesmo mês do ano anterior com mesmos filtros de dimensão)
+        const mesesAnoAnteriorEquip = mesesAlvo.map((m) => {
           const p = m.split('-')
           const y = parseInt(p[0], 10) - 1
           return String(y) + '-' + p[1]
@@ -682,8 +698,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           cliEquipPrevMap[cliEquipPrevRows[i].a] = parseInt(cliEquipPrevRows[i].b, 10) || 0
         }
 
-        for (let i = 0; i < ultimos6Meses.length; i++) {
-          const m = ultimos6Meses[i]
+        for (let i = 0; i < mesesAlvo.length; i++) {
+          const m = mesesAlvo[i]
           const p = m.split('-')
           const prevM = String(parseInt(p[0], 10) - 1) + '-' + p[1]
           clientesAtivosEquipamentos.push({
@@ -694,7 +710,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         }
 
         // --- 5.4 Clientes Ativos Insumos ---
-        const mesesInListInsumos = ultimos6Meses.map((m) => "'" + m + "'").join(',')
+        const mesesInListInsumos = mesesAlvo.map((m) => "'" + m + "'").join(',')
         const cliInsumosSql =
           'SELECT substr(data_lancamento,1,7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
           'FROM vendas WHERE ' +
@@ -711,8 +727,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           cliInsumosMap[cliInsumosRows[i].a] = parseInt(cliInsumosRows[i].b, 10) || 0
         }
 
-        // Série ano anterior (usando sqlWhereBase para não conflitar com datas filtradas)
-        const mesesAnoAnterior = ultimos6Meses.map((m) => {
+        // Série ano anterior (usando sqlWhereBase para poder comparar o mesmo mês do ano anterior com mesmos filtros de dimensão)
+        const mesesAnoAnterior = mesesAlvo.map((m) => {
           const p = m.split('-')
           const y = parseInt(p[0], 10) - 1
           return String(y) + '-' + p[1]
@@ -734,8 +750,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           cliInsumosPrevMap[cliInsumosPrevRows[i].a] = parseInt(cliInsumosPrevRows[i].b, 10) || 0
         }
 
-        for (let i = 0; i < ultimos6Meses.length; i++) {
-          const m = ultimos6Meses[i]
+        for (let i = 0; i < mesesAlvo.length; i++) {
+          const m = mesesAlvo[i]
           const p = m.split('-')
           const prevM = String(parseInt(p[0], 10) - 1) + '-' + p[1]
           clientesAtivosInsumos.push({
