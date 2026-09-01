@@ -167,13 +167,15 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // ============================================================
   // 1) KPIs (uma única query, 1 linha)
   // ============================================================
+  // Faturamento Total: soma bruta de total_linha respeitando os filtros selecionados
   const kpiSql =
     'SELECT ' +
     'COALESCE(SUM(total_linha),0) AS a, ' +
     'COALESCE(SUM(valor_liquido),0) AS b, ' +
     'COALESCE(SUM(quantidade),0) AS c, ' +
     'COUNT(DISTINCT numero_nfe) AS d, ' +
-    "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS e " +
+    "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS e, " +
+    'COUNT(*) AS f ' +
     'FROM vendas WHERE ' +
     sqlWhere
   const kpiRows = runAgg(kpiSql)
@@ -184,6 +186,20 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     itensVendidos: kpiRow ? toNum(kpiRow.c) : 0,
     documentos: kpiRow ? toNum(kpiRow.d) : 0,
     devolucoes: kpiRow ? toNum(kpiRow.e) : 0,
+  }
+
+  // Log debug para conferência
+  if (f.ano && String(f.ano).includes('2026') && f.mes && String(f.mes).includes('8')) {
+    console.log(
+      '[DASHBOARD_STATS_AUG_2026] sqlWhere: ' +
+        sqlWhere +
+        ' | faturamento: ' +
+        kpis.faturamento +
+        ' | docs: ' +
+        kpis.documentos +
+        ' | count: ' +
+        (kpiRow ? kpiRow.f : ''),
+    )
   }
 
   // ============================================================
