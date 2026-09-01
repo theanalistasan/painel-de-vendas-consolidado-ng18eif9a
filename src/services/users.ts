@@ -1,4 +1,5 @@
 import pb from '@/lib/pocketbase/client'
+import { safeAuthRefresh } from '@/lib/pocketbase/auth-session'
 
 export type UserRole = 'admin' | 'user'
 
@@ -54,7 +55,7 @@ export async function fetchUsers(params: FetchUsersParams): Promise<UsersListRes
     const status = (err as { status?: number })?.status
     if ((status === 401 || status === 403) && pb.authStore.isValid) {
       try {
-        await pb.collection('users').authRefresh()
+        await safeAuthRefresh()
         result = await runQuery()
       } catch {
         throw err

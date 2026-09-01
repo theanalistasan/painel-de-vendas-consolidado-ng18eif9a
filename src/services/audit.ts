@@ -1,4 +1,5 @@
 import pb from '@/lib/pocketbase/client'
+import { safeAuthRefresh } from '@/lib/pocketbase/auth-session'
 
 export type AuditAction = 'login' | 'logout' | 'admin_access' | 'import_access'
 
@@ -87,7 +88,7 @@ export async function fetchAuditLogs(params: FetchAuditLogsParams): Promise<Audi
     const status = (err as { status?: number })?.status
     if ((status === 401 || status === 403) && pb.authStore.isValid) {
       try {
-        await pb.collection('users').authRefresh()
+        await safeAuthRefresh()
         result = await runQuery()
       } catch {
         throw err
