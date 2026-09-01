@@ -22,7 +22,12 @@
 //
 // Retorna: { items, page, perPage, totalItems, totalPages }
 routerAdd('POST', '/backend/v1/vendas/list', (e) => {
-  const body = e.requestInfo().body || {}
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {
+    body = {}
+  }
   const page = Math.max(1, parseInt(body.page, 10) || 1)
   const perPage = Math.min(200, Math.max(1, parseInt(body.perPage, 10) || 20))
 

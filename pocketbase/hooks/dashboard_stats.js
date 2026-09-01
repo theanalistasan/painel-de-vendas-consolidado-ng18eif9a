@@ -20,7 +20,12 @@
 //
 // Retorna: { kpis, charts, recentSales, filterOptions }
 routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
-  const body = e.requestInfo().body || {}
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {
+    body = {}
+  }
   const f = body.filters || {}
 
   // ---- Escape SQL (aspas simples duplicadas) ----

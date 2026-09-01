@@ -21,7 +21,12 @@
 //
 // Retorna: { items, totalItems }
 routerAdd('POST', '/backend/v1/vendas/export', (e) => {
-  const body = e.requestInfo().body || {}
+  let body = {}
+  try {
+    body = e.requestInfo().body || {}
+  } catch (_) {
+    body = {}
+  }
 
   const validSortFields = {
     data_lancamento: 'data_lancamento',

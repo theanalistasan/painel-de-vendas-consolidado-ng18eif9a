@@ -21,8 +21,8 @@ const EMPTY_FILTERS: FilterState = {
 
 /**
  * Filtros padrão aplicados ao acessar o app pela primeira vez ou após logout
- * (quando não há nada salvo no sessionStorage). Os valores correspondem aos
- * reais no banco de dados.
+ * (quando não há nada salvo no sessionStorage). Deixamos aberto para que todos os
+ * dados consolidados da base apareçam imediatamente ao entrar, sem filtros restritivos.
  */
 const DEFAULT_FILTERS: FilterState = {
   base: 'ambos',
@@ -30,12 +30,12 @@ const DEFAULT_FILTERS: FilterState = {
   dataAte: '',
   vendedorCliente: [],
   vendedor: [],
-  grupoItem: ['PEÇAS', 'TINTAS', 'ACESSÓRIOS', 'EQUIPAMENTOS'],
+  grupoItem: [],
   estado: [],
-  utilizacao: ['VENDA DE MERCADORIA'],
-  tipoDocumento: ['NF de Saída'],
+  utilizacao: [],
+  tipoDocumento: [],
   search: '',
-  ano: [new Date().getFullYear().toString()],
+  ano: [],
   mes: [],
   dia: [],
   tipoDevolucao: '',
