@@ -32,22 +32,28 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const sqlEsc = (s) => String(s).replace(/'/g, "''")
 
   // ---- Constrói cláusula WHERE (SQL) e filtro PocketBase em paralelo ----
-  // sqlWhere: usado em TODAS as queries (KPIs, charts, recentSales).
+  // sqlWhere: usado na maioria das queries (KPIs, charts filtrados, recentSales).
   // sqlWhereBase: apenas filtros de DIMENSÃO (sem data) — usado pela série
   //   de "ano anterior" do gráfico mensal e clientes ativos, já que filtros de ano/mês/data
   //   excluiriam sempre o período anterior.
+  // sqlWhereHistorical: apenas filtro de base de dados (racnew / netsales / ambos) —
+  //   usado pelos gráficos históricos contínuos ("Tendência de Vendas — Equipamentos"
+  //   e "Acumulado — Insumos"), ignorando TODOS os filtros de período e dimensão.
   const sqlParts = []
   const sqlDimParts = []
+  const sqlHistParts = []
 
   // --- Filtro de BASE (Seleção de Bases: ambos | racnew | netsales) ---
   if (f.base === 'racnew') {
     const clause = '(tem_netsales = 0 OR tem_netsales IS NULL)'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
+    sqlHistParts.push(clause)
   } else if (f.base === 'netsales') {
     const clause = 'tem_netsales = 1'
     sqlParts.push(clause)
     sqlDimParts.push(clause)
+    sqlHistParts.push(clause)
   }
 
   // --- Filtros de DATA (não entram em sqlDimParts) ---
@@ -147,6 +153,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'
   // Apenas filtros de dimensão (sem data) — usado pela série de ano anterior.
   const sqlWhereBase = sqlDimParts.length > 0 ? sqlDimParts.join(' AND ') : '1=1'
+  // Apenas filtro de base — usado para gráficos históricos completos (ignora período e dimensões).
+  const sqlWhereHistorical = sqlHistParts.length > 0 ? sqlHistParts.join(' AND ') : '1=1'
 
   // ---- Helper: roda SELECT e devolve array de DynamicModel (campos a..f) ----
   const runAgg = (sql) => {
@@ -564,13 +572,13 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   // ============================================================
 
   // 5.1) vendasEquipamentosHistorico — Tendência de Vendas de Equipamentos
-  // Respeita todos os filtros ativos (sqlWhere)
+  // Usa sqlWhereHistorical para trazer a base inteira contínua histórica (respeita apenas filtro de base)
   const vendasEquipamentosHistorico = []
   try {
     const equipSql =
       'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b ' +
       'FROM vendas WHERE ' +
-      sqlWhere +
+      sqlWhereHistorical +
       " AND UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
       'AND length(data_lancamento) >= 7 ' +
       'GROUP BY substr(data_lancamento,1,7) ' +
@@ -589,14 +597,14 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     console.error('dashboard_stats: vendasEquipamentosHistorico falhou:', err)
   }
 
-  // 5.2) vendasInsumosHistorico — Histórico/Tendência de Insumos
-  // Respeita todos os filtros ativos (sqlWhere)
+  // 5.2) vendasInsumosHistorico — Histórico/Tendência de Insumos (Acumulado de Vendas — Insumos)
+  // Usa sqlWhereHistorical para trazer a base inteira contínua histórica (respeita apenas filtro de base)
   const vendasInsumosHistorico = []
   try {
     const insumoSql =
       'SELECT substr(data_lancamento,1,7) AS a, COALESCE(SUM(total_linha),0) AS b ' +
       'FROM vendas WHERE ' +
-      sqlWhere +
+      sqlWhereHistorical +
       " AND UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
       'AND length(data_lancamento) >= 7 ' +
       'GROUP BY substr(data_lancamento,1,7) ' +
