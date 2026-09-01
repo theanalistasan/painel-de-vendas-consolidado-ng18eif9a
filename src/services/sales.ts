@@ -1,4 +1,5 @@
 import pb from '@/lib/pocketbase/client'
+import { safeAuthRefresh } from '@/lib/pocketbase/auth-session'
 import type {
   Produto,
   RacNew,
@@ -106,15 +107,33 @@ export interface CountsSummary {
  * `$app.countRecords` (contagem real do banco) por coleção.
  */
 export async function getCountsSummary(): Promise<CountsSummary> {
-  const data = await pb.send<{
-    produtos: number
-    racnew: number
-    netsales: number
-    vendas: number
-    ultimaCarga: string
-  }>('/backend/v1/stats/counts', {
-    method: 'GET',
-  })
+  const run = () =>
+    pb.send<{
+      produtos: number
+      racnew: number
+      netsales: number
+      vendas: number
+      ultimaCarga: string
+    }>('/backend/v1/stats/counts', {
+      method: 'GET',
+    })
+
+  let data
+  try {
+    data = await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if ((status === 401 || status === 403) && pb.authStore.isValid) {
+      try {
+        await safeAuthRefresh()
+        data = await run()
+      } catch {
+        throw err
+      }
+    } else {
+      throw err
+    }
+  }
 
   return {
     produtos: data.produtos ?? 0,
@@ -186,10 +205,26 @@ export interface DashboardStatsResult {
 export async function fetchDashboardStats(
   filters?: Record<string, unknown>,
 ): Promise<DashboardStatsResult> {
-  return pb.send<DashboardStatsResult>('/backend/v1/dashboard/stats', {
-    method: 'POST',
-    body: { filters: filters || {} },
-  })
+  const run = () =>
+    pb.send<DashboardStatsResult>('/backend/v1/dashboard/stats', {
+      method: 'POST',
+      body: { filters: filters || {} },
+    })
+
+  try {
+    return await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if ((status === 401 || status === 403) && pb.authStore.isValid) {
+      try {
+        await safeAuthRefresh()
+        return await run()
+      } catch {
+        throw err
+      }
+    }
+    throw err
+  }
 }
 
 export interface VendasListResult {
@@ -210,10 +245,26 @@ export async function fetchVendasList(params?: {
   sortDirection?: 'asc' | 'desc'
   filters?: Record<string, unknown>
 }): Promise<VendasListResult> {
-  return pb.send<VendasListResult>('/backend/v1/vendas/list', {
-    method: 'POST',
-    body: params || {},
-  })
+  const run = () =>
+    pb.send<VendasListResult>('/backend/v1/vendas/list', {
+      method: 'POST',
+      body: params || {},
+    })
+
+  try {
+    return await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if ((status === 401 || status === 403) && pb.authStore.isValid) {
+      try {
+        await safeAuthRefresh()
+        return await run()
+      } catch {
+        throw err
+      }
+    }
+    throw err
+  }
 }
 
 export interface VendasExportResult {
@@ -227,8 +278,24 @@ export async function fetchVendasExport(params?: {
   sortDirection?: 'asc' | 'desc'
   filters?: Record<string, unknown>
 }): Promise<VendasExportResult> {
-  return pb.send<VendasExportResult>('/backend/v1/vendas/export', {
-    method: 'POST',
-    body: params || {},
-  })
+  const run = () =>
+    pb.send<VendasExportResult>('/backend/v1/vendas/export', {
+      method: 'POST',
+      body: params || {},
+    })
+
+  try {
+    return await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if ((status === 401 || status === 403) && pb.authStore.isValid) {
+      try {
+        await safeAuthRefresh()
+        return await run()
+      } catch {
+        throw err
+      }
+    }
+    throw err
+  }
 }

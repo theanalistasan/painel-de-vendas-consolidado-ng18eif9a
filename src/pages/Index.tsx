@@ -154,6 +154,7 @@ type DashboardSortField =
 export default function Index() {
   const [data, setData] = useState<DashboardStatsResult | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [recentSalesList, setRecentSalesList] = useState<
     Array<{
       id: string
@@ -183,14 +184,16 @@ export default function Index() {
   // Load aggregated dashboard stats from server
   const loadData = async (activeFilters = filters) => {
     setLoading(true)
+    setError(null)
     try {
       const res = await fetchDashboardStats(activeFilters as unknown as Record<string, unknown>)
       setData(res)
       if (!sort.field) {
         setRecentSalesList(res?.recentSales || [])
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Erro ao buscar estatísticas do dashboard:', err)
+      setError(err instanceof Error ? err.message : 'Falha ao carregar dados do painel.')
     } finally {
       setLoading(false)
     }
@@ -449,6 +452,26 @@ export default function Index() {
             <Skeleton className="h-80 w-full rounded-xl" />
           </div>
         </div>
+      ) : error ? (
+        /* Error State */
+        <Card className="rounded-xl border border-red-200 p-12 text-center bg-red-50/40">
+          <div className="w-16 h-16 mx-auto rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-4">
+            <RotateCcw className="w-8 h-8" />
+          </div>
+          <h3 className="text-lg font-extrabold text-slate-900">Erro ao carregar os dados</h3>
+          <p className="text-sm text-slate-600 max-w-md mx-auto mt-1 mb-6 font-medium">
+            {error || 'Não foi possível conectar ao servidor para obter os indicadores do painel.'}
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <Button
+              onClick={() => loadData(filters)}
+              className="bg-[#0B6E99] hover:bg-[#084F6E] text-white font-bold"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Tentar Novamente
+            </Button>
+          </div>
+        </Card>
       ) : isNoData ? (
         /* Empty State */
         <Card className="rounded-xl border border-dashed border-gray-300 p-12 text-center bg-white">
