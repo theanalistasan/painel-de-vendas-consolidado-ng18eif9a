@@ -205,33 +205,52 @@ export interface DashboardStatsResult {
 
 export async function fetchDashboardStats(
   filters?: Record<string, unknown>,
-  options?: { timeoutMs?: number },
+  options?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<DashboardStatsResult> {
   // Timeout padrão de 45 segundos no cliente para abortar e notificar erro amigável
   // se o backend demorar ou falhar, evitando travamento indefinido na interface.
   const timeoutMs = options?.timeoutMs || 45000
-  const controller = new AbortController()
+  const internalController = new AbortController()
+  let isTimeoutAbort = false
+
   const timer = setTimeout(() => {
-    controller.abort(
+    isTimeoutAbort = true
+    internalController.abort(
       new Error('Tempo limite de requisição excedido ao buscar estatísticas do painel.'),
     )
   }, timeoutMs)
+
+  // Se um sinal externo for fornecido, propaga o cancelamento para o internalController
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      internalController.abort(options.signal.reason)
+    } else {
+      options.signal.addEventListener(
+        'abort',
+        () => {
+          internalController.abort(options.signal?.reason)
+        },
+        { once: true },
+      )
+    }
+  }
 
   const run = () =>
     pb.send<DashboardStatsResult>('/backend/v1/dashboard/stats', {
       method: 'POST',
       body: { filters: filters || {} },
-      signal: controller.signal,
+      signal: internalController.signal,
     })
 
   try {
-    const res = await run()
-    clearTimeout(timer)
-    return res
+    return await run()
   } catch (err: unknown) {
-    clearTimeout(timer)
     const status = (err as { status?: number })?.status
-    if ((status === 401 || status === 403) && pb.authStore.isValid) {
+    if (
+      (status === 401 || status === 403) &&
+      pb.authStore.isValid &&
+      !internalController.signal.aborted
+    ) {
       try {
         await safeAuthRefresh()
         return await run()
@@ -239,12 +258,28 @@ export async function fetchDashboardStats(
         throw err
       }
     }
-    if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
-      throw new Error(
-        'Tempo limite esgotado ao buscar os dados do painel. Por favor, tente refinar os filtros.',
-      )
+
+    const isAbort =
+      (err as Error)?.name === 'AbortError' ||
+      String(err).includes('aborted') ||
+      String(err).includes('autocancelled') ||
+      internalController.signal.aborted
+
+    if (isAbort) {
+      if (isTimeoutAbort) {
+        throw new Error(
+          'Tempo limite esgotado ao buscar os dados do painel. Por favor, tente refinar os filtros.',
+        )
+      }
+      // Re-lança como erro identificado de cancelamento (AbortError) para não travar telas nem sobrescrever estado
+      const abortError = new Error('Requisição cancelada.')
+      abortError.name = 'AbortError'
+      throw abortError
     }
+
     throw err
+  } finally {
+    clearTimeout(timer)
   }
 }
 

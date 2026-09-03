@@ -196,42 +196,97 @@ export default function Index() {
     }
   }, [filters, initializedFromBase])
 
+  // Ref para controle de requisições em voo e garantia de que apenas a mais recente atualize o estado
+  const requestSeqRef = useRef<number>(0)
+  const abortControllerRef = useRef<AbortController | null>(null)
+
   // Load aggregated dashboard stats from server
   const loadData = async (activeFilters = filters) => {
+    const seq = ++requestSeqRef.current
+
+    // Cancela requisição anterior em voo para economizar recursos e evitar race conditions
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    const currentController = new AbortController()
+    abortControllerRef.current = currentController
+
+    console.info(`[Dashboard:loadData #${seq}] Chamada iniciada. Filtros:`, {
+      ano: activeFilters.ano,
+      mes: activeFilters.mes,
+      tipoDocumento: activeFilters.tipoDocumento,
+      grupoItem: activeFilters.grupoItem,
+      utilizacao: activeFilters.utilizacao,
+      base: activeFilters.base,
+    })
+
     setLoading(true)
     setError(null)
+
     try {
-      const res = await fetchDashboardStats(activeFilters as unknown as Record<string, unknown>)
+      const res = await fetchDashboardStats(activeFilters as unknown as Record<string, unknown>, {
+        signal: currentController.signal,
+      })
+
+      // Se outra requisição foi disparada depois desta, descarta esta resposta obsoleta
+      if (seq !== requestSeqRef.current) {
+        console.warn(
+          `[Dashboard:loadData #${seq}] Resposta descartada por obsolescência (requisição ativa: #${requestSeqRef.current}).`,
+        )
+        return
+      }
+
+      console.info(`[Dashboard:loadData #${seq}] Resposta recebida com sucesso.`, {
+        faturamento: res?.kpis?.faturamento,
+        documentos: res?.kpis?.documentos,
+        recentSalesCount: res?.recentSales?.length ?? 0,
+        tendenciaEquipamentosCount:
+          res?.charts?.vendasEquipamentosHistorico?.length ||
+          res?.charts?.vendasEquipamentosPorAno?.length ||
+          0,
+        filterOptionsAnos: res?.filterOptions?.anos,
+      })
+
+      // Se for o primeiro acesso (sem filtros salvos na sessão) e ainda não inicializou
+      // dinamicamente com base nas opções da base consolidada:
+      // Apenas define setFilters(dynamicFilters) e deixa o useEffect([filters]) disparar a busca única!
+      // NÃO fazer fetchDashboardStats síncrono aqui para evitar race condition.
+      if (!hadSavedFiltersAtMount.current && !initializedFromBase && res?.filterOptions) {
+        const dynamicFilters = buildDynamicInitialFilters(res.filterOptions)
+        console.info(
+          `[Dashboard:loadData #${seq}] Inicialização dinâmica configurando novos filtros:`,
+          dynamicFilters,
+        )
+        setInitializedFromBase(true)
+        saveFiltersToSession(dynamicFilters)
+        setFilters(dynamicFilters)
+        // O useEffect([filters]) será disparado pelo setFilters.
+        // O loading continua true até a busca dos novos filtros concluir.
+        return
+      }
+
       setData(res)
       if (!sort.field) {
         setRecentSalesList(res?.recentSales || [])
       }
-
-      // Se for o primeiro acesso (sem filtros salvos previamente na sessão) e ainda não inicializou
-      // a partir das opções da base consolidada, deriva dinamicamente os filtros padrão:
-      // Ano: ano mais recente (ex.: 2026)
-      // Mês: último mês disponível (ex.: 8 / Agosto)
-      // Tipo de Documento: "NF de Saída"
-      // Grupo do Item: "Equipamentos", "Acessórios", "Tintas", "Peças"
-      // Utilização: todos os tipos que contenham "VENDA" (ex.: VENDA DE MERCADORIA, etc.)
-      if (!hadSavedFiltersAtMount.current && !initializedFromBase && res?.filterOptions) {
-        const dynamicFilters = buildDynamicInitialFilters(res.filterOptions)
-        setInitializedFromBase(true)
-        setFilters(dynamicFilters)
-        saveFiltersToSession(dynamicFilters)
-        // Busca os dados com os novos filtros pré-selecionados
-        const filteredRes = await fetchDashboardStats(
-          dynamicFilters as unknown as Record<string, unknown>,
-        )
-        setData(filteredRes)
-        if (!sort.field) {
-          setRecentSalesList(filteredRes?.recentSales || [])
-        }
-      }
+      setLoading(false)
     } catch (err: unknown) {
-      console.error('Erro ao buscar estatísticas do dashboard:', err)
+      // Se foi abortada porque uma nova requisição entrou na frente, ignora silenciosamente
+      if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
+        console.info(`[Dashboard:loadData #${seq}] Requisição cancelada por nova ação.`)
+        return
+      }
+
+      // Se a resposta pertence a uma chamada antiga que falhou, ignora
+      if (seq !== requestSeqRef.current) {
+        console.warn(
+          `[Dashboard:loadData #${seq}] Erro ignorado pois uma chamada mais recente (#${requestSeqRef.current}) está em andamento.`,
+        )
+        return
+      }
+
+      console.error(`[Dashboard:loadData #${seq}] Erro ao buscar estatísticas do dashboard:`, err)
       setError(err instanceof Error ? err.message : 'Falha ao carregar dados do painel.')
-    } finally {
       setLoading(false)
     }
   }
@@ -279,6 +334,12 @@ export default function Index() {
 
   useEffect(() => {
     loadData(filters)
+    return () => {
+      // Aborta requisições pendentes ao desmontar
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+    }
   }, [filters])
 
   useEffect(() => {
@@ -461,6 +522,27 @@ export default function Index() {
   const isNoData =
     !data || (kpis.faturamento === 0 && kpis.documentos === 0 && recentSales.length === 0)
 
+  // Função para limpar todos os filtros ativos e recarregar
+  const handleClearFilters = () => {
+    const cleared: FilterState = {
+      base: 'ambos',
+      dataDe: '',
+      dataAte: '',
+      vendedorCliente: [],
+      vendedor: [],
+      grupoItem: [],
+      estado: [],
+      utilizacao: [],
+      tipoDocumento: [],
+      search: '',
+      ano: [],
+      mes: [],
+      dia: [],
+      tipoDevolucao: '',
+    }
+    setFilters(cleared)
+  }
+
   return (
     <div className="space-y-6">
       {/* Filters Bar */}
@@ -510,48 +592,46 @@ export default function Index() {
             </Button>
           </div>
         </Card>
-      ) : isNoData ? (
-        /* Empty State */
-        <Card className="rounded-xl border border-dashed border-gray-300 p-12 text-center bg-white">
-          <div className="w-16 h-16 mx-auto rounded-full bg-cyan-50 flex items-center justify-center text-[#1895A8] mb-4">
-            <Sparkles className="w-8 h-8" />
-          </div>
-          <h3 className="text-lg font-extrabold text-slate-900">Nenhuma venda encontrada</h3>
-          <p className="text-sm text-slate-500 max-w-md mx-auto mt-1 mb-6 font-medium">
-            Não há registros correspondentes aos filtros selecionados. Tente ajustar os filtros ou
-            importar novos dados.
-          </p>
-          <div className="flex items-center justify-center gap-3">
-            <Button
-              variant="outline"
-              onClick={() =>
-                setFilters({
-                  base: 'ambos',
-                  dataDe: '',
-                  dataAte: '',
-                  vendedorCliente: [],
-                  vendedor: [],
-                  grupoItem: [],
-                  estado: [],
-                  utilizacao: [],
-                  tipoDocumento: [],
-                  search: '',
-                  ano: [],
-                  mes: [],
-                  dia: [],
-                  tipoDevolucao: '',
-                })
-              }
-            >
-              Limpar Filtros
-            </Button>
-            <Button asChild className="bg-[#0B6E99] hover:bg-[#084F6E] text-white font-bold">
-              <Link to="/importar">Importar Dados</Link>
-            </Button>
-          </div>
-        </Card>
       ) : (
         <>
+          {/* Alerta inteligente de Empty State quando os filtros ativos não retornam vendas */}
+          {isNoData && (
+            <Card className="rounded-xl border border-amber-200 bg-amber-50/60 p-6 shadow-xs">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-900">
+                      Nenhuma venda encontrada para os filtros selecionados
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Os indicadores e rankings abaixo estão zerados para o recorte atual. Os
+                      gráficos históricos globais de tendência continuam visíveis.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    onClick={handleClearFilters}
+                    className="bg-[#0B6E99] hover:bg-[#084F6E] text-white font-bold text-xs h-9 px-4 shadow-sm"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                    Limpar Filtros
+                  </Button>
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-bold text-xs h-9 px-4"
+                  >
+                    <Link to="/importar">Importar Dados</Link>
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* PRIMEIRO INDICADOR DO DASHBOARD: Vendas por Estado (UF) e Região com Mapa do Brasil e Revendas */}
           <Card className="group relative rounded-xl border border-gray-200 bg-white shadow-xs transition-all duration-200 hover:border-slate-300">
             <CardHeader className="pb-3 border-b border-gray-100">
