@@ -4,33 +4,31 @@
 
 - **Versão**: v1.0.6
 - **Data do Backup**: 03/09/2026
-- **Status**: QA aprovado, estável, otimização crítica de performance para varreduras completas (125k+ registros)
+- **Status**: QA aprovado, estável — correções de gráficos no Dashboard, gráfico histórico de Evolução por Ano completo (2019–2026) e ajustes de filtros/usabilidade
 
 ---
 
 ## Destaques da Versão 1.0.6 (03/09/2026)
 
-1. **Otimização Crítica do Backend em Filtros Abertos / Limpos (`dashboard_stats.js`)**:
-   - Resolução definitiva do timeout que ocorria ao limpar ou alternar filtros com varredura dos 125k+ registros de vendas:
-     - Eliminação de scans sem índice: substituição de `substr(data_lancamento, ...)` por `data_lancamento >= '...'` em agregações temporais, viabilizando o uso imediato dos índices B-tree do SQLite (`data_lancamento` indexado).
-     - Agregação de Revendas Oficiais otimizada: filtro restritivo prévio em SQL (`revMatchClause`) agrupando apenas clientes que contenham nomes correspondentes aos padrões das revendas cadastradas, reduzindo o `GROUP BY` de 5.000+ clientes avulsos para apenas os clientes elegíveis.
-     - Redução de redundância em datas máximas: reaproveitamento do último período apurado na agregação mensal para orientar os gráficos de 6 meses retroativos, eliminando queries `SELECT MAX(data_lancamento)` completas desnecessárias.
-     - Simplificação de predicados de grupo: uso direto de `grupo_item = 'EQUIPAMENTOS'` e `grupo_item IN (...)` indexados, em vez de `UPPER(COALESCE(grupo_item, ''))`.
-     - `filterOptions` ultrarrápido: `DISTINCT` / `GROUP BY` com limitação estrita e verificação de tempo de execução acumulado.
+1. **Correção dos Gráficos "Clientes Ativos — Equipamentos" e "Clientes Ativos — Insumos" (`pocketbase/hooks/dashboard_stats.js`)**:
+   - Os gráficos estavam vazios por causa de uma variável fora de escopo no hook `dashboard_stats.js` introduzida pelas otimizações de performance da versão anterior.
+   - Correção aplicada: os dois gráficos voltam a buscar a **data mais recente dos dados computados** para calcular corretamente a janela dos últimos 6 meses e o comparativo com o ano anterior, sem voltar a fazer scans completos de `MAX(data_lancamento)` desnecessários.
 
-2. **Otimização e Proteção Server-Side na Listagem de Vendas (`vendas_list.js`)**:
-   - Prevenção de travamentos e requisições demoradas na tabela de vendas:
-     - `LIMIT` rígido: paginação limitada a até 100 itens por página com teto de segurança contra offsets excessivos.
-     - Contagem otimizada: atalho via `$app.countRecords('vendas')` instantâneo quando `sqlWhere === '1=1'`.
-     - Guard de execução com teto estrito de 35s retornando HTTP 504 com mensagem descritiva amigável em caso de sobrecarga.
+2. **Gráfico "Evolução de Vendas por Ano" com a Base Histórica Completa (2019–2026)**:
+   - O gráfico agora mostra **todos os anos da base** (2019 a 2026), independente dos filtros de período (Data De/Até, Ano, Mês, Dia) e demais dimensões contextuais aplicados no Dashboard.
+   - Respeita exclusivamente a seleção de base de dados (**RacNew**, **NetSales** ou **Ambos**) — mesmo padrão já adotado pelos demais gráficos históricos contínuos ("Tendência de Vendas — Equipamentos" e "Acumulado — Insumos").
 
-3. **Alinhamento e Robustez nos Timeouts Cliente-Servidor (`sales.ts` e Páginas)**:
-   - Backend configurado com guard de execução de 35s; Frontend ajustado com timeout de 40s (evitando conexões quebradas no navegador antes de receber o payload ou erro amigável do backend).
-   - AbortController dedicado com deduplicação de requisições concorrentes (`requestSeqRef` e cancelamento de chamadas anteriores).
-   - Tratamento de status 504 e cancelamento limpo sem travar o estado da tela: exibição de mensagem clara orientando o usuário a refinar ou limpar os filtros, com botão "Limpar Filtros" e "Tentar Novamente" no card de erro do Dashboard e toasts informativos em Vendas.
+3. **Remoção do Botão "Importar Dados" do Banner de Aviso no Dashboard**:
+   - O botão de atalho "Importar Dados" foi removido do banner de aviso do Dashboard para simplificar a interface.
+   - O acesso à importação permanece disponível **apenas pelo menu lateral** (rota protegida `/importar`), mantendo o controle de acesso por senha master.
 
-4. **Preservação Integral dos Gráficos Históricos Contínuos**:
-   - Mantida a regra de negócio fundamental: **Tendência de Vendas — Equipamentos** e **Acumulado — Insumos** continuam utilizando `sqlWhereHistorical` para apresentar a curva temporal contínua completa, respeitando exclusivamente o seletor de base (RacNew/NetSales/Ambos).
+4. **Filtro Inicial de Mês Inteligente (mês atual ou último mês com dados)**:
+   - No primeiro acesso ao Dashboard (sem filtros salvos em `sessionStorage`), o filtro de Mês agora carrega o **mês atual** ou, quando o mês corrente ainda não tem movimentação registrada, o **último mês com dados na base** (atualmente Agosto/2026).
+   - Mantém o comportamento dinâmico existente dos demais filtros iniciais (Ano mais recente, Tipo de Documento, Grupos do Item, Utilização "VENDA" e base "Ambos").
+
+5. **Otimizações de Performance e Timeouts Alinhados (das versões anteriores, preservadas nesta release)**:
+   - Backend `dashboard_stats.js` / `vendas_list.js` com guard de execução de **35s** (HTTP 504 amigável) e queries otimizadas em índices B-tree para varreduras completas (125k+ registros).
+   - Frontend com timeout de **40s** em `sales.ts` (evitando conexões quebradas no navegador antes de receber o payload ou erro amigável), deduplicação de requisições concorrentes e tratamento de status 504 com "Limpar Filtros" / "Tentar Novamente".
 
 ---
 
@@ -189,6 +187,12 @@
 
 ## Histórico de Versões
 
+- **v1.0.6 (03/09/2026)**: Backup de segurança oficial do projeto (estado atual = commit `0.0.95`). Incorpora:
+  - Correção dos gráficos "Clientes Ativos — Equipamentos" e "Clientes Ativos — Insumos" (estavam vazios por variável fora de escopo no hook `pocketbase/hooks/dashboard_stats.js` após otimizações; agora buscam a data mais recente dos dados computados).
+  - Gráfico "Evolução de Vendas por Ano" mostrando todos os anos da base (2019–2026), independente dos filtros de período, respeitando apenas a seleção de base (RacNew/NetSales/Ambos) — mesmo padrão dos gráficos históricos.
+  - Remoção do botão "Importar Dados" do banner de aviso no Dashboard (acesso restrito ao menu lateral).
+  - Filtro inicial de Mês carregando o mês atual ou o último mês com dados na base (hoje Agosto/2026).
+  - Otimizações de performance e timeouts alinhados (backend 35s / frontend 40s) das versões anteriores preservadas.
 - **v1.0.5 (01/09/2026)**: Backup de segurança oficial do projeto (estado atual = commit `0.0.86`). Incorpora:
   - **v0.0.84**: Filtros iniciais restaurados no Dashboard (Ano mais recente, último mês, NF de Saída, Grupos Equipamentos/Acessórios/Tintas/Peças, Utilização com "VENDA", base Ambos) + novo indicador interativo "Vendas por Estado (UF)" com mapa do Brasil e ranking regional.
   - **v0.0.85**: Pinos geográficos das revendas autorizadas Roland DG no mapa do Brasil com faturamento detalhado ao clicar + mapa posicionado como primeiro indicador no topo do Dashboard.
