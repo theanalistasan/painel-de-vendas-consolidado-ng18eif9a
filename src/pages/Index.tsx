@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   DollarSign,
@@ -182,15 +182,19 @@ export default function Index() {
   // Ordenação server-side por clique nos cabeçalhos da tabela "Vendas Recentes".
   const sort = useTableSort<DashboardSortField>()
 
+  const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
   const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
   const [mapExpanded, setMapExpanded] = useState(false)
 
-  // Persistir filtros no sessionStorage sempre que mudarem (após aplicar ou inicializar),
-  // para que o estado seja compartilhado com a página de Vendas.
+  // Persistir filtros no sessionStorage sempre que mudarem, mas APENAS após a inicialização
+  // dinâmica ser concluída (se for o primeiro acesso sem filtros salvos), ou se já havia filtros salvos na montagem.
+  // Isso impede que filtros estáticos parciais sejam gravados precocemente antes de obter as opções da base.
   useEffect(() => {
-    saveFiltersToSession(filters)
-  }, [filters])
+    if (hadSavedFiltersAtMount.current || initializedFromBase) {
+      saveFiltersToSession(filters)
+    }
+  }, [filters, initializedFromBase])
 
   // Load aggregated dashboard stats from server
   const loadData = async (activeFilters = filters) => {
@@ -203,14 +207,14 @@ export default function Index() {
         setRecentSalesList(res?.recentSales || [])
       }
 
-      // Se for a primeira inicialização da sessão e não havia filtros salvos no sessionStorage,
-      // deriva dinamicamente os filtros padrão a partir das opções da base consolidada:
+      // Se for o primeiro acesso (sem filtros salvos previamente na sessão) e ainda não inicializou
+      // a partir das opções da base consolidada, deriva dinamicamente os filtros padrão:
       // Ano: ano mais recente (ex.: 2026)
       // Mês: último mês disponível (ex.: 8 / Agosto)
       // Tipo de Documento: "NF de Saída"
       // Grupo do Item: "Equipamentos", "Acessórios", "Tintas", "Peças"
-      // Utilização: todos os tipos que contenham "VENDA"
-      if (!initializedFromBase && !hasSavedFiltersInSession() && res?.filterOptions) {
+      // Utilização: todos os tipos que contenham "VENDA" (ex.: VENDA DE MERCADORIA, etc.)
+      if (!hadSavedFiltersAtMount.current && !initializedFromBase && res?.filterOptions) {
         const dynamicFilters = buildDynamicInitialFilters(res.filterOptions)
         setInitializedFromBase(true)
         setFilters(dynamicFilters)
