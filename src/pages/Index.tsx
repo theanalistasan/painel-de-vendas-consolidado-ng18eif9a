@@ -41,10 +41,16 @@ import {
   getGrupoColor,
   MESES_CURTOS,
 } from '@/lib/formatters'
-import { saveFiltersToSession, loadFiltersFromSession } from '@/lib/filter-persistence'
+import {
+  saveFiltersToSession,
+  loadFiltersFromSession,
+  hasSavedFiltersInSession,
+  buildDynamicInitialFilters,
+} from '@/lib/filter-persistence'
 import FilterBar from '@/components/FilterBar'
 import KpiCard from '@/components/KpiCard'
 import ChartCard from '@/components/ChartCard'
+import { VendasPorEstadoIndicador } from '@/components/VendasPorEstadoIndicador'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -174,8 +180,9 @@ export default function Index() {
   const sort = useTableSort<DashboardSortField>()
 
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
+  const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
 
-  // Persistir filtros no sessionStorage sempre que mudarem (após aplicar),
+  // Persistir filtros no sessionStorage sempre que mudarem (após aplicar ou inicializar),
   // para que o estado seja compartilhado com a página de Vendas.
   useEffect(() => {
     saveFiltersToSession(filters)
@@ -190,6 +197,28 @@ export default function Index() {
       setData(res)
       if (!sort.field) {
         setRecentSalesList(res?.recentSales || [])
+      }
+
+      // Se for a primeira inicialização da sessão e não havia filtros salvos no sessionStorage,
+      // deriva dinamicamente os filtros padrão a partir das opções da base consolidada:
+      // Ano: ano mais recente (ex.: 2026)
+      // Mês: último mês disponível (ex.: 8 / Agosto)
+      // Tipo de Documento: "NF de Saída"
+      // Grupo do Item: "Equipamentos", "Acessórios", "Tintas", "Peças"
+      // Utilização: todos os tipos que contenham "VENDA"
+      if (!initializedFromBase && !hasSavedFiltersInSession() && res?.filterOptions) {
+        const dynamicFilters = buildDynamicInitialFilters(res.filterOptions)
+        setInitializedFromBase(true)
+        setFilters(dynamicFilters)
+        saveFiltersToSession(dynamicFilters)
+        // Busca os dados com os novos filtros pré-selecionados
+        const filteredRes = await fetchDashboardStats(
+          dynamicFilters as unknown as Record<string, unknown>,
+        )
+        setData(filteredRes)
+        if (!sort.field) {
+          setRecentSalesList(filteredRes?.recentSales || [])
+        }
       }
     } catch (err: unknown) {
       console.error('Erro ao buscar estatísticas do dashboard:', err)
@@ -1171,38 +1200,45 @@ export default function Index() {
             </ChartCard>
           </div>
 
-          {/* Charts Grid Row 3 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Chart 5: Vendas por Estado */}
-            <ChartCard
-              title="Vendas por Estado (UF)"
-              description="Faturamento por unidade federativa"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartEstado} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                  <XAxis
-                    dataKey="uf"
-                    tickLine={false}
-                    axisLine={{ stroke: '#E2E8F0' }}
-                    tick={{ fill: '#64748B', fontSize: 12 }}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fill: '#64748B', fontSize: 11 }}
-                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                  />
-                  <Tooltip
-                    formatter={currencyFormatter('Faturamento')}
-                    contentStyle={tooltipContentStyle}
-                  />
-                  <Bar dataKey="total" fill={COLOR_CYAN} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
+          {/* Indicador Completo: Vendas por Estado (UF) e Região com Mapa do Brasil */}
+          <Card className="rounded-xl border border-gray-200 bg-white shadow-xs">
+            <CardHeader className="pb-3 border-b border-gray-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base font-extrabold text-slate-900">
+                    Vendas por Estado (UF) &amp; Região
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-500 font-medium">
+                    Distribuição geográfica, ranking regional e mapa térmico de intensidade de
+                    faturamento
+                  </CardDescription>
+                </div>
+                {filters.estado.length > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="border-cyan-200 bg-cyan-50 text-[#0B6E99] text-xs font-bold self-start sm:self-auto"
+                  >
+                    Filtro ativo: {filters.estado.join(', ')}
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <VendasPorEstadoIndicador
+                data={chartEstado}
+                selectedUf={filters.estado.length === 1 ? filters.estado[0] : null}
+                onSelectUf={(uf) => {
+                  setFilters((prev) => ({
+                    ...prev,
+                    estado: uf ? [uf] : [],
+                  }))
+                }}
+              />
+            </CardContent>
+          </Card>
 
-            {/* Chart 6: Valor Líquido x Faturamento */}
+          {/* Charts Grid Row 3: Valor Líquido x Faturamento */}
+          <div className="grid grid-cols-1 gap-6">
             <ChartCard
               title="Valor Líquido x Faturamento por Mês"
               description="Comparativo de margem financeira"

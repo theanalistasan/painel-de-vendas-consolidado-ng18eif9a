@@ -20,25 +20,102 @@ const EMPTY_FILTERS: FilterState = {
 }
 
 /**
- * Filtros padrão aplicados ao acessar o app pela primeira vez ou após logout
- * (quando não há nada salvo no sessionStorage). Deixamos aberto para que todos os
- * dados consolidados da base apareçam imediatamente ao entrar, sem filtros restritivos.
+ * Grupos padrão solicitados para inicialização do Dashboard:
+ * "Equipamentos", "Acessórios", "Tintas" e "Peças"
  */
-const DEFAULT_FILTERS: FilterState = {
+export const DEFAULT_GRUPOS_ITEM: string[] = ['Equipamentos', 'Acessórios', 'Tintas', 'Peças']
+
+/**
+ * Filtros padrão estáticos básicos (quando ainda não computou dinamicamente com base nas opções da base)
+ */
+export const DEFAULT_FILTERS: FilterState = {
   base: 'ambos',
   dataDe: '',
   dataAte: '',
   vendedorCliente: [],
   vendedor: [],
-  grupoItem: [],
+  grupoItem: [...DEFAULT_GRUPOS_ITEM],
   estado: [],
   utilizacao: [],
-  tipoDocumento: [],
+  tipoDocumento: ['NF de Saída'],
   search: '',
-  ano: [],
-  mes: [],
+  ano: ['2026'],
+  mes: ['8'],
   dia: [],
   tipoDevolucao: '',
+}
+
+/**
+ * Constrói o estado inicial dinâmico de filtros a partir das opções disponíveis na base de dados:
+ * - Ano: mais recente disponível (ex: 2026)
+ * - Mês: último mês disponível na base (ex: 8 / Agosto)
+ * - Tipo de Documento: "NF de Saída"
+ * - Grupo do Item: multi-seleção com "Equipamentos", "Acessórios", "Tintas" e "Peças"
+ * - Utilização: todos os tipos que contenham "VENDA" (ex.: "VENDA DE MERCADORIA", "VENDA CONSUMO", etc.)
+ * - Base: 'ambos'
+ */
+export function buildDynamicInitialFilters(options?: {
+  anos?: number[]
+  meses?: number[]
+  tipoDocumento?: string[]
+  grupoItem?: string[]
+  utilizacao?: string[]
+}): FilterState {
+  // Ano mais recente disponível na base
+  const anosDisponiveis = (options?.anos || []).slice().sort((a, b) => b - a)
+  const anoRecente = anosDisponiveis.length > 0 ? String(anosDisponiveis[0]) : '2026'
+
+  // Mês mais recente disponível na base (se disponível)
+  const mesesDisponiveis = (options?.meses || []).slice().sort((a, b) => b - a)
+  const mesRecente = mesesDisponiveis.length > 0 ? String(mesesDisponiveis[0]) : '8'
+
+  // Grupo do Item: mapeia para os nomes existentes que correspondam a Equipamentos, Acessórios, Tintas e Peças
+  const rawGrupos = options?.grupoItem || []
+  let selectedGrupos: string[] = []
+  if (rawGrupos.length > 0) {
+    selectedGrupos = rawGrupos.filter((g) => {
+      const up = g.toUpperCase().trim()
+      return (
+        up === 'EQUIPAMENTOS' ||
+        up === 'ACESSÓRIOS' ||
+        up === 'ACESSORIOS' ||
+        up === 'TINTAS' ||
+        up === 'PEÇAS' ||
+        up === 'PECAS'
+      )
+    })
+  }
+  if (selectedGrupos.length === 0) {
+    selectedGrupos = [...DEFAULT_GRUPOS_ITEM]
+  }
+
+  // Utilização: todos os tipos que contenham "VENDA"
+  const rawUtilizacao = options?.utilizacao || []
+  let selectedUtilizacao: string[] = []
+  if (rawUtilizacao.length > 0) {
+    selectedUtilizacao = rawUtilizacao.filter((u) => u.toUpperCase().includes('VENDA'))
+  }
+  if (selectedUtilizacao.length === 0) {
+    selectedUtilizacao = ['VENDA DE MERCADORIA', 'VENDA CONSUMO']
+  }
+
+  // Tipo de Documento: "NF de Saída"
+  const rawDocs = options?.tipoDocumento || []
+  const docMatch = rawDocs.find(
+    (d) => d.toUpperCase().trim() === 'NF DE SAÍDA' || d.toUpperCase().trim() === 'NF DE SAIDA',
+  )
+  const selectedDoc = docMatch ? [docMatch] : ['NF de Saída']
+
+  return {
+    ...EMPTY_FILTERS,
+    base: 'ambos',
+    ano: [anoRecente],
+    mes: [mesRecente],
+    dia: [],
+    tipoDocumento: selectedDoc,
+    grupoItem: selectedGrupos,
+    utilizacao: selectedUtilizacao,
+  }
 }
 
 export function saveFiltersToSession(filters: FilterState): void {
@@ -46,6 +123,14 @@ export function saveFiltersToSession(filters: FilterState): void {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(filters))
   } catch {
     // sessionStorage não disponível ou cheio — ignora silenciosamente
+  }
+}
+
+export function hasSavedFiltersInSession(): boolean {
+  try {
+    return !!sessionStorage.getItem(STORAGE_KEY)
+  } catch {
+    return false
   }
 }
 
