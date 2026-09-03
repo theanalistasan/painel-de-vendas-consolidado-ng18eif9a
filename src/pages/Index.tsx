@@ -578,11 +578,26 @@ export default function Index() {
           <div className="w-16 h-16 mx-auto rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-4">
             <RotateCcw className="w-8 h-8" />
           </div>
-          <h3 className="text-lg font-extrabold text-slate-900">Erro ao carregar os dados</h3>
+          <h3 className="text-lg font-extrabold text-slate-900">
+            {error.toLowerCase().includes('tempo limite') || error.toLowerCase().includes('demorou')
+              ? 'A consulta demorou demais'
+              : 'Erro ao carregar os dados'}
+          </h3>
           <p className="text-sm text-slate-600 max-w-md mx-auto mt-1 mb-6 font-medium">
-            {error || 'Não foi possível conectar ao servidor para obter os indicadores do painel.'}
+            {error.toLowerCase().includes('tempo limite') || error.toLowerCase().includes('demorou')
+              ? 'A varredura com o volume de dados solicitado excedeu o tempo de resposta. Tente refinar os filtros selecionados ou limpá-los para restabelecer os valores padrões.'
+              : error ||
+                'Não foi possível conectar ao servidor para obter os indicadores do painel.'}
           </p>
-          <div className="flex items-center justify-center gap-3">
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            <Button
+              onClick={handleClearFilters}
+              variant="outline"
+              className="border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold"
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              Limpar Filtros
+            </Button>
             <Button
               onClick={() => loadData(filters)}
               className="bg-[#0B6E99] hover:bg-[#084F6E] text-white font-bold"

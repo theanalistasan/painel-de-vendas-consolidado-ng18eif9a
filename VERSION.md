@@ -2,9 +2,35 @@
 
 ## Versão e Status Atual
 
-- **Versão**: v1.0.5
-- **Data do Backup**: 01/09/2026
-- **Status**: QA aprovado, estável, backup oficial consolidado (estado atual = commit `0.0.86`)
+- **Versão**: v1.0.6
+- **Data do Backup**: 03/09/2026
+- **Status**: QA aprovado, estável, otimização crítica de performance para varreduras completas (125k+ registros)
+
+---
+
+## Destaques da Versão 1.0.6 (03/09/2026)
+
+1. **Otimização Crítica do Backend em Filtros Abertos / Limpos (`dashboard_stats.js`)**:
+   - Resolução definitiva do timeout que ocorria ao limpar ou alternar filtros com varredura dos 125k+ registros de vendas:
+     - Eliminação de scans sem índice: substituição de `substr(data_lancamento, ...)` por `data_lancamento >= '...'` em agregações temporais, viabilizando o uso imediato dos índices B-tree do SQLite (`data_lancamento` indexado).
+     - Agregação de Revendas Oficiais otimizada: filtro restritivo prévio em SQL (`revMatchClause`) agrupando apenas clientes que contenham nomes correspondentes aos padrões das revendas cadastradas, reduzindo o `GROUP BY` de 5.000+ clientes avulsos para apenas os clientes elegíveis.
+     - Redução de redundância em datas máximas: reaproveitamento do último período apurado na agregação mensal para orientar os gráficos de 6 meses retroativos, eliminando queries `SELECT MAX(data_lancamento)` completas desnecessárias.
+     - Simplificação de predicados de grupo: uso direto de `grupo_item = 'EQUIPAMENTOS'` e `grupo_item IN (...)` indexados, em vez de `UPPER(COALESCE(grupo_item, ''))`.
+     - `filterOptions` ultrarrápido: `DISTINCT` / `GROUP BY` com limitação estrita e verificação de tempo de execução acumulado.
+
+2. **Otimização e Proteção Server-Side na Listagem de Vendas (`vendas_list.js`)**:
+   - Prevenção de travamentos e requisições demoradas na tabela de vendas:
+     - `LIMIT` rígido: paginação limitada a até 100 itens por página com teto de segurança contra offsets excessivos.
+     - Contagem otimizada: atalho via `$app.countRecords('vendas')` instantâneo quando `sqlWhere === '1=1'`.
+     - Guard de execução com teto estrito de 35s retornando HTTP 504 com mensagem descritiva amigável em caso de sobrecarga.
+
+3. **Alinhamento e Robustez nos Timeouts Cliente-Servidor (`sales.ts` e Páginas)**:
+   - Backend configurado com guard de execução de 35s; Frontend ajustado com timeout de 40s (evitando conexões quebradas no navegador antes de receber o payload ou erro amigável do backend).
+   - AbortController dedicado com deduplicação de requisições concorrentes (`requestSeqRef` e cancelamento de chamadas anteriores).
+   - Tratamento de status 504 e cancelamento limpo sem travar o estado da tela: exibição de mensagem clara orientando o usuário a refinar ou limpar os filtros, com botão "Limpar Filtros" e "Tentar Novamente" no card de erro do Dashboard e toasts informativos em Vendas.
+
+4. **Preservação Integral dos Gráficos Históricos Contínuos**:
+   - Mantida a regra de negócio fundamental: **Tendência de Vendas — Equipamentos** e **Acumulado — Insumos** continuam utilizando `sqlWhereHistorical` para apresentar a curva temporal contínua completa, respeitando exclusivamente o seletor de base (RacNew/NetSales/Ambos).
 
 ---
 

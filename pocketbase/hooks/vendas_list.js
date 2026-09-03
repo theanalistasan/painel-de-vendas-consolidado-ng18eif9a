@@ -23,8 +23,7 @@
 // Retorna: { items, page, perPage, totalItems, totalPages }
 routerAdd('POST', '/backend/v1/vendas/list', (e) => {
   const startTime = Date.now()
-  const MAX_EXEC_TIME_MS = 25000 // Teto de 25s
-
+  const MAX_EXEC_TIME_MS = 35000 // Teto de 35s (abaixo do timeout de 45s do cliente)
   try {
     let body = {}
     try {
@@ -32,8 +31,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
     } catch (_) {
       body = {}
     }
-    const page = Math.max(1, parseInt(body.page, 10) || 1)
-    const perPage = Math.min(200, Math.max(1, parseInt(body.perPage, 10) || 20))
+    // LIMIT rígido e proteção contra offsets astronômicos
+    const page = Math.min(5000, Math.max(1, parseInt(body.page, 10) || 1))
+    const perPage = Math.min(100, Math.max(1, parseInt(body.perPage, 10) || 20))
 
     // Mapeamento e validação de ordenação server-side
     const validSortFields = {
@@ -252,6 +252,10 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
       }),
     )
 
+    if (Date.now() - startTime > MAX_EXEC_TIME_MS) {
+      throw new Error('TIMEOUT_EXCEEDED')
+    }
+
     $app
       .db()
       .newQuery(
@@ -267,11 +271,15 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
       )
       .all(dataRows)
 
+    if (Date.now() - startTime > MAX_EXEC_TIME_MS) {
+      throw new Error('TIMEOUT_EXCEEDED')
+    }
+
     let totalItems = 0
     let totalNetsales = 0
     let totalRacnew = 0
     try {
-      // Se a query sem filtros for 1=1, usa countRecords rápido ou contagem
+      // Se a query sem filtros for 1=1, usa countRecords rápido sem varredura pesada
       if (sqlWhere === '1=1') {
         try {
           totalItems = $app.countRecords('vendas')
@@ -309,6 +317,10 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
     } catch (err) {
       console.error('vendas_list: COUNT falhou:', err)
       totalItems = dataRows.length
+    }
+
+    if (Date.now() - startTime > MAX_EXEC_TIME_MS) {
+      throw new Error('TIMEOUT_EXCEEDED')
     }
 
     const items = []
@@ -390,7 +402,8 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
   } catch (err) {
     if (err && String(err.message).indexOf('TIMEOUT_EXCEEDED') >= 0) {
       return e.json(504, {
-        error: 'A busca de vendas demorou mais do que o esperado. Por favor, refine os filtros.',
+        error:
+          'A consulta demorou mais do que o esperado. Por favor, refine os filtros selecionados.',
       })
     }
     console.error('vendas_list fatal error:', err)

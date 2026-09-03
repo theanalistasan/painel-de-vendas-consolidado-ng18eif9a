@@ -21,8 +21,7 @@
 // Retorna: { kpis, charts, recentSales, filterOptions }
 routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const startTime = Date.now()
-  const MAX_EXEC_TIME_MS = 25000 // Teto de 25s
-
+  const MAX_EXEC_TIME_MS = 35000 // Teto de 35s (abaixo do timeout de 45s do cliente)
   try {
     let body = {}
     try {
@@ -212,7 +211,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS d " +
       'FROM vendas WHERE ' +
       sqlWhere +
-      ' AND length(data_lancamento) >= 7 ' +
+      " AND data_lancamento >= '2015-01-01' " +
       "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') ORDER BY 1 ASC"
     const mesRows = runAgg(mesSql)
 
@@ -223,7 +222,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
       'FROM vendas WHERE ' +
       sqlWhereBase +
-      ' AND length(data_lancamento) >= 7 ' +
+      " AND data_lancamento >= '2015-01-01' " +
       "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') ORDER BY 1 ASC"
     const prevYearRows = runAgg(prevYearSql)
 
@@ -292,7 +291,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS c " +
       'FROM vendas WHERE ' +
       sqlWhere +
-      ' AND length(data_lancamento) >= 4 ' +
+      " AND data_lancamento >= '2015-01-01' " +
       "GROUP BY COALESCE(substr(data_lancamento,1,4),'Sem informação') ORDER BY 1 ASC"
     const anoRows = runAgg(anoSql)
     const vendasPorAno = []
@@ -412,13 +411,25 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     }
 
     try {
+      // Cláusula otimizada: busca no banco apenas clientes cujo nome coincide com padrões das revendas
+      // evitando GROUP BY em 5.000+ clientes avulsos que nunca pontuam como revenda
+      const revPatternClauses = []
+      for (let rIdx = 0; rIdx < revendaConfigs.length; rIdx++) {
+        const pats = revendaConfigs[rIdx].patterns
+        for (let pIdx = 0; pIdx < pats.length; pIdx++) {
+          revPatternClauses.push("UPPER(nome_cliente) LIKE '%" + sqlEsc(pats[pIdx]) + "%'")
+        }
+      }
+      const revMatchClause = '(' + revPatternClauses.join(' OR ') + ')'
+
       const revSql =
         "SELECT COALESCE(nome_cliente,'') AS a, COALESCE(SUM(total_linha),0) AS b, " +
         'COUNT(DISTINCT numero_nfe) AS c, COUNT(*) AS d ' +
         'FROM vendas WHERE ' +
         sqlWhere +
-        " AND nome_cliente IS NOT NULL AND nome_cliente != '' " +
-        'GROUP BY nome_cliente'
+        " AND nome_cliente IS NOT NULL AND nome_cliente != '' AND " +
+        revMatchClause +
+        ' GROUP BY nome_cliente'
       const revRows = arrayOf(new DynamicModel({ a: '', b: '', c: '', d: '' }))
       $app.db().newQuery(revSql).all(revRows)
 
@@ -456,16 +467,23 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const vendasPorGrupoItemMensal = []
     try {
       // 1) Data mais recente
-      const maxDateRows = arrayOf(new DynamicModel({ a: '' }))
-      $app
-        .db()
-        .newQuery(
-          "SELECT COALESCE(MAX(data_lancamento),'') AS a FROM vendas WHERE " +
-            sqlWhere +
-            ' AND length(data_lancamento) >= 7',
-        )
-        .all(maxDateRows)
-      const maxDate = maxDateRows.length > 0 && maxDateRows[0].a ? maxDateRows[0].a : ''
+      // Se mesRows já obteve dados, pegamos a data máxima a partir do último mês de mesRows
+      // evitando um SELECT MAX(data_lancamento) completo sobre 125k linhas
+      let maxDate = ''
+      if (mesRows.length > 0 && mesRows[mesRows.length - 1].a) {
+        maxDate = mesRows[mesRows.length - 1].a
+      } else {
+        const maxDateRows = arrayOf(new DynamicModel({ a: '' }))
+        $app
+          .db()
+          .newQuery(
+            "SELECT COALESCE(MAX(data_lancamento),'') AS a FROM vendas WHERE " +
+              sqlWhere +
+              " AND data_lancamento >= '2015-01-01'",
+          )
+          .all(maxDateRows)
+        maxDate = maxDateRows.length > 0 && maxDateRows[0].a ? maxDateRows[0].a : ''
+      }
       if (maxDate && maxDate.indexOf('-') >= 0) {
         const parts = maxDate.split('-') // ["yyyy","mm","dd ..."]
         const maxYear = parseInt(parts[0], 10)
@@ -483,16 +501,20 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           // 3) GROUP BY substr(data_lancamento,1,7), grupo_item — só os
           //    meses-alvo, respeitando sqlWhere.
           const mesesInList = mesesAlvo.map((m) => "'" + m + "'").join(',')
+          // Otimizado: usar data_lancamento >= minMes AND data_lancamento <= maxMes (aproveita índice)
+          const minMesTarget = mesesAlvo[0] + '-01 00:00:00'
+          const maxMesTarget = mesesAlvo[mesesAlvo.length - 1] + '-31 23:59:59'
           const gmSql =
             "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, " +
             "COALESCE(NULLIF(grupo_item,''),'Sem informação') AS b, " +
             'COALESCE(SUM(total_linha),0) AS c ' +
             'FROM vendas WHERE ' +
             sqlWhere +
-            ' AND length(data_lancamento) >= 7 ' +
-            ' AND substr(data_lancamento,1,7) IN (' +
-            mesesInList +
-            ') ' +
+            " AND data_lancamento >= '" +
+            minMesTarget +
+            "' AND data_lancamento <= '" +
+            maxMesTarget +
+            "' " +
             "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação'), COALESCE(NULLIF(grupo_item,''),'Sem informação') " +
             'ORDER BY 1 ASC'
           const gmRows = runAgg(gmSql)
@@ -584,17 +606,24 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const distinctCol = (col, maxLimit) => {
       const rows = arrayOf(new DynamicModel({ a: '' }))
       try {
+        if (Date.now() - startTime > MAX_EXEC_TIME_MS) {
+          return []
+        }
         const lim = maxLimit ? ' LIMIT ' + maxLimit : ''
+        // Se a coluna tiver índice (como vendedor_cliente, nome_vendedor, grupo_item, estado, utilizacao, tipo_documento),
+        // GROUP BY costuma ser ainda mais eficiente que DISTINCT no SQLite
         $app
           .db()
           .newQuery(
-            'SELECT DISTINCT COALESCE(' +
+            'SELECT COALESCE(' +
               col +
               ",'Sem informação') AS a FROM vendas WHERE " +
               col +
               ' IS NOT NULL AND ' +
               col +
-              " != '' ORDER BY 1 ASC" +
+              " != '' GROUP BY " +
+              col +
+              ' ORDER BY 1 ASC' +
               lim,
           )
           .all(rows)
@@ -674,8 +703,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
         'FROM vendas WHERE ' +
         sqlWhereHistorical +
-        " AND UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
-        'AND length(data_lancamento) >= 7 ' +
+        " AND grupo_item = 'EQUIPAMENTOS' " +
+        "AND data_lancamento >= '2015-01-01' " +
         "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') " +
         'ORDER BY 1 ASC'
       const equipRows = runAgg(equipSql)
@@ -700,8 +729,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
         'FROM vendas WHERE ' +
         sqlWhereHistorical +
-        " AND UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
-        'AND length(data_lancamento) >= 7 ' +
+        " AND grupo_item IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+        "AND data_lancamento >= '2015-01-01' " +
         "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') " +
         'ORDER BY 1 ASC'
       const insumoRows = runAgg(insumoSql)
@@ -724,17 +753,23 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const clientesAtivosInsumos = []
 
     try {
-      // 1) Data mais recente considerando os filtros ativos
-      const maxDateRows2 = arrayOf(new DynamicModel({ a: '' }))
-      $app
-        .db()
-        .newQuery(
-          "SELECT COALESCE(MAX(data_lancamento),'') AS a FROM vendas WHERE " +
-            sqlWhere +
-            ' AND length(data_lancamento) >= 7',
-        )
-        .all(maxDateRows2)
-      const maxDate2 = maxDateRows2.length > 0 && maxDateRows2[0].a ? maxDateRows2[0].a : ''
+      // 1) Data mais recente considerando os filtros ativos (reaproveita maxDate apurado acima se disponível)
+      let maxDate2 = maxDate
+      if (!maxDate2 && mesRows.length > 0 && mesRows[mesRows.length - 1].a) {
+        maxDate2 = mesRows[mesRows.length - 1].a
+      }
+      if (!maxDate2) {
+        const maxDateRows2 = arrayOf(new DynamicModel({ a: '' }))
+        $app
+          .db()
+          .newQuery(
+            "SELECT COALESCE(MAX(data_lancamento),'') AS a FROM vendas WHERE " +
+              sqlWhere +
+              " AND data_lancamento >= '2015-01-01'",
+          )
+          .all(maxDateRows2)
+        maxDate2 = maxDateRows2.length > 0 && maxDateRows2[0].a ? maxDateRows2[0].a : ''
+      }
 
       if (maxDate2 && maxDate2.indexOf('-') >= 0) {
         const parts = maxDate2.split('-')
@@ -775,16 +810,18 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           }
 
           // --- 5.3 Clientes Ativos Equipamentos ---
-          const mesesInListEquip = mesesAlvo.map((m) => "'" + m + "'").join(',')
+          const minEquipDate = mesesAlvo[0] + '-01 00:00:00'
+          const maxEquipDate = mesesAlvo[mesesAlvo.length - 1] + '-31 23:59:59'
           const cliEquipSql =
             "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COUNT(DISTINCT codigo_cliente) AS b " +
             'FROM vendas WHERE ' +
             sqlWhere +
-            " AND UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
-            'AND length(data_lancamento) >= 7 ' +
-            'AND substr(data_lancamento,1,7) IN (' +
-            mesesInListEquip +
-            ') ' +
+            " AND grupo_item = 'EQUIPAMENTOS' " +
+            "AND data_lancamento >= '" +
+            minEquipDate +
+            "' AND data_lancamento <= '" +
+            maxEquipDate +
+            "' " +
             "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') ORDER BY 1 ASC"
           const cliEquipRows = runAgg(cliEquipSql)
           const cliEquipMap = {}
@@ -798,18 +835,19 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
             const y = parseInt(p[0], 10) - 1
             return String(y) + '-' + p[1]
           })
-          const mesesAnoAnteriorEquipInList = mesesAnoAnteriorEquip
-            .map((m) => "'" + m + "'")
-            .join(',')
+          const minEquipPrevDate = mesesAnoAnteriorEquip[0] + '-01 00:00:00'
+          const maxEquipPrevDate =
+            mesesAnoAnteriorEquip[mesesAnoAnteriorEquip.length - 1] + '-31 23:59:59'
           const cliEquipPrevSql =
             "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COUNT(DISTINCT codigo_cliente) AS b " +
             'FROM vendas WHERE ' +
             sqlWhereBase +
-            " AND UPPER(COALESCE(grupo_item,'')) = 'EQUIPAMENTOS' " +
-            'AND length(data_lancamento) >= 7 ' +
-            'AND substr(data_lancamento,1,7) IN (' +
-            mesesAnoAnteriorEquipInList +
-            ') ' +
+            " AND grupo_item = 'EQUIPAMENTOS' " +
+            "AND data_lancamento >= '" +
+            minEquipPrevDate +
+            "' AND data_lancamento <= '" +
+            maxEquipPrevDate +
+            "' " +
             "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') ORDER BY 1 ASC"
           const cliEquipPrevRows = runAgg(cliEquipPrevSql)
           const cliEquipPrevMap = {}
@@ -829,16 +867,18 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           }
 
           // --- 5.4 Clientes Ativos Insumos ---
-          const mesesInListInsumos = mesesAlvo.map((m) => "'" + m + "'").join(',')
+          const minInsumoDate = mesesAlvo[0] + '-01 00:00:00'
+          const maxInsumoDate = mesesAlvo[mesesAlvo.length - 1] + '-31 23:59:59'
           const cliInsumosSql =
             "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COUNT(DISTINCT codigo_cliente) AS b " +
             'FROM vendas WHERE ' +
             sqlWhere +
-            " AND UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
-            'AND length(data_lancamento) >= 7 ' +
-            'AND substr(data_lancamento,1,7) IN (' +
-            mesesInListInsumos +
-            ') ' +
+            " AND grupo_item IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+            "AND data_lancamento >= '" +
+            minInsumoDate +
+            "' AND data_lancamento <= '" +
+            maxInsumoDate +
+            "' " +
             "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') ORDER BY 1 ASC"
           const cliInsumosRows = runAgg(cliInsumosSql)
           const cliInsumosMap = {}
@@ -852,16 +892,18 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
             const y = parseInt(p[0], 10) - 1
             return String(y) + '-' + p[1]
           })
-          const mesesAnoAnteriorInList = mesesAnoAnterior.map((m) => "'" + m + "'").join(',')
+          const minInsumoPrevDate = mesesAnoAnterior[0] + '-01 00:00:00'
+          const maxInsumoPrevDate = mesesAnoAnterior[mesesAnoAnterior.length - 1] + '-31 23:59:59'
           const cliInsumosPrevSql =
             "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COUNT(DISTINCT codigo_cliente) AS b " +
             'FROM vendas WHERE ' +
             sqlWhereBase +
-            " AND UPPER(COALESCE(grupo_item,'')) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
-            'AND length(data_lancamento) >= 7 ' +
-            'AND substr(data_lancamento,1,7) IN (' +
-            mesesAnoAnteriorInList +
-            ') ' +
+            " AND grupo_item IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+            "AND data_lancamento >= '" +
+            minInsumoPrevDate +
+            "' AND data_lancamento <= '" +
+            maxInsumoPrevDate +
+            "' " +
             "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') ORDER BY 1 ASC"
           const cliInsumosPrevRows = runAgg(cliInsumosPrevSql)
           const cliInsumosPrevMap = {}

@@ -138,12 +138,20 @@ export default function Vendas() {
           : (res.items || []).filter((i) => !i.tem_netsales).length,
       )
       setTotalPages(res.totalPages || 1)
-    } catch (err) {
+    } catch (err: unknown) {
+      if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
+        return
+      }
       console.error('Erro ao carregar vendas:', err)
+      const msg =
+        err instanceof Error ? err.message : 'Não foi possível buscar as vendas consolidadas.'
       toast({
         variant: 'destructive',
-        title: 'Erro ao carregar vendas',
-        description: 'Não foi possível buscar as vendas consolidadas.',
+        title:
+          msg.toLowerCase().includes('tempo limite') || msg.toLowerCase().includes('demorou')
+            ? 'Consulta demorou demais'
+            : 'Erro ao carregar vendas',
+        description: msg,
       })
     } finally {
       setLoading(false)

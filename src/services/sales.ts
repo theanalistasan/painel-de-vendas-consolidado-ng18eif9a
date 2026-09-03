@@ -259,6 +259,12 @@ export async function fetchDashboardStats(
       }
     }
 
+    if (status === 504) {
+      throw new Error(
+        'A consulta demorou mais do que o esperado para responder. Refine os filtros selecionados.',
+      )
+    }
+
     const isAbort =
       (err as Error)?.name === 'AbortError' ||
       String(err).includes('aborted') ||
@@ -300,11 +306,32 @@ export async function fetchVendasList(params?: {
   sortField?: string
   sortDirection?: 'asc' | 'desc'
   filters?: Record<string, unknown>
+  signal?: AbortSignal
 }): Promise<VendasListResult> {
+  const internalController = new AbortController()
+  let isTimeoutAbort = false
+  const timer = setTimeout(() => {
+    isTimeoutAbort = true
+    internalController.abort()
+  }, 40000)
+
+  if (params?.signal) {
+    if (params.signal.aborted) {
+      clearTimeout(timer)
+      const err = new Error('Requisição cancelada.')
+      err.name = 'AbortError'
+      throw err
+    }
+    params.signal.addEventListener('abort', () => internalController.abort())
+  }
+
+  const { signal: _s, ...bodyPayload } = params || {}
+
   const run = () =>
     pb.send<VendasListResult>('/backend/v1/vendas/list', {
       method: 'POST',
-      body: params || {},
+      body: bodyPayload,
+      signal: internalController.signal,
     })
 
   try {
@@ -319,7 +346,29 @@ export async function fetchVendasList(params?: {
         throw err
       }
     }
+    if (status === 504) {
+      throw new Error(
+        'A listagem de vendas demorou mais do que o esperado. Refine os filtros selecionados.',
+      )
+    }
+    const isAbort =
+      (err as Error)?.name === 'AbortError' ||
+      String(err).includes('aborted') ||
+      String(err).includes('autocancelled') ||
+      internalController.signal.aborted
+    if (isAbort) {
+      if (isTimeoutAbort) {
+        throw new Error(
+          'Tempo limite esgotado ao buscar lista de vendas. Por favor, tente refinar os filtros.',
+        )
+      }
+      const abortError = new Error('Requisição cancelada.')
+      abortError.name = 'AbortError'
+      throw abortError
+    }
     throw err
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -333,11 +382,32 @@ export async function fetchVendasExport(params?: {
   sortField?: string
   sortDirection?: 'asc' | 'desc'
   filters?: Record<string, unknown>
+  signal?: AbortSignal
 }): Promise<VendasExportResult> {
+  const internalController = new AbortController()
+  let isTimeoutAbort = false
+  const timer = setTimeout(() => {
+    isTimeoutAbort = true
+    internalController.abort()
+  }, 40000)
+
+  if (params?.signal) {
+    if (params.signal.aborted) {
+      clearTimeout(timer)
+      const err = new Error('Requisição cancelada.')
+      err.name = 'AbortError'
+      throw err
+    }
+    params.signal.addEventListener('abort', () => internalController.abort())
+  }
+
+  const { signal: _s, ...bodyPayload } = params || {}
+
   const run = () =>
     pb.send<VendasExportResult>('/backend/v1/vendas/export', {
       method: 'POST',
-      body: params || {},
+      body: bodyPayload,
+      signal: internalController.signal,
     })
 
   try {
@@ -352,6 +422,28 @@ export async function fetchVendasExport(params?: {
         throw err
       }
     }
+    if (status === 504) {
+      throw new Error(
+        'A exportação de vendas demorou mais do que o esperado. Refine os filtros selecionados.',
+      )
+    }
+    const isAbort =
+      (err as Error)?.name === 'AbortError' ||
+      String(err).includes('aborted') ||
+      String(err).includes('autocancelled') ||
+      internalController.signal.aborted
+    if (isAbort) {
+      if (isTimeoutAbort) {
+        throw new Error(
+          'Tempo limite esgotado na exportação de vendas. Por favor, refine os filtros.',
+        )
+      }
+      const abortError = new Error('Requisição cancelada.')
+      abortError.name = 'AbortError'
+      throw abortError
+    }
     throw err
+  } finally {
+    clearTimeout(timer)
   }
 }
