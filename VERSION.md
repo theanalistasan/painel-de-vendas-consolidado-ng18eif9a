@@ -2,9 +2,45 @@
 
 ## Versão e Status Atual
 
-- **Versão**: v1.0.4
+- **Versão**: v1.0.5
 - **Data do Backup**: 01/09/2026
-- **Status**: QA aprovado, estável, backup oficial consolidado (v0.0.82)
+- **Status**: QA aprovado, estável, backup oficial consolidado (estado atual = commit `0.0.86`)
+
+---
+
+## Destaques da Versão 1.0.5
+
+1. **Filtros Iniciais Restaurados no Dashboard (v0.0.84)**:
+   - Configuração dinâmica e inteligente dos filtros padrão no primeiro acesso ao Dashboard via `buildDynamicInitialFilters`:
+     - **Ano**: Ano mais recente disponível na base (ex: 2026).
+     - **Mês**: Último mês com movimentação na base (ex: mês 8 / Agosto).
+     - **Tipo de Documento**: Pré-seleção de `"NF de Saída"`.
+     - **Grupo do Item**: Multi-seleção com `"Equipamentos"`, `"Acessórios"`, `"Tintas"` e `"Peças"`.
+     - **Utilização**: Todos os tipos da base contendo `"VENDA"` (ex: `"VENDA DE MERCADORIA"`, `"VENDA CONSUMO"`).
+     - **Base**: `"ambos"` (RacNew e NetSales consolidados).
+   - Persistência automática em `sessionStorage` (`loadFiltersFromSession` / `saveFiltersToSession`), garantindo que o usuário mantenha suas customizações durante a navegação.
+
+2. **Novo Indicador "Vendas por Estado (UF) & Região" com Mapa Interativo do Brasil (v0.0.84)**:
+   - Componente interativo vetorial SVG puro (`VendasPorEstadoIndicador.tsx`) renderizando todos os 26 estados + Distrito Federal com escala cromática Roland DG (tons graduais de ciano e azul Roland `#0B6E99`).
+   - Ranking consolidado por Região (Sudeste, Sul, Nordeste, Centro-Oeste e Norte) com valores absolutos, participação percentual e listagem expansível dos estados.
+   - Interatividade bidirecional completa: passar o mouse ou clicar em qualquer estado sincroniza o filtro global de UF do Dashboard (`filters.estado`).
+
+3. **Pinos das Revendas Oficiais Roland DG Brasil no Mapa (v0.0.85)**:
+   - Mapeamento e plotagem vetorial geográfica de todas as revendas oficiais autorizadas da Roland DG no Brasil (`src/data/revendas.ts`).
+   - Botão seletor no cabeçalho do mapa para exibir ou ocultar os pinos de revenda com contadores dinâmicos.
+   - Card flutuante interativo ao clicar em um pino de revenda:
+     - Dados cadastrais (Razão Social, Nome Fantasia, Cidade/UF, telefone de contato e link direto de navegação/Google Maps).
+     - **Faturamento Vinculado**: Exibição em tempo real do faturamento acumulado, documentos faturados e total de itens vendidos pela revenda conforme os filtros ativos.
+
+4. **Posicionamento de Destaque no Dashboard (v0.0.85)**:
+   - O indicador "Vendas por Estado (UF) & Região" foi promovido para o topo do Dashboard, posicionado imediatamente acima dos 4 gráficos temáticos e dos 5 KPIs principais.
+   - Proporciona visão macro geográfica instantânea da performance comercial logo na abertura do sistema.
+
+5. **Expansão em Tela Cheia do Mapa do Brasil (v0.0.86)**:
+   - Botão de expansão rápida (`Expand`) no cabeçalho do card do mapa do Brasil.
+   - Modal em tela cheia otimizado (`DialogContent` com dimensões `96vw x 92vh`, bordas arredondadas e backdrop elegante).
+   - Sincronização bidirecional em tempo real do estado de filtros, seleção de UF e detalhes de revendas entre o card padrão e o modal expandido.
+   - Visualização ampla e confortável do mapa do Brasil em monitores de alta resolução e notebooks.
 
 ---
 
@@ -127,7 +163,11 @@
 
 ## Histórico de Versões
 
-- **v1.0.4 (01/09/2026)**: Backup estável oficial (commit `0.0.82`) — ajuste do hook `pocketbase/hooks/dashboard_stats.js` para que os gráficos "Tendência de Vendas — Equipamentos" e "Acumulado — Insumos" sempre apresentem a base histórica inteira (via `sqlWhereHistorical`), ignorando filtros de período e dimensão e respeitando apenas a seleção de base (RacNew/NetSales/Ambos).
+- **v1.0.5 (01/09/2026)**: Backup de segurança oficial do projeto (estado atual = commit `0.0.86`). Incorpora:
+  - **v0.0.84**: Filtros iniciais restaurados no Dashboard (Ano mais recente, último mês, NF de Saída, Grupos Equipamentos/Acessórios/Tintas/Peças, Utilização com "VENDA", base Ambos) + novo indicador interativo "Vendas por Estado (UF)" com mapa do Brasil e ranking regional.
+  - **v0.0.85**: Pinos geográficos das revendas autorizadas Roland DG no mapa do Brasil com faturamento detalhado ao clicar + mapa posicionado como primeiro indicador no topo do Dashboard.
+  - **v0.0.86**: Expansão em tela cheia do card do mapa do Brasil (botão Expand, modal responsivo de 96vw x 92vh, sincronização de estado com filtros).
+- **v1.0.4 (01/09/2026)**: Backup estável oficial (commit `0.0.83` / `0.0.82`) — ajuste do hook `pocketbase/hooks/dashboard_stats.js` para que os gráficos "Tendência de Vendas — Equipamentos" e "Acumulado — Insumos" sempre apresentem a base histórica inteira (via `sqlWhereHistorical`), ignorando filtros de período e dimensão e respeitando apenas a seleção de base (RacNew/NetSales/Ambos).
 - **v1.0.3 (01/09/2026)**: Backup estável oficial (commit `0.0.81`) — hook `dashboard_stats.js` totalmente validado e deployável no backend PocketBase com queries agregadas via SQL puro; identidade visual Roland DG (preto, cinza, branco com acentos em azul #0B6E99 e ciano); logo corporativo Roland sem laranja; sidebar colapsável com persistência em localStorage; filtros padrão abertos/zerados no primeiro boot; gerenciador central de sessão (`safeAuthRefresh`) com mutex e timeout de segurança no boot.
 - **v1.0.2 (22/08/2026)**: Backup de segurança — correção crítica de autenticação (AuthContext limpa pb.authStore no catch do authRefresh, eliminando token inválido que causava dados zerados ao navegar/refresh), filtro Seleção de Bases funcional (RacNew/NetSales/Ambos) com correção da lógica tem_netsales, badges de origem (RacNew âmbar, NetSales indigo), resumo de origens acima da tabela, coluna Tipo de Documento e coluna Origem na tabela de Vendas e CSV, e senhas padronizadas Roland@1234 para todos os 7 usuários + admin.
 - **v0.0.59 (22/08/2026)**: Backup estável pré-"Seleção de Bases" — 5 KPIs, 9 gráficos, filtros multi-seleção persistentes, colapso por NFe, ordenação server-side, auditoria, exportação CSV completa, senhas padronizadas e QA aprovado.
