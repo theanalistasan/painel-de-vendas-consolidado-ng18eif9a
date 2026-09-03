@@ -205,16 +205,31 @@ export interface DashboardStatsResult {
 
 export async function fetchDashboardStats(
   filters?: Record<string, unknown>,
+  options?: { timeoutMs?: number },
 ): Promise<DashboardStatsResult> {
+  // Timeout padrão de 45 segundos no cliente para abortar e notificar erro amigável
+  // se o backend demorar ou falhar, evitando travamento indefinido na interface.
+  const timeoutMs = options?.timeoutMs || 45000
+  const controller = new AbortController()
+  const timer = setTimeout(() => {
+    controller.abort(
+      new Error('Tempo limite de requisição excedido ao buscar estatísticas do painel.'),
+    )
+  }, timeoutMs)
+
   const run = () =>
     pb.send<DashboardStatsResult>('/backend/v1/dashboard/stats', {
       method: 'POST',
       body: { filters: filters || {} },
+      signal: controller.signal,
     })
 
   try {
-    return await run()
+    const res = await run()
+    clearTimeout(timer)
+    return res
   } catch (err: unknown) {
+    clearTimeout(timer)
     const status = (err as { status?: number })?.status
     if ((status === 401 || status === 403) && pb.authStore.isValid) {
       try {
@@ -223,6 +238,11 @@ export async function fetchDashboardStats(
       } catch {
         throw err
       }
+    }
+    if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
+      throw new Error(
+        'Tempo limite esgotado ao buscar os dados do painel. Por favor, tente refinar os filtros.',
+      )
     }
     throw err
   }

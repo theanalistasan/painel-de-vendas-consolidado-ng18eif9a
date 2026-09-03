@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-03T15:07:51.448Z",
+  "generatedAt": "2026-09-03T19:08:29.686Z",
   "collections": [
     {
       "name": "users",
@@ -877,13 +877,14 @@
       "indexes": [
         "CREATE INDEX idx_vendas_vendedor_cliente ON vendas (vendedor_cliente)",
         "CREATE INDEX idx_vendas_nome_vendedor ON vendas (nome_vendedor)",
-        "CREATE INDEX idx_vendas_grupo_item ON vendas (grupo_item)",
-        "CREATE INDEX idx_vendas_data_lancamento ON vendas (data_lancamento)",
         "CREATE INDEX idx_vendas_estado ON vendas (estado)",
         "CREATE INDEX idx_vendas_cidade ON vendas (cidade)",
         "CREATE INDEX idx_vendas_utilizacao ON vendas (utilizacao)",
         "CREATE INDEX idx_vendas_numero_nfe ON vendas (numero_nfe)",
-        "CREATE INDEX `idx_vendas_tipo_documento` ON `vendas` (tipo_documento)"
+        "CREATE INDEX `idx_vendas_data_lancamento` ON `vendas` (data_lancamento)",
+        "CREATE INDEX `idx_vendas_grupo_item` ON `vendas` (grupo_item)",
+        "CREATE INDEX `idx_vendas_tipo_documento` ON `vendas` (tipo_documento)",
+        "CREATE INDEX `idx_vendas_dt_grupo_tipo` ON `vendas` (data_lancamento, grupo_item, tipo_documento)"
       ]
     },
     {
