@@ -635,13 +635,6 @@ export default function Index() {
                     <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
                     Limpar Filtros
                   </Button>
-                  <Button
-                    asChild
-                    variant="outline"
-                    className="border-slate-300 bg-white text-slate-700 hover:bg-slate-50 font-bold text-xs h-9 px-4"
-                  >
-                    <Link to="/importar">Importar Dados</Link>
-                  </Button>
                 </div>
               </div>
             </Card>
