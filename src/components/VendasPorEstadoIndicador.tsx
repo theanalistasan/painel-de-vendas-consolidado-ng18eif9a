@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react'
-import { MapPin, TrendingUp, Layers, ChevronRight } from 'lucide-react'
+import { MapPin, TrendingUp, Layers, ChevronRight, Store, X, Phone, Navigation } from 'lucide-react'
 import { formatCurrency, formatNumber } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import { REVENDAS_ROLAND_DG, type RevendaOficial } from '@/data/revendas'
 
 export interface EstadoVendaItem {
   uf: string
@@ -13,6 +14,7 @@ interface VendasPorEstadoProps {
   data: EstadoVendaItem[]
   selectedUf?: string | null
   onSelectUf?: (uf: string | null) => void
+  revendasFaturamento?: Record<string, { faturamento: number; documentos: number; itens: number }>
 }
 
 // Mapeamento oficial dos estados do Brasil para suas respectivas regiões
@@ -269,10 +271,14 @@ export function VendasPorEstadoIndicador({
   data,
   selectedUf: externalSelectedUf,
   onSelectUf,
+  revendasFaturamento,
 }: VendasPorEstadoProps) {
   const [internalSelectedUf, setInternalSelectedUf] = useState<string | null>(null)
   const [hoveredUf, setHoveredUf] = useState<string | null>(null)
   const [selectedRegion, setSelectedRegion] = useState<string | null>(null)
+  const [selectedRevenda, setSelectedRevenda] = useState<RevendaOficial | null>(null)
+  const [hoveredRevenda, setHoveredRevenda] = useState<RevendaOficial | null>(null)
+  const [showRevendasPins, setShowRevendasPins] = useState<boolean>(true)
 
   const activeSelectedUf =
     externalSelectedUf !== undefined ? externalSelectedUf : internalSelectedUf
@@ -432,20 +438,43 @@ export function VendasPorEstadoIndicador({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start pt-2">
         {/* Coluna 1: Mapa do Brasil Interativo */}
         <div className="lg:col-span-7 flex flex-col items-center bg-slate-50/50 rounded-xl border border-slate-200 p-4">
-          <div className="w-full flex items-center justify-between pb-2 mb-2 border-b border-slate-200 text-xs">
-            <div className="flex items-center gap-1.5 font-bold text-slate-700">
-              <MapPin className="w-4 h-4 text-[#0B6E99]" />
-              <span>Mapa de Intensidade de Vendas</span>
+          <div className="w-full flex flex-wrap items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-200 text-xs">
+            <div className="flex items-center gap-2 font-bold text-slate-700">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-[#0B6E99]" />
+                <span>Mapa de Intensidade &amp; Revendas</span>
+              </div>
+              <Badge variant="outline" className="text-[10px] py-0 px-1.5 text-slate-600 bg-white">
+                {REVENDAS_ROLAND_DG.length} Revendas Oficiais
+              </Badge>
             </div>
-            {activeSelectedUf && (
+
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => handleSelectUf(null)}
-                className="text-[11px] font-bold text-[#0B6E99] hover:underline"
+                onClick={() => setShowRevendasPins((prev) => !prev)}
+                className={cn(
+                  'inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold border transition-colors',
+                  showRevendasPins
+                    ? 'bg-[#0B6E99] text-white border-[#0B6E99]'
+                    : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50',
+                )}
+                title="Alternar visibilidade dos pinos das revendas autorizadas"
               >
-                Limpar seleção ({activeSelectedUf})
+                <Store className="w-3 h-3" />
+                <span>Pinos de Revendas</span>
               </button>
-            )}
+
+              {activeSelectedUf && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectUf(null)}
+                  className="text-[11px] font-bold text-[#0B6E99] hover:underline"
+                >
+                  Limpar UF ({activeSelectedUf})
+                </button>
+              )}
+            </div>
           </div>
 
           {/* SVG do Mapa do Brasil */}
@@ -500,46 +529,220 @@ export function VendasPorEstadoIndicador({
                   )
                 })}
               </g>
+
+              {/* Camada de Pinos de Revendas Oficiais Roland DG */}
+              {showRevendasPins && (
+                <g className="revendas-pins">
+                  {REVENDAS_ROLAND_DG.map((rev) => {
+                    const isRevSelected = selectedRevenda?.id === rev.id
+                    const isRevHovered = hoveredRevenda?.id === rev.id
+                    const faturamentoInfo = revendasFaturamento?.[rev.id]
+                    const faturamentoValor = faturamentoInfo?.faturamento || 0
+                    const hasVendas = faturamentoValor > 0
+
+                    return (
+                      <g
+                        key={rev.id}
+                        className="cursor-pointer transition-transform duration-150"
+                        transform={`translate(${rev.svgX}, ${rev.svgY})`}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedRevenda((prev) => (prev?.id === rev.id ? null : rev))
+                        }}
+                        onMouseEnter={() => setHoveredRevenda(rev)}
+                        onMouseLeave={() => setHoveredRevenda(null)}
+                      >
+                        {/* Anel pulsante sutil para revenda selecionada */}
+                        {isRevSelected && (
+                          <circle
+                            r="14"
+                            fill="none"
+                            stroke="#0B6E99"
+                            strokeWidth="2.5"
+                            className="animate-ping opacity-60"
+                          />
+                        )}
+
+                        {/* Halo externo para contraste e clique */}
+                        <circle
+                          r={isRevSelected ? 9 : isRevHovered ? 8 : 6.5}
+                          fill="#FFFFFF"
+                          stroke={isRevSelected ? '#084F6E' : '#0B6E99'}
+                          strokeWidth={isRevSelected ? 2.5 : 1.5}
+                          className="drop-shadow-sm transition-all"
+                        />
+
+                        {/* Ponto central colorido: Azul Roland com vendas, ou Ciano se 0 */}
+                        <circle
+                          r={isRevSelected ? 5.5 : isRevHovered ? 5 : 3.8}
+                          fill={isRevSelected ? '#0B6E99' : hasVendas ? '#0B6E99' : '#14829E'}
+                        />
+
+                        {/* Ícone interno micro (ponto branco para destacar) */}
+                        <circle r="1.5" fill="#FFFFFF" />
+
+                        {/* Tooltip SVG rápido no hover quando não selecionado */}
+                        {isRevHovered && !isRevSelected && (
+                          <g transform="translate(0, -18)" className="pointer-events-none">
+                            <rect
+                              x="-55"
+                              y="-18"
+                              width="110"
+                              height="18"
+                              rx="4"
+                              fill="#0F172A"
+                              fillOpacity="0.92"
+                            />
+                            <text
+                              x="0"
+                              y="-7"
+                              textAnchor="middle"
+                              dominantBaseline="central"
+                              fill="#FFFFFF"
+                              fontSize="9"
+                              fontWeight="700"
+                            >
+                              {rev.nome} ({rev.uf})
+                            </text>
+                          </g>
+                        )}
+                      </g>
+                    )
+                  })}
+                </g>
+              )}
             </svg>
           </div>
 
-          {/* Card Flutuante de Detalhe da UF ativa/hover */}
-          <div className="w-full mt-3 p-3 bg-white rounded-lg border border-slate-200 shadow-xs flex items-center justify-between text-xs min-h-[50px]">
-            {activeUfInfo ? (
-              <>
-                <div className="flex items-center gap-2">
-                  <Badge className="bg-[#0B6E99] text-white font-bold">{activeUfInfo.uf}</Badge>
-                  <div>
-                    <div className="font-extrabold text-slate-900 leading-tight">
-                      {activeUfInfo.name}
+          {/* Card Flutuante / Detalhe de Revenda Selecionada ou UF ativa */}
+          {selectedRevenda ? (
+            <div className="w-full mt-3 p-3.5 bg-gradient-to-r from-cyan-50/90 to-blue-50/70 rounded-lg border border-[#0B6E99]/40 shadow-xs text-xs animate-in fade-in duration-150">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-[#0B6E99] text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                    <Store className="w-4 h-4" />
+                  </div>
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-extrabold text-slate-900 text-sm">
+                        {selectedRevenda.nome}
+                      </span>
+                      <Badge className="bg-[#0B6E99] text-white font-bold text-[10px] px-1.5 py-0 h-4">
+                        {selectedRevenda.uf}
+                      </Badge>
+                      <Badge
+                        variant="secondary"
+                        className="bg-white/80 text-slate-700 text-[10px] px-1.5 py-0 h-4 border border-slate-200"
+                      >
+                        Revenda Autorizada
+                      </Badge>
                     </div>
-                    <div className="text-[11px] text-slate-500 font-medium">
-                      Região {activeUfInfo.region}
+
+                    {selectedRevenda.razaoSocialSite &&
+                      selectedRevenda.razaoSocialSite !== selectedRevenda.nome && (
+                        <div className="text-[11px] text-slate-600 font-medium">
+                          {selectedRevenda.razaoSocialSite}
+                        </div>
+                      )}
+
+                    <div className="text-[11px] text-slate-600 flex items-center gap-1.5 pt-0.5">
+                      <Navigation className="w-3 h-3 text-[#0B6E99] shrink-0" />
+                      <span>
+                        {selectedRevenda.cidade} - {selectedRevenda.uf}
+                        {selectedRevenda.endereco && ` • ${selectedRevenda.endereco}`}
+                      </span>
                     </div>
+
+                    {selectedRevenda.telefone && (
+                      <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
+                        <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span>{selectedRevenda.telefone}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="font-extrabold text-[#0B6E99] text-sm tabular-nums">
-                    {formatCurrency(activeUfInfo.total)}
-                  </div>
-                  <div className="text-[10px] text-slate-400 font-medium">
-                    {activeUfInfo.percentual.toFixed(1)}% do faturamento ativo
+
+                <div className="flex flex-col items-end shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedRevenda(null)}
+                    className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-white/80 transition-colors mb-1"
+                    title="Fechar detalhe da revenda"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+
+                  <div className="text-right">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      Faturamento no Filtro
+                    </div>
+                    <div className="font-extrabold text-[#0B6E99] text-base tabular-nums leading-tight">
+                      {formatCurrency(revendasFaturamento?.[selectedRevenda.id]?.faturamento || 0)}
+                    </div>
+                    {revendasFaturamento?.[selectedRevenda.id]?.documentos ? (
+                      <div className="text-[10px] text-slate-500 font-medium">
+                        {revendasFaturamento[selectedRevenda.id].documentos} doc(s) •{' '}
+                        {revendasFaturamento[selectedRevenda.id].itens} item(ns)
+                      </div>
+                    ) : (
+                      <div className="text-[10px] text-slate-400 italic font-medium">
+                        Sem faturamento no período/filtros ativos
+                      </div>
+                    )}
                   </div>
                 </div>
-              </>
-            ) : (
-              <div className="text-slate-400 text-xs italic flex items-center justify-center w-full py-1">
-                Passe o mouse ou toque em um estado para ver o total detalhado
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="w-full mt-3 p-3 bg-white rounded-lg border border-slate-200 shadow-xs flex items-center justify-between text-xs min-h-[50px]">
+              {activeUfInfo ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-[#0B6E99] text-white font-bold">{activeUfInfo.uf}</Badge>
+                    <div>
+                      <div className="font-extrabold text-slate-900 leading-tight">
+                        {activeUfInfo.name}
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-medium">
+                        Região {activeUfInfo.region}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-extrabold text-[#0B6E99] text-sm tabular-nums">
+                      {formatCurrency(activeUfInfo.total)}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-medium">
+                      {activeUfInfo.percentual.toFixed(1)}% do faturamento ativo
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-slate-500 text-xs flex items-center justify-between w-full py-0.5">
+                  <span className="flex items-center gap-1.5 text-slate-600">
+                    <Store className="w-3.5 h-3.5 text-[#0B6E99]" />
+                    <span>Clique em qualquer pino no mapa para ver o faturamento da revenda.</span>
+                  </span>
+                  <span className="text-[11px] text-slate-400 hidden sm:inline">
+                    Passe o mouse na UF para detalhes regionais
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Legenda de Intensidade */}
-          <div className="w-full flex items-center justify-between pt-3 text-[11px] text-slate-500">
-            <span className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-xs bg-[#E2E8F0] inline-block border border-slate-300" />
-              Sem vendas
-            </span>
+          <div className="w-full flex flex-wrap items-center justify-between gap-2 pt-3 text-[11px] text-slate-500">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-xs bg-[#E2E8F0] inline-block border border-slate-300" />
+                Sem vendas
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#0B6E99] inline-block border border-white ring-1 ring-slate-300" />
+                Pino de Revenda Oficial
+              </span>
+            </div>
             <div className="flex items-center gap-1">
               <span>Menor</span>
               <div className="flex h-2.5 w-24 rounded-xs overflow-hidden">

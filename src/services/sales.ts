@@ -177,6 +177,7 @@ export interface DashboardStatsResult {
     topVendedores: Array<{ name: string; total: number }>
     topClientes: Array<{ name: string; total: number }>
     estado: Array<{ uf: string; total: number }>
+    revendasFaturamento?: Record<string, { faturamento: number; documentos: number; itens: number }>
   }
   recentSales: Array<{
     id: string

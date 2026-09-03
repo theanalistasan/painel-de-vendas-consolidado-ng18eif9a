@@ -319,6 +319,7 @@ export default function Index() {
   const chartTopVendedores = data?.charts?.topVendedores || []
   const chartTopClientes = data?.charts?.topClientes || []
   const chartEstado = data?.charts?.estado || []
+  const revendasFaturamento = data?.charts?.revendasFaturamento
   const chartVendasPorGrupoItemMensal = data?.charts?.vendasPorGrupoItemMensal || []
   const chartVendasEquipamentosRaw =
     data?.charts?.vendasEquipamentosHistorico || data?.charts?.vendasEquipamentosPorAno || []
@@ -543,7 +544,45 @@ export default function Index() {
         </Card>
       ) : (
         <>
-          {/* 4 Novos Gráficos no Topo com paleta Azul e Ciano */}
+          {/* PRIMEIRO INDICADOR DO DASHBOARD: Vendas por Estado (UF) e Região com Mapa do Brasil e Revendas */}
+          <Card className="rounded-xl border border-gray-200 bg-white shadow-xs">
+            <CardHeader className="pb-3 border-b border-gray-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-base font-extrabold text-slate-900">
+                    Vendas por Estado (UF) &amp; Região
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-500 font-medium">
+                    Distribuição geográfica, ranking regional e mapa térmico com pinos das revendas
+                    autorizadas Roland DG
+                  </CardDescription>
+                </div>
+                {filters.estado.length > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="border-cyan-200 bg-cyan-50 text-[#0B6E99] text-xs font-bold self-start sm:self-auto"
+                  >
+                    Filtro ativo: {filters.estado.join(', ')}
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <VendasPorEstadoIndicador
+                data={chartEstado}
+                selectedUf={filters.estado.length === 1 ? filters.estado[0] : null}
+                onSelectUf={(uf) => {
+                  setFilters((prev) => ({
+                    ...prev,
+                    estado: uf ? [uf] : [],
+                  }))
+                }}
+                revendasFaturamento={revendasFaturamento}
+              />
+            </CardContent>
+          </Card>
+
+          {/* 4 Novos Gráficos com paleta Azul e Ciano (Tendência Equipamentos, Acumulado Insumos, Clientes Ativos) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Gráfico 1: Tendência de Vendas — Equipamentos (Linha Única Contínua Azul) */}
             <ChartCard
@@ -1199,43 +1238,6 @@ export default function Index() {
               </ResponsiveContainer>
             </ChartCard>
           </div>
-
-          {/* Indicador Completo: Vendas por Estado (UF) e Região com Mapa do Brasil */}
-          <Card className="rounded-xl border border-gray-200 bg-white shadow-xs">
-            <CardHeader className="pb-3 border-b border-gray-100">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <CardTitle className="text-base font-extrabold text-slate-900">
-                    Vendas por Estado (UF) &amp; Região
-                  </CardTitle>
-                  <CardDescription className="text-xs text-slate-500 font-medium">
-                    Distribuição geográfica, ranking regional e mapa térmico de intensidade de
-                    faturamento
-                  </CardDescription>
-                </div>
-                {filters.estado.length > 0 && (
-                  <Badge
-                    variant="outline"
-                    className="border-cyan-200 bg-cyan-50 text-[#0B6E99] text-xs font-bold self-start sm:self-auto"
-                  >
-                    Filtro ativo: {filters.estado.join(', ')}
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <VendasPorEstadoIndicador
-                data={chartEstado}
-                selectedUf={filters.estado.length === 1 ? filters.estado[0] : null}
-                onSelectUf={(uf) => {
-                  setFilters((prev) => ({
-                    ...prev,
-                    estado: uf ? [uf] : [],
-                  }))
-                }}
-              />
-            </CardContent>
-          </Card>
 
           {/* Charts Grid Row 3: Valor Líquido x Faturamento */}
           <div className="grid grid-cols-1 gap-6">

@@ -370,6 +370,71 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   }
 
   // ============================================================
+  // faturamentoPorRevenda — Agregação por revenda autorizada oficial
+  // Respeita todos os filtros ativos (sqlWhere) do Dashboard.
+  // Mapeia padrões de nome_cliente para o id de cada revenda oficial.
+  // ============================================================
+  const revendaConfigs = [
+    { id: 'adenil', patterns: ['ADENIL', 'ADENILL'] },
+    { id: 'aquarela', patterns: ['AQUARELA'] },
+    { id: 'bluebird', patterns: ['BLUE BIRD'] },
+    { id: 'brastech', patterns: ['BRASTECH', 'CARVALHO LIMA'] },
+    { id: 'ch-suprimentos', patterns: ['CH SUPRIMENTOS'] },
+    { id: 'cyancolor', patterns: ['CYANCOLOR', 'CYANPRINT', 'CYAN PRINT'] },
+    { id: 'd-printer', patterns: ['D PRINTER', 'DPRINTER', 'D. PRINTER'] },
+    { id: 'dental-globo', patterns: ['DENTAL GLOBO'] },
+    {
+      id: 'diamante-tintas',
+      patterns: ['DIAMANTE COMERCIO DE TINTAS', 'DIAMANTE TINTAS', 'DIAMANTE COM DE TINTAS'],
+    },
+    { id: 'dj-comercio', patterns: ['DJ COMERCIO', 'DJ COMÉRCIO', 'DJ COM. DE ADESIVOS'] },
+    { id: 'drucken', patterns: ['DRUCKEN'] },
+    { id: 'eldorado', patterns: ['ELDORADO', 'ROBERTO LEITE DOS SANTOS'] },
+    { id: 'emporio-do-adesivo', patterns: ['EMPORIO DO ADESIVO', 'EMPÓRIO DO ADESIVO'] },
+    {
+      id: 'formato-go',
+      patterns: ['FORMATO GO', 'FORMATO GYN', 'FORMATO DIGITAL GO', 'FORMATO COM'],
+    },
+    {
+      id: 'formato-mg',
+      patterns: ['FORMATO MG', 'FORMATO BH', 'FORMATO DIGITAL MG', 'FORMATO COMERCIO'],
+    },
+    { id: 'impar', patterns: ['IMPAR', 'ÍMPAR'] },
+    { id: 'konica-minolta', patterns: ['KONICA MINOLTA', 'KONICA'] },
+    { id: 'kromadecka', patterns: ['KROMADECKA'] },
+    { id: 'm2', patterns: ['M2 DIGITAL', 'M2 SOLUCOES', 'M2'] },
+    { id: 'nrm-leite', patterns: ['N. R. M. LEITE', 'NRM LEITE', 'N R M LEITE', 'LEITE &'] },
+    { id: 'neodent', patterns: ['NEODENT', 'JJGC IND'] },
+    { id: 'nova-silk', patterns: ['NOVA SILK', 'NOVASILK'] },
+    { id: 'novo-tempo-digital', patterns: ['NOVO TEMPO', 'NOVO TEMPO DIGITAL'] },
+    { id: 'ocean', patterns: ['OCEAN SOLUCOES', 'OCEAN SOLUÇÕES', 'OCEAN'] },
+    { id: 'plastsign', patterns: ['PLASTSIGN', 'PLAST SIGN'] },
+    { id: 'substrato', patterns: ['SUBSTRATO'] },
+  ]
+
+  const revendasFaturamento = {}
+  for (let rIdx = 0; rIdx < revendaConfigs.length; rIdx++) {
+    const rev = revendaConfigs[rIdx]
+    const likeClauses = rev.patterns
+      .map((pat) => "UPPER(nome_cliente) LIKE '%" + sqlEsc(pat.toUpperCase()) + "%'")
+      .join(' OR ')
+    const revSql =
+      'SELECT COALESCE(SUM(total_linha),0) AS a, COUNT(DISTINCT numero_nfe) AS b, COUNT(*) AS c ' +
+      'FROM vendas WHERE ' +
+      sqlWhere +
+      ' AND (' +
+      likeClauses +
+      ')'
+    const revRows = runAgg(revSql)
+    const row = revRows.length > 0 ? revRows[0] : null
+    revendasFaturamento[rev.id] = {
+      faturamento: row ? toNum(row.a) : 0,
+      documentos: row ? parseInt(row.b, 10) || 0 : 0,
+      itens: row ? parseInt(row.c, 10) || 0 : 0,
+    }
+  }
+
+  // ============================================================
   // vendasPorGrupoItemMensal — últimos 6 meses yyyy-mm a partir da
   // data mais recente dos dados consolidados filtrados, GROUP BY mês + grupo_item.
   // ============================================================
@@ -806,6 +871,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       topVendedores: topVendedores,
       topClientes: topClientes,
       estado: estado,
+      revendasFaturamento: revendasFaturamento,
     },
     recentSales: recentSales,
     filterOptions: filterOptions,
