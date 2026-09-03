@@ -284,13 +284,15 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
 
     // ============================================================
     // vendasPorAno (GROUP BY ano, ordenado ASC, com variação percentual)
-    // Respeita todos os filtros ativos (sqlWhere)
+    // Mostra todos os anos da base independentemente do filtro de período aplicado,
+    // respeitando apenas o filtro de seleção de base (sqlWhereHistorical),
+    // idêntico aos gráficos históricos contínuos de equipamentos e insumos.
     // ============================================================
     const anoSql =
       "SELECT COALESCE(substr(data_lancamento,1,4),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b, " +
       "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS c " +
       'FROM vendas WHERE ' +
-      sqlWhere +
+      sqlWhereHistorical +
       " AND data_lancamento >= '2015-01-01' " +
       "GROUP BY COALESCE(substr(data_lancamento,1,4),'Sem informação') ORDER BY 1 ASC"
     const anoRows = runAgg(anoSql)
@@ -769,12 +771,15 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const clientesAtivosInsumos = []
 
     try {
-      // 1) Data mais recente considerando os filtros ativos (reaproveita maxDate apurado acima se disponível)
-      let maxDate2 = maxDate
-      if (!maxDate2 && mesRows.length > 0 && mesRows[mesRows.length - 1].a) {
+      // 1) Data mais recente considerando os filtros ativos (obtém a partir de mesRows ou MAX(data_lancamento))
+      let maxDate2 = ''
+      if (
+        mesRows.length > 0 &&
+        mesRows[mesRows.length - 1].a &&
+        mesRows[mesRows.length - 1].a !== 'Sem informação'
+      ) {
         maxDate2 = mesRows[mesRows.length - 1].a
-      }
-      if (!maxDate2) {
+      } else {
         const maxDateRows2 = arrayOf(new DynamicModel({ a: '' }))
         $app
           .db()
