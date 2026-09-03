@@ -13,6 +13,8 @@ import {
   RotateCcw,
   ArrowUpDown,
   Users,
+  Expand,
+  MapPin,
 } from 'lucide-react'
 import {
   XAxis,
@@ -52,6 +54,7 @@ import KpiCard from '@/components/KpiCard'
 import ChartCard from '@/components/ChartCard'
 import { VendasPorEstadoIndicador } from '@/components/VendasPorEstadoIndicador'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -181,6 +184,7 @@ export default function Index() {
 
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
   const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
+  const [mapExpanded, setMapExpanded] = useState(false)
 
   // Persistir filtros no sessionStorage sempre que mudarem (após aplicar ou inicializar),
   // para que o estado seja compartilhado com a página de Vendas.
@@ -545,26 +549,38 @@ export default function Index() {
       ) : (
         <>
           {/* PRIMEIRO INDICADOR DO DASHBOARD: Vendas por Estado (UF) e Região com Mapa do Brasil e Revendas */}
-          <Card className="rounded-xl border border-gray-200 bg-white shadow-xs">
+          <Card className="group relative rounded-xl border border-gray-200 bg-white shadow-xs transition-all duration-200 hover:border-slate-300">
             <CardHeader className="pb-3 border-b border-gray-100">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div>
-                  <CardTitle className="text-base font-extrabold text-slate-900">
-                    Vendas por Estado (UF) &amp; Região
-                  </CardTitle>
-                  <CardDescription className="text-xs text-slate-500 font-medium">
+              <div className="flex items-start sm:items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-[#0B6E99]" />
+                      Vendas por Estado (UF) &amp; Região
+                    </CardTitle>
+                    {filters.estado.length > 0 && (
+                      <Badge
+                        variant="outline"
+                        className="border-cyan-200 bg-cyan-50 text-[#0B6E99] text-xs font-bold"
+                      >
+                        Filtro ativo: {filters.estado.join(', ')}
+                      </Badge>
+                    )}
+                  </div>
+                  <CardDescription className="text-xs text-slate-500 font-medium mt-1">
                     Distribuição geográfica, ranking regional e mapa térmico com pinos das revendas
                     autorizadas Roland DG
                   </CardDescription>
                 </div>
-                {filters.estado.length > 0 && (
-                  <Badge
-                    variant="outline"
-                    className="border-cyan-200 bg-cyan-50 text-[#0B6E99] text-xs font-bold self-start sm:self-auto"
-                  >
-                    Filtro ativo: {filters.estado.join(', ')}
-                  </Badge>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setMapExpanded(true)}
+                  aria-label="Expandir Vendas por Estado (UF) & Região"
+                  title="Expandir em tela cheia"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-[#0B6E99] hover:bg-cyan-50 transition-colors opacity-80 sm:opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-[#0B6E99]/40 shrink-0"
+                >
+                  <Expand className="w-4 h-4" />
+                </button>
               </div>
             </CardHeader>
             <CardContent className="pt-4">
@@ -581,6 +597,53 @@ export default function Index() {
               />
             </CardContent>
           </Card>
+
+          {/* Modal de Expansão em Tela Cheia do Mapa do Brasil & Regiões */}
+          <Dialog open={mapExpanded} onOpenChange={setMapExpanded}>
+            <DialogContent className="max-w-none w-[96vw] sm:w-[94vw] h-[92vh] sm:rounded-2xl border border-gray-200 bg-white p-0 flex flex-col overflow-hidden shadow-2xl">
+              <DialogTitle className="sr-only">Vendas por Estado (UF) &amp; Região</DialogTitle>
+              <div className="flex items-center justify-between gap-3 px-6 pt-5 pb-4 border-b border-slate-100 bg-white">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-cyan-50 text-[#0B6E99] shrink-0">
+                    <MapPin className="w-5 h-5 text-[#0B6E99]" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <CardTitle className="text-lg font-extrabold text-slate-900 tracking-tight">
+                        Vendas por Estado (UF) &amp; Região
+                      </CardTitle>
+                      {filters.estado.length > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="border-cyan-200 bg-cyan-50 text-[#0B6E99] text-xs font-bold"
+                        >
+                          Filtro ativo: {filters.estado.join(', ')}
+                        </Badge>
+                      )}
+                    </div>
+                    <CardDescription className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                      Distribuição geográfica, ranking regional e mapa térmico com pinos das
+                      revendas autorizadas Roland DG
+                    </CardDescription>
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 w-full p-4 sm:p-6 overflow-y-auto">
+                <VendasPorEstadoIndicador
+                  data={chartEstado}
+                  selectedUf={filters.estado.length === 1 ? filters.estado[0] : null}
+                  onSelectUf={(uf) => {
+                    setFilters((prev) => ({
+                      ...prev,
+                      estado: uf ? [uf] : [],
+                    }))
+                  }}
+                  revendasFaturamento={revendasFaturamento}
+                  isExpanded={true}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* 4 Novos Gráficos com paleta Azul e Ciano (Tendência Equipamentos, Acumulado Insumos, Clientes Ativos) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

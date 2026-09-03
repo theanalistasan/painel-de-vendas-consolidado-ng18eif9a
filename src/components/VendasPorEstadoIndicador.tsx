@@ -15,6 +15,7 @@ interface VendasPorEstadoProps {
   selectedUf?: string | null
   onSelectUf?: (uf: string | null) => void
   revendasFaturamento?: Record<string, { faturamento: number; documentos: number; itens: number }>
+  isExpanded?: boolean
 }
 
 // Mapeamento oficial dos estados do Brasil para suas respectivas regiões
@@ -272,6 +273,7 @@ export function VendasPorEstadoIndicador({
   selectedUf: externalSelectedUf,
   onSelectUf,
   revendasFaturamento,
+  isExpanded = false,
 }: VendasPorEstadoProps) {
   const [internalSelectedUf, setInternalSelectedUf] = useState<string | null>(null)
   const [hoveredUf, setHoveredUf] = useState<string | null>(null)
@@ -478,7 +480,12 @@ export function VendasPorEstadoIndicador({
           </div>
 
           {/* SVG do Mapa do Brasil */}
-          <div className="w-full max-w-[420px] aspect-square relative flex items-center justify-center">
+          <div
+            className={cn(
+              'w-full aspect-square relative flex items-center justify-center transition-all',
+              isExpanded ? 'max-w-[560px] lg:max-w-[620px]' : 'max-w-[420px]',
+            )}
+          >
             <svg
               viewBox="0 0 600 600"
               className="w-full h-full drop-shadow-xs select-none"
@@ -768,7 +775,12 @@ export function VendasPorEstadoIndicador({
             </span>
           </div>
 
-          <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+          <div
+            className={cn(
+              'space-y-3 overflow-y-auto pr-1',
+              isExpanded ? 'max-h-[620px]' : 'max-h-[460px]',
+            )}
+          >
             {regionStats.map((item) => {
               const isRegionOpen = !selectedRegion || selectedRegion === item.regiao
               const estadosComVenda = item.estados.filter((e) => e.total > 0)
