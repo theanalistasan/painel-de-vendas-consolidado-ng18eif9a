@@ -47,11 +47,15 @@ export const DEFAULT_FILTERS: FilterState = {
 
 /**
  * Constrói o estado inicial dinâmico de filtros a partir das opções disponíveis na base de dados:
- * - Ano: mais recente disponível (ex: 2026)
- * - Mês: último mês disponível na base (ex: 8 / Agosto)
+ * Regra para Ano e Mês inicial:
+ * - Deve vir preenchido com o mês atual, SE o mês atual existir na base de vendas (ano e mês atuais com registros).
+ * - Caso contrário, deve vir com o ÚLTIMO mês disponível na base (hoje agosto/2026: ano 2026, mês 8).
+ * - Nunca deve cair num mês sem dados (como dezembro/2026).
+ *
+ * Outros filtros mantidos:
  * - Tipo de Documento: "NF de Saída"
  * - Grupo do Item: multi-seleção com "Equipamentos", "Acessórios", "Tintas" e "Peças"
- * - Utilização: todos os tipos que contenham "VENDA" (ex.: "VENDA DE MERCADORIA", "VENDA CONSUMO", etc.)
+ * - Utilização: todos os tipos contendo "VENDA"
  * - Base: 'ambos'
  */
 export function buildDynamicInitialFilters(options?: {
@@ -60,14 +64,56 @@ export function buildDynamicInitialFilters(options?: {
   tipoDocumento?: string[]
   grupoItem?: string[]
   utilizacao?: string[]
+  ultimoAno?: number
+  ultimoMes?: number
+  maxDataLancamento?: string
 }): FilterState {
-  // Ano mais recente disponível na base
-  const anosDisponiveis = (options?.anos || []).slice().sort((a, b) => b - a)
-  const anoRecente = anosDisponiveis.length > 0 ? String(anosDisponiveis[0]) : '2026'
+  // 1. Data/mês atual real do sistema
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const currentMonth = now.getMonth() + 1 // 1 a 12
 
-  // Mês mais recente disponível na base (se disponível)
-  const mesesDisponiveis = (options?.meses || []).slice().sort((a, b) => b - a)
-  const mesRecente = mesesDisponiveis.length > 0 ? String(mesesDisponiveis[0]) : '8'
+  // 2. Determinar o último ano e último mês disponíveis na base
+  const anosDisponiveis = (options?.anos || []).slice().sort((a, b) => b - a)
+
+  // Prioriza o ultimoAno / ultimoMes calculado pelo backend ou extrai de maxDataLancamento
+  let lastYearInDb = options?.ultimoAno ?? (anosDisponiveis.length > 0 ? anosDisponiveis[0] : 2026)
+  let lastMonthInDb = options?.ultimoMes
+
+  if (!lastMonthInDb && options?.maxDataLancamento && options.maxDataLancamento.length >= 7) {
+    const parts = options.maxDataLancamento.slice(0, 10).split('-')
+    const y = parseInt(parts[0], 10)
+    const m = parseInt(parts[1], 10)
+    if (!isNaN(y)) lastYearInDb = y
+    if (!isNaN(m) && m >= 1 && m <= 12) lastMonthInDb = m
+  }
+
+  // Se ainda não tiver o último mês determinado, usa 8 (agosto) como fallback seguro da base
+  if (!lastMonthInDb) {
+    lastMonthInDb = 8
+  }
+
+  // 3. Regra desejada:
+  // "Deve vir preenchido com o mês atual, SE o mês atual existir na base de vendas (tabela vendas);
+  //  Caso contrário, deve vir com o ÚLTIMO mês disponível na base (hoje agosto/2026 — ano 2026, mês 8)."
+  // Um mês atual (currentYear, currentMonth) existe na base se:
+  // - currentYear está em anosDisponiveis
+  // - e se currentYear for menor que lastYearInDb, OU se currentYear == lastYearInDb e currentMonth <= lastMonthInDb
+  let selectedAno = String(lastYearInDb)
+  let selectedMes = String(lastMonthInDb)
+
+  const hasCurrentYearInDb = anosDisponiveis.includes(currentYear)
+  const isCurrentPeriodInDb =
+    hasCurrentYearInDb &&
+    (currentYear < lastYearInDb || (currentYear === lastYearInDb && currentMonth <= lastMonthInDb))
+
+  if (isCurrentPeriodInDb) {
+    selectedAno = String(currentYear)
+    selectedMes = String(currentMonth)
+  } else {
+    selectedAno = String(lastYearInDb)
+    selectedMes = String(lastMonthInDb)
+  }
 
   // Grupo do Item: mapeia para os nomes existentes que correspondam a Equipamentos, Acessórios, Tintas e Peças
   const rawGrupos = options?.grupoItem || []
@@ -109,8 +155,8 @@ export function buildDynamicInitialFilters(options?: {
   return {
     ...EMPTY_FILTERS,
     base: 'ambos',
-    ano: [anoRecente],
-    mes: [mesRecente],
+    ano: [selectedAno],
+    mes: [selectedMes],
     dia: [],
     tipoDocumento: selectedDoc,
     grupoItem: selectedGrupos,

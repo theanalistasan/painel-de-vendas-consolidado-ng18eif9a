@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Download,
   ArrowUpDown,
@@ -29,7 +29,12 @@ import {
   exportToCSV,
   getGrupoColor,
 } from '@/lib/formatters'
-import { saveFiltersToSession, loadFiltersFromSession } from '@/lib/filter-persistence'
+import {
+  saveFiltersToSession,
+  loadFiltersFromSession,
+  buildDynamicInitialFilters,
+  hasSavedFiltersInSession,
+} from '@/lib/filter-persistence'
 import FilterBar from '@/components/FilterBar'
 import KpiCard from '@/components/KpiCard'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -59,13 +64,17 @@ export default function Vendas() {
   // collapsedNfes armazena os números de NFe colapsados (se não estiver no set, está expandido)
   const [collapsedNfes, setCollapsedNfes] = useState<Set<string>>(new Set())
 
+  const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
+  const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
 
-  // Persistir filtros no sessionStorage sempre que mudarem (após aplicar),
-  // para que o estado seja compartilhado com o Dashboard.
+  // Persistir filtros no sessionStorage sempre que mudarem (após aplicar ou após inicialização dinâmica),
+  // para que o estado seja compartilhado de forma consistente com o Dashboard.
   useEffect(() => {
-    saveFiltersToSession(filters)
-  }, [filters])
+    if (hadSavedFiltersAtMount.current || initializedFromBase) {
+      saveFiltersToSession(filters)
+    }
+  }, [filters, initializedFromBase])
 
   const [kpis, setKpis] = useState({
     faturamento: 0,
@@ -101,6 +110,16 @@ export default function Vendas() {
         })
         if (stats.filterOptions) {
           setFilterOptions(stats.filterOptions)
+
+          // Se for o primeiro acesso sem filtros salvos na sessão, ajusta os filtros
+          // com os valores dinâmicos reais da base (mês atual se existir, senão último mês da base)
+          if (!hadSavedFiltersAtMount.current && !initializedFromBase) {
+            const dynamicFilters = buildDynamicInitialFilters(stats.filterOptions)
+            setInitializedFromBase(true)
+            saveFiltersToSession(dynamicFilters)
+            setFilters(dynamicFilters)
+            return
+          }
         }
       }
     } catch (err) {

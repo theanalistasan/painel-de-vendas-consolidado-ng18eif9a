@@ -650,8 +650,11 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
     }
 
-    // Obter anos disponíveis rapidamente via MIN e MAX de data_lancamento
+    // Obter anos disponíveis e último período (ano/mês) da base via MIN e MAX de data_lancamento
     let anosList = []
+    let maxLancamento = ''
+    let ultimoAnoBase = 2026
+    let ultimoMesBase = 8
     try {
       const minMaxRows = arrayOf(new DynamicModel({ min_d: '', max_d: '' }))
       $app
@@ -661,11 +664,21 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         )
         .all(minMaxRows)
       if (minMaxRows.length > 0 && minMaxRows[0].min_d && minMaxRows[0].max_d) {
+        maxLancamento = minMaxRows[0].max_d
         const startYear = parseInt(minMaxRows[0].min_d.slice(0, 4), 10)
         const endYear = parseInt(minMaxRows[0].max_d.slice(0, 4), 10)
         if (!isNaN(startYear) && !isNaN(endYear) && endYear >= startYear) {
           for (let y = startYear; y <= endYear; y++) {
             anosList.push(y)
+          }
+        }
+        if (!isNaN(endYear)) {
+          ultimoAnoBase = endYear
+        }
+        if (maxLancamento.length >= 7) {
+          const parsedM = parseInt(maxLancamento.slice(5, 7), 10)
+          if (!isNaN(parsedM) && parsedM >= 1 && parsedM <= 12) {
+            ultimoMesBase = parsedM
           }
         }
       }
@@ -689,6 +702,9 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
         26, 27, 28, 29, 30, 31,
       ],
+      ultimoAno: ultimoAnoBase,
+      ultimoMes: ultimoMesBase,
+      maxDataLancamento: maxLancamento,
     }
 
     // ============================================================

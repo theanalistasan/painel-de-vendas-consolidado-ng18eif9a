@@ -200,6 +200,9 @@ export interface DashboardStatsResult {
     anos: number[]
     meses: number[]
     dias: number[]
+    ultimoAno?: number
+    ultimoMes?: number
+    maxDataLancamento?: string
   }
 }
 
