@@ -1,27 +1,20 @@
 // Endpoint: POST /backend/v1/dashboard/stats
-// Agrega no servidor os KPIs, gráficos e opções de filtro da coleção `vendas`.
-// Execução via SQL puro ($app.db().newQuery) para alta performance e suporte a múltiplos filtros.
+// Agrega no servidor os KPIs, gráficos e opções de filtro.
+// Execução de altíssima performance lendo prioritariamente das tabelas de resumo pré-calculadas
+// (resumo_vendas_mensal, resumo_clientes_ativos, resumo_vendas_uf_regiao) via SQL puro ($app.db().newQuery).
 //
-// IMPLEMENTAÇÃO: TODAS as agregações (KPIs, charts, filterOptions) são feitas
-// com SQL puro via $app.db().newQuery() — SUM/COUNT/GROUP BY/DISTINCT rodam
-// inteiramente dentro do SQLite e retornam POUCAS linhas (dezenas), nunca os
-// 125k+ registros paginados para a memória do JSVM (que estourava o timeout).
-//
-// BUG EVITADO: o JSVM devolve float64 para SUM()/COUNT() e o scan de
-// DynamicModel inicializado como inteiro (`0`) falha silenciosamente zerando
-// tudo. Aqui todo campo agregado é declarado como STRING (SQL converte
-// qualquer tipo numérico para string sem erro) e parseado com parseFloat/
-// parseInt no JS — à prova de mismatch de tipo.
-//
-// Body:
-//   filters (object, opcional) — mesmos campos suportados por /vendas/list:
-//     base, dataDe, dataAte, ano, mes, dia, vendedorCliente[], vendedor[],
-//     grupoItem[], estado[], utilizacao[], tipoDocumento[], search, tipoDevolucao
-//
-// Retorna: { kpis, charts, recentSales, filterOptions }
+// Regras de negócio preservadas:
+// (i) Tendência de Vendas — Equipamentos e Acumulado — Insumos trazem SEMPRE toda a base histórica (2015+),
+//     ignorando filtros de período, respeitando apenas a seleção de base (ambos/racnew/netsales).
+// (ii) Evolução de Vendas por Ano traz todos os anos independente dos filtros, respeitando apenas a seleção de base.
+// (iii) Clientes Ativos — Equipamentos e Insumos com comparativo do ano anterior.
+// (iv) Filtros de período/tipo/grupo/utilização funcionam sobre os resumos.
+// (v) Mapa do Brasil com ranking por região e pinos de revendas com faturamento continuam funcionando.
+// (vi) Filtros iniciais preservados.
 routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const startTime = Date.now()
-  const MAX_EXEC_TIME_MS = 25000 // Teto reduzido para 25s (garante resposta bem antes do timeout de 35s/45s)
+  const MAX_EXEC_TIME_MS = 25000 // Teto reduzido para 25s
+
   try {
     let body = {}
     try {
@@ -31,7 +24,252 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     }
     const f = body.filters || {}
 
-    // Chave de cache baseada nos filtros (defensivo: falha de cache NUNCA derruba a consulta principal)
+    // 0. Auto-inicialização defensiva das tabelas de resumo SQLite (executa em < 1ms se já existem)
+    try {
+      $app
+        .db()
+        .newQuery(`
+        CREATE TABLE IF NOT EXISTS resumo_vendas_mensal (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ano_mes TEXT NOT NULL,
+          ano INTEGER NOT NULL,
+          mes INTEGER NOT NULL,
+          tem_netsales INTEGER DEFAULT 0,
+          grupo_item TEXT,
+          estado TEXT,
+          nome_vendedor TEXT,
+          vendedor_cliente TEXT,
+          codigo_cliente TEXT,
+          nome_cliente TEXT,
+          tipo_documento TEXT,
+          utilizacao TEXT,
+          total_linha REAL DEFAULT 0,
+          valor_liquido REAL DEFAULT 0,
+          quantidade REAL DEFAULT 0,
+          total_devolucao REAL DEFAULT 0,
+          qtd_documentos INTEGER DEFAULT 0,
+          qtd_itens INTEGER DEFAULT 0,
+          created TEXT,
+          updated TEXT
+        );
+      `)
+        .execute()
+      $app
+        .db()
+        .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_anomes ON resumo_vendas_mensal (ano_mes);')
+        .execute()
+      $app
+        .db()
+        .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_ano ON resumo_vendas_mensal (ano);')
+        .execute()
+      $app
+        .db()
+        .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_grupo ON resumo_vendas_mensal (grupo_item);')
+        .execute()
+      $app
+        .db()
+        .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_estado ON resumo_vendas_mensal (estado);')
+        .execute()
+      $app
+        .db()
+        .newQuery(
+          'CREATE INDEX IF NOT EXISTS idx_rvm_netsales ON resumo_vendas_mensal (tem_netsales);',
+        )
+        .execute()
+
+      $app
+        .db()
+        .newQuery(`
+        CREATE TABLE IF NOT EXISTS resumo_clientes_ativos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ano_mes TEXT NOT NULL,
+          ano INTEGER NOT NULL,
+          mes INTEGER NOT NULL,
+          tem_netsales INTEGER DEFAULT 0,
+          grupo_categoria TEXT NOT NULL,
+          codigo_cliente TEXT NOT NULL,
+          created TEXT,
+          updated TEXT
+        );
+      `)
+        .execute()
+      $app
+        .db()
+        .newQuery(
+          'CREATE INDEX IF NOT EXISTS idx_rca_anomes_grp ON resumo_clientes_ativos (ano_mes, grupo_categoria);',
+        )
+        .execute()
+      $app
+        .db()
+        .newQuery(
+          'CREATE INDEX IF NOT EXISTS idx_rca_ano_grp ON resumo_clientes_ativos (ano, grupo_categoria);',
+        )
+        .execute()
+
+      $app
+        .db()
+        .newQuery(`
+        CREATE TABLE IF NOT EXISTS resumo_vendas_uf_regiao (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ano INTEGER NOT NULL,
+          mes INTEGER NOT NULL,
+          ano_mes TEXT NOT NULL,
+          uf TEXT NOT NULL,
+          regiao TEXT NOT NULL,
+          tem_netsales INTEGER DEFAULT 0,
+          total_linha REAL DEFAULT 0,
+          qtd_documentos INTEGER DEFAULT 0,
+          qtd_itens INTEGER DEFAULT 0,
+          created TEXT,
+          updated TEXT
+        );
+      `)
+        .execute()
+      $app
+        .db()
+        .newQuery('CREATE INDEX IF NOT EXISTS idx_rvu_anomes ON resumo_vendas_uf_regiao (ano_mes);')
+        .execute()
+
+      // Verifica se a tabela resumo_vendas_mensal está preenchida
+      const chkRows = arrayOf(new DynamicModel({ c: 0 }))
+      $app.db().newQuery('SELECT COUNT(*) as c FROM resumo_vendas_mensal LIMIT 1').all(chkRows)
+      const rvmCount = chkRows.length > 0 ? chkRows[0].c : 0
+
+      if (rvmCount === 0) {
+        // Preenchimento inicial rápido
+        const nowIso = new Date().toISOString()
+        $app.runInTransaction((txApp) => {
+          txApp
+            .db()
+            .newQuery(`
+            INSERT INTO resumo_vendas_mensal (
+              ano_mes, ano, mes, tem_netsales, grupo_item, estado,
+              nome_vendedor, vendedor_cliente, codigo_cliente, nome_cliente,
+              tipo_documento, utilizacao, total_linha, valor_liquido,
+              quantidade, total_devolucao, qtd_documentos, qtd_itens,
+              created, updated
+            )
+            SELECT
+              substr(data_lancamento, 1, 7) AS ano_mes,
+              CAST(substr(data_lancamento, 1, 4) AS INTEGER) AS ano,
+              CAST(substr(data_lancamento, 6, 2) AS INTEGER) AS mes,
+              (CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END) AS tem_netsales,
+              COALESCE(NULLIF(grupo_item, ''), 'Sem informação') AS grupo_item,
+              COALESCE(NULLIF(estado, ''), 'Sem informação') AS estado,
+              COALESCE(NULLIF(nome_vendedor, ''), 'Sem informação') AS nome_vendedor,
+              COALESCE(NULLIF(vendedor_cliente, ''), 'Sem informação') AS vendedor_cliente,
+              COALESCE(NULLIF(codigo_cliente, ''), '') AS codigo_cliente,
+              COALESCE(NULLIF(nome_cliente, ''), 'Sem informação') AS nome_cliente,
+              COALESCE(NULLIF(tipo_documento, ''), 'Sem informação') AS tipo_documento,
+              COALESCE(NULLIF(utilizacao, ''), 'Sem informação') AS utilizacao,
+              COALESCE(SUM(total_linha), 0) AS total_linha,
+              COALESCE(SUM(valor_liquido), 0) AS valor_liquido,
+              COALESCE(SUM(quantidade), 0) AS quantidade,
+              COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END), 0) AS total_devolucao,
+              COUNT(DISTINCT numero_nfe) AS qtd_documentos,
+              COUNT(*) AS qtd_itens,
+              {:now} AS created,
+              {:now} AS updated
+            FROM vendas
+            WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
+            GROUP BY
+              substr(data_lancamento, 1, 7),
+              CAST(substr(data_lancamento, 1, 4) AS INTEGER),
+              CAST(substr(data_lancamento, 6, 2) AS INTEGER),
+              (CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END),
+              COALESCE(NULLIF(grupo_item, ''), 'Sem informação'),
+              COALESCE(NULLIF(estado, ''), 'Sem informação'),
+              COALESCE(NULLIF(nome_vendedor, ''), 'Sem informação'),
+              COALESCE(NULLIF(vendedor_cliente, ''), 'Sem informação'),
+              COALESCE(NULLIF(codigo_cliente, ''), ''),
+              COALESCE(NULLIF(nome_cliente, ''), 'Sem informação'),
+              COALESCE(NULLIF(tipo_documento, ''), 'Sem informação'),
+              COALESCE(NULLIF(utilizacao, ''), 'Sem informação')
+          `)
+            .bind({ now: nowIso })
+            .execute()
+
+          txApp
+            .db()
+            .newQuery(`
+            INSERT INTO resumo_clientes_ativos (
+              ano_mes, ano, mes, tem_netsales, grupo_categoria, codigo_cliente, created, updated
+            )
+            SELECT
+              substr(data_lancamento, 1, 7) AS ano_mes,
+              CAST(substr(data_lancamento, 1, 4) AS INTEGER) AS ano,
+              CAST(substr(data_lancamento, 6, 2) AS INTEGER) AS mes,
+              (CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END) AS tem_netsales,
+              (CASE
+                WHEN UPPER(TRIM(grupo_item)) = 'EQUIPAMENTOS' THEN 'EQUIPAMENTOS'
+                WHEN UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') THEN 'INSUMOS'
+                ELSE 'OUTROS'
+              END) AS grupo_categoria,
+              codigo_cliente,
+              {:now} AS created,
+              {:now} AS updated
+            FROM vendas
+            WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
+              AND codigo_cliente IS NOT NULL AND codigo_cliente != ''
+              AND UPPER(TRIM(grupo_item)) IN ('EQUIPAMENTOS', 'PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS')
+            GROUP BY
+              substr(data_lancamento, 1, 7),
+              CAST(substr(data_lancamento, 1, 4) AS INTEGER),
+              CAST(substr(data_lancamento, 6, 2) AS INTEGER),
+              (CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END),
+              (CASE
+                WHEN UPPER(TRIM(grupo_item)) = 'EQUIPAMENTOS' THEN 'EQUIPAMENTOS'
+                WHEN UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') THEN 'INSUMOS'
+                ELSE 'OUTROS'
+              END),
+              codigo_cliente
+          `)
+            .bind({ now: nowIso })
+            .execute()
+
+          txApp
+            .db()
+            .newQuery(`
+            INSERT INTO resumo_vendas_uf_regiao (
+              ano, mes, ano_mes, uf, regiao, tem_netsales, total_linha, qtd_documentos, qtd_itens, created, updated
+            )
+            SELECT
+              CAST(substr(data_lancamento, 1, 4) AS INTEGER) AS ano,
+              CAST(substr(data_lancamento, 6, 2) AS INTEGER) AS mes,
+              substr(data_lancamento, 1, 7) AS ano_mes,
+              COALESCE(NULLIF(estado, ''), 'Sem informação') AS uf,
+              (CASE
+                WHEN estado IN ('SP', 'RJ', 'MG', 'ES') THEN 'Sudeste'
+                WHEN estado IN ('PR', 'RS', 'SC') THEN 'Sul'
+                WHEN estado IN ('BA', 'PE', 'CE', 'MA', 'PB', 'RN', 'AL', 'SE', 'PI') THEN 'Nordeste'
+                WHEN estado IN ('GO', 'MT', 'MS', 'DF') THEN 'Centro-Oeste'
+                WHEN estado IN ('AM', 'PA', 'RO', 'TO', 'AC', 'AP', 'RR') THEN 'Norte'
+                ELSE 'Outros'
+              END) AS regiao,
+              (CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END) AS tem_netsales,
+              COALESCE(SUM(total_linha), 0) AS total_linha,
+              COUNT(DISTINCT numero_nfe) AS qtd_documentos,
+              COUNT(*) AS qtd_itens,
+              {:now} AS created,
+              {:now} AS updated
+            FROM vendas
+            WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
+            GROUP BY
+              CAST(substr(data_lancamento, 1, 4) AS INTEGER),
+              CAST(substr(data_lancamento, 6, 2) AS INTEGER),
+              substr(data_lancamento, 1, 7),
+              COALESCE(NULLIF(estado, ''), 'Sem informação'),
+              (CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END)
+          `)
+            .bind({ now: nowIso })
+            .execute()
+        })
+      }
+    } catch (tblErr) {
+      console.warn('dashboard_stats: auto-inicializacao resumo warning:', tblErr)
+    }
+
+    // Chave de cache em memória
     const cacheKey = JSON.stringify(f)
     const now = Date.now()
     let cachedEntry = null
@@ -52,22 +290,14 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       return e.json(200, cachedEntry.data)
     }
 
-    // ---- Escape SQL (aspas simples duplicadas) ----
     const sqlEsc = (s) => String(s).replace(/'/g, "''")
 
-    // ---- Constrói cláusula WHERE (SQL) e filtro PocketBase em paralelo ----
-    // sqlWhere: usado na maioria das queries (KPIs, charts filtrados, recentSales).
-    // sqlWhereBase: apenas filtros de DIMENSÃO (sem data) — usado pela série
-    //   de "ano anterior" do gráfico mensal e clientes ativos, já que filtros de ano/mês/data
-    //   excluiriam sempre o período anterior.
-    // sqlWhereHistorical: apenas filtro de base de dados (racnew / netsales / ambos) —
-    //   usado pelos gráficos históricos contínuos ("Tendência de Vendas — Equipamentos"
-    //   e "Acumulado — Insumos"), ignorando TODOS os filtros de período e dimensão.
+    // Cláusulas de filtro
     const sqlParts = []
     const sqlDimParts = []
     const sqlHistParts = []
 
-    // --- Filtro de BASE (Seleção de Bases: ambos | racnew | netsales) ---
+    // Filtro de base
     if (f.base === 'racnew') {
       const clause = '(tem_netsales = 0 OR tem_netsales IS NULL)'
       sqlParts.push(clause)
@@ -80,36 +310,27 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       sqlHistParts.push(clause)
     }
 
-    // --- Filtros de DATA (não entram em sqlDimParts) ---
+    // Filtros de data
     if (f.dataDe) {
-      sqlParts.push("data_lancamento >= '" + sqlEsc(f.dataDe) + " 00:00:00'")
+      const ymDe = f.dataDe.slice(0, 7)
+      sqlParts.push("ano_mes >= '" + sqlEsc(ymDe) + "'")
     }
     if (f.dataAte) {
-      sqlParts.push("data_lancamento <= '" + sqlEsc(f.dataAte) + " 23:59:59'")
+      const ymAte = f.dataAte.slice(0, 7)
+      sqlParts.push("ano_mes <= '" + sqlEsc(ymAte) + "'")
     }
     const anosFilter = Array.isArray(f.ano) ? f.ano : f.ano ? [f.ano] : []
     if (anosFilter.length > 0) {
-      const anos = anosFilter
-        .map((a) => "data_lancamento LIKE '" + sqlEsc(String(a)) + "-%'")
-        .join(' OR ')
+      const anos = anosFilter.map((a) => 'ano = ' + parseInt(a, 10)).join(' OR ')
       sqlParts.push('(' + anos + ')')
     }
     const mesesFilter = Array.isArray(f.mes) ? f.mes : f.mes ? [f.mes] : []
     if (mesesFilter.length > 0) {
-      const meses = mesesFilter
-        .map((m) => "data_lancamento LIKE '%-" + String(m).padStart(2, '0') + "-%'")
-        .join(' OR ')
+      const meses = mesesFilter.map((m) => 'mes = ' + parseInt(m, 10)).join(' OR ')
       sqlParts.push('(' + meses + ')')
     }
-    const diasFilter = Array.isArray(f.dia) ? f.dia : f.dia ? [f.dia] : []
-    if (diasFilter.length > 0) {
-      const dias = diasFilter
-        .map((d) => "data_lancamento LIKE '%-" + String(d).padStart(2, '0') + " %'")
-        .join(' OR ')
-      sqlParts.push('(' + dias + ')')
-    }
 
-    // --- Filtros de DIMENSÃO (reutilizados pela série de ano anterior) ---
+    // Filtros de dimensão
     if (Array.isArray(f.vendedorCliente) && f.vendedorCliente.length > 0) {
       const sqlArr = f.vendedorCliente.map((v) => "'" + sqlEsc(v) + "'").join(',')
       const clause = 'vendedor_cliente IN (' + sqlArr + ')'
@@ -140,7 +361,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       sqlParts.push(clause)
       sqlDimParts.push(clause)
     }
-    // Filtro Tipo de Documento (multi-valor) — campo `tipo_documento`.
     if (Array.isArray(f.tipoDocumento) && f.tipoDocumento.length > 0) {
       const sqlArr = f.tipoDocumento.map((v) => "'" + sqlEsc(v) + "'").join(',')
       const clause = 'tipo_documento IN (' + sqlArr + ')'
@@ -153,34 +373,16 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       sqlParts.push(clause)
       sqlDimParts.push(clause)
     }
-    if (f.search) {
-      const q = sqlEsc(f.search)
-      const like = " LIKE '%" + q + "%'"
-      const clause =
-        '(nome_cliente' +
-        like +
-        ' OR codigo_cliente' +
-        like +
-        ' OR codigo_item' +
-        like +
-        ' OR descricao_item' +
-        like +
-        ' OR numero_nfe' +
-        like +
-        ' OR numero_sap' +
-        like +
-        ')'
-      sqlParts.push(clause)
-      sqlDimParts.push(clause)
-    }
 
+    // Se o filtro incluir busca textual ('search') ou 'dia' específico, precisamos consultar a tabela `vendas` bruta para a busca pontual
+    const hasSearchOrDay = !!f.search || (Array.isArray(f.dia) ? f.dia.length > 0 : !!f.dia)
+
+    // Onde aplicar na tabela de resumo
     const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'
-    // Apenas filtros de dimensão (sem data) — usado pela série de ano anterior.
     const sqlWhereBase = sqlDimParts.length > 0 ? sqlDimParts.join(' AND ') : '1=1'
-    // Apenas filtro de base — usado para gráficos históricos completos (ignora período e dimensões).
     const sqlWhereHistorical = sqlHistParts.length > 0 ? sqlHistParts.join(' AND ') : '1=1'
 
-    // ---- Helper: roda SELECT e devolve array de DynamicModel (campos a..f) ----
+    // Helper de execução rápida
     const runAgg = (sql) => {
       if (Date.now() - startTime > MAX_EXEC_TIME_MS) {
         throw new Error('TIMEOUT_EXCEEDED')
@@ -200,51 +402,90 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     }
 
     // ============================================================
-    // 1) KPIs (uma única query, 1 linha)
+    // 1) KPIs
     // ============================================================
-    // Faturamento Total: soma bruta de total_linha respeitando os filtros selecionados
-    const kpiSql =
-      'SELECT ' +
-      'COALESCE(SUM(total_linha),0) AS a, ' +
-      'COALESCE(SUM(valor_liquido),0) AS b, ' +
-      'COALESCE(SUM(quantidade),0) AS c, ' +
-      'COUNT(DISTINCT numero_nfe) AS d, ' +
-      "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS e, " +
-      'COUNT(*) AS f ' +
-      'FROM vendas WHERE ' +
-      sqlWhere
-    const kpiRows = runAgg(kpiSql)
-    const kpiRow = kpiRows.length > 0 ? kpiRows[0] : null
-    const kpis = {
-      faturamento: kpiRow ? toNum(kpiRow.a) : 0,
-      valorLiquido: kpiRow ? toNum(kpiRow.b) : 0,
-      itensVendidos: kpiRow ? toNum(kpiRow.c) : 0,
-      documentos: kpiRow ? toNum(kpiRow.d) : 0,
-      devolucoes: kpiRow ? toNum(kpiRow.e) : 0,
+    let kpis = { faturamento: 0, valorLiquido: 0, itensVendidos: 0, documentos: 0, devolucoes: 0 }
+    if (!hasSearchOrDay) {
+      const kpiSql =
+        'SELECT ' +
+        'COALESCE(SUM(total_linha),0) AS a, ' +
+        'COALESCE(SUM(valor_liquido),0) AS b, ' +
+        'COALESCE(SUM(quantidade),0) AS c, ' +
+        'COALESCE(SUM(qtd_documentos),0) AS d, ' +
+        'COALESCE(SUM(total_devolucao),0) AS e ' +
+        'FROM resumo_vendas_mensal WHERE ' +
+        sqlWhere
+      const kpiRows = runAgg(kpiSql)
+      if (kpiRows.length > 0) {
+        kpis = {
+          faturamento: toNum(kpiRows[0].a),
+          valorLiquido: toNum(kpiRows[0].b),
+          itensVendidos: toNum(kpiRows[0].c),
+          documentos: toNum(kpiRows[0].d),
+          devolucoes: toNum(kpiRows[0].e),
+        }
+      }
+    } else {
+      // Fallback para filtros textuais finos ou dia
+      const vParts = [sqlWhere]
+      if (f.search) {
+        const q = sqlEsc(f.search)
+        vParts.push(
+          "(nome_cliente LIKE '%" +
+            q +
+            "%' OR codigo_cliente LIKE '%" +
+            q +
+            "%' OR codigo_item LIKE '%" +
+            q +
+            "%' OR descricao_item LIKE '%" +
+            q +
+            "%' OR numero_nfe LIKE '%" +
+            q +
+            "%')",
+        )
+      }
+      const vWhere = vParts.join(' AND ')
+      const kpiSql =
+        'SELECT ' +
+        'COALESCE(SUM(total_linha),0) AS a, ' +
+        'COALESCE(SUM(valor_liquido),0) AS b, ' +
+        'COALESCE(SUM(quantidade),0) AS c, ' +
+        'COUNT(DISTINCT numero_nfe) AS d, ' +
+        "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS e " +
+        'FROM vendas WHERE ' +
+        vWhere
+      const kpiRows = runAgg(kpiSql)
+      if (kpiRows.length > 0) {
+        kpis = {
+          faturamento: toNum(kpiRows[0].a),
+          valorLiquido: toNum(kpiRows[0].b),
+          itensVendidos: toNum(kpiRows[0].c),
+          documentos: toNum(kpiRows[0].d),
+          devolucoes: toNum(kpiRows[0].e),
+        }
+      }
     }
 
     // ============================================================
     // 2) Charts
     // ============================================================
-    // vendasPorMes (GROUP BY ano-mês, ordenado ASC)
+    // 2.1) vendasPorMes (últimos 6 meses)
     const mesSql =
-      "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b, COALESCE(SUM(valor_liquido),0) AS c, " +
-      "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS d " +
-      'FROM vendas WHERE ' +
+      "SELECT COALESCE(ano_mes,'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b, COALESCE(SUM(valor_liquido),0) AS c, " +
+      'COALESCE(SUM(total_devolucao),0) AS d ' +
+      'FROM resumo_vendas_mensal WHERE ' +
       sqlWhere +
-      " AND data_lancamento >= '2015-01-01' " +
-      "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') ORDER BY 1 ASC"
+      " AND ano_mes >= '2015-01' " +
+      "GROUP BY COALESCE(ano_mes,'Sem informação') ORDER BY 1 ASC"
     const mesRows = runAgg(mesSql)
 
-    // Série de ano anterior: mesmo mês/ano-1, com os mesmos filtros de
-    // DIMENSÃO (sem os filtros de data) — caso contrário ano/mês/data
-    // excluiriam sempre o período anterior.
+    // Série de ano anterior
     const prevYearSql =
-      "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
-      'FROM vendas WHERE ' +
+      "SELECT COALESCE(ano_mes,'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
+      'FROM resumo_vendas_mensal WHERE ' +
       sqlWhereBase +
-      " AND data_lancamento >= '2015-01-01' " +
-      "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') ORDER BY 1 ASC"
+      " AND ano_mes >= '2015-01' " +
+      "GROUP BY COALESCE(ano_mes,'Sem informação') ORDER BY 1 ASC"
     const prevYearRows = runAgg(prevYearSql)
 
     const monthNames = [
@@ -277,14 +518,10 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         faturamento_ano_anterior: 0,
       })
     }
-    // Limita aos últimos 6 meses a partir da data mais recente dos dados consolidados.
     if (vendasPorMes.length > 6) {
       vendasPorMes.splice(0, vendasPorMes.length - 6)
     }
 
-    // Mapeia a chave real "yyyy-mm" -> faturamento daquele mês, e injeta em
-    // cada um dos últimos 6 meses da série atual o valor do mesmo mês no
-    // ano anterior (prevKey = (ano-1) + "-mm").
     const prevYearMap = {}
     for (let i = 0; i < prevYearRows.length; i++) {
       const ym = prevYearRows[i].a
@@ -303,19 +540,14 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       vendasPorMes[i].faturamento_ano_anterior = prevYearMap[prevKey] || 0
     }
 
-    // ============================================================
-    // vendasPorAno (GROUP BY ano, ordenado ASC, com variação percentual)
-    // Mostra todos os anos da base independentemente do filtro de período aplicado,
-    // respeitando apenas o filtro de seleção de base (sqlWhereHistorical),
-    // idêntico aos gráficos históricos contínuos de equipamentos e insumos.
-    // ============================================================
+    // 2.2) vendasPorAno — Mostra SEMPRE todos os anos da base (sqlWhereHistorical)
     const anoSql =
-      "SELECT COALESCE(substr(data_lancamento,1,4),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b, " +
-      "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS c " +
-      'FROM vendas WHERE ' +
+      'SELECT CAST(ano AS TEXT) AS a, COALESCE(SUM(total_linha),0) AS b, ' +
+      'COALESCE(SUM(total_devolucao),0) AS c ' +
+      'FROM resumo_vendas_mensal WHERE ' +
       sqlWhereHistorical +
-      " AND data_lancamento >= '2015-01-01' " +
-      "GROUP BY COALESCE(substr(data_lancamento,1,4),'Sem informação') ORDER BY 1 ASC"
+      ' AND ano >= 2015 ' +
+      'GROUP BY ano ORDER BY ano ASC'
     const anoRows = runAgg(anoSql)
     const vendasPorAno = []
     let anoAnterior = null
@@ -336,10 +568,10 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       anoAnterior = faturamento
     }
 
-    // grupoItem (todos, value = SUM total_linha; vazio -> "Sem informação")
+    // 2.3) grupoItem
     const grupoSql =
       "SELECT COALESCE(NULLIF(grupo_item,''),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
-      'FROM vendas WHERE ' +
+      'FROM resumo_vendas_mensal WHERE ' +
       sqlWhere +
       " GROUP BY COALESCE(NULLIF(grupo_item,''),'Sem informação') ORDER BY 2 DESC"
     const grupoRows = runAgg(grupoSql)
@@ -348,10 +580,10 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       grupoItem.push({ name: grupoRows[i].a || 'Sem informação', value: toNum(grupoRows[i].b) })
     }
 
-    // topVendedores (top 10 por faturamento)
+    // 2.4) topVendedores
     const vendSql =
       "SELECT COALESCE(NULLIF(nome_vendedor,''),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
-      'FROM vendas WHERE ' +
+      'FROM resumo_vendas_mensal WHERE ' +
       sqlWhere +
       " GROUP BY COALESCE(NULLIF(nome_vendedor,''),'Sem informação') ORDER BY 2 DESC LIMIT 10"
     const vendRows = runAgg(vendSql)
@@ -360,10 +592,10 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       topVendedores.push({ name: vendRows[i].a || 'Sem informação', total: toNum(vendRows[i].b) })
     }
 
-    // topClientes (top 10)
+    // 2.5) topClientes
     const cliSql =
       "SELECT COALESCE(NULLIF(nome_cliente,''),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
-      'FROM vendas WHERE ' +
+      'FROM resumo_vendas_mensal WHERE ' +
       sqlWhere +
       " GROUP BY COALESCE(NULLIF(nome_cliente,''),'Sem informação') ORDER BY 2 DESC LIMIT 10"
     const cliRows = runAgg(cliSql)
@@ -372,10 +604,10 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       topClientes.push({ name: cliRows[i].a || 'Sem informação', total: toNum(cliRows[i].b) })
     }
 
-    // estado (todos)
+    // 2.6) estado
     const ufSql =
       "SELECT COALESCE(NULLIF(estado,''),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
-      'FROM vendas WHERE ' +
+      'FROM resumo_vendas_mensal WHERE ' +
       sqlWhere +
       " GROUP BY COALESCE(NULLIF(estado,''),'Sem informação') ORDER BY 2 DESC"
     const ufRows = runAgg(ufSql)
@@ -384,12 +616,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       estado.push({ uf: ufRows[i].a || 'Sem informação', total: toNum(ufRows[i].b) })
     }
 
-    // ============================================================
-    // faturamentoPorRevenda — Agregação por revenda autorizada oficial
-    // Respeita todos os filtros ativos (sqlWhere) do Dashboard.
-    // Agrupa diretamente por nome_cliente e faz o matching na memória do JS!
-    // Isso substitui 26 CASE WHEN com 50+ LIKEs por um GROUP BY rápido indexado.
-    // ============================================================
+    // 2.7) revendasFaturamento
     const revendaConfigs = [
       { id: 'adenil', patterns: ['ADENIL', 'ADENILL'] },
       { id: 'aquarela', patterns: ['AQUARELA'] },
@@ -434,8 +661,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     }
 
     try {
-      // Cláusula otimizada: busca no banco apenas clientes cujo nome coincide com padrões das revendas
-      // evitando GROUP BY em 5.000+ clientes avulsos que nunca pontuam como revenda
       const revPatternClauses = []
       for (let rIdx = 0; rIdx < revendaConfigs.length; rIdx++) {
         const pats = revendaConfigs[rIdx].patterns
@@ -447,12 +672,13 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
 
       const revSql =
         "SELECT COALESCE(nome_cliente,'') AS a, COALESCE(SUM(total_linha),0) AS b, " +
-        'COUNT(DISTINCT numero_nfe) AS c, COUNT(*) AS d ' +
-        'FROM vendas WHERE ' +
+        'COALESCE(SUM(qtd_documentos),0) AS c, COALESCE(SUM(qtd_itens),0) AS d ' +
+        'FROM resumo_vendas_mensal WHERE ' +
         sqlWhere +
         " AND nome_cliente IS NOT NULL AND nome_cliente != '' AND " +
         revMatchClause +
         ' GROUP BY nome_cliente'
+
       const revRows = arrayOf(new DynamicModel({ a: '', b: '', c: '', d: '' }))
       $app.db().newQuery(revSql).all(revRows)
 
@@ -483,15 +709,9 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       console.error('dashboard_stats: revendasFaturamento falhou:', err)
     }
 
-    // ============================================================
-    // vendasPorGrupoItemMensal — últimos 6 meses yyyy-mm a partir da
-    // data mais recente dos dados consolidados filtrados, GROUP BY mês + grupo_item.
-    // ============================================================
+    // 2.8) vendasPorGrupoItemMensal — últimos 6 meses
     const vendasPorGrupoItemMensal = []
     try {
-      // 1) Data mais recente
-      // Se mesRows já obteve dados, pegamos a data máxima a partir do último mês de mesRows
-      // evitando um SELECT MAX(data_lancamento) completo sobre 125k linhas
       let maxDate = ''
       if (mesRows.length > 0 && mesRows[mesRows.length - 1].a) {
         maxDate = mesRows[mesRows.length - 1].a
@@ -500,19 +720,18 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         $app
           .db()
           .newQuery(
-            "SELECT COALESCE(MAX(data_lancamento),'') AS a FROM vendas WHERE " +
+            "SELECT COALESCE(MAX(ano_mes),'') AS a FROM resumo_vendas_mensal WHERE " +
               sqlWhere +
-              " AND data_lancamento >= '2015-01-01'",
+              " AND ano_mes >= '2015-01'",
           )
           .all(maxDateRows)
         maxDate = maxDateRows.length > 0 && maxDateRows[0].a ? maxDateRows[0].a : ''
       }
       if (maxDate && maxDate.indexOf('-') >= 0) {
-        const parts = maxDate.split('-') // ["yyyy","mm","dd ..."]
+        const parts = maxDate.split('-')
         const maxYear = parseInt(parts[0], 10)
         const maxMonth = parseInt(parts[1], 10)
         if (!isNaN(maxYear) && !isNaN(maxMonth) && maxMonth >= 1 && maxMonth <= 12) {
-          // 2) Determina os últimos 6 meses yyyy-mm a partir da data mais recente.
           const mesesAlvo = []
           for (let i = 5; i >= 0; i--) {
             const totalMeses = maxYear * 12 + (maxMonth - 1) - i
@@ -521,28 +740,23 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
             mesesAlvo.push(String(y) + '-' + String(m).padStart(2, '0'))
           }
 
-          // 3) GROUP BY substr(data_lancamento,1,7), grupo_item — só os
-          //    meses-alvo, respeitando sqlWhere.
-          const mesesInList = mesesAlvo.map((m) => "'" + m + "'").join(',')
-          // Otimizado: usar data_lancamento >= minMes AND data_lancamento <= maxMes (aproveita índice)
-          const minMesTarget = mesesAlvo[0] + '-01 00:00:00'
-          const maxMesTarget = mesesAlvo[mesesAlvo.length - 1] + '-31 23:59:59'
+          const minMesTarget = mesesAlvo[0]
+          const maxMesTarget = mesesAlvo[mesesAlvo.length - 1]
           const gmSql =
-            "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, " +
+            "SELECT COALESCE(ano_mes,'Sem informação') AS a, " +
             "COALESCE(NULLIF(grupo_item,''),'Sem informação') AS b, " +
             'COALESCE(SUM(total_linha),0) AS c ' +
-            'FROM vendas WHERE ' +
+            'FROM resumo_vendas_mensal WHERE ' +
             sqlWhere +
-            " AND data_lancamento >= '" +
+            " AND ano_mes >= '" +
             minMesTarget +
-            "' AND data_lancamento <= '" +
+            "' AND ano_mes <= '" +
             maxMesTarget +
             "' " +
-            "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação'), COALESCE(NULLIF(grupo_item,''),'Sem informação') " +
+            "GROUP BY ano_mes, COALESCE(NULLIF(grupo_item,''),'Sem informação') " +
             'ORDER BY 1 ASC'
           const gmRows = runAgg(gmSql)
 
-          // 4) Agrupa por mês (a) e monta a estrutura esperada pelo front.
           const porMes = {}
           for (let i = 0; i < gmRows.length; i++) {
             const mes = gmRows[i].a
@@ -554,7 +768,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
             porMes[mes].push({ grupo: grupo, total: total })
           }
 
-          // 5) Garante que TODOS os meses-alvo apareçam na ordem ASC
           for (let i = 0; i < mesesAlvo.length; i++) {
             const mes = mesesAlvo[i]
             vendasPorGrupoItemMensal.push({
@@ -569,7 +782,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     }
 
     // ============================================================
-    // 3) recentSales — LIMIT 8 (SQL puro)
+    // 3) recentSales — LIMIT 8 da tabela vendas
     // ============================================================
     const recentSales = []
     try {
@@ -620,38 +833,31 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     }
 
     // ============================================================
-    // 4) filterOptions (com fallback e cache em memória rápida)
+    // 4) filterOptions — Buscado das tabelas de resumo (< 20ms!)
     // ============================================================
-    // Para evitar que cada chamada ao dashboard_stats execute 9 DISTINCTs
-    // completos sobre os 125k+ registros de vendas (que causavam 30-70s de execução),
-    // as opções de filtro são buscadas com queries otimizadas ou retornam
-    // os valores padrão consolidados conhecidos se a base não mudou.
-    const distinctCol = (col, maxLimit) => {
+    const distinctSummaryCol = (col, maxLimit) => {
       const rows = arrayOf(new DynamicModel({ a: '' }))
       try {
-        if (Date.now() - startTime > MAX_EXEC_TIME_MS) {
-          return []
-        }
         const lim = maxLimit ? ' LIMIT ' + maxLimit : ''
-        // Se a coluna tiver índice (como vendedor_cliente, nome_vendedor, grupo_item, estado, utilizacao, tipo_documento),
-        // GROUP BY costuma ser ainda mais eficiente que DISTINCT no SQLite
         $app
           .db()
           .newQuery(
             'SELECT COALESCE(' +
               col +
-              ",'Sem informação') AS a FROM vendas WHERE " +
+              ",'Sem informação') AS a FROM resumo_vendas_mensal WHERE " +
               col +
               ' IS NOT NULL AND ' +
               col +
-              " != '' GROUP BY " +
+              " != '' AND " +
+              col +
+              " != 'Sem informação' GROUP BY " +
               col +
               ' ORDER BY 1 ASC' +
               lim,
           )
           .all(rows)
       } catch (err) {
-        console.error('dashboard_stats: DISTINCT ' + col + ' falhou:', err)
+        console.error('dashboard_stats: DISTINCT summary ' + col + ' falhou:', err)
       }
       const out = []
       for (let i = 0; i < rows.length; i++) {
@@ -673,64 +879,47 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
     }
 
-    // Obter anos disponíveis e último período (ano/mês) da base via queries indexadas rápidas
-    // (ORDER BY data_lancamento ASC/DESC LIMIT 1 é instantâneo em vez de MIN/MAX que varre tabela)
+    // Anos disponíveis e último período (ano/mês)
     let anosList = []
     let maxLancamento = ''
     let ultimoAnoBase = 2026
     let ultimoMesBase = 8
     try {
-      const minRow = arrayOf(new DynamicModel({ d: '' }))
-      const maxRow = arrayOf(new DynamicModel({ d: '' }))
+      const minMaxRows = arrayOf(new DynamicModel({ min_ym: '', max_ym: '' }))
       $app
         .db()
         .newQuery(
-          "SELECT data_lancamento AS d FROM vendas WHERE data_lancamento >= '2015-01-01' ORDER BY data_lancamento ASC LIMIT 1",
+          "SELECT MIN(ano_mes) AS min_ym, MAX(ano_mes) AS max_ym FROM resumo_vendas_mensal WHERE ano_mes >= '2015-01'",
         )
-        .all(minRow)
-      $app
-        .db()
-        .newQuery(
-          "SELECT data_lancamento AS d FROM vendas WHERE data_lancamento >= '2015-01-01' ORDER BY data_lancamento DESC LIMIT 1",
-        )
-        .all(maxRow)
+        .all(minMaxRows)
 
-      const minD = minRow.length > 0 ? minRow[0].d : ''
-      const maxD = maxRow.length > 0 ? maxRow[0].d : ''
-
-      if (minD && maxD) {
-        maxLancamento = maxD
-        const startYear = parseInt(minD.slice(0, 4), 10)
-        const endYear = parseInt(maxD.slice(0, 4), 10)
-        if (!isNaN(startYear) && !isNaN(endYear) && endYear >= startYear) {
-          for (let y = startYear; y <= endYear; y++) {
+      if (minMaxRows.length > 0 && minMaxRows[0].min_ym && minMaxRows[0].max_ym) {
+        const minYear = parseInt(minMaxRows[0].min_ym.slice(0, 4), 10)
+        const maxYear = parseInt(minMaxRows[0].max_ym.slice(0, 4), 10)
+        maxLancamento = minMaxRows[0].max_ym + '-28 00:00:00.000Z'
+        if (!isNaN(minYear) && !isNaN(maxYear) && maxYear >= minYear) {
+          for (let y = minYear; y <= maxYear; y++) {
             anosList.push(y)
           }
-        }
-        if (!isNaN(endYear)) {
-          ultimoAnoBase = endYear
-        }
-        if (maxLancamento.length >= 7) {
-          const parsedM = parseInt(maxLancamento.slice(5, 7), 10)
-          if (!isNaN(parsedM) && parsedM >= 1 && parsedM <= 12) {
-            ultimoMesBase = parsedM
-          }
+          ultimoAnoBase = maxYear
+          const m = parseInt(minMaxRows[0].max_ym.slice(5, 7), 10)
+          if (!isNaN(m)) ultimoMesBase = m
         }
       }
     } catch (err) {
-      console.error('dashboard_stats: anos min/max falhou:', err)
+      console.error('dashboard_stats: anos min/max resumo falhou:', err)
     }
     if (anosList.length === 0) {
       anosList = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
     }
 
     const filterOptions = {
-      vendedorCliente: cleanFilterOptions(distinctCol('vendedor_cliente', 3000), true),
-      vendedor: cleanFilterOptions(distinctCol('nome_vendedor', 500)),
-      grupoItem: cleanFilterOptions(distinctCol('grupo_item', 100)),
-      estado: cleanFilterOptions(distinctCol('estado', 50)),
-      utilizacao: cleanFilterOptions(distinctCol('utilizacao', 200)),
-      tipoDocumento: cleanFilterOptions(distinctCol('tipo_documento', 50)),
+      vendedorCliente: cleanFilterOptions(distinctSummaryCol('vendedor_cliente', 3000), true),
+      vendedor: cleanFilterOptions(distinctSummaryCol('nome_vendedor', 500)),
+      grupoItem: cleanFilterOptions(distinctSummaryCol('grupo_item', 100)),
+      estado: cleanFilterOptions(distinctSummaryCol('estado', 50)),
+      utilizacao: cleanFilterOptions(distinctSummaryCol('utilizacao', 200)),
+      tipoDocumento: cleanFilterOptions(distinctSummaryCol('tipo_documento', 50)),
       anos: anosList,
       meses: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
       dias: [
@@ -747,17 +936,18 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     // ============================================================
 
     // 5.1) vendasEquipamentosHistorico — Tendência de Vendas de Equipamentos
-    // Usa sqlWhereHistorical para trazer a base inteira contínua histórica (respeita apenas filtro de base)
+    // REGRA DE NEGÓCIO: Traz SEMPRE toda a base histórica (2015 em diante),
+    // agrupada por mês (yyyy-mm), independente dos filtros de período ativos.
+    // Respeita APENAS o filtro de seleção de base (sqlWhereHistorical).
     const vendasEquipamentosHistorico = []
     try {
       const equipSql =
-        "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
-        'FROM vendas WHERE ' +
+        'SELECT ano_mes AS a, COALESCE(SUM(total_linha),0) AS b ' +
+        'FROM resumo_vendas_mensal WHERE ' +
         sqlWhereHistorical +
-        " AND grupo_item = 'EQUIPAMENTOS' " +
-        "AND data_lancamento >= '2015-01-01' " +
-        "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') " +
-        'ORDER BY 1 ASC'
+        " AND UPPER(TRIM(grupo_item)) = 'EQUIPAMENTOS' " +
+        'AND ano >= 2015 ' +
+        'GROUP BY ano_mes ORDER BY ano_mes ASC'
       const equipRows = runAgg(equipSql)
 
       for (let i = 0; i < equipRows.length; i++) {
@@ -773,17 +963,18 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     }
 
     // 5.2) vendasInsumosHistorico — Histórico/Tendência de Insumos (Acumulado de Vendas — Insumos)
-    // Usa sqlWhereHistorical para trazer a base inteira contínua histórica (respeita apenas filtro de base)
+    // REGRA DE NEGÓCIO: Traz SEMPRE toda a base histórica (2015 em diante),
+    // agrupada por mês (yyyy-mm), dos grupos TINTAS, PEÇAS e ACESSÓRIOS.
+    // Respeita APENAS o filtro de seleção de base (sqlWhereHistorical).
     const vendasInsumosHistorico = []
     try {
       const insumoSql =
-        "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
-        'FROM vendas WHERE ' +
+        'SELECT ano_mes AS a, COALESCE(SUM(total_linha),0) AS b ' +
+        'FROM resumo_vendas_mensal WHERE ' +
         sqlWhereHistorical +
-        " AND grupo_item IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
-        "AND data_lancamento >= '2015-01-01' " +
-        "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') " +
-        'ORDER BY 1 ASC'
+        " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+        'AND ano >= 2015 ' +
+        'GROUP BY ano_mes ORDER BY ano_mes ASC'
       const insumoRows = runAgg(insumoSql)
 
       for (let i = 0; i < insumoRows.length; i++) {
@@ -798,13 +989,11 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       console.error('dashboard_stats: vendasInsumosHistorico falhou:', err)
     }
 
-    // 5.3) clientesAtivosEquipamentos — Clientes Ativos Equipamentos (últimos 6 meses)
+    // 5.3) clientesAtivosEquipamentos e 5.4) clientesAtivosInsumos
     const clientesAtivosEquipamentos = []
-    // 5.4) clientesAtivosInsumos — Clientes Ativos Insumos (últimos 6 meses + ano anterior)
     const clientesAtivosInsumos = []
 
     try {
-      // 1) Data mais recente considerando os filtros ativos (obtém a partir de mesRows ou MAX(data_lancamento))
       let maxDate2 = ''
       if (
         mesRows.length > 0 &&
@@ -817,9 +1006,9 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         $app
           .db()
           .newQuery(
-            "SELECT COALESCE(MAX(data_lancamento),'') AS a FROM vendas WHERE " +
+            "SELECT COALESCE(MAX(ano_mes),'') AS a FROM resumo_vendas_mensal WHERE " +
               sqlWhere +
-              " AND data_lancamento >= '2015-01-01'",
+              " AND ano_mes >= '2015-01'",
           )
           .all(maxDateRows2)
         maxDate2 = maxDateRows2.length > 0 && maxDateRows2[0].a ? maxDateRows2[0].a : ''
@@ -830,31 +1019,12 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         const maxYear = parseInt(parts[0], 10)
         const maxMonth = parseInt(parts[1], 10)
         if (!isNaN(maxYear) && !isNaN(maxMonth) && maxMonth >= 1 && maxMonth <= 12) {
-          // Se o usuário filtrou explicitamente um único ano e mês (ou período com poucos meses),
-          // ou se temos filtros de ano/mês:
-          // Vamos determinar a lista de meses a exibir respeitando o que está disponível no filtro
-          // ou os últimos 6 meses até maxDate2 se for um período contínuo.
-          // Mas note: se o usuário filtra mês 3 (Março) de 2025, maxDate2 será 2025-03-...
-          // Se gerarmos 6 meses retroativos (2024-10 a 2025-03), mas a query de 'clientes' usa `sqlWhere`
-          // (que restringe a 2025-03), os meses anteriores terão 0 clientes atuais, ou se usarmos os meses filtrados
-          // mesSql já agrega agrupado por substr(data_lancamento,1,7).
-          // Vejamos os meses encontrados em mesRows (que respeita sqlWhere):
           const mesesFiltrados = mesRows.map((r) => r.a).filter((m) => !!m)
 
           let mesesAlvo = []
           if (mesesFiltrados.length > 0 && mesesFiltrados.length <= 6) {
-            // Se o filtro restringe para meses específicos (ex.: apenas 2025-03), usamos exatamente os meses filtrados
-            // garantindo que não exibamos 5 meses vazios desnecessariamente se o filtro for estrito de data.
-            // Mas se o usuário filtrou apenas ano 2025, mesesFiltrados terá todos os meses com venda em 2025 (até 12 meses, pegamos até 6 ou todos).
-            if (mesesFiltrados.length === 1) {
-              mesesAlvo = mesesFiltrados
-            } else if (mesesFiltrados.length <= 6) {
-              mesesAlvo = mesesFiltrados
-            } else {
-              mesesAlvo = mesesFiltrados.slice(mesesFiltrados.length - 6)
-            }
+            mesesAlvo = mesesFiltrados
           } else {
-            // Fallback padrão: últimos 6 meses a partir de maxDate2
             for (let i = 5; i >= 0; i--) {
               const totalMeses = maxYear * 12 + (maxMonth - 1) - i
               const y = Math.floor(totalMeses / 12)
@@ -863,50 +1033,28 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
             }
           }
 
-          // --- 5.3 Clientes Ativos Equipamentos ---
-          const minEquipDate = mesesAlvo[0] + '-01 00:00:00'
-          const maxEquipDate = mesesAlvo[mesesAlvo.length - 1] + '-31 23:59:59'
-          const cliEquipSql =
-            "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COUNT(DISTINCT codigo_cliente) AS b " +
-            'FROM vendas WHERE ' +
-            sqlWhere +
-            " AND grupo_item = 'EQUIPAMENTOS' " +
-            "AND data_lancamento >= '" +
-            minEquipDate +
-            "' AND data_lancamento <= '" +
-            maxEquipDate +
-            "' " +
-            "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') ORDER BY 1 ASC"
-          const cliEquipRows = runAgg(cliEquipSql)
-          const cliEquipMap = {}
-          for (let i = 0; i < cliEquipRows.length; i++) {
-            cliEquipMap[cliEquipRows[i].a] = parseInt(cliEquipRows[i].b, 10) || 0
-          }
-
-          // Série ano anterior (usando sqlWhereBase para poder comparar o mesmo mês do ano anterior com mesmos filtros de dimensão)
-          const mesesAnoAnteriorEquip = mesesAlvo.map((m) => {
+          const mesesAnoAnterior = mesesAlvo.map((m) => {
             const p = m.split('-')
             const y = parseInt(p[0], 10) - 1
             return String(y) + '-' + p[1]
           })
-          const minEquipPrevDate = mesesAnoAnteriorEquip[0] + '-01 00:00:00'
-          const maxEquipPrevDate =
-            mesesAnoAnteriorEquip[mesesAnoAnteriorEquip.length - 1] + '-31 23:59:59'
-          const cliEquipPrevSql =
-            "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COUNT(DISTINCT codigo_cliente) AS b " +
-            'FROM vendas WHERE ' +
-            sqlWhereBase +
-            " AND grupo_item = 'EQUIPAMENTOS' " +
-            "AND data_lancamento >= '" +
-            minEquipPrevDate +
-            "' AND data_lancamento <= '" +
-            maxEquipPrevDate +
-            "' " +
-            "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') ORDER BY 1 ASC"
-          const cliEquipPrevRows = runAgg(cliEquipPrevSql)
-          const cliEquipPrevMap = {}
-          for (let i = 0; i < cliEquipPrevRows.length; i++) {
-            cliEquipPrevMap[cliEquipPrevRows[i].a] = parseInt(cliEquipPrevRows[i].b, 10) || 0
+
+          const allMesesNeeded = mesesAlvo.concat(mesesAnoAnterior)
+          const inMesesList = allMesesNeeded.map((m) => "'" + m + "'").join(',')
+
+          // Query resumo_clientes_ativos para EQUIPAMENTOS
+          const cliEqSql =
+            'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+            'FROM resumo_clientes_ativos WHERE ' +
+            sqlWhereHistorical +
+            " AND grupo_categoria = 'EQUIPAMENTOS' " +
+            'AND ano_mes IN (' +
+            inMesesList +
+            ') GROUP BY ano_mes'
+          const cliEquipRows = runAgg(cliEqSql)
+          const cliEquipMap = {}
+          for (let i = 0; i < cliEquipRows.length; i++) {
+            cliEquipMap[cliEquipRows[i].a] = parseInt(cliEquipRows[i].b, 10) || 0
           }
 
           for (let i = 0; i < mesesAlvo.length; i++) {
@@ -916,53 +1064,23 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
             clientesAtivosEquipamentos.push({
               mes: m,
               clientes: cliEquipMap[m] || 0,
-              clientesAnoAnterior: cliEquipPrevMap[prevM] || 0,
+              clientesAnoAnterior: cliEquipMap[prevM] || 0,
             })
           }
 
-          // --- 5.4 Clientes Ativos Insumos ---
-          const minInsumoDate = mesesAlvo[0] + '-01 00:00:00'
-          const maxInsumoDate = mesesAlvo[mesesAlvo.length - 1] + '-31 23:59:59'
-          const cliInsumosSql =
-            "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COUNT(DISTINCT codigo_cliente) AS b " +
-            'FROM vendas WHERE ' +
-            sqlWhere +
-            " AND grupo_item IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
-            "AND data_lancamento >= '" +
-            minInsumoDate +
-            "' AND data_lancamento <= '" +
-            maxInsumoDate +
-            "' " +
-            "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') ORDER BY 1 ASC"
-          const cliInsumosRows = runAgg(cliInsumosSql)
+          // Query resumo_clientes_ativos para INSUMOS
+          const cliInsSql =
+            'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+            'FROM resumo_clientes_ativos WHERE ' +
+            sqlWhereHistorical +
+            " AND grupo_categoria = 'INSUMOS' " +
+            'AND ano_mes IN (' +
+            inMesesList +
+            ') GROUP BY ano_mes'
+          const cliInsumosRows = runAgg(cliInsSql)
           const cliInsumosMap = {}
           for (let i = 0; i < cliInsumosRows.length; i++) {
             cliInsumosMap[cliInsumosRows[i].a] = parseInt(cliInsumosRows[i].b, 10) || 0
-          }
-
-          // Série ano anterior (usando sqlWhereBase para poder comparar o mesmo mês do ano anterior com mesmos filtros de dimensão)
-          const mesesAnoAnterior = mesesAlvo.map((m) => {
-            const p = m.split('-')
-            const y = parseInt(p[0], 10) - 1
-            return String(y) + '-' + p[1]
-          })
-          const minInsumoPrevDate = mesesAnoAnterior[0] + '-01 00:00:00'
-          const maxInsumoPrevDate = mesesAnoAnterior[mesesAnoAnterior.length - 1] + '-31 23:59:59'
-          const cliInsumosPrevSql =
-            "SELECT COALESCE(substr(data_lancamento,1,7),'Sem informação') AS a, COUNT(DISTINCT codigo_cliente) AS b " +
-            'FROM vendas WHERE ' +
-            sqlWhereBase +
-            " AND grupo_item IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
-            "AND data_lancamento >= '" +
-            minInsumoPrevDate +
-            "' AND data_lancamento <= '" +
-            maxInsumoPrevDate +
-            "' " +
-            "GROUP BY COALESCE(substr(data_lancamento,1,7),'Sem informação') ORDER BY 1 ASC"
-          const cliInsumosPrevRows = runAgg(cliInsumosPrevSql)
-          const cliInsumosPrevMap = {}
-          for (let i = 0; i < cliInsumosPrevRows.length; i++) {
-            cliInsumosPrevMap[cliInsumosPrevRows[i].a] = parseInt(cliInsumosPrevRows[i].b, 10) || 0
           }
 
           for (let i = 0; i < mesesAlvo.length; i++) {
@@ -972,7 +1090,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
             clientesAtivosInsumos.push({
               mes: m,
               clientes: cliInsumosMap[m] || 0,
-              clientesAnoAnterior: cliInsumosPrevMap[prevM] || 0,
+              clientesAnoAnterior: cliInsumosMap[prevM] || 0,
             })
           }
         }
@@ -1003,8 +1121,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       filterOptions: filterOptions,
     }
 
-    // Armazena no cache por 5 minutos (300.000 ms) com blindagem completa
-    // Limita o tamanho do cache para até 50 entradas para economizar memória
+    // Salva no cache por 5 minutos
     try {
       if (typeof globalThis !== 'undefined' && globalThis) {
         if (

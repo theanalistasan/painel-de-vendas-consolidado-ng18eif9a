@@ -15,12 +15,27 @@ routerAdd('GET', '/backend/v1/stats/counts', (e) => {
     }
   }
 
-  // Última data de carga das vendas consolidadas
+  // Última data de carga das vendas consolidadas (busca rápida indexada ou resumo)
   let ultimaCarga = ''
   try {
     const latest = arrayOf(new DynamicModel({ updated: '' }))
-    $app.db().newQuery("SELECT COALESCE(MAX(updated), '') AS updated FROM vendas").all(latest)
-    if (latest.length > 0) ultimaCarga = latest[0].updated || ''
+    $app
+      .db()
+      .newQuery(
+        "SELECT updated FROM resumo_vendas_mensal WHERE updated IS NOT NULL AND updated != '' ORDER BY id DESC LIMIT 1",
+      )
+      .all(latest)
+    if (latest.length > 0 && latest[0].updated) {
+      ultimaCarga = latest[0].updated
+    } else {
+      $app
+        .db()
+        .newQuery(
+          "SELECT updated FROM vendas WHERE updated IS NOT NULL AND updated != '' ORDER BY id DESC LIMIT 1",
+        )
+        .all(latest)
+      if (latest.length > 0) ultimaCarga = latest[0].updated || ''
+    }
   } catch (_) {}
 
   const result = {

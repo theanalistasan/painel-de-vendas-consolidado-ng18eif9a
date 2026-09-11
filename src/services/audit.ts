@@ -40,40 +40,18 @@ export async function logAudit(action: AuditAction, details?: string): Promise<v
     if (!pb.authStore.isValid) return
     const user = pb.authStore.record
 
-    // 1. Tenta via endpoint backend dedicado (/backend/v1/audit/log) que roda com contexto seguro
-    try {
-      await pb.send('/backend/v1/audit/log', {
-        method: 'POST',
-        body: {
-          action,
-          details: details || '',
-          user_id: user?.id || '',
-          user_email: user?.email || '',
-          user_name: user?.name || '',
-        },
-      })
-      return
-    } catch (endpointErr) {
-      console.warn(
-        'Falha no endpoint /backend/v1/audit/log, tentando fallback direto:',
-        endpointErr,
-      )
-    }
-
-    // 2. Fallback direto via SDK da coleção
-    const payload: Record<string, unknown> = {
-      action,
-      details: details || '',
-      user_email: user?.email || '',
-      user_name: user?.name || '',
-      ip: '',
-    }
-
-    if (user?.id && typeof user.id === 'string' && user.id.trim()) {
-      payload.user_id = user.id.trim()
-    }
-
-    await pb.collection('audit_logs').create(payload)
+    // Tenta gravar exclusivamente via endpoint backend dedicado (/backend/v1/audit/log).
+    // O fallback direto para pb.collection('audit_logs').create foi desativado pois retornava 400.
+    await pb.send('/backend/v1/audit/log', {
+      method: 'POST',
+      body: {
+        action,
+        details: details || '',
+        user_id: user?.id || '',
+        user_email: user?.email || '',
+        user_name: user?.name || '',
+      },
+    })
   } catch (err) {
     // Auditoria é best-effort: nunca lançar exceção nem bloquear o fluxo principal.
     console.warn('Falha ao registrar auditoria:', err)

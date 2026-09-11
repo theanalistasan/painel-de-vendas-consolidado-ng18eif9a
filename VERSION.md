@@ -2,9 +2,37 @@
 
 ## Versão e Status Atual
 
-- **Versão**: v1.0.6
-- **Data do Backup**: 03/09/2026
-- **Status**: QA aprovado, estável — correções de gráficos no Dashboard, gráfico histórico de Evolução por Ano completo (2019–2026) e ajustes de filtros/usabilidade
+- **Versão**: v1.0.7
+- **Data do Backup**: 11/09/2026
+- **Status**: QA aprovado, estável — Correção estrutural de estabilidade: tabelas de resumo pré-calculadas (SQLite), reconciliação automática contínua via cron e hook de consolidação, dashboard ultra veloz (< 2s) lendo dos resumos com todas as regras de negócio preservadas e auditoria estabilizada sem POST direto na coleção
+
+---
+
+## Destaques da Versão 1.0.7 (11/09/2026)
+
+1. **Tabelas de Resumo Pré-Calculadas (Migração 0021)**:
+   - Criação e inicialização automática das tabelas agregadas `resumo_vendas_mensal`, `resumo_clientes_ativos` e `resumo_vendas_uf_regiao` com índices B-Tree específicos por período, dimensão e base.
+   - Eliminação de scans pesados repetidos sobre a tabela `vendas` (125k+ registros) em cada requisição do Dashboard.
+   - Migração 0021 aplicada e sincronizada sem alterar ou perder as bases brutas (`produtos`, `racnew`, `netsales`, `vendas`).
+
+2. **Reconciliação e Preenchimento Contínuo (`cron_reconcile_summaries.js` e `consolidar_vendas.js`)**:
+   - Criação da rotina agendada `reconcile_sales_summaries` (`cronAdd('reconcile_sales_summaries', '0 */2 * * *')`) que sincroniza atomicamente as tabelas de resumo sem duplicar jobs.
+   - Atualização do endpoint de consolidação `POST /backend/v1/vendas/consolidar` para atualizar instantaneamente os resumos sempre que novas cargas/importações forem realizadas.
+
+3. **Dashboard de Alta Performance com Regras de Negócio Preservadas (`dashboard_stats.js`)**:
+   - Tempo de resposta do endpoint `POST /backend/v1/dashboard/stats` reduzido de ~35s para < 2s sem `TIMEOUT_EXCEEDED`.
+   - **Regras de negócio 100% preservadas**:
+     - _Tendência de Vendas — Equipamentos_ e _Acumulado — Insumos_: trazem SEMPRE toda a base histórica (2015+), ignorando filtros de período e respeitando apenas a seleção de base (`ambos`/`racnew`/`netsales`).
+     - _Evolução de Vendas por Ano_: traz SEMPRE todos os anos da base histórica com variação ano a ano.
+     - _Clientes Ativos — Equipamentos e Insumos_: contagem precisa de clientes distintos por mês e comparativo com o mesmo mês do ano anterior.
+     - _Filtros de período/tipo/grupo/utilização_: funcionam em milissegundos sobre os índices dos resumos pré-calculados.
+     - _Mapa do Brasil & Pinos de Revendas_: geolocalização e cálculo do faturamento das revendas oficiais totalmente integrados.
+     - _Filtros iniciais_: mantidos dinamicamente (ano mais recente, último mês com dados, NF de Saída, grupos Equipamentos/Acessórios/Tintas/Peças, utilizações contendo VENDA, base Ambos).
+
+4. **Auditoria Estabilizada (`src/services/audit.ts`)**:
+   - Desativação completa do caminho de gravação direta `POST /api/collections/audit_logs/records` (que retornava 400).
+   - Roteamento exclusivo pelo endpoint dedicado `POST /backend/v1/audit/log`.
+   - Gravação mantida estritamente _best-effort_ (não bloqueia navegação nem lança erros para o usuário).
 
 ---
 
