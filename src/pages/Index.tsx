@@ -265,6 +265,11 @@ export default function Index() {
         return
       }
 
+      // Se a resposta trouxe opções de filtro e ainda não tínhamos inicializado dinamicamente
+      if (!initializedFromBase && res?.filterOptions) {
+        setInitializedFromBase(true)
+      }
+
       setData(res)
       if (!sort.field) {
         setRecentSalesList(res?.recentSales || [])

@@ -19,15 +19,17 @@ routerAdd('GET', '/backend/v1/stats/counts', (e) => {
   let ultimaCarga = ''
   try {
     const latest = arrayOf(new DynamicModel({ updated: '' }))
-    $app.db().newQuery('SELECT updated FROM vendas ORDER BY updated DESC LIMIT 1').all(latest)
+    $app.db().newQuery("SELECT COALESCE(MAX(updated), '') AS updated FROM vendas").all(latest)
     if (latest.length > 0) ultimaCarga = latest[0].updated || ''
   } catch (_) {}
 
-  return e.json(200, {
+  const result = {
     produtos: counts.produtos || 0,
     racnew: counts.racnew || 0,
     netsales: counts.netsales || 0,
     vendas: counts.vendas || 0,
     ultimaCarga: ultimaCarga,
-  })
+  }
+
+  return e.json(200, result)
 })

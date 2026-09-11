@@ -206,12 +206,25 @@ export interface DashboardStatsResult {
   }
 }
 
+// Cache e deduplicação de requisições de dashboard stats no frontend
+let pendingStatsPromise: {
+  key: string
+  promise: Promise<DashboardStatsResult>
+} | null = null
+
 export async function fetchDashboardStats(
   filters?: Record<string, unknown>,
   options?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<DashboardStatsResult> {
+  const cacheKey = JSON.stringify(filters || {})
+
+  // Se já houver uma requisição idêntica em andamento e nenhum signal customizado for passado,
+  // reutiliza a promise em voo (deduplicação real no frontend)
+  if (!options?.signal && pendingStatsPromise && pendingStatsPromise.key === cacheKey) {
+    return pendingStatsPromise.promise
+  }
+
   // Timeout padrão de 45 segundos no cliente para abortar e notificar erro amigável
-  // se o backend demorar ou falhar, evitando travamento indefinido na interface.
   const timeoutMs = options?.timeoutMs || 45000
   const internalController = new AbortController()
   let isTimeoutAbort = false
@@ -245,51 +258,62 @@ export async function fetchDashboardStats(
       signal: internalController.signal,
     })
 
-  try {
-    return await run()
-  } catch (err: unknown) {
-    const status = (err as { status?: number })?.status
-    if (
-      (status === 401 || status === 403) &&
-      pb.authStore.isValid &&
-      !internalController.signal.aborted
-    ) {
-      try {
-        await safeAuthRefresh()
-        return await run()
-      } catch {
-        throw err
+  const exec = async () => {
+    try {
+      return await run()
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status
+      if (
+        (status === 401 || status === 403) &&
+        pb.authStore.isValid &&
+        !internalController.signal.aborted
+      ) {
+        try {
+          await safeAuthRefresh()
+          return await run()
+        } catch {
+          throw err
+        }
       }
-    }
 
-    if (status === 504) {
-      throw new Error(
-        'A consulta demorou mais do que o esperado para responder. Refine os filtros selecionados.',
-      )
-    }
-
-    const isAbort =
-      (err as Error)?.name === 'AbortError' ||
-      String(err).includes('aborted') ||
-      String(err).includes('autocancelled') ||
-      internalController.signal.aborted
-
-    if (isAbort) {
-      if (isTimeoutAbort) {
+      if (status === 504) {
         throw new Error(
-          'Tempo limite esgotado ao buscar os dados do painel. Por favor, tente refinar os filtros.',
+          'A consulta demorou mais do que o esperado para responder. Refine os filtros selecionados.',
         )
       }
-      // Re-lança como erro identificado de cancelamento (AbortError) para não travar telas nem sobrescrever estado
-      const abortError = new Error('Requisição cancelada.')
-      abortError.name = 'AbortError'
-      throw abortError
-    }
 
-    throw err
-  } finally {
-    clearTimeout(timer)
+      const isAbort =
+        (err as Error)?.name === 'AbortError' ||
+        String(err).includes('aborted') ||
+        String(err).includes('autocancelled') ||
+        internalController.signal.aborted
+
+      if (isAbort) {
+        if (isTimeoutAbort) {
+          throw new Error(
+            'Tempo limite esgotado ao buscar os dados do painel. Por favor, tente refinar os filtros.',
+          )
+        }
+        const abortError = new Error('Requisição cancelada.')
+        abortError.name = 'AbortError'
+        throw abortError
+      }
+
+      throw err
+    } finally {
+      clearTimeout(timer)
+      if (pendingStatsPromise && pendingStatsPromise.key === cacheKey) {
+        pendingStatsPromise = null
+      }
+    }
   }
+
+  const promise = exec()
+  if (!options?.signal) {
+    pendingStatsPromise = { key: cacheKey, promise }
+  }
+
+  return promise
 }
 
 export interface VendasListResult {

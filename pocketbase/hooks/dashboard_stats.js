@@ -19,9 +19,14 @@
 //     grupoItem[], estado[], utilizacao[], tipoDocumento[], search, tipoDevolucao
 //
 // Retorna: { kpis, charts, recentSales, filterOptions }
+// Cache em memória de respostas do dashboard stats para consultas repetidas
+if (!globalThis.__skipDashboardCache) {
+  globalThis.__skipDashboardCache = new Map()
+}
+
 routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const startTime = Date.now()
-  const MAX_EXEC_TIME_MS = 35000 // Teto de 35s (abaixo do timeout de 45s do cliente)
+  const MAX_EXEC_TIME_MS = 25000 // Teto reduzido para 25s (garante resposta bem antes do timeout de 35s/45s)
   try {
     let body = {}
     try {
@@ -30,6 +35,14 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       body = {}
     }
     const f = body.filters || {}
+
+    // Chave de cache baseada nos filtros
+    const cacheKey = JSON.stringify(f)
+    const now = Date.now()
+    const cachedEntry = globalThis.__skipDashboardCache.get(cacheKey)
+    if (cachedEntry && cachedEntry.expiresAt > now) {
+      return e.json(200, cachedEntry.data)
+    }
 
     // ---- Escape SQL (aspas simples duplicadas) ----
     const sqlEsc = (s) => String(s).replace(/'/g, "''")
@@ -652,23 +665,35 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
     }
 
-    // Obter anos disponíveis e último período (ano/mês) da base via MIN e MAX de data_lancamento
+    // Obter anos disponíveis e último período (ano/mês) da base via queries indexadas rápidas
+    // (ORDER BY data_lancamento ASC/DESC LIMIT 1 é instantâneo em vez de MIN/MAX que varre tabela)
     let anosList = []
     let maxLancamento = ''
     let ultimoAnoBase = 2026
     let ultimoMesBase = 8
     try {
-      const minMaxRows = arrayOf(new DynamicModel({ min_d: '', max_d: '' }))
+      const minRow = arrayOf(new DynamicModel({ d: '' }))
+      const maxRow = arrayOf(new DynamicModel({ d: '' }))
       $app
         .db()
         .newQuery(
-          "SELECT COALESCE(MIN(data_lancamento),'') as min_d, COALESCE(MAX(data_lancamento),'') as max_d FROM vendas WHERE length(data_lancamento) >= 4",
+          "SELECT data_lancamento AS d FROM vendas WHERE data_lancamento >= '2015-01-01' ORDER BY data_lancamento ASC LIMIT 1",
         )
-        .all(minMaxRows)
-      if (minMaxRows.length > 0 && minMaxRows[0].min_d && minMaxRows[0].max_d) {
-        maxLancamento = minMaxRows[0].max_d
-        const startYear = parseInt(minMaxRows[0].min_d.slice(0, 4), 10)
-        const endYear = parseInt(minMaxRows[0].max_d.slice(0, 4), 10)
+        .all(minRow)
+      $app
+        .db()
+        .newQuery(
+          "SELECT data_lancamento AS d FROM vendas WHERE data_lancamento >= '2015-01-01' ORDER BY data_lancamento DESC LIMIT 1",
+        )
+        .all(maxRow)
+
+      const minD = minRow.length > 0 ? minRow[0].d : ''
+      const maxD = maxRow.length > 0 ? maxRow[0].d : ''
+
+      if (minD && maxD) {
+        maxLancamento = maxD
+        const startYear = parseInt(minD.slice(0, 4), 10)
+        const endYear = parseInt(maxD.slice(0, 4), 10)
         if (!isNaN(startYear) && !isNaN(endYear) && endYear >= startYear) {
           for (let y = startYear; y <= endYear; y++) {
             anosList.push(y)
@@ -948,7 +973,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       console.error('dashboard_stats: clientesAtivos queries falharam:', err)
     }
 
-    return e.json(200, {
+    const responsePayload = {
       kpis: kpis,
       charts: {
         vendasPorMes: vendasPorMes,
@@ -968,7 +993,20 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       },
       recentSales: recentSales,
       filterOptions: filterOptions,
+    }
+
+    // Armazena no cache por 5 minutos (300.000 ms)
+    // Limita o tamanho do cache para até 50 entradas para economizar memória
+    if (globalThis.__skipDashboardCache.size > 50) {
+      const firstKey = globalThis.__skipDashboardCache.keys().next().value
+      if (firstKey) globalThis.__skipDashboardCache.delete(firstKey)
+    }
+    globalThis.__skipDashboardCache.set(cacheKey, {
+      data: responsePayload,
+      expiresAt: Date.now() + 300000,
     })
+
+    return e.json(200, responsePayload)
   } catch (err) {
     if (err && String(err.message).indexOf('TIMEOUT_EXCEEDED') >= 0) {
       return e.json(504, {
