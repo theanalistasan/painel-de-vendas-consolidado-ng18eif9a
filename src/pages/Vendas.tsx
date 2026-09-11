@@ -127,12 +127,16 @@ export default function Vendas() {
     }
   }
 
+  // Modo global de colapso/agrupamento por NFe em todo o relatório
+  const [isAllGroupedNfe, setIsAllGroupedNfe] = useState(false)
+
   // Carrega a página atual de vendas via endpoint paginado com ordenação server-side
   const loadData = async (
     activeFilters = filters,
     targetPage = page,
     sortField = sort.field,
     sortDir = sort.dir,
+    groupedNfe = isAllGroupedNfe,
   ) => {
     setLoading(true)
     try {
@@ -142,6 +146,7 @@ export default function Vendas() {
         sortField: sortField || undefined,
         sortDirection: sortField ? sortDir : undefined,
         sort: sortField ? undefined : '-data_lancamento',
+        groupByNfe: groupedNfe,
         filters: activeFilters as unknown as Record<string, unknown>,
       })
       setPaginatedVendas(res.items || [])
@@ -182,8 +187,8 @@ export default function Vendas() {
   }, [filters])
 
   useEffect(() => {
-    loadData(filters, page, sort.field, sort.dir)
-  }, [page, filters, sort.field, sort.dir])
+    loadData(filters, page, sort.field, sort.dir, isAllGroupedNfe)
+  }, [page, filters, sort.field, sort.dir, isAllGroupedNfe])
 
   // Reset pagination on filter change
   useEffect(() => {
@@ -274,11 +279,18 @@ export default function Vendas() {
   }, [groupedRows])
 
   const areAllCollapsed = useMemo(() => {
+    if (isAllGroupedNfe) return true
     if (multiItemNfeKeys.length === 0) return false
     return multiItemNfeKeys.every((k) => collapsedNfes.has(k))
-  }, [multiItemNfeKeys, collapsedNfes])
+  }, [isAllGroupedNfe, multiItemNfeKeys, collapsedNfes])
 
   const toggleCollapseNfe = (nfeKey: string) => {
+    if (isAllGroupedNfe) {
+      // Se estamos no modo colapsado global e o usuário quer descolapsar uma NF específica
+      setIsAllGroupedNfe(false)
+      setCollapsedNfes(new Set())
+      return
+    }
     setCollapsedNfes((prev) => {
       const next = new Set(prev)
       if (next.has(nfeKey)) {
@@ -291,21 +303,29 @@ export default function Vendas() {
   }
 
   const handleCollapseAll = () => {
-    if (areAllCollapsed) {
-      // Expandir todos
+    if (isAllGroupedNfe) {
+      // Expandir tudo: volta para listagem detalhada de todos os itens
+      setIsAllGroupedNfe(false)
       setCollapsedNfes(new Set())
+      setPage(1)
+      toast({
+        title: 'Relatório expandido',
+        description: 'Exibindo todos os itens detalhados de cada Nota Fiscal.',
+      })
     } else {
-      // Colapsar todos
-      const next = new Set<string>()
-      for (const k of multiItemNfeKeys) {
-        next.add(k)
-      }
-      setCollapsedNfes(next)
+      // Colapsar tudo: agrupa o conjunto completo de dados por Nota Fiscal (server-side)
+      setIsAllGroupedNfe(true)
+      setCollapsedNfes(new Set())
+      setPage(1)
+      toast({
+        title: 'Relatório colapsado por NF',
+        description: 'Exibindo 1 linha consolidada por Nota Fiscal para todos os dados do filtro.',
+      })
     }
   }
 
   // Exportação COMPLETA via endpoint vendas_export (todas as páginas que atendem aos filtros)
-  const handleExportCSV = async () => {
+  const handleExportCSV = async (forceGrouped?: boolean) => {
     if (totalItems === 0 && paginatedVendas.length === 0) {
       toast({
         variant: 'destructive',
@@ -315,9 +335,13 @@ export default function Vendas() {
       return
     }
 
+    const shouldGroup = forceGrouped !== undefined ? forceGrouped : isAllGroupedNfe
+
     setExporting(true)
     toast({
-      title: 'Gerando exportação completa...',
+      title: shouldGroup
+        ? 'Gerando exportação consolidada por NF...'
+        : 'Gerando exportação completa detalhada...',
       description: `Buscando todos os registros filtrados no servidor...`,
     })
 
@@ -326,6 +350,8 @@ export default function Vendas() {
         sortField: sort.field || undefined,
         sortDirection: sort.field ? sort.dir : undefined,
         sort: sort.field ? undefined : '-data_lancamento',
+        groupByNfe: shouldGroup,
+        collapsed: shouldGroup,
         filters: filters as unknown as Record<string, unknown>,
       })
 
@@ -347,26 +373,34 @@ export default function Vendas() {
 
       const formattedRows = rowsToExport.map((row) => ({
         ...row,
-        origem: row.tem_netsales ? 'NetSales' : 'RacNew',
+        origem:
+          row.tem_netsales && row.tem_racnew
+            ? 'Consolidado'
+            : row.tem_netsales
+              ? 'NetSales'
+              : 'RacNew',
       }))
 
       const dateStr = new Date().toISOString().slice(0, 10)
+      const filenameSuffix = shouldGroup ? 'por_nf' : 'detalhado'
       exportToCSV(
-        `vendas_consolidadas_completa_${dateStr}`,
+        `vendas_consolidadas_${filenameSuffix}_${dateStr}`,
         formattedRows as unknown as Record<string, unknown>[],
         exportColumns,
       )
 
       toast({
         title: 'Exportação concluída com sucesso!',
-        description: `Todos os ${rowsToExport.length} registros foram exportados em formato Excel/CSV (UTF-8 BOM).`,
+        description: shouldGroup
+          ? `Relatório colapsado por NF exportado com sucesso (${rowsToExport.length} Notas Fiscais consolidadas).`
+          : `Todos os ${rowsToExport.length} registros foram exportados em formato Excel/CSV (UTF-8 BOM).`,
       })
     } catch (err) {
-      console.error('Erro na exportação completa:', err)
+      console.error('Erro na exportação:', err)
       toast({
         variant: 'destructive',
         title: 'Falha na exportação',
-        description: 'Não foi possível exportar todos os registros. Tente novamente.',
+        description: 'Não foi possível exportar os registros. Tente novamente.',
       })
     } finally {
       setExporting(false)
@@ -450,9 +484,14 @@ export default function Vendas() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleExportCSV}
+                onClick={() => handleExportCSV()}
                 disabled={exporting || totalItems === 0}
                 className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 font-bold gap-1.5"
+                title={
+                  isAllGroupedNfe
+                    ? 'Exportar relatório consolidado por NF (compacto)'
+                    : 'Exportar relatório completo com todos os itens'
+                }
               >
                 {exporting ? (
                   <>
@@ -462,7 +501,9 @@ export default function Vendas() {
                 ) : (
                   <>
                     <Download className="w-4 h-4 text-[#0B6E99]" />
-                    Exportar CSV ({totalItems})
+                    {isAllGroupedNfe
+                      ? `Exportar por NF (${totalItems})`
+                      : `Exportar CSV (${totalItems})`}
                   </>
                 )}
               </Button>
@@ -473,26 +514,42 @@ export default function Vendas() {
         {/* Barra superior de ações e resumo (com botão Colapsar/Expandir à esquerda) */}
         <div className="px-6 py-2.5 bg-slate-50/60 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
           {/* Lado esquerdo: Botão de Colapsar / Expandir itens de NFe */}
-          <div className="flex items-center gap-2">
-            {multiItemNfeKeys.length > 0 && (
-              <Button
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant={isAllGroupedNfe ? 'default' : 'outline'}
+              size="sm"
+              onClick={handleCollapseAll}
+              disabled={loading}
+              className={
+                isAllGroupedNfe
+                  ? 'bg-[#0B6E99] hover:bg-[#085273] text-white font-bold gap-1.5 text-xs shadow-2xs h-8'
+                  : 'bg-white border-gray-200 text-slate-700 hover:bg-slate-50 hover:text-[#0B6E99] font-bold gap-1.5 text-xs shadow-2xs h-8'
+              }
+              title={
+                isAllGroupedNfe
+                  ? 'Expandir para visualizar todos os itens detalhados'
+                  : 'Colapsar todos os dados por Nota Fiscal (consolidado em 1 linha por NF)'
+              }
+            >
+              {isAllGroupedNfe ? (
+                <>
+                  <ChevronsUpDown className="w-3.5 h-3.5" />
+                  Expandir Todos os Itens
+                </>
+              ) : (
+                <>
+                  <ChevronsDownUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                  Colapsar por NF (Consolidado)
+                </>
+              )}
+            </Button>
+            {isAllGroupedNfe && (
+              <Badge
                 variant="outline"
-                size="sm"
-                onClick={handleCollapseAll}
-                className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 hover:text-[#0B6E99] font-bold gap-1.5 text-xs shadow-2xs h-8"
+                className="bg-cyan-50 text-[#0B6E99] border-cyan-200 font-medium px-2 py-0.5 text-[11px]"
               >
-                {areAllCollapsed ? (
-                  <>
-                    <ChevronsUpDown className="w-3.5 h-3.5 text-[#0B6E99]" />
-                    Expandir todos
-                  </>
-                ) : (
-                  <>
-                    <ChevronsDownUp className="w-3.5 h-3.5 text-[#0B6E99]" />
-                    Colapsar todos
-                  </>
-                )}
-              </Button>
+                Modo compacto: 1 linha por NF em todo o filtro
+              </Badge>
             )}
           </div>
 
@@ -800,7 +857,8 @@ export default function Vendas() {
             <span className="font-semibold text-slate-800">
               {Math.min(page * PAGE_SIZE, totalItems)}
             </span>{' '}
-            de <span className="font-semibold text-slate-800">{totalItems}</span> registros
+            de <span className="font-semibold text-slate-800">{totalItems}</span>{' '}
+            {isAllGroupedNfe ? 'notas fiscais' : 'registros'}
           </div>
 
           {totalPages > 1 && (

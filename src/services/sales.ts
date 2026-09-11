@@ -317,13 +317,14 @@ export async function fetchDashboardStats(
 }
 
 export interface VendasListResult {
-  items: VendaConsolidada[]
+  items: (VendaConsolidada & { itens_qtd?: number })[]
   page: number
   perPage: number
   totalItems: number
   totalNetsales?: number
   totalRacnew?: number
   totalPages: number
+  isGrouped?: boolean
 }
 
 export async function fetchVendasList(params?: {
@@ -333,6 +334,8 @@ export async function fetchVendasList(params?: {
   sortField?: string
   sortDirection?: 'asc' | 'desc'
   filters?: Record<string, unknown>
+  groupByNfe?: boolean
+  collapsed?: boolean
   signal?: AbortSignal
 }): Promise<VendasListResult> {
   const internalController = new AbortController()
@@ -400,8 +403,9 @@ export async function fetchVendasList(params?: {
 }
 
 export interface VendasExportResult {
-  items: VendaConsolidada[]
+  items: (VendaConsolidada & { itens_qtd?: number })[]
   totalItems: number
+  isGrouped?: boolean
 }
 
 export async function fetchVendasExport(params?: {
@@ -409,6 +413,8 @@ export async function fetchVendasExport(params?: {
   sortField?: string
   sortDirection?: 'asc' | 'desc'
   filters?: Record<string, unknown>
+  groupByNfe?: boolean
+  collapsed?: boolean
   signal?: AbortSignal
 }): Promise<VendasExportResult> {
   const internalController = new AbortController()

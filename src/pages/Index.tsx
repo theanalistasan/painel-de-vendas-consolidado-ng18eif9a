@@ -15,6 +15,8 @@ import {
   Users,
   Expand,
   MapPin,
+  Download,
+  FileSpreadsheet,
 } from 'lucide-react'
 import {
   XAxis,
@@ -33,16 +35,18 @@ import {
   Line,
   ReferenceLine,
 } from 'recharts'
-import { fetchDashboardStats, fetchVendasList, type DashboardStatsResult } from '@/services/sales'
+import { fetchDashboardStats, fetchVendasList, fetchVendasExport, type DashboardStatsResult } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
 import type { FilterState } from '@/types/sales'
 import {
   formatCurrency,
   formatNumber,
   formatDate,
+  exportToCSV,
   getGrupoColor,
   MESES_CURTOS,
 } from '@/lib/formatters'
+import { toast } from '@/hooks/use-toast'
 import {
   saveFiltersToSession,
   loadFiltersFromSession,
@@ -178,6 +182,7 @@ export default function Index() {
     }>
   >([])
   const [recentSalesLoading, setRecentSalesLoading] = useState(false)
+  const [exportingReport, setExportingReport] = useState(false)
 
   // Ordenação server-side por clique nos cabeçalhos da tabela "Vendas Recentes".
   const sort = useTableSort<DashboardSortField>()
@@ -530,9 +535,7 @@ export default function Index() {
   // Função para limpar todos os filtros ativos e recarregar
   const handleClearFilters = () => {
     const cleared: FilterState = {
-      base: 'ambos',
-      dataDe: '',
-      dataAte: '',
+      base: 'Ambos',
       vendedorCliente: [],
       vendedor: [],
       grupoItem: [],
@@ -546,6 +549,104 @@ export default function Index() {
       tipoDevolucao: '',
     }
     setFilters(cleared)
+  }
+
+  // Exportação completa do relatório de vendas a partir do Dashboard
+  const handleExportDashboardReport = async (groupByNfe = false) => {
+    setExportingReport(true)
+    toast({
+      title: groupByNfe
+        ? 'Gerando relatório consolidado por NF...'
+        : 'Gerando relatório completo do Dashboard...',
+      description: 'Buscando todos os registros filtrados no servidor...',
+    })
+
+    try {
+      const res = await fetchVendasExport({
+        sort: '-data_lancamento',
+        groupByNfe,
+        collapsed: groupByNfe,
+        filters: filters as unknown as Record<string, unknown>,
+      })
+
+      const rowsToExport = res.items || []
+
+      if (rowsToExport.length === 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Nenhum dado encontrado',
+          description: 'Nenhum registro encontrado para exportar com os filtros atuais.',
+        })
+        return
+      }
+
+      const exportColumns = [
+        { key: 'data_lancamento', label: 'Data de Lançamento' },
+        { key: 'numero_nfe', label: 'Nº NFe' },
+        { key: 'numero_sap', label: 'Número SAP' },
+        { key: 'tipo_documento', label: 'Tipo de Documento' },
+        { key: 'codigo_cliente', label: 'Código do Cliente' },
+        { key: 'nome_cliente', label: 'Nome do Cliente' },
+        { key: 'vendedor_cliente', label: 'Vendedor > Cliente' },
+        { key: 'nome_vendedor', label: 'Nome do Vendedor' },
+        { key: 'codigo_item', label: 'Cód. do Item' },
+        { key: 'descricao_item', label: 'Descrição do Item' },
+        { key: 'grupo_item', label: 'Grupo do Item' },
+        { key: 'quantidade', label: 'Quantidade' },
+        { key: 'preco_item', label: 'Preço do Item' },
+        { key: 'preco_unitario', label: 'Preço Unitário' },
+        { key: 'total_linha', label: 'Valor Mercadoria (Total da Linha)' },
+        { key: 'total_nf_sem_frete', label: 'Total NF SEM Frete' },
+        { key: 'valor_liquido', label: 'Valor Liquido' },
+        { key: 'custo_total', label: 'Custo Total' },
+        { key: 'utilizacao', label: 'Utilização' },
+        { key: 'estado', label: 'Estado' },
+        { key: 'cidade', label: 'Cidade' },
+        { key: 'classificacao', label: 'Classificacao' },
+        { key: 'grupo_cliente', label: 'Grupo do Cliente' },
+        { key: 'mercado', label: 'Mercado' },
+        { key: 'usuario_emissor_pedido', label: 'Usuário Emitente do Pedido' },
+        { key: 'origem', label: 'Origem' },
+      ]
+
+      const formattedRows = rowsToExport.map((row) => ({
+        ...row,
+        origem:
+          row.tem_netsales && row.tem_racnew
+            ? 'Consolidado'
+            : row.tem_netsales
+              ? 'NetSales'
+              : 'RacNew',
+      }))
+
+      const dateStr = new Date().toISOString().slice(0, 10)
+      const filename = groupByNfe
+        ? `relatorio_dashboard_por_nf_${dateStr}`
+        : `relatorio_dashboard_completo_${dateStr}`
+
+      exportToCSV(
+        filename,
+        formattedRows as unknown as Record<string, unknown>[],
+        exportColumns,
+      )
+
+      toast({
+        title: 'Relatório exportado com sucesso!',
+        description: groupByNfe
+          ? `${rowsToExport.length} Notas Fiscais consolidadas exportadas em formato Excel/CSV.`
+          : `Todos os ${rowsToExport.length} registros detalhados foram exportados com sucesso.`,
+      })
+    } catch (err) {
+      console.error('Erro na exportação do relatório do dashboard:', err)
+      toast({
+        variant: 'destructive',
+        title: 'Falha na exportação',
+        description: 'Não foi possível exportar o relatório. Tente novamente.',
+      })
+    } finally {
+      setExportingReport(false)
+    }
+  }    setFilters(cleared)
   }
 
   return (
@@ -1452,26 +1553,60 @@ export default function Index() {
 
           {/* Highlights Table: 8 Most Recent Sales */}
           <Card className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between pb-4">
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4">
               <div>
-                <CardTitle className="text-base font-extrabold text-slate-900">
-                  Vendas Recentes
+                <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-[#0B6E99]" />
+                  Vendas Recentes &amp; Relatório
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500 font-medium">
-                  Últimos 8 lançamentos consolidados no sistema
+                  Últimos lançamentos consolidados no sistema com exportação completa
                 </CardDescription>
               </div>
-              <Button
-                asChild
-                variant="ghost"
-                size="sm"
-                className="text-[#0B6E99] hover:text-[#084F6E] hover:bg-cyan-50 font-bold gap-1"
-              >
-                <Link to="/vendas">
-                  Ver todas as vendas
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
-              </Button>
+              <div className="flex items-center flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleExportDashboardReport(false)}
+                  disabled={exportingReport || isNoData}
+                  className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 font-bold gap-1.5 text-xs shadow-2xs h-8"
+                  title="Exportar todos os registros que atendem aos filtros ativos em formato CSV/Excel"
+                >
+                  {exportingReport ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#0B6E99]" />
+                      Exportando...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5 text-[#0B6E99]" />
+                      Exportar Relatório Detalhado
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleExportDashboardReport(true)}
+                  disabled={exportingReport || isNoData}
+                  className="bg-cyan-50 border-cyan-200 text-[#0B6E99] hover:bg-cyan-100 font-bold gap-1.5 text-xs shadow-2xs h-8"
+                  title="Exportar relatório consolidado (1 linha compacta por Nota Fiscal)"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  Exportar por NF
+                </Button>
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="sm"
+                  className="text-[#0B6E99] hover:text-[#084F6E] hover:bg-cyan-50 font-bold gap-1 text-xs h-8"
+                >
+                  <Link to="/vendas">
+                    Ver todas
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-x-auto">

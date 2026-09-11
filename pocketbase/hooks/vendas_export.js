@@ -247,7 +247,139 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
       }),
     )
 
-    // Teto de segurança para exportação: limite máximo de 100.000 linhas
+    // Modo colapsado / agrupado por NFe: se groupByNfe === true ou collapsed === true
+    const isGroupByNfe = !!(body.groupByNfe || body.collapsed)
+
+    if (isGroupByNfe) {
+      // Query agrupada por Nota Fiscal (numero_nfe) para consolidar em 1 linha por NF
+      const groupedRows = arrayOf(
+        new DynamicModel({
+          numero_nfe: '',
+          data_lancamento: '',
+          numero_sap: '',
+          tipo_documento: '',
+          codigo_cliente: '',
+          nome_cliente: '',
+          vendedor_cliente: '',
+          nome_vendedor: '',
+          grupo_item: '',
+          itens_qtd: '',
+          quantidade: '',
+          total_linha: '',
+          total_nf_sem_frete: '',
+          valor_liquido: '',
+          custo_total: '',
+          utilizacao: '',
+          estado: '',
+          cidade: '',
+          classificacao: '',
+          grupo_cliente: '',
+          mercado: '',
+          usuario_emissor_pedido: '',
+          origem: '',
+          tem_netsales: '',
+          tem_racnew: '',
+        }),
+      )
+
+      $app
+        .db()
+        .newQuery(
+          'SELECT ' +
+            "COALESCE(NULLIF(numero_nfe,''), '(Sem NFe)') AS numero_nfe, " +
+            'MAX(data_lancamento) AS data_lancamento, ' +
+            "COALESCE(MAX(numero_sap),'') AS numero_sap, " +
+            "COALESCE(MAX(tipo_documento),'') AS tipo_documento, " +
+            "COALESCE(MAX(codigo_cliente),'') AS codigo_cliente, " +
+            "COALESCE(MAX(nome_cliente),'') AS nome_cliente, " +
+            "COALESCE(MAX(vendedor_cliente),'') AS vendedor_cliente, " +
+            "COALESCE(MAX(nome_vendedor),'') AS nome_vendedor, " +
+            "COALESCE(MAX(grupo_item),'') AS grupo_item, " +
+            'COUNT(*) AS itens_qtd, ' +
+            'COALESCE(SUM(quantidade),0) AS quantidade, ' +
+            'COALESCE(SUM(total_linha),0) AS total_linha, ' +
+            'COALESCE(MAX(total_nf_sem_frete), SUM(total_linha), 0) AS total_nf_sem_frete, ' +
+            'COALESCE(SUM(valor_liquido),0) AS valor_liquido, ' +
+            'COALESCE(SUM(custo_total),0) AS custo_total, ' +
+            "COALESCE(MAX(utilizacao),'') AS utilizacao, " +
+            "COALESCE(MAX(estado),'') AS estado, " +
+            "COALESCE(MAX(cidade),'') AS cidade, " +
+            "COALESCE(MAX(classificacao),'') AS classificacao, " +
+            "COALESCE(MAX(grupo_cliente),'') AS grupo_cliente, " +
+            "COALESCE(MAX(mercado),'') AS mercado, " +
+            "COALESCE(MAX(usuario_emissor_pedido),'') AS usuario_emissor_pedido, " +
+            'MAX(CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END) AS tem_netsales, ' +
+            'MAX(CASE WHEN tem_racnew = 1 THEN 1 ELSE 0 END) AS tem_racnew ' +
+            'FROM vendas WHERE ' +
+            sqlWhere +
+            " GROUP BY COALESCE(NULLIF(numero_nfe,''), '(Sem NFe)') " +
+            ' ORDER BY ' +
+            sortClause +
+            ' LIMIT 100000',
+        )
+        .all(groupedRows)
+
+      if (Date.now() - startTime > MAX_EXEC_TIME_MS) {
+        throw new Error('TIMEOUT_EXCEEDED')
+      }
+
+      const items = []
+      for (let i = 0; i < groupedRows.length; i++) {
+        const r = groupedRows[i]
+        const hasNetsales =
+          r.tem_netsales === '1' ||
+          r.tem_netsales === 1 ||
+          r.tem_netsales === 'true' ||
+          r.tem_netsales === true
+        const hasRacnew =
+          r.tem_racnew === '1' ||
+          r.tem_racnew === 1 ||
+          r.tem_racnew === 'true' ||
+          r.tem_racnew === true
+        const qtdItens = toInt(r.itens_qtd)
+
+        items.push({
+          id: 'nfe_' + String(r.numero_nfe),
+          numero_nfe: r.numero_nfe,
+          data_lancamento: r.data_lancamento,
+          numero_sap: r.numero_sap,
+          tipo_documento: r.tipo_documento,
+          codigo_cliente: r.codigo_cliente,
+          nome_cliente: r.nome_cliente,
+          vendedor_cliente: r.vendedor_cliente,
+          nome_vendedor: r.nome_vendedor,
+          codigo_item: qtdItens > 1 ? `(${qtdItens} itens)` : '',
+          descricao_item: qtdItens > 1 ? `Agrupamento de ${qtdItens} itens na NF` : '',
+          grupo_item: r.grupo_item,
+          quantidade: toNum(r.quantidade),
+          preco_item: 0,
+          preco_unitario: 0,
+          total_linha: toNum(r.total_linha),
+          total_nf_sem_frete: toNum(r.total_nf_sem_frete),
+          valor_liquido: toNum(r.valor_liquido),
+          custo_total: toNum(r.custo_total),
+          utilizacao: r.utilizacao,
+          estado: r.estado,
+          cidade: r.cidade,
+          classificacao: r.classificacao,
+          grupo_cliente: r.grupo_cliente,
+          mercado: r.mercado,
+          usuario_emissor_pedido: r.usuario_emissor_pedido,
+          itens_qtd: qtdItens,
+          tem_netsales: hasNetsales,
+          tem_racnew: hasRacnew,
+          origem: hasNetsales && hasRacnew ? 'Consolidado' : hasNetsales ? 'NetSales' : 'RacNew',
+        })
+      }
+
+      return e.json(200, {
+        items: items,
+        totalItems: items.length,
+        isGrouped: true,
+      })
+    }
+
+    // Teto de segurança para exportação detalhada: limite máximo de 100.000 linhas
     $app
       .db()
       .newQuery(
@@ -333,6 +465,7 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
     return e.json(200, {
       items: items,
       totalItems: items.length,
+      isGrouped: false,
     })
   } catch (err) {
     if (err && String(err.message).indexOf('TIMEOUT_EXCEEDED') >= 0) {
