@@ -19,11 +19,6 @@
 //     grupoItem[], estado[], utilizacao[], tipoDocumento[], search, tipoDevolucao
 //
 // Retorna: { kpis, charts, recentSales, filterOptions }
-// Cache em memória de respostas do dashboard stats para consultas repetidas
-if (!globalThis.__skipDashboardCache) {
-  globalThis.__skipDashboardCache = new Map()
-}
-
 routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
   const startTime = Date.now()
   const MAX_EXEC_TIME_MS = 25000 // Teto reduzido para 25s (garante resposta bem antes do timeout de 35s/45s)
@@ -36,10 +31,23 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     }
     const f = body.filters || {}
 
-    // Chave de cache baseada nos filtros
+    // Chave de cache baseada nos filtros (defensivo: falha de cache NUNCA derruba a consulta principal)
     const cacheKey = JSON.stringify(f)
     const now = Date.now()
-    const cachedEntry = globalThis.__skipDashboardCache.get(cacheKey)
+    let cachedEntry = null
+    try {
+      if (
+        typeof globalThis !== 'undefined' &&
+        globalThis &&
+        globalThis.__skipDashboardCache &&
+        typeof globalThis.__skipDashboardCache.get === 'function'
+      ) {
+        cachedEntry = globalThis.__skipDashboardCache.get(cacheKey)
+      }
+    } catch (cacheReadErr) {
+      console.warn('dashboard_stats: cache read warning:', cacheReadErr)
+    }
+
     if (cachedEntry && cachedEntry.expiresAt > now) {
       return e.json(200, cachedEntry.data)
     }
@@ -995,16 +1003,28 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       filterOptions: filterOptions,
     }
 
-    // Armazena no cache por 5 minutos (300.000 ms)
+    // Armazena no cache por 5 minutos (300.000 ms) com blindagem completa
     // Limita o tamanho do cache para até 50 entradas para economizar memória
-    if (globalThis.__skipDashboardCache.size > 50) {
-      const firstKey = globalThis.__skipDashboardCache.keys().next().value
-      if (firstKey) globalThis.__skipDashboardCache.delete(firstKey)
+    try {
+      if (typeof globalThis !== 'undefined' && globalThis) {
+        if (
+          !globalThis.__skipDashboardCache ||
+          typeof globalThis.__skipDashboardCache.set !== 'function'
+        ) {
+          globalThis.__skipDashboardCache = new Map()
+        }
+        if (globalThis.__skipDashboardCache.size > 50) {
+          const firstKey = globalThis.__skipDashboardCache.keys().next().value
+          if (firstKey) globalThis.__skipDashboardCache.delete(firstKey)
+        }
+        globalThis.__skipDashboardCache.set(cacheKey, {
+          data: responsePayload,
+          expiresAt: Date.now() + 300000,
+        })
+      }
+    } catch (cacheWriteErr) {
+      console.warn('dashboard_stats: cache write warning:', cacheWriteErr)
     }
-    globalThis.__skipDashboardCache.set(cacheKey, {
-      data: responsePayload,
-      expiresAt: Date.now() + 300000,
-    })
 
     return e.json(200, responsePayload)
   } catch (err) {
