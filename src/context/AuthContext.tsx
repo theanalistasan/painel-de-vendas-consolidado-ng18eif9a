@@ -79,12 +79,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(res.record)
     setToken(res.token)
     // Auditoria: registra o login bem-sucedido (best-effort).
-    void logAudit('login', 'Login realizado')
+    try {
+      void logAudit('login', 'Login realizado').catch(() => {})
+    } catch {
+      // noop
+    }
   }, [])
 
   const logout = useCallback(() => {
     // Auditoria: registra o logout antes de limpar a sessão (best-effort).
-    void logAudit('logout', 'Logout realizado')
+    try {
+      void logAudit('logout', 'Logout realizado').catch(() => {})
+    } catch {
+      // noop
+    }
     // Remove o flag admin ao sair — exige a senha novamente na próxima sessão.
     setAdminUnlocked(false)
     // Limpa os filtros persistidos em sessionStorage ao sair.

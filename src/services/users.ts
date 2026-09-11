@@ -6,9 +6,9 @@ export type UserRole = 'admin' | 'user'
 export interface UserRecord {
   id: string
   email: string
-  name: string
-  role: UserRole
-  active: boolean
+  name?: string
+  role?: UserRole
+  active?: boolean
   created: string
   updated: string
 }

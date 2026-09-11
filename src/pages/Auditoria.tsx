@@ -49,9 +49,17 @@ export default function Auditoria() {
 
   // Carrega lista de usuários para o filtro (uma vez)
   useEffect(() => {
+    let active = true
     fetchUsers({ page: 1, perPage: 200 })
-      .then((res) => setUsers(res.items))
-      .catch(() => {})
+      .then((res) => {
+        if (active) setUsers(res.items || [])
+      })
+      .catch((err) => {
+        console.warn('Falha ao carregar lista de usuários para filtro de auditoria:', err)
+      })
+    return () => {
+      active = false
+    }
   }, [])
 
   const load = useCallback(async () => {

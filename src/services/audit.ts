@@ -5,12 +5,12 @@ export type AuditAction = 'login' | 'logout' | 'admin_access' | 'import_access'
 
 export interface AuditLog {
   id: string
-  user_id: string
-  user_email: string
-  user_name: string
-  action: AuditAction
-  details: string
-  ip: string
+  user_id?: string
+  user_email?: string
+  user_name?: string
+  action: string
+  details?: string
+  ip?: string
   created: string
 }
 
@@ -38,18 +38,24 @@ export interface FetchAuditLogsParams {
 export async function logAudit(action: AuditAction, details?: string): Promise<void> {
   try {
     const user = pb.authStore.record
-    if (!user) return
+    if (!user || !user.id) return
 
-    await pb.collection('audit_logs').create({
-      user_id: user.id,
-      user_email: user.email || '',
-      user_name: user.name || '',
+    const payload: Record<string, unknown> = {
       action,
       details: details || '',
+      user_email: user.email || '',
+      user_name: user.name || '',
       ip: '',
-    })
+    }
+
+    // Apenas vincula relation user_id se for um ID de usuário válido
+    if (typeof user.id === 'string' && user.id.trim()) {
+      payload.user_id = user.id.trim()
+    }
+
+    await pb.collection('audit_logs').create(payload)
   } catch (err) {
-    // Auditoria é best-effort: nunca bloquear o fluxo principal.
+    // Auditoria é best-effort: nunca lançar exceção nem bloquear o fluxo principal.
     console.warn('Falha ao registrar auditoria:', err)
   }
 }

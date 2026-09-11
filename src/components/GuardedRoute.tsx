@@ -38,7 +38,12 @@ export default function GuardedRoute({
             ? 'Acessou /usuarios'
             : 'Acessou /auditoria'
 
-    void logAudit(action, details)
+    // Garante execução assíncrona isolada sem chance de interromper a renderização
+    try {
+      void logAudit(action, details).catch(() => {})
+    } catch {
+      // noop
+    }
   }, [page, location.pathname])
 
   return <AdminGuard>{children}</AdminGuard>
