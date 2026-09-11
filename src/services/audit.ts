@@ -37,19 +37,39 @@ export interface FetchAuditLogsParams {
  */
 export async function logAudit(action: AuditAction, details?: string): Promise<void> {
   try {
+    if (!pb.authStore.isValid) return
     const user = pb.authStore.record
-    if (!user || !user.id) return
 
+    // 1. Tenta via endpoint backend dedicado (/backend/v1/audit/log) que roda com contexto seguro
+    try {
+      await pb.send('/backend/v1/audit/log', {
+        method: 'POST',
+        body: {
+          action,
+          details: details || '',
+          user_id: user?.id || '',
+          user_email: user?.email || '',
+          user_name: user?.name || '',
+        },
+      })
+      return
+    } catch (endpointErr) {
+      console.warn(
+        'Falha no endpoint /backend/v1/audit/log, tentando fallback direto:',
+        endpointErr,
+      )
+    }
+
+    // 2. Fallback direto via SDK da coleção
     const payload: Record<string, unknown> = {
       action,
       details: details || '',
-      user_email: user.email || '',
-      user_name: user.name || '',
+      user_email: user?.email || '',
+      user_name: user?.name || '',
       ip: '',
     }
 
-    // Apenas vincula relation user_id se for um ID de usuário válido
-    if (typeof user.id === 'string' && user.id.trim()) {
+    if (user?.id && typeof user.id === 'string' && user.id.trim()) {
       payload.user_id = user.id.trim()
     }
 

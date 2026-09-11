@@ -84,15 +84,19 @@ export default function Usuarios() {
 
   const { toast } = useToast()
 
+  const [loadError, setLoadError] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await fetchUsers({ page, perPage: PER_PAGE, search: search.trim() || undefined })
-      setItems(res.items)
+      setItems(res.items || [])
       setTotalPages(res.totalPages || 1)
-      setTotalItems(res.totalItems)
+      setTotalItems(res.totalItems || 0)
     } catch (err) {
       console.error('Erro ao buscar usuários:', err)
+      setLoadError('Não foi possível carregar os usuários.')
       toast({
         variant: 'destructive',
         title: 'Erro ao carregar usuários',
@@ -255,6 +259,13 @@ export default function Usuarios() {
             <div className="p-10 flex flex-col items-center gap-3 text-slate-400">
               <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
               <p className="text-xs font-medium">Carregando usuários...</p>
+            </div>
+          ) : loadError ? (
+            <div className="p-10 flex flex-col items-center gap-3 text-slate-500">
+              <p className="text-sm font-semibold text-rose-600">{loadError}</p>
+              <Button variant="outline" size="sm" onClick={load} className="text-xs font-semibold">
+                Tentar novamente
+              </Button>
             </div>
           ) : items.length === 0 ? (
             <div className="p-10 flex flex-col items-center gap-2 text-slate-400">

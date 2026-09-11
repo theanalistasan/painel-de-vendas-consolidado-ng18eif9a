@@ -62,8 +62,11 @@ export default function Auditoria() {
     }
   }, [])
 
+  const [loadError, setLoadError] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await fetchAuditLogs({
         page,
@@ -73,11 +76,12 @@ export default function Auditoria() {
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       })
-      setItems(res.items)
+      setItems(res.items || [])
       setTotalPages(res.totalPages || 1)
-      setTotalItems(res.totalItems)
+      setTotalItems(res.totalItems || 0)
     } catch (err) {
       console.error('Erro ao buscar auditoria:', err)
+      setLoadError('Não foi possível carregar os registros de auditoria.')
       toast({
         variant: 'destructive',
         title: 'Erro ao carregar auditoria',
@@ -244,6 +248,13 @@ export default function Auditoria() {
             <div className="p-10 flex flex-col items-center gap-3 text-slate-400">
               <Loader2 className="w-8 h-8 text-[#0B6E99] animate-spin" />
               <p className="text-xs font-medium">Carregando auditoria...</p>
+            </div>
+          ) : loadError ? (
+            <div className="p-10 flex flex-col items-center gap-3 text-slate-500">
+              <p className="text-sm font-semibold text-rose-600">{loadError}</p>
+              <Button variant="outline" size="sm" onClick={load} className="text-xs font-semibold">
+                Tentar novamente
+              </Button>
             </div>
           ) : items.length === 0 ? (
             <div className="p-10 flex flex-col items-center gap-2 text-slate-400">

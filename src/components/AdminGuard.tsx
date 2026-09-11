@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Lock, ShieldCheck, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Input } from '@/components/ui/input'
@@ -9,25 +9,58 @@ import { useToast } from '@/hooks/use-toast'
 const ADMIN_PASSWORD = 'Reset@Painel2025'
 const ADMIN_UNLOCKED_KEY = 'adminUnlocked'
 
-/** Verifica se o acesso admin já foi desbloqueado nesta sessão. */
+/**
+ * Verifica se o acesso admin já foi desbloqueado.
+ * Suporta persistência em localStorage (sobrevive a refresh F5 e preview iframes)
+ * com fallback e sincronização em sessionStorage.
+ */
 export function isAdminUnlocked(): boolean {
   try {
-    return sessionStorage.getItem(ADMIN_UNLOCKED_KEY) === '1'
-  } catch {
+    if (localStorage.getItem(ADMIN_UNLOCKED_KEY) === '1') {
+      return true
+    }
+    if (sessionStorage.getItem(ADMIN_UNLOCKED_KEY) === '1') {
+      try {
+        localStorage.setItem(ADMIN_UNLOCKED_KEY, '1')
+      } catch {
+        // ignore
+      }
+      return true
+    }
     return false
+  } catch {
+    try {
+      return sessionStorage.getItem(ADMIN_UNLOCKED_KEY) === '1'
+    } catch {
+      return false
+    }
   }
 }
 
-/** Marca o acesso admin como desbloqueado na sessão atual. */
+/**
+ * Marca o acesso admin como desbloqueado ou bloqueado.
+ * Persiste tanto no localStorage quanto no sessionStorage para garantir que F5/refresh
+ * nunca trave a tela do usuário.
+ */
 export function setAdminUnlocked(unlocked: boolean) {
   try {
     if (unlocked) {
+      localStorage.setItem(ADMIN_UNLOCKED_KEY, '1')
       sessionStorage.setItem(ADMIN_UNLOCKED_KEY, '1')
     } else {
+      localStorage.removeItem(ADMIN_UNLOCKED_KEY)
       sessionStorage.removeItem(ADMIN_UNLOCKED_KEY)
     }
   } catch {
-    /* ignore */
+    try {
+      if (unlocked) {
+        sessionStorage.setItem(ADMIN_UNLOCKED_KEY, '1')
+      } else {
+        sessionStorage.removeItem(ADMIN_UNLOCKED_KEY)
+      }
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -43,7 +76,12 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
   const navigate = useNavigate()
   const { toast } = useToast()
 
-  const unlocked = isAdminUnlocked()
+  const [unlocked, setUnlocked] = useState(() => isAdminUnlocked())
+
+  // Sincroniza se o status for alterado
+  useEffect(() => {
+    setUnlocked(isAdminUnlocked())
+  }, [])
 
   if (unlocked) {
     return <>{children}</>
@@ -57,9 +95,10 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
       await new Promise((r) => setTimeout(r, 200))
       if (password.trim() === ADMIN_PASSWORD) {
         setAdminUnlocked(true)
+        setUnlocked(true)
         toast({
           title: 'Acesso liberado',
-          description: 'Modo administrador ativado para esta sessão.',
+          description: 'Modo administrador ativado.',
         })
         setPassword('')
       } else {
