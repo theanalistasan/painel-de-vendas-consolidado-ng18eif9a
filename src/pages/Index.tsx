@@ -35,7 +35,12 @@ import {
   Line,
   ReferenceLine,
 } from 'recharts'
-import { fetchDashboardStats, fetchVendasList, fetchVendasExport, type DashboardStatsResult } from '@/services/sales'
+import {
+  fetchDashboardStats,
+  fetchVendasList,
+  fetchVendasExport,
+  type DashboardStatsResult,
+} from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
 import type { FilterState } from '@/types/sales'
 import {
@@ -535,7 +540,9 @@ export default function Index() {
   // Função para limpar todos os filtros ativos e recarregar
   const handleClearFilters = () => {
     const cleared: FilterState = {
-      base: 'Ambos',
+      base: 'ambos',
+      dataDe: '',
+      dataAte: '',
       vendedorCliente: [],
       vendedor: [],
       grupoItem: [],
@@ -624,11 +631,7 @@ export default function Index() {
         ? `relatorio_dashboard_por_nf_${dateStr}`
         : `relatorio_dashboard_completo_${dateStr}`
 
-      exportToCSV(
-        filename,
-        formattedRows as unknown as Record<string, unknown>[],
-        exportColumns,
-      )
+      exportToCSV(filename, formattedRows as unknown as Record<string, unknown>[], exportColumns)
 
       toast({
         title: 'Relatório exportado com sucesso!',
@@ -646,7 +649,6 @@ export default function Index() {
     } finally {
       setExportingReport(false)
     }
-  }    setFilters(cleared)
   }
 
   return (
