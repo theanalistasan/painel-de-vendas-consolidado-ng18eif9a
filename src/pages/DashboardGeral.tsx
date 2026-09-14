@@ -7,6 +7,7 @@ import {
   RotateCcw,
   Users,
   Download,
+  Sparkles,
 } from 'lucide-react'
 import {
   XAxis,
@@ -253,6 +254,15 @@ export default function DashboardGeral() {
     data?.charts?.vendasInsumosHistorico || data?.charts?.vendasInsumosPorAno || []
   const chartClientesAtivosEquipamentos = data?.charts?.clientesAtivosEquipamentos || []
   const chartClientesAtivosInsumos = data?.charts?.clientesAtivosInsumos || []
+
+  const isNoData =
+    !loading &&
+    !error &&
+    data !== null &&
+    (data.kpis?.faturamento ?? 0) === 0 &&
+    (data.kpis?.documentos ?? 0) === 0 &&
+    chartVendasPorMes.length === 0 &&
+    chartGrupoItem.length === 0
 
   // Normalização para série temporal contínua de Equipamentos (linha única)
   const dataTendenciaEquipamentos = useMemo(() => {
@@ -586,6 +596,36 @@ export default function DashboardGeral() {
       ) : (
         /* Grade dos 8 Indicadores Solicitados para a Visão Geral */
         <div className="space-y-6">
+          {/* Alerta de Empty State */}
+          {isNoData && (
+            <Card className="rounded-xl border border-amber-200 bg-amber-50/60 p-6 shadow-xs">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-900">
+                      Nenhuma venda encontrada para os filtros selecionados
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Os indicadores e gráficos sensíveis ao período estão zerados para o recorte
+                      atual.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    onClick={handleClearFilters}
+                    className="bg-[#0B6E99] hover:bg-[#084F6E] text-white font-bold text-xs h-9 px-4 shadow-sm"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                    Limpar Filtros
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
           {/* Linha 1: Tendência de Vendas — Equipamentos & Acumulado de Vendas — Insumos */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Indicador 1: Tendência de Vendas — Equipamentos */}

@@ -21,9 +21,9 @@ const EMPTY_FILTERS: FilterState = {
 
 /**
  * Grupos padrão solicitados para inicialização do Dashboard:
- * "Equipamentos", "Acessórios", "Tintas" e "Peças"
+ * "EQUIPAMENTOS", "ACESSÓRIOS", "TINTAS" e "PEÇAS" (alinhados em maiúsculas com a base de dados)
  */
-export const DEFAULT_GRUPOS_ITEM: string[] = ['Equipamentos', 'Acessórios', 'Tintas', 'Peças']
+export const DEFAULT_GRUPOS_ITEM: string[] = ['EQUIPAMENTOS', 'ACESSÓRIOS', 'TINTAS', 'PEÇAS']
 
 /**
  * Filtros padrão estáticos básicos (quando ainda não computou dinamicamente com base nas opções da base)
@@ -232,7 +232,18 @@ export function loadFiltersFromSession(): FilterState {
     // garante os valores padrão para não quebrar a visualização inicial das páginas de Dashboard.
     const ano = parsedAno.length > 0 ? parsedAno : [...DEFAULT_FILTERS.ano]
     const mes = parsedMes.length > 0 ? parsedMes : [...DEFAULT_FILTERS.mes]
-    const grupoItem = parsedGrupoItem.length > 0 ? parsedGrupoItem : [...DEFAULT_FILTERS.grupoItem]
+    // Migra automaticamente valores salvos em Title Case ('Equipamentos' -> 'EQUIPAMENTOS', etc.)
+    const grupoItemMapped = (
+      parsedGrupoItem.length > 0 ? parsedGrupoItem : [...DEFAULT_FILTERS.grupoItem]
+    ).map((g) => {
+      const up = g.toUpperCase().trim()
+      if (up === 'EQUIPAMENTOS') return 'EQUIPAMENTOS'
+      if (up === 'ACESSÓRIOS' || up === 'ACESSORIOS') return 'ACESSÓRIOS'
+      if (up === 'TINTAS') return 'TINTAS'
+      if (up === 'PEÇAS' || up === 'PECAS') return 'PEÇAS'
+      return g
+    })
+    const grupoItem = grupoItemMapped
     const tipoDocumento =
       parsedTipoDoc.length > 0 ? parsedTipoDoc : [...DEFAULT_FILTERS.tipoDocumento]
     const utilizacao =

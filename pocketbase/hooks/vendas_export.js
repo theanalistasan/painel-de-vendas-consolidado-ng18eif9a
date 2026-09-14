@@ -135,8 +135,10 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
       sqlParts.push('nome_vendedor IN (' + sqlArr + ')')
     }
     if (Array.isArray(f.grupoItem) && f.grupoItem.length > 0) {
-      const sqlArr = f.grupoItem.map((v) => "'" + sqlEsc(v) + "'").join(',')
-      sqlParts.push('grupo_item IN (' + sqlArr + ')')
+      const sqlArr = f.grupoItem
+        .map((v) => "'" + sqlEsc(String(v).toUpperCase().trim()) + "'")
+        .join(',')
+      sqlParts.push('UPPER(TRIM(grupo_item)) IN (' + sqlArr + ')')
     }
     if (Array.isArray(f.estado) && f.estado.length > 0) {
       const sqlArr = f.estado.map((v) => "'" + sqlEsc(v) + "'").join(',')

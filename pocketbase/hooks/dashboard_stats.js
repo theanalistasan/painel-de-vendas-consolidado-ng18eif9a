@@ -329,7 +329,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       const anos = anosFilter.map((a) => 'ano = ' + parseInt(a, 10)).join(' OR ')
       sqlParts.push('(' + anos + ')')
       const anosVendas = anosFilter
-        .map((a) => "data_lancamento LIKE '" + sqlEsc(String(a)) + "-%'")
+        .map((a) => "substr(data_lancamento, 1, 4) = '" + sqlEsc(String(parseInt(a, 10))) + "'")
         .join(' OR ')
       sqlVendasParts.push('(' + anosVendas + ')')
     }
@@ -338,7 +338,10 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       const meses = mesesFilter.map((m) => 'mes = ' + parseInt(m, 10)).join(' OR ')
       sqlParts.push('(' + meses + ')')
       const mesesVendas = mesesFilter
-        .map((m) => "data_lancamento LIKE '%-" + String(m).padStart(2, '0') + "-%'")
+        .map(
+          (m) =>
+            "substr(data_lancamento, 6, 2) = '" + String(parseInt(m, 10)).padStart(2, '0') + "'",
+        )
         .join(' OR ')
       sqlVendasParts.push('(' + mesesVendas + ')')
     }
@@ -346,7 +349,10 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const diasFilter = Array.isArray(f.dia) ? f.dia : f.dia ? [f.dia] : []
     if (diasFilter.length > 0) {
       const diasVendas = diasFilter
-        .map((d) => "data_lancamento LIKE '%-" + String(d).padStart(2, '0') + " %'")
+        .map(
+          (d) =>
+            "substr(data_lancamento, 9, 2) = '" + String(parseInt(d, 10)).padStart(2, '0') + "'",
+        )
         .join(' OR ')
       sqlVendasParts.push('(' + diasVendas + ')')
     }
@@ -367,8 +373,10 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       sqlVendasParts.push(clause)
     }
     if (Array.isArray(f.grupoItem) && f.grupoItem.length > 0) {
-      const sqlArr = f.grupoItem.map((v) => "'" + sqlEsc(v) + "'").join(',')
-      const clause = 'grupo_item IN (' + sqlArr + ')'
+      const sqlArr = f.grupoItem
+        .map((v) => "'" + sqlEsc(String(v).toUpperCase().trim()) + "'")
+        .join(',')
+      const clause = 'UPPER(TRIM(grupo_item)) IN (' + sqlArr + ')'
       sqlParts.push(clause)
       sqlDimParts.push(clause)
       sqlVendasParts.push(clause)

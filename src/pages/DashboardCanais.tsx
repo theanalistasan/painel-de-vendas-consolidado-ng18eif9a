@@ -289,7 +289,12 @@ export default function DashboardCanais() {
   ]
 
   const isNoData =
-    !data || (kpis.faturamento === 0 && kpis.documentos === 0 && recentSales.length === 0)
+    !loading &&
+    !error &&
+    data !== null &&
+    kpis.faturamento === 0 &&
+    kpis.documentos === 0 &&
+    recentSales.length === 0
 
   const handleClearFilters = () => {
     const cleared: FilterState = {
