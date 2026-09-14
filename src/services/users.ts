@@ -1,5 +1,5 @@
 import pb from '@/lib/pocketbase/client'
-import { safeAuthRefresh } from '@/lib/pocketbase/auth-session'
+import { safeAuthRefresh, ensureAuthToken } from '@/lib/pocketbase/auth-session'
 
 export type UserRole = 'admin' | 'user'
 
@@ -42,6 +42,9 @@ export async function fetchUsers(params: FetchUsersParams): Promise<UsersListRes
     filter = `name ~ '${term}' || email ~ '${term}'`
   }
 
+  // 1. Assegura que o token de autenticação esteja disponível antes da requisição
+  await ensureAuthToken()
+
   const runQuery = () =>
     pb.collection<UserRecord>('users').getList(page, perPage, {
       sort: '-created',
@@ -53,12 +56,17 @@ export async function fetchUsers(params: FetchUsersParams): Promise<UsersListRes
     result = await runQuery()
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status
-    if ((status === 401 || status === 403) && pb.authStore.isValid) {
+    if (status === 401 || status === 403) {
+      // Token expirado ou rejeitado: tentar renovar uma vez via safeAuthRefresh
       try {
-        await safeAuthRefresh()
+        const refreshed = await safeAuthRefresh()
+        if (!refreshed || !pb.authStore.isValid) {
+          throw new Error('Sessão expirada. Faça login novamente.')
+        }
         result = await runQuery()
-      } catch {
-        throw err
+      } catch (refreshErr) {
+        // Se a renovação falhar, propagar como erro de autenticação explícito (nunca mascarar)
+        throw refreshErr || err
       }
     } else {
       throw err
@@ -66,7 +74,7 @@ export async function fetchUsers(params: FetchUsersParams): Promise<UsersListRes
   }
 
   return {
-    items: result.items,
+    items: result.items || [],
     page: result.page,
     perPage: result.perPage,
     totalItems: result.totalItems,

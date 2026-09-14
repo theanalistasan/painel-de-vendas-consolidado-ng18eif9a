@@ -81,11 +81,15 @@ export default function Auditoria() {
       setTotalItems(res.totalItems || 0)
     } catch (err) {
       console.error('Erro ao buscar auditoria:', err)
-      setLoadError('Não foi possível carregar os registros de auditoria.')
+      const errorMsg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Não foi possível carregar os registros de auditoria.'
+      setLoadError(errorMsg)
       toast({
         variant: 'destructive',
         title: 'Erro ao carregar auditoria',
-        description: 'Não foi possível obter os logs de auditoria.',
+        description: errorMsg,
       })
     } finally {
       setLoading(false)
@@ -252,7 +256,12 @@ export default function Auditoria() {
           ) : loadError ? (
             <div className="p-10 flex flex-col items-center gap-3 text-slate-500">
               <p className="text-sm font-semibold text-rose-600">{loadError}</p>
-              <Button variant="outline" size="sm" onClick={load} className="text-xs font-semibold">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void load()}
+                className="text-xs font-semibold"
+              >
                 Tentar novamente
               </Button>
             </div>

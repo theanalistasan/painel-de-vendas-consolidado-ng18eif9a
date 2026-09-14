@@ -40,6 +40,7 @@ export async function safeAuthRefresh(): Promise<RecordAuthResponse<RecordModel>
     return null
   }
 
+  // Se já houver um refresh ativo em andamento, aguardar a mesma promise
   if (refreshPromise) {
     return refreshPromise
   }
@@ -72,4 +73,35 @@ export async function safeAuthRefresh(): Promise<RecordAuthResponse<RecordModel>
   })()
 
   return refreshPromise
+}
+
+/**
+ * Retorna uma promise que resolve assim que o authStore do PocketBase tiver um token válido,
+ * ou rejeita se não houver token ou se o usuário não estiver autenticado.
+ */
+export async function ensureAuthToken(maxWaitMs = 2500): Promise<string> {
+  if (pb.authStore.isValid && pb.authStore.token) {
+    return pb.authStore.token
+  }
+
+  const start = Date.now()
+  return new Promise<string>((resolve, reject) => {
+    const check = () => {
+      if (pb.authStore.isValid && pb.authStore.token) {
+        resolve(pb.authStore.token)
+        return
+      }
+      if (Date.now() - start >= maxWaitMs) {
+        if (!pb.authStore.token) {
+          reject(new Error('Sessão não autenticada. Faça login novamente.'))
+        } else {
+          // Token existe mas isValid falso
+          reject(new Error('Token de autenticação expirado ou inválido.'))
+        }
+        return
+      }
+      setTimeout(check, 50)
+    }
+    check()
+  })
 }

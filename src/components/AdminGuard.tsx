@@ -7,21 +7,29 @@ import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
 
 const ADMIN_PASSWORD = 'Reset@Painel2025'
-const ADMIN_UNLOCKED_KEY = 'adminUnlocked'
+// Mantém admin_unlocked_v1 (chave padrão especificada) com suporte a retrocompatibilidade com adminUnlocked
+const ADMIN_UNLOCKED_KEY = 'admin_unlocked_v1'
+const LEGACY_ADMIN_UNLOCKED_KEY = 'adminUnlocked'
 
 /**
  * Verifica se o acesso admin já foi desbloqueado.
- * Suporta persistência em localStorage (sobrevive a refresh F5 e preview iframes)
- * com fallback e sincronização em sessionStorage.
+ * Suporta persistência em sessionStorage na chave admin_unlocked_v1
+ * e também em localStorage para resiliência a iframes/refresh.
  */
 export function isAdminUnlocked(): boolean {
   try {
-    if (localStorage.getItem(ADMIN_UNLOCKED_KEY) === '1') {
+    if (
+      sessionStorage.getItem(ADMIN_UNLOCKED_KEY) === '1' ||
+      sessionStorage.getItem(LEGACY_ADMIN_UNLOCKED_KEY) === '1'
+    ) {
       return true
     }
-    if (sessionStorage.getItem(ADMIN_UNLOCKED_KEY) === '1') {
+    if (
+      localStorage.getItem(ADMIN_UNLOCKED_KEY) === '1' ||
+      localStorage.getItem(LEGACY_ADMIN_UNLOCKED_KEY) === '1'
+    ) {
       try {
-        localStorage.setItem(ADMIN_UNLOCKED_KEY, '1')
+        sessionStorage.setItem(ADMIN_UNLOCKED_KEY, '1')
       } catch {
         // ignore
       }
@@ -29,38 +37,37 @@ export function isAdminUnlocked(): boolean {
     }
     return false
   } catch {
-    try {
-      return sessionStorage.getItem(ADMIN_UNLOCKED_KEY) === '1'
-    } catch {
-      return false
-    }
+    return false
   }
 }
 
 /**
  * Marca o acesso admin como desbloqueado ou bloqueado.
- * Persiste tanto no localStorage quanto no sessionStorage para garantir que F5/refresh
- * nunca trave a tela do usuário.
+ * Persiste em sessionStorage na chave admin_unlocked_v1 e sincroniza com localStorage.
  */
 export function setAdminUnlocked(unlocked: boolean) {
   try {
     if (unlocked) {
-      localStorage.setItem(ADMIN_UNLOCKED_KEY, '1')
       sessionStorage.setItem(ADMIN_UNLOCKED_KEY, '1')
+      sessionStorage.setItem(LEGACY_ADMIN_UNLOCKED_KEY, '1')
+      try {
+        localStorage.setItem(ADMIN_UNLOCKED_KEY, '1')
+        localStorage.setItem(LEGACY_ADMIN_UNLOCKED_KEY, '1')
+      } catch {
+        // ignore
+      }
     } else {
-      localStorage.removeItem(ADMIN_UNLOCKED_KEY)
       sessionStorage.removeItem(ADMIN_UNLOCKED_KEY)
+      sessionStorage.removeItem(LEGACY_ADMIN_UNLOCKED_KEY)
+      try {
+        localStorage.removeItem(ADMIN_UNLOCKED_KEY)
+        localStorage.removeItem(LEGACY_ADMIN_UNLOCKED_KEY)
+      } catch {
+        // ignore
+      }
     }
   } catch {
-    try {
-      if (unlocked) {
-        sessionStorage.setItem(ADMIN_UNLOCKED_KEY, '1')
-      } else {
-        sessionStorage.removeItem(ADMIN_UNLOCKED_KEY)
-      }
-    } catch {
-      /* ignore */
-    }
+    /* ignore */
   }
 }
 
