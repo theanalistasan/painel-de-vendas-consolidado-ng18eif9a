@@ -12,6 +12,43 @@ export function formatCurrency(value: number | undefined | null): string {
   }).format(value)
 }
 
+/**
+ * Formata valores numéricos de forma compacta e legível em pt-BR (ex.: R$ 1,2 mi, R$ 850 mil, R$ 450)
+ */
+export function formatCompactCurrency(value: number | undefined | null): string {
+  if (value === undefined || value === null || isNaN(value)) return 'R$ 0'
+  const abs = Math.abs(value)
+  const sign = value < 0 ? '-' : ''
+  if (abs >= 1_000_000_000) {
+    const val = abs / 1_000_000_000
+    const formatted = val.toLocaleString('pt-BR', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 1,
+    })
+    return `${sign}R$ ${formatted} bi`
+  }
+  if (abs >= 1_000_000) {
+    const val = abs / 1_000_000
+    const formatted = val.toLocaleString('pt-BR', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 1,
+    })
+    return `${sign}R$ ${formatted} mi`
+  }
+  if (abs >= 1_000) {
+    const val = abs / 1_000
+    const formatted = val.toLocaleString('pt-BR', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 1,
+    })
+    return `${sign}R$ ${formatted} mil`
+  }
+  return `${sign}R$ ${abs.toLocaleString('pt-BR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  })}`
+}
+
 export function formatNumber(value: number | undefined | null, decimals = 0): string {
   if (value === undefined || value === null || isNaN(value)) return '0'
   return new Intl.NumberFormat('pt-BR', {

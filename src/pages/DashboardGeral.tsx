@@ -31,6 +31,7 @@ import { useRealtime } from '@/hooks/use-realtime'
 import type { FilterState } from '@/types/sales'
 import {
   formatCurrency,
+  formatCompactCurrency,
   formatNumber,
   exportToCSV,
   getGrupoColor,
@@ -255,6 +256,69 @@ export default function DashboardGeral() {
   const chartClientesAtivosEquipamentos = data?.charts?.clientesAtivosEquipamentos || []
   const chartClientesAtivosInsumos = data?.charts?.clientesAtivosInsumos || []
 
+  // Total de faturamento dos grupos para cálculo de percentual no gráfico Donut
+  const totalGrupoItemFaturamento = useMemo(() => {
+    return chartGrupoItem.reduce((acc, cur) => acc + (Number(cur.value) || 0), 0)
+  }, [chartGrupoItem])
+
+  const chartGrupoItemWithPercent = useMemo(() => {
+    return chartGrupoItem.map((item) => {
+      const val = Number(item.value) || 0
+      const pct = totalGrupoItemFaturamento > 0 ? (val / totalGrupoItemFaturamento) * 100 : 0
+      return {
+        ...item,
+        percent: pct,
+      }
+    })
+  }, [chartGrupoItem, totalGrupoItemFaturamento])
+
+  // Custom label renderer para a fatia da rosca (apenas se a fatia for >= 5% para manter legibilidade)
+  const renderDonutCustomLabel = ({
+    cx,
+    cy,
+    midAngle,
+    innerRadius,
+    outerRadius,
+    percent,
+  }: {
+    cx?: number
+    cy?: number
+    midAngle?: number
+    innerRadius?: number
+    outerRadius?: number
+    percent?: number
+  }) => {
+    if (
+      typeof cx !== 'number' ||
+      typeof cy !== 'number' ||
+      typeof midAngle !== 'number' ||
+      typeof innerRadius !== 'number' ||
+      typeof outerRadius !== 'number' ||
+      typeof percent !== 'number' ||
+      percent < 0.05
+    ) {
+      return null
+    }
+
+    const RADIAN = Math.PI / 180
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.5
+    const x = cx + radius * Math.cos(-midAngle * RADIAN)
+    const y = cy + radius * Math.sin(-midAngle * RADIAN)
+
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="#ffffff"
+        textAnchor="middle"
+        dominantBaseline="central"
+        className="text-[11px] font-extrabold select-none drop-shadow-sm pointer-events-none"
+      >
+        {`${(percent * 100).toFixed(0)}%`}
+      </text>
+    )
+  }
+
   const isNoData =
     !loading &&
     !error &&
@@ -322,6 +386,66 @@ export default function DashboardGeral() {
     }
     return list.sort((a, b) => a.periodo.localeCompare(b.periodo))
   }, [chartVendasInsumosRaw])
+
+  // Médias anuais dos gráficos históricos com granularidade mensal:
+  // Agrupa os pontos do recorte por ano, calcula a soma de cada ano e tira a média por ano.
+  const mediaPorAnoTendenciaEquipamentos = useMemo(() => {
+    if (dataTendenciaEquipamentos.length === 0) return 0
+    const anoSoma = new Map<string, number>()
+    for (const p of dataTendenciaEquipamentos) {
+      const ano = p.periodo.slice(0, 4)
+      anoSoma.set(ano, (anoSoma.get(ano) || 0) + (p.total || 0))
+    }
+    if (anoSoma.size === 0) return 0
+    let total = 0
+    for (const v of anoSoma.values()) {
+      total += v
+    }
+    return total / anoSoma.size
+  }, [dataTendenciaEquipamentos])
+
+  // Média mensal (na escala do eixo Y) para Tendência de Equipamentos
+  const mediaMensalTendenciaEquipamentos = useMemo(() => {
+    if (dataTendenciaEquipamentos.length === 0) return 0
+    const sum = dataTendenciaEquipamentos.reduce((acc, cur) => acc + (cur.total || 0), 0)
+    return sum / dataTendenciaEquipamentos.length
+  }, [dataTendenciaEquipamentos])
+
+  const mediaPorAnoAcumuladoInsumos = useMemo(() => {
+    if (dataAcumuladoInsumos.length === 0) return 0
+    const anoSoma = new Map<string, number>()
+    for (const p of dataAcumuladoInsumos) {
+      const ano = p.periodo.slice(0, 4)
+      anoSoma.set(ano, (anoSoma.get(ano) || 0) + (p.total || 0))
+    }
+    if (anoSoma.size === 0) return 0
+    let total = 0
+    for (const v of anoSoma.values()) {
+      total += v
+    }
+    return total / anoSoma.size
+  }, [dataAcumuladoInsumos])
+
+  // Média mensal (na escala do eixo Y) para Acumulado de Insumos
+  const mediaMensalAcumuladoInsumos = useMemo(() => {
+    if (dataAcumuladoInsumos.length === 0) return 0
+    const sum = dataAcumuladoInsumos.reduce((acc, cur) => acc + (cur.total || 0), 0)
+    return sum / dataAcumuladoInsumos.length
+  }, [dataAcumuladoInsumos])
+
+  // Média anual de "Evolução de Vendas por Ano" (cada ponto exibido é um ano)
+  const mediaVendasPorAno = useMemo(() => {
+    if (chartVendasPorAno.length === 0) return 0
+    const sum = chartVendasPorAno.reduce((acc, cur) => acc + (Number(cur.faturamento) || 0), 0)
+    return sum / chartVendasPorAno.length
+  }, [chartVendasPorAno])
+
+  // Média de faturamento dos meses exibidos em "Evolução de Vendas por Mês"
+  const mediaVendasPorMesAtual = useMemo(() => {
+    if (chartVendasPorMes.length === 0) return 0
+    const sum = chartVendasPorMes.reduce((acc, cur) => acc + (Number(cur.faturamento) || 0), 0)
+    return sum / chartVendasPorMes.length
+  }, [chartVendasPorMes])
 
   const mensalGrupos = useMemo(() => {
     const backendGrupos = new Set<string>()
@@ -665,13 +789,34 @@ export default function DashboardGeral() {
                       tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
                     />
                     <Tooltip
-                      formatter={(val: number | string | undefined) => [
-                        formatCurrency(typeof val === 'number' ? val : Number(val)),
-                        'Vendas Equipamentos',
-                      ]}
+                      formatter={(val: number | string | undefined, name: string) => {
+                        const n = typeof val === 'number' ? val : Number(val)
+                        if (name === 'Equipamentos') {
+                          return [formatCurrency(n), 'Vendas Equipamentos']
+                        }
+                        if (name === 'Média (mês)') {
+                          return [formatCurrency(n), 'Média Mensal']
+                        }
+                        return [formatCurrency(n), name]
+                      }}
                       labelFormatter={(label) => `Período: ${formatMesAnoCurto(String(label))}`}
                       contentStyle={tooltipContentStyle}
                     />
+                    {mediaMensalTendenciaEquipamentos > 0 && (
+                      <ReferenceLine
+                        y={mediaMensalTendenciaEquipamentos}
+                        stroke="#64748B"
+                        strokeDasharray="4 4"
+                        strokeWidth={1.5}
+                        label={{
+                          value: `Média/ano: ${formatCompactCurrency(mediaPorAnoTendenciaEquipamentos)} (mês: ${formatCompactCurrency(mediaMensalTendenciaEquipamentos)})`,
+                          position: 'top',
+                          fill: '#475569',
+                          fontSize: 10,
+                          fontWeight: 700,
+                        }}
+                      />
+                    )}
                     <Line
                       type="monotone"
                       dataKey="total"
@@ -723,13 +868,34 @@ export default function DashboardGeral() {
                       tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
                     />
                     <Tooltip
-                      formatter={(val: number | string | undefined) => [
-                        formatCurrency(typeof val === 'number' ? val : Number(val)),
-                        'Vendas Insumos',
-                      ]}
+                      formatter={(val: number | string | undefined, name: string) => {
+                        const n = typeof val === 'number' ? val : Number(val)
+                        if (name === 'Insumos') {
+                          return [formatCurrency(n), 'Vendas Insumos']
+                        }
+                        if (name === 'Média (mês)') {
+                          return [formatCurrency(n), 'Média Mensal']
+                        }
+                        return [formatCurrency(n), name]
+                      }}
                       labelFormatter={(label) => `Período: ${formatMesAnoCurto(String(label))}`}
                       contentStyle={tooltipContentStyle}
                     />
+                    {mediaMensalAcumuladoInsumos > 0 && (
+                      <ReferenceLine
+                        y={mediaMensalAcumuladoInsumos}
+                        stroke="#64748B"
+                        strokeDasharray="4 4"
+                        strokeWidth={1.5}
+                        label={{
+                          value: `Média/ano: ${formatCompactCurrency(mediaPorAnoAcumuladoInsumos)} (mês: ${formatCompactCurrency(mediaMensalAcumuladoInsumos)})`,
+                          position: 'top',
+                          fill: '#475569',
+                          fontSize: 10,
+                          fontWeight: 700,
+                        }}
+                      />
+                    )}
                     <Line
                       type="monotone"
                       dataKey="total"
@@ -932,6 +1098,21 @@ export default function DashboardGeral() {
                       )
                     }}
                   />
+                  {mediaVendasPorMesAtual > 0 && (
+                    <ReferenceLine
+                      y={mediaVendasPorMesAtual}
+                      stroke="#64748B"
+                      strokeDasharray="4 4"
+                      strokeWidth={1.5}
+                      label={{
+                        value: `Média: ${formatCompactCurrency(mediaVendasPorMesAtual)}`,
+                        position: 'top',
+                        fill: '#475569',
+                        fontSize: 10,
+                        fontWeight: 700,
+                      }}
+                    />
+                  )}
                   <Bar
                     dataKey="faturamento_ano_anterior"
                     name="faturamento_ano_anterior"
@@ -1021,6 +1202,22 @@ export default function DashboardGeral() {
                     }}
                   />
                   <ReferenceLine yAxisId="right" y={0} stroke="#CBD5E1" strokeDasharray="3 3" />
+                  {mediaVendasPorAno > 0 && (
+                    <ReferenceLine
+                      yAxisId="left"
+                      y={mediaVendasPorAno}
+                      stroke="#64748B"
+                      strokeDasharray="4 4"
+                      strokeWidth={1.5}
+                      label={{
+                        value: `Média/ano: ${formatCompactCurrency(mediaVendasPorAno)}`,
+                        position: 'top',
+                        fill: '#475569',
+                        fontSize: 10,
+                        fontWeight: 700,
+                      }}
+                    />
+                  )}
                   <Bar
                     yAxisId="left"
                     dataKey="faturamento"
@@ -1064,15 +1261,17 @@ export default function DashboardGeral() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={chartGrupoItem}
+                    data={chartGrupoItemWithPercent}
                     cx="50%"
                     cy="50%"
-                    innerRadius={65}
+                    innerRadius={60}
                     outerRadius={95}
                     paddingAngle={3}
                     dataKey="value"
+                    label={renderDonutCustomLabel}
+                    labelLine={false}
                   >
-                    {chartGrupoItem.map((entry, index) => (
+                    {chartGrupoItemWithPercent.map((entry, index) => (
                       <Cell
                         key={`cell-${index}`}
                         fill={
@@ -1082,15 +1281,49 @@ export default function DashboardGeral() {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={currencyFormatter('Total')}
-                    contentStyle={tooltipContentStyle}
+                    content={({ active, payload }) => {
+                      if (!active || !payload || payload.length === 0) return null
+                      const item = payload[0]
+                      const name = String(item.name || '')
+                      const val = Number(item.value || 0)
+                      const pct =
+                        totalGrupoItemFaturamento > 0
+                          ? ((val / totalGrupoItemFaturamento) * 100).toFixed(1)
+                          : '0.0'
+                      return (
+                        <div className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white border border-slate-700 shadow-md">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span
+                              className="inline-block w-2.5 h-2.5 rounded-sm"
+                              style={{
+                                backgroundColor:
+                                  item.payload?.fill || getGrupoColor(name) || CHART_PALETTE[0],
+                              }}
+                            />
+                            <span className="font-bold text-slate-200">{name}</span>
+                            <span className="ml-auto font-extrabold text-cyan-300">{pct}%</span>
+                          </div>
+                          <div className="text-slate-300 flex justify-between gap-4">
+                            <span>Faturamento:</span>
+                            <span className="font-bold text-white">{formatCurrency(val)}</span>
+                          </div>
+                        </div>
+                      )
+                    }}
                   />
                   <Legend
                     verticalAlign="bottom"
-                    height={36}
-                    formatter={(value) => (
-                      <span className="text-xs font-bold text-slate-700">{value}</span>
-                    )}
+                    height={44}
+                    formatter={(value) => {
+                      const item = chartGrupoItemWithPercent.find((g) => g.name === value)
+                      const pctStr = item ? ` (${item.percent.toFixed(1)}%)` : ''
+                      return (
+                        <span className="text-xs font-bold text-slate-700">
+                          {value}
+                          <span className="text-slate-500 font-semibold">{pctStr}</span>
+                        </span>
+                      )
+                    }}
                   />
                 </PieChart>
               </ResponsiveContainer>
