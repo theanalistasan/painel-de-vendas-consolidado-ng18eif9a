@@ -15,6 +15,9 @@ import {
   Database,
   PanelLeftClose,
   PanelLeftOpen,
+  ChevronDown,
+  LayoutGrid,
+  Network,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -37,8 +40,24 @@ export default function Layout() {
   })
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [ultimaCarga, setUltimaCarga] = useState<string | null>(null)
+  const [dashboardOpen, setDashboardOpen] = useState(true)
   const location = useLocation()
   const navigate = useNavigate()
+
+  const isDashboardActive =
+    location.pathname === '/' ||
+    location.pathname === '/dashboard/geral' ||
+    location.pathname === '/dashboard/canais'
+
+  const isGeralActive = location.pathname === '/' || location.pathname === '/dashboard/geral'
+  const isCanaisActive = location.pathname === '/dashboard/canais'
+
+  // Garantir que se a rota atual for dashboard, o submenu fica expandido
+  useEffect(() => {
+    if (isDashboardActive) {
+      setDashboardOpen(true)
+    }
+  }, [isDashboardActive])
 
   const toggleDesktopSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -141,7 +160,10 @@ export default function Layout() {
   const getPageTitle = () => {
     switch (location.pathname) {
       case '/':
-        return 'Dashboard de Vendas'
+      case '/dashboard/geral':
+        return 'Dashboard — Visão Geral'
+      case '/dashboard/canais':
+        return 'Dashboard — Visão Canais'
       case '/vendas':
         return 'Relatório Consolidado de Vendas'
       case '/importar':
@@ -227,31 +249,114 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-5 space-y-1.5 overflow-y-auto">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const isActive = location.pathname === item.href
-            return (
+          {/* Item Dashboard com Submenu (Visão Geral & Visão Canais) */}
+          <div className="space-y-1">
+            {sidebarCollapsed ? (
+              // No modo colapsado, link direto para Visão Geral com tooltip
               <NavLink
-                key={item.href}
-                to={item.href}
-                title={sidebarCollapsed ? item.title : undefined}
+                to="/dashboard/geral"
+                title="Dashboard (Visão Geral & Visão Canais)"
                 className={cn(
-                  'flex items-center rounded-full text-sm font-medium transition-all duration-200',
-                  sidebarCollapsed
-                    ? 'justify-center w-10 h-10 mx-auto px-0'
-                    : 'gap-3 px-3.5 py-2.5',
-                  isActive
+                  'flex items-center justify-center w-10 h-10 mx-auto rounded-full text-sm font-medium transition-all duration-200',
+                  isDashboardActive
                     ? 'bg-[#0B6E99] text-white shadow-sm font-bold'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
                 )}
               >
-                <Icon
-                  className={cn('w-4 h-4 shrink-0', isActive ? 'text-white' : 'text-slate-400')}
-                />
-                {!sidebarCollapsed && <span className="truncate">{item.title}</span>}
+                <LayoutDashboard className="w-4 h-4 shrink-0" />
               </NavLink>
-            )
-          })}
+            ) : (
+              // No modo expandido, cabeçalho expansível do Dashboard
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setDashboardOpen((prev) => !prev)}
+                  className={cn(
+                    'w-full flex items-center justify-between rounded-full text-sm font-medium transition-all duration-200 px-3.5 py-2.5',
+                    isDashboardActive
+                      ? 'bg-slate-800/90 text-white font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <LayoutDashboard
+                      className={cn(
+                        'w-4 h-4 shrink-0',
+                        isDashboardActive ? 'text-[#0B6E99]' : 'text-slate-400',
+                      )}
+                    />
+                    <span className="truncate">Dashboard</span>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      'w-4 h-4 transition-transform duration-200 text-slate-400',
+                      dashboardOpen ? 'rotate-180' : '',
+                    )}
+                  />
+                </button>
+
+                {/* Submenu de Visões */}
+                {dashboardOpen && (
+                  <div className="mt-1 ml-4 pl-3 border-l border-slate-800 space-y-1">
+                    <NavLink
+                      to="/dashboard/geral"
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
+                        isGeralActive
+                          ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+                      )}
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Visão Geral</span>
+                    </NavLink>
+
+                    <NavLink
+                      to="/dashboard/canais"
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
+                        isCanaisActive
+                          ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+                      )}
+                    >
+                      <Network className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Visão Canais</span>
+                    </NavLink>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Demais Itens de Navegação (Vendas, Importar, Admin, etc.) */}
+          {navItems
+            .filter((item) => item.href !== '/')
+            .map((item) => {
+              const Icon = item.icon
+              const isActive = location.pathname === item.href
+              return (
+                <NavLink
+                  key={item.href}
+                  to={item.href}
+                  title={sidebarCollapsed ? item.title : undefined}
+                  className={cn(
+                    'flex items-center rounded-full text-sm font-medium transition-all duration-200',
+                    sidebarCollapsed
+                      ? 'justify-center w-10 h-10 mx-auto px-0'
+                      : 'gap-3 px-3.5 py-2.5',
+                    isActive
+                      ? 'bg-[#0B6E99] text-white shadow-sm font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
+                  )}
+                >
+                  <Icon
+                    className={cn('w-4 h-4 shrink-0', isActive ? 'text-white' : 'text-slate-400')}
+                  />
+                  {!sidebarCollapsed && <span className="truncate">{item.title}</span>}
+                </NavLink>
+              )
+            })}
         </nav>
 
         {/* Integration Status Badge */}
@@ -348,26 +453,91 @@ export default function Layout() {
 
             {/* Mobile Nav */}
             <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-              {navItems.map((item) => {
-                const Icon = item.icon
-                const isActive = location.pathname === item.href
-                return (
-                  <NavLink
-                    key={item.href}
-                    to={item.href}
-                    onClick={() => setMobileMenuOpen(false)}
+              {/* Dashboard Mobile com Submenu */}
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => setDashboardOpen((prev) => !prev)}
+                  className={cn(
+                    'w-full flex items-center justify-between px-3.5 py-2.5 rounded-full text-sm font-medium transition-all',
+                    isDashboardActive
+                      ? 'bg-slate-800 text-white font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <LayoutDashboard
+                      className={cn(
+                        'w-4 h-4',
+                        isDashboardActive ? 'text-[#0B6E99]' : 'text-slate-400',
+                      )}
+                    />
+                    <span>Dashboard</span>
+                  </div>
+                  <ChevronDown
                     className={cn(
-                      'flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium transition-all',
-                      isActive
-                        ? 'bg-[#0B6E99] text-white font-bold'
-                        : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                      'w-4 h-4 transition-transform duration-200 text-slate-400',
+                      dashboardOpen ? 'rotate-180' : '',
                     )}
-                  >
-                    <Icon className="w-4 h-4" />
-                    {item.title}
-                  </NavLink>
-                )
-              })}
+                  />
+                </button>
+
+                {dashboardOpen && (
+                  <div className="ml-4 pl-3 border-l border-slate-800 space-y-1">
+                    <NavLink
+                      to="/dashboard/geral"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
+                        isGeralActive
+                          ? 'bg-[#0B6E99] text-white font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                      )}
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
+                      <span>Visão Geral</span>
+                    </NavLink>
+
+                    <NavLink
+                      to="/dashboard/canais"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
+                        isCanaisActive
+                          ? 'bg-[#0B6E99] text-white font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                      )}
+                    >
+                      <Network className="w-3.5 h-3.5 shrink-0" />
+                      <span>Visão Canais</span>
+                    </NavLink>
+                  </div>
+                )}
+              </div>
+
+              {/* Demais itens mobile */}
+              {navItems
+                .filter((item) => item.href !== '/')
+                .map((item) => {
+                  const Icon = item.icon
+                  const isActive = location.pathname === item.href
+                  return (
+                    <NavLink
+                      key={item.href}
+                      to={item.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        'flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium transition-all',
+                        isActive
+                          ? 'bg-[#0B6E99] text-white font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                      )}
+                    >
+                      <Icon className="w-4 h-4" />
+                      {item.title}
+                    </NavLink>
+                  )
+                })}
             </nav>
 
             {/* User Footer Mobile */}

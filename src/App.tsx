@@ -5,7 +5,8 @@ import { Toaster as Sonner } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { AuthProvider } from '@/context/AuthContext'
 import GuardedRoute from '@/components/GuardedRoute'
-import Index from './pages/Index'
+import DashboardGeral from './pages/DashboardGeral'
+import DashboardCanais from './pages/DashboardCanais'
 import Vendas from './pages/Vendas'
 import Importar from './pages/Importar'
 import Admin from './pages/Admin'
@@ -26,7 +27,9 @@ const App = () => (
 
           {/* Authenticated Routes with Layout */}
           <Route element={<Layout />}>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<DashboardGeral />} />
+            <Route path="/dashboard/geral" element={<DashboardGeral />} />
+            <Route path="/dashboard/canais" element={<DashboardCanais />} />
             <Route path="/vendas" element={<Vendas />} />
             {/* Rotas protegidas por senha de administrador (AdminGuard) */}
             <Route
