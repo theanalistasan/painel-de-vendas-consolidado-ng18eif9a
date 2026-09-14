@@ -2,9 +2,56 @@
 
 ## Versão e Status Atual
 
-- **Versão**: v1.0.7
-- **Data do Backup**: 11/09/2026
-- **Status**: QA aprovado, estável — Correção estrutural de estabilidade: tabelas de resumo pré-calculadas (SQLite), reconciliação automática contínua via cron e hook de consolidação, dashboard ultra veloz (< 2s) lendo dos resumos com todas as regras de negócio preservadas e auditoria estabilizada sem POST direto na coleção
+- **Versão**: v1.2
+- **Data do Backup**: 15/09/2026
+- **Status**: QA aprovado, estável — Reestruturação do Dashboard em duas visões especializadas (Visão Geral em `/dashboard/geral` e Visão Canais em `/dashboard/canais`), correção definitiva do bug "Nenhuma venda encontrada" com matching case-insensitive de grupos de itens no backend e frontend, recuperação integral da listagem de Vendas Recentes, banner de aviso condicionado a dados estritamente vazios e padronização dos filtros padrão em ambas as visões.
+
+---
+
+## Destaques da Versão 1.2 (15/09/2026)
+
+1. **Reestruturação do Dashboard em Duas Visões Especializadas**:
+   - **Dashboard — Visão Geral (`/dashboard/geral` e rota `/`)**:
+     - Painel macro executivo com 8 indicadores principais consolidados:
+       1. _KPIs Comerciais_ (Faturamento Bruto, Valor Líquido, Itens Vendidos, Documentos NFe e Devoluções com comparações).
+       2. _Evolução de Vendas por Ano_ (histórico anual completo com faturamento, devoluções e taxa de crescimento YoY).
+       3. _Tendência de Vendas — Equipamentos_ (série temporal contínua de longo prazo 2015+ para equipamentos).
+       4. _Acumulado de Vendas — Insumos_ (série temporal contínua para Peças, Tintas e Acessórios).
+       5. _Evolução Mensal com Comparativo Ano Anterior_ (faturamento do período vs. mesmo mês do ano anterior e devoluções).
+       6. _Venda Mensal por Grupo do Item_ (distribuição empilhada/comparativa mês a mês por categoria).
+       7. _Distribuição por Grupo de Item_ (gráfico Donut com percentual de participação de cada família de produtos).
+       8. _Clientes Ativos — Equipamentos e Clientes Ativos — Insumos_ (contagem precisa de CNPJs/clientes ativos mês a mês comparados ao ano anterior).
+   - **Dashboard — Visão Canais (`/dashboard/canais`)**:
+     - Dashboard geográfico e comercial especializado:
+       1. _Vendas por Estado (UF) & Região_ com Mapa Interativo do Brasil em SVG e ranking por macrorregiões (Sudeste, Sul, Nordeste, Centro-Oeste e Norte).
+       2. _Pinos Geográficos de Revendas Roland DG_ no mapa com faturamento, documentos e itens vinculados a cada revendedor autorizado.
+       3. _Expansão em Tela Cheia_ do mapa do Brasil (modal responsivo `96vw x 92vh`).
+       4. _Top 10 Vendedores_ e _Top 10 Clientes_ em cards de ranking ranqueados por faturamento.
+       5. _Vendas Recentes_ com listagem tabular dos últimos lançamentos e atalho para o detalhamento em `/vendas`.
+   - **Navegação Integrada e Intuitiva**:
+     - Menu lateral (Sidebar) atualizado com links diretos para "Visão Geral" (`/dashboard/geral`) e "Visão Canais" (`/dashboard/canais`) com ícones dedicados e badges identificadores.
+     - Botão de alternância rápida entre as duas visões no cabeçalho dos dashboards para transição fluida de contexto mantendo os filtros.
+
+2. **Correção do Bug "Nenhuma venda encontrada" (Matching de Grupo do Item)**:
+   - Resolução da divergência de capitalização entre os grupos do item gravados na base de dados (`EQUIPAMENTOS`, `ACESSORIOS`, `TINTAS`, `PECAS` vs. `Equipamentos`, `Acessórios`, `Tintas`, `Peças`).
+   - Implementação de matching case-insensitive no backend (`pocketbase/hooks/dashboard_stats.js`) e no frontend (`src/services/sales.ts`, `src/lib/filter-persistence.ts`).
+   - Eliminação de filtros vazios na inicialização e normalização de acentuação/caixa alta nos comparadores SQL (`UPPER(grupo_item) IN (...)` ou matching normalizado).
+
+3. **Correção da Consulta de Vendas Recentes**:
+   - Correção na consulta do endpoint de Vendas Recentes para compatibilidade com os filtros aplicados e paginação, garantindo que a lista sempre reflita os últimos documentos faturados sem truncamento ou retorno nulo.
+
+4. **Banner de Aviso Restrito a Dados Realmente Vazios**:
+   - O banner de aviso informativo só é disparado quando a base de dados filtrada estiver genuinamente vazia (zero faturamento e zero registros), eliminando falsos positivos de tela vazia durante carregamentos ou com filtros válidos ativos.
+
+5. **Garantia de Filtro Padrão Consistente nas Duas Visões**:
+   - Inicialização idêntica, dinâmica e validada tanto na Visão Geral quanto na Visão Canais:
+     - **Ano**: Ano mais recente disponível na base (ex: 2026).
+     - **Mês**: Último mês com movimentação registrada na base (ex: Ago-2026).
+     - **Tipo de Documento**: `"NF de Saída"`.
+     - **Grupos do Item**: Seleção prévia com `"Equipamentos"`, `"Acessórios"`, `"Tintas"` e `"Peças"`.
+     - **Utilização**: Tipos de operação contendo `"VENDA"` (ex: `"VENDA DE MERCADORIA"`, `"VENDA CONSUMO"`).
+     - **Base**: `"ambos"` (RacNew e NetSales consolidados).
+   - Persistência e sincronização de filtros via `sessionStorage` (`filter-persistence.ts`), preservando seleções customizadas ao navegar entre Visão Geral, Visão Canais e a página analítica de Vendas.
 
 ---
 
@@ -215,6 +262,11 @@
 
 ## Histórico de Versões
 
+- **v1.2 (15/09/2026)**: Backup estável oficial do projeto. Incorpora:
+  - Reestruturação do Dashboard em duas visões especializadas: Dashboard — Visão Geral em `/dashboard/geral` (com os 8 indicadores macro migrados) e Dashboard — Visão Canais em `/dashboard/canais` (mapa do Brasil interativo, ranking regional, pinos geográficos de revendas, KPIs, rankings Top 10 e vendas recentes).
+  - Correção definitiva do bug "Nenhuma venda encontrada": matching case-insensitive de `grupo_item` no backend e frontend, consulta de Vendas Recentes corrigida e banner de alerta condicionado a dados estritamente vazios.
+  - Filtro padrão garantido e sincronizado em ambas as visões (Ano atual, Mês = último disponível na base ex.: Ago-2026, NF de Saída, grupos Equipamentos/Acessórios/Tintas/Peças, utilizações contendo VENDA e base Ambos).
+- **v1.0.7 (11/09/2026)**: Backup estável — tabelas de resumo pré-calculadas (SQLite), reconciliação automática contínua via cron e hook de consolidação, dashboard ultra veloz (< 2s) lendo dos resumos com todas as regras de negócio preservadas e auditoria estabilizada sem POST direto na coleção.
 - **v1.0.6 (03/09/2026)**: Backup de segurança oficial do projeto (estado atual = commit `0.0.95`). Incorpora:
   - Correção dos gráficos "Clientes Ativos — Equipamentos" e "Clientes Ativos — Insumos" (estavam vazios por variável fora de escopo no hook `pocketbase/hooks/dashboard_stats.js` após otimizações; agora buscam a data mais recente dos dados computados).
   - Gráfico "Evolução de Vendas por Ano" mostrando todos os anos da base (2019–2026), independente dos filtros de período, respeitando apenas a seleção de base (RacNew/NetSales/Ambos) — mesmo padrão dos gráficos históricos.
