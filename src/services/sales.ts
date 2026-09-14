@@ -123,10 +123,14 @@ export async function getCountsSummary(): Promise<CountsSummary> {
     data = await run()
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status
-    if ((status === 401 || status === 403) && pb.authStore.isValid) {
+    if (status === 401 || status === 403) {
       try {
-        await safeAuthRefresh()
-        data = await run()
+        const refreshed = await safeAuthRefresh()
+        if (refreshed && pb.authStore.isValid) {
+          data = await run()
+        } else {
+          throw err
+        }
       } catch {
         throw err
       }
@@ -263,14 +267,12 @@ export async function fetchDashboardStats(
       return await run()
     } catch (err: unknown) {
       const status = (err as { status?: number })?.status
-      if (
-        (status === 401 || status === 403) &&
-        pb.authStore.isValid &&
-        !internalController.signal.aborted
-      ) {
+      if ((status === 401 || status === 403) && !internalController.signal.aborted) {
         try {
-          await safeAuthRefresh()
-          return await run()
+          const refreshed = await safeAuthRefresh()
+          if (refreshed && pb.authStore.isValid) {
+            return await run()
+          }
         } catch {
           throw err
         }
@@ -368,10 +370,12 @@ export async function fetchVendasList(params?: {
     return await run()
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status
-    if ((status === 401 || status === 403) && pb.authStore.isValid) {
+    if (status === 401 || status === 403) {
       try {
-        await safeAuthRefresh()
-        return await run()
+        const refreshed = await safeAuthRefresh()
+        if (refreshed && pb.authStore.isValid) {
+          return await run()
+        }
       } catch {
         throw err
       }
@@ -447,10 +451,12 @@ export async function fetchVendasExport(params?: {
     return await run()
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status
-    if ((status === 401 || status === 403) && pb.authStore.isValid) {
+    if (status === 401 || status === 403) {
       try {
-        await safeAuthRefresh()
-        return await run()
+        const refreshed = await safeAuthRefresh()
+        if (refreshed && pb.authStore.isValid) {
+          return await run()
+        }
       } catch {
         throw err
       }

@@ -82,11 +82,12 @@ export async function fetchAuditLogs(params: FetchAuditLogsParams): Promise<Audi
   // 1. Assegura que o token de autenticação esteja disponível antes da requisição
   await ensureAuthToken()
 
-  const runQuery = () =>
-    pb.collection('audit_logs').getList<AuditLog>(page, perPage, {
+  const runQuery = async () => {
+    return pb.collection('audit_logs').getList<AuditLog>(page, perPage, {
       sort: '-created',
       filter: filters.length > 0 ? filters.join(' && ') : undefined,
     })
+  }
 
   let result
   try {
@@ -102,7 +103,7 @@ export async function fetchAuditLogs(params: FetchAuditLogsParams): Promise<Audi
         }
         result = await runQuery()
       } catch (refreshErr) {
-        // Se a renovação falhar, propagar como erro de autenticação explícito (nunca mascarar)
+        // Se a renovação falhar, safeAuthRefresh já aciona notifySessionExpired
         throw refreshErr || err
       }
     } else {

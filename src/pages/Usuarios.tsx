@@ -98,12 +98,21 @@ export default function Usuarios() {
       console.error('Erro ao buscar usuários:', err)
       const errorMsg =
         err instanceof Error && err.message ? err.message : 'Não foi possível carregar os usuários.'
-      setLoadError(errorMsg)
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao carregar usuários',
-        description: errorMsg,
-      })
+
+      const isAuthError =
+        errorMsg.toLowerCase().includes('sessão expirada') ||
+        errorMsg.toLowerCase().includes('token de autenticação expirado') ||
+        errorMsg.toLowerCase().includes('sessão não autenticada') ||
+        errorMsg.toLowerCase().includes('redirecionando para login')
+
+      if (!isAuthError) {
+        setLoadError(errorMsg)
+        toast({
+          variant: 'destructive',
+          title: 'Erro ao carregar usuários',
+          description: errorMsg,
+        })
+      }
     } finally {
       setLoading(false)
     }

@@ -41,16 +41,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }, 5000)
 
     // Na inicialização, se houver token persistido no localStorage:
-    if (pb.authStore.isValid && !initialRefreshDone.current) {
+    if (pb.authStore.token && !initialRefreshDone.current) {
       initialRefreshDone.current = true
-      // Garantir que o estado inicial do React reflita o record persistido
-      setUser(pb.authStore.record)
-      setToken(pb.authStore.token)
+      // Garantir que o estado inicial do React reflita o record persistido se isValid
+      if (pb.authStore.isValid) {
+        setUser(pb.authStore.record)
+        setToken(pb.authStore.token)
+      }
 
       safeAuthRefresh()
+        .then((res) => {
+          if (isMounted && res) {
+            setUser(pb.authStore.record)
+            setToken(pb.authStore.token)
+          }
+        })
         .catch((err: unknown) => {
           const status = (err as { status?: number })?.status
-          // Se for 401/403, o safeAuthRefresh já deu clear() no authStore e acionou onChange
+          // Se for 401/403, o safeAuthRefresh já deu clear() no authStore e notificou expiração
           if (status !== 401 && status !== 403) {
             console.warn(
               'Backend indisponível no momento do boot; mantendo token local válido.',
@@ -97,6 +105,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAdminUnlocked(false)
     // Limpa os filtros persistidos em sessionStorage ao sair.
     clearFiltersFromSession()
+    try {
+      sessionStorage.removeItem('redirect_after_login')
+      sessionStorage.removeItem('session_expired_message')
+    } catch {
+      // noop
+    }
     pb.authStore.clear()
     setUser(null)
     setToken(null)

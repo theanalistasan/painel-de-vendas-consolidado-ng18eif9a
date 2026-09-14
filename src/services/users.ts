@@ -45,7 +45,7 @@ export async function fetchUsers(params: FetchUsersParams): Promise<UsersListRes
   // 1. Assegura que o token de autenticação esteja disponível antes da requisição
   await ensureAuthToken()
 
-  const runQuery = () =>
+  const runQuery = async () =>
     pb.collection<UserRecord>('users').getList(page, perPage, {
       sort: '-created',
       filter,
@@ -65,7 +65,6 @@ export async function fetchUsers(params: FetchUsersParams): Promise<UsersListRes
         }
         result = await runQuery()
       } catch (refreshErr) {
-        // Se a renovação falhar, propagar como erro de autenticação explícito (nunca mascarar)
         throw refreshErr || err
       }
     } else {
@@ -94,17 +93,32 @@ export interface CreateUserPayload {
  * Cria um novo usuário na coleção `users`.
  */
 export async function createUser(payload: CreateUserPayload): Promise<UserRecord> {
-  return pb.collection<UserRecord>('users').create({
-    name: payload.name,
-    email: payload.email,
-    password: payload.password,
-    passwordConfirm: payload.password,
-    role: payload.role,
-    active: payload.active !== false,
-    // O email DEVE ser visível nas listagens da tela de Gestão de Usuários;
-    // sem isso o campo vem vazio e não dá para identificar/logar/buscar.
-    emailVisibility: true,
-  })
+  await ensureAuthToken()
+  const run = () =>
+    pb.collection<UserRecord>('users').create({
+      name: payload.name,
+      email: payload.email,
+      password: payload.password,
+      passwordConfirm: payload.password,
+      role: payload.role,
+      active: payload.active !== false,
+      // O email DEVE ser visível nas listagens da tela de Gestão de Usuários;
+      // sem isso o campo vem vazio e não dá para identificar/logar/buscar.
+      emailVisibility: true,
+    })
+
+  try {
+    return await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 401 || status === 403) {
+      const refreshed = await safeAuthRefresh()
+      if (refreshed && pb.authStore.isValid) {
+        return await run()
+      }
+    }
+    throw err
+  }
 }
 
 export interface UpdateUserPayload {
@@ -119,6 +133,7 @@ export interface UpdateUserPayload {
  * Atualiza um usuário existente. Se `password` for informado, troca a senha.
  */
 export async function updateUser(id: string, payload: UpdateUserPayload): Promise<UserRecord> {
+  await ensureAuthToken()
   const data: Record<string, unknown> = {}
   if (payload.name !== undefined) data.name = payload.name
   if (payload.email !== undefined) data.email = payload.email
@@ -131,14 +146,41 @@ export async function updateUser(id: string, payload: UpdateUserPayload): Promis
   // Garante que o email continue visível nas listagens (corrige registros
   // criados anteriormente com emailVisibility=false, ex: Nicolas Brito).
   data.emailVisibility = true
-  return pb.collection<UserRecord>('users').update(id, data)
+
+  const run = () => pb.collection<UserRecord>('users').update(id, data)
+  try {
+    return await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 401 || status === 403) {
+      const refreshed = await safeAuthRefresh()
+      if (refreshed && pb.authStore.isValid) {
+        return await run()
+      }
+    }
+    throw err
+  }
 }
 
 /**
  * Exclui um usuário pelo id.
  */
 export async function deleteUser(id: string): Promise<void> {
-  await pb.collection('users').delete(id)
+  await ensureAuthToken()
+  const run = () => pb.collection('users').delete(id)
+  try {
+    await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 401 || status === 403) {
+      const refreshed = await safeAuthRefresh()
+      if (refreshed && pb.authStore.isValid) {
+        await run()
+        return
+      }
+    }
+    throw err
+  }
 }
 
 /**

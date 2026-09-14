@@ -85,12 +85,21 @@ export default function Auditoria() {
         err instanceof Error && err.message
           ? err.message
           : 'Não foi possível carregar os registros de auditoria.'
-      setLoadError(errorMsg)
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao carregar auditoria',
-        description: errorMsg,
-      })
+
+      const isAuthError =
+        errorMsg.toLowerCase().includes('sessão expirada') ||
+        errorMsg.toLowerCase().includes('token de autenticação expirado') ||
+        errorMsg.toLowerCase().includes('sessão não autenticada') ||
+        errorMsg.toLowerCase().includes('redirecionando para login')
+
+      if (!isAuthError) {
+        setLoadError(errorMsg)
+        toast({
+          variant: 'destructive',
+          title: 'Erro ao carregar auditoria',
+          description: errorMsg,
+        })
+      }
     } finally {
       setLoading(false)
     }

@@ -296,6 +296,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const sqlParts = []
     const sqlDimParts = []
     const sqlHistParts = []
+    const sqlVendasParts = [] // Cláusulas compatíveis diretamente com as colunas da tabela vendas
 
     // Filtro de base
     if (f.base === 'racnew') {
@@ -303,31 +304,51 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       sqlParts.push(clause)
       sqlDimParts.push(clause)
       sqlHistParts.push(clause)
+      sqlVendasParts.push(clause)
     } else if (f.base === 'netsales') {
       const clause = 'tem_netsales = 1'
       sqlParts.push(clause)
       sqlDimParts.push(clause)
       sqlHistParts.push(clause)
+      sqlVendasParts.push(clause)
     }
 
     // Filtros de data
     if (f.dataDe) {
       const ymDe = f.dataDe.slice(0, 7)
       sqlParts.push("ano_mes >= '" + sqlEsc(ymDe) + "'")
+      sqlVendasParts.push("data_lancamento >= '" + sqlEsc(f.dataDe) + " 00:00:00'")
     }
     if (f.dataAte) {
       const ymAte = f.dataAte.slice(0, 7)
       sqlParts.push("ano_mes <= '" + sqlEsc(ymAte) + "'")
+      sqlVendasParts.push("data_lancamento <= '" + sqlEsc(f.dataAte) + " 23:59:59'")
     }
     const anosFilter = Array.isArray(f.ano) ? f.ano : f.ano ? [f.ano] : []
     if (anosFilter.length > 0) {
       const anos = anosFilter.map((a) => 'ano = ' + parseInt(a, 10)).join(' OR ')
       sqlParts.push('(' + anos + ')')
+      const anosVendas = anosFilter
+        .map((a) => "data_lancamento LIKE '" + sqlEsc(String(a)) + "-%'")
+        .join(' OR ')
+      sqlVendasParts.push('(' + anosVendas + ')')
     }
     const mesesFilter = Array.isArray(f.mes) ? f.mes : f.mes ? [f.mes] : []
     if (mesesFilter.length > 0) {
       const meses = mesesFilter.map((m) => 'mes = ' + parseInt(m, 10)).join(' OR ')
       sqlParts.push('(' + meses + ')')
+      const mesesVendas = mesesFilter
+        .map((m) => "data_lancamento LIKE '%-" + String(m).padStart(2, '0') + "-%'")
+        .join(' OR ')
+      sqlVendasParts.push('(' + mesesVendas + ')')
+    }
+
+    const diasFilter = Array.isArray(f.dia) ? f.dia : f.dia ? [f.dia] : []
+    if (diasFilter.length > 0) {
+      const diasVendas = diasFilter
+        .map((d) => "data_lancamento LIKE '%-" + String(d).padStart(2, '0') + " %'")
+        .join(' OR ')
+      sqlVendasParts.push('(' + diasVendas + ')')
     }
 
     // Filtros de dimensão
@@ -336,51 +357,77 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       const clause = 'vendedor_cliente IN (' + sqlArr + ')'
       sqlParts.push(clause)
       sqlDimParts.push(clause)
+      sqlVendasParts.push(clause)
     }
     if (Array.isArray(f.vendedor) && f.vendedor.length > 0) {
       const sqlArr = f.vendedor.map((v) => "'" + sqlEsc(v) + "'").join(',')
       const clause = 'nome_vendedor IN (' + sqlArr + ')'
       sqlParts.push(clause)
       sqlDimParts.push(clause)
+      sqlVendasParts.push(clause)
     }
     if (Array.isArray(f.grupoItem) && f.grupoItem.length > 0) {
       const sqlArr = f.grupoItem.map((v) => "'" + sqlEsc(v) + "'").join(',')
       const clause = 'grupo_item IN (' + sqlArr + ')'
       sqlParts.push(clause)
       sqlDimParts.push(clause)
+      sqlVendasParts.push(clause)
     }
     if (Array.isArray(f.estado) && f.estado.length > 0) {
       const sqlArr = f.estado.map((v) => "'" + sqlEsc(v) + "'").join(',')
       const clause = 'estado IN (' + sqlArr + ')'
       sqlParts.push(clause)
       sqlDimParts.push(clause)
+      sqlVendasParts.push(clause)
     }
     if (Array.isArray(f.utilizacao) && f.utilizacao.length > 0) {
       const sqlArr = f.utilizacao.map((v) => "'" + sqlEsc(v) + "'").join(',')
       const clause = 'utilizacao IN (' + sqlArr + ')'
       sqlParts.push(clause)
       sqlDimParts.push(clause)
+      sqlVendasParts.push(clause)
     }
     if (Array.isArray(f.tipoDocumento) && f.tipoDocumento.length > 0) {
       const sqlArr = f.tipoDocumento.map((v) => "'" + sqlEsc(v) + "'").join(',')
       const clause = 'tipo_documento IN (' + sqlArr + ')'
       sqlParts.push(clause)
       sqlDimParts.push(clause)
+      sqlVendasParts.push(clause)
     }
     if (f.tipoDevolucao) {
       const td = sqlEsc(f.tipoDevolucao)
       const clause = "tipo_documento = '" + td + "'"
       sqlParts.push(clause)
       sqlDimParts.push(clause)
+      sqlVendasParts.push(clause)
+    }
+
+    if (f.search) {
+      const q = sqlEsc(f.search)
+      const like = " LIKE '%" + q + "%'"
+      sqlVendasParts.push(
+        '(nome_cliente' +
+          like +
+          ' OR codigo_cliente' +
+          like +
+          ' OR codigo_item' +
+          like +
+          ' OR descricao_item' +
+          like +
+          ' OR numero_nfe' +
+          like +
+          ')',
+      )
     }
 
     // Se o filtro incluir busca textual ('search') ou 'dia' específico, precisamos consultar a tabela `vendas` bruta para a busca pontual
-    const hasSearchOrDay = !!f.search || (Array.isArray(f.dia) ? f.dia.length > 0 : !!f.dia)
+    const hasSearchOrDay = !!f.search || diasFilter.length > 0
 
     // Onde aplicar na tabela de resumo
     const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'
     const sqlWhereBase = sqlDimParts.length > 0 ? sqlDimParts.join(' AND ') : '1=1'
     const sqlWhereHistorical = sqlHistParts.length > 0 ? sqlHistParts.join(' AND ') : '1=1'
+    const sqlWhereVendas = sqlVendasParts.length > 0 ? sqlVendasParts.join(' AND ') : '1=1'
 
     // Helper de execução rápida
     const runAgg = (sql) => {
@@ -427,24 +474,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       }
     } else {
       // Fallback para filtros textuais finos ou dia
-      const vParts = [sqlWhere]
-      if (f.search) {
-        const q = sqlEsc(f.search)
-        vParts.push(
-          "(nome_cliente LIKE '%" +
-            q +
-            "%' OR codigo_cliente LIKE '%" +
-            q +
-            "%' OR codigo_item LIKE '%" +
-            q +
-            "%' OR descricao_item LIKE '%" +
-            q +
-            "%' OR numero_nfe LIKE '%" +
-            q +
-            "%')",
-        )
-      }
-      const vWhere = vParts.join(' AND ')
       const kpiSql =
         'SELECT ' +
         'COALESCE(SUM(total_linha),0) AS a, ' +
@@ -453,7 +482,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         'COUNT(DISTINCT numero_nfe) AS d, ' +
         "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS e " +
         'FROM vendas WHERE ' +
-        vWhere
+        sqlWhereVendas
       const kpiRows = runAgg(kpiSql)
       if (kpiRows.length > 0) {
         kpis = {
@@ -798,7 +827,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         'COALESCE(quantidade,0) AS quantidade, ' +
         'COALESCE(total_linha,0) AS total_linha ' +
         'FROM vendas WHERE ' +
-        sqlWhere +
+        sqlWhereVendas +
         ' ORDER BY data_lancamento DESC LIMIT 8'
       const recentRows = arrayOf(
         new DynamicModel({

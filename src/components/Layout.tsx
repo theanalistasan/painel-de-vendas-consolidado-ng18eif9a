@@ -84,6 +84,12 @@ export default function Layout() {
   }
 
   if (!user) {
+    try {
+      const fullPath = location.pathname + location.search
+      sessionStorage.setItem('redirect_after_login', fullPath)
+    } catch {
+      // ignore
+    }
     return <Navigate to="/login" replace state={{ from: location }} />
   }
 

@@ -12,12 +12,22 @@ import RolandLogo from '@/components/RolandLogo'
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [expiredNotice, setExpiredNotice] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
+  useEffect(() => {
+    // Verifica se veio de uma expiração de sessão
+    const isExpired = searchParams.get('expired') === '1'
+    const storedMsg = sessionStorage.getItem('session_expired_message')
+    if (isExpired || storedMsg) {
+      setExpiredNotice(storedMsg || 'Sua sessão expirou. Faça login novamente.')
+      sessionStorage.removeItem('session_expired_message')
+    }
+  }, [searchParams])
   // Redireciona para onde o usuário tentou ir originalmente, ou para o Dashboard '/'
   const from = (location.state as { from?: { pathname?: string } })?.from?.pathname || '/'
 
@@ -28,6 +38,12 @@ export default function Login() {
 
     try {
       await login(email, password)
+      const redirectSaved = sessionStorage.getItem('redirect_after_login')
+      if (redirectSaved) {
+        sessionStorage.removeItem('redirect_after_login')
+        navigate(redirectSaved, { replace: true })
+        return
+      }
       navigate(from, { replace: true })
     } catch (err: unknown) {
       console.error('Falha de login:', err)
@@ -67,16 +83,21 @@ export default function Login() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {expiredNotice && (
+              <Alert className="mb-4 bg-amber-950/50 border-amber-800 text-amber-200 text-xs">
+                <AlertCircle className="h-4 w-4 text-amber-400" />
+                <AlertDescription className="text-xs">{expiredNotice}</AlertDescription>
+              </Alert>
+            )}
             {error && (
               <Alert
                 variant="destructive"
                 className="mb-4 bg-rose-950/50 border-rose-800 text-rose-200 text-xs"
               >
                 <AlertCircle className="h-4 w-4 text-rose-400" />
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription className="text-xs">{error}</AlertDescription>
               </Alert>
             )}
-
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="email" className="text-xs font-bold text-slate-300">
