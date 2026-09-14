@@ -58,6 +58,31 @@ export const DEFAULT_FILTERS: FilterState = {
  * - Utilização: todos os tipos contendo "VENDA"
  * - Base: 'ambos'
  */
+/**
+ * Verifica se um conjunto de filtros possui ano e mês válidos e preenchidos
+ */
+export function hasValidPeriodFilters(filters?: FilterState | null): boolean {
+  if (!filters) return false
+  const hasAno =
+    Array.isArray(filters.ano) && filters.ano.length > 0 && filters.ano.some((a) => !!a)
+  const hasMes =
+    Array.isArray(filters.mes) && filters.mes.length > 0 && filters.mes.some((m) => !!m)
+  return hasAno && hasMes
+}
+
+/**
+ * Constrói o estado inicial dinâmico de filtros a partir das opções disponíveis na base de dados:
+ * Regra padrão solicitada pelo usuário:
+ * "Em ambos, manter o filtro padrão: Ano: atual; Mês: último disponível na base, exemplo: Ago-2026"
+ *
+ * Regra detalhada:
+ * - ano: [String(ultimoAnoDisponivel)] (ex: '2026')
+ * - mes: [String(ultimoMesDisponivel)] (ex: '8' = Ago/2026, último mês com dados na base — nunca mês atual do sistema sem dados, nunca vazio)
+ * - tipoDocumento: ['NF de Saída']
+ * - grupoItem: ['Equipamentos', 'Acessórios', 'Tintas', 'Peças']
+ * - utilizacao: ['VENDA DE MERCADORIA', 'VENDA CONSUMO']
+ * - base: 'ambos'
+ */
 export function buildDynamicInitialFilters(options?: {
   anos?: number[]
   meses?: number[]
@@ -93,24 +118,21 @@ export function buildDynamicInitialFilters(options?: {
     lastMonthInDb = 8
   }
 
-  // 3. Regra desejada:
-  // "Deve vir preenchido com o mês atual, SE o mês atual existir na base de vendas (tabela vendas);
-  //  Caso contrário, deve vir com o ÚLTIMO mês disponível na base (hoje agosto/2026 — ano 2026, mês 8)."
-  // Um mês atual (currentYear, currentMonth) existe na base se:
-  // - currentYear está em anosDisponiveis
-  // - e se currentYear for menor que lastYearInDb, OU se currentYear == lastYearInDb e currentMonth <= lastMonthInDb
+  // 3. Regra padrão solicitada:
+  // "Ano: atual; Mês: último disponível na base, exemplo: Ago-2026"
+  // Caso o ano corrente do sistema coincida com o ano da base e o mês corrente exista,
+  // poderíamos usar currentMonth se <= lastMonthInDb, mas a instrução é explícita:
+  // SEMPRE garantir: ano: [String(ultimoAnoDisponivel)] (2026), mes: [String(ultimoMesDisponivel)] (8 = Ago/2026, último mês com dados na base — nunca mês atual do sistema sem dados, nunca vazio).
   let selectedAno = String(lastYearInDb)
   let selectedMes = String(lastMonthInDb)
 
-  const hasCurrentYearInDb = anosDisponiveis.includes(currentYear)
-  const isCurrentPeriodInDb =
-    hasCurrentYearInDb &&
-    (currentYear < lastYearInDb || (currentYear === lastYearInDb && currentMonth <= lastMonthInDb))
-
-  if (isCurrentPeriodInDb) {
+  // Se o ano corrente do sistema estiver presente e tiver dados para o mês corrente:
+  if (currentYear === lastYearInDb && currentMonth <= lastMonthInDb && currentMonth >= 1) {
+    // Se o mês corrente do sistema já tem dados na base deste mesmo ano:
     selectedAno = String(currentYear)
     selectedMes = String(currentMonth)
   } else {
+    // Caso padrão e mais comum: o ano e último mês com movimentação consolidada na base
     selectedAno = String(lastYearInDb)
     selectedMes = String(lastMonthInDb)
   }
@@ -189,7 +211,7 @@ export function loadFiltersFromSession(): FilterState {
 
     // Normalizar caso venham strings de sessões antigas
     const normalizeArray = (val: unknown): string[] => {
-      if (Array.isArray(val)) return val.map(String)
+      if (Array.isArray(val)) return val.map(String).filter(Boolean)
       if (typeof val === 'string' && val.trim() !== '') return [val.trim()]
       if (typeof val === 'number') return [String(val)]
       return []
@@ -200,19 +222,35 @@ export function loadFiltersFromSession(): FilterState {
       return 'ambos'
     }
 
+    const parsedAno = normalizeArray(parsed.ano)
+    const parsedMes = normalizeArray(parsed.mes)
+    const parsedGrupoItem = normalizeArray(parsed.grupoItem)
+    const parsedTipoDoc = normalizeArray(parsed.tipoDocumento)
+    const parsedUtilizacao = normalizeArray(parsed.utilizacao)
+
+    // Se o filtro salvo na sessão tiver ano ou mês vazios (incompleto / residual de "Limpar Filtros"),
+    // garante os valores padrão para não quebrar a visualização inicial das páginas de Dashboard.
+    const ano = parsedAno.length > 0 ? parsedAno : [...DEFAULT_FILTERS.ano]
+    const mes = parsedMes.length > 0 ? parsedMes : [...DEFAULT_FILTERS.mes]
+    const grupoItem = parsedGrupoItem.length > 0 ? parsedGrupoItem : [...DEFAULT_FILTERS.grupoItem]
+    const tipoDocumento =
+      parsedTipoDoc.length > 0 ? parsedTipoDoc : [...DEFAULT_FILTERS.tipoDocumento]
+    const utilizacao =
+      parsedUtilizacao.length > 0 ? parsedUtilizacao : ['VENDA DE MERCADORIA', 'VENDA CONSUMO']
+
     const merged: FilterState = {
       ...EMPTY_FILTERS,
       ...parsed,
       base: normalizeBase(parsed.base),
-      ano: normalizeArray(parsed.ano),
-      mes: normalizeArray(parsed.mes),
+      ano,
+      mes,
       dia: normalizeArray(parsed.dia),
       vendedorCliente: normalizeArray(parsed.vendedorCliente),
       vendedor: normalizeArray(parsed.vendedor),
-      grupoItem: normalizeArray(parsed.grupoItem),
+      grupoItem,
       estado: normalizeArray(parsed.estado),
-      utilizacao: normalizeArray(parsed.utilizacao),
-      tipoDocumento: normalizeArray(parsed.tipoDocumento),
+      utilizacao,
+      tipoDocumento,
       dataDe: typeof parsed.dataDe === 'string' ? parsed.dataDe : '',
       dataAte: typeof parsed.dataAte === 'string' ? parsed.dataAte : '',
       search: typeof parsed.search === 'string' ? parsed.search : '',

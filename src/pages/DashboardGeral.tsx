@@ -40,6 +40,7 @@ import {
   saveFiltersToSession,
   loadFiltersFromSession,
   hasSavedFiltersInSession,
+  hasValidPeriodFilters,
   buildDynamicInitialFilters,
 } from '@/lib/filter-persistence'
 import FilterBar from '@/components/FilterBar'
@@ -145,7 +146,9 @@ export default function DashboardGeral() {
 
   const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
-  const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
+  const [initializedFromBase, setInitializedFromBase] = useState(
+    () => hasSavedFiltersInSession() && hasValidPeriodFilters(loadFiltersFromSession()),
+  )
 
   useEffect(() => {
     if (hadSavedFiltersAtMount.current || initializedFromBase) {
@@ -177,7 +180,11 @@ export default function DashboardGeral() {
         return
       }
 
-      if (!hadSavedFiltersAtMount.current && !initializedFromBase && res?.filterOptions) {
+      // Se ainda não foi inicializado com as opções dinâmicas da base, OU se os filtros atuais
+      // estiverem com ano/mês vazios (ex: residual de "Limpar Filtros" ou sessão antiga),
+      // aplica os filtros dinâmicos padrão baseados na base e persiste na sessão.
+      const needsDynamicInit = !initializedFromBase || !hasValidPeriodFilters(activeFilters)
+      if (needsDynamicInit && res?.filterOptions) {
         const dynamicFilters = buildDynamicInitialFilters(res.filterOptions)
         setInitializedFromBase(true)
         saveFiltersToSession(dynamicFilters)

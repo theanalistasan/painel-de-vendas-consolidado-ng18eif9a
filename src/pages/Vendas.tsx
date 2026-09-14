@@ -34,6 +34,7 @@ import {
   loadFiltersFromSession,
   buildDynamicInitialFilters,
   hasSavedFiltersInSession,
+  hasValidPeriodFilters,
 } from '@/lib/filter-persistence'
 import FilterBar from '@/components/FilterBar'
 import KpiCard from '@/components/KpiCard'
@@ -66,7 +67,9 @@ export default function Vendas() {
 
   const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
-  const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
+  const [initializedFromBase, setInitializedFromBase] = useState(
+    () => hasSavedFiltersInSession() && hasValidPeriodFilters(loadFiltersFromSession()),
+  )
 
   // Persistir filtros no sessionStorage sempre que mudarem (após aplicar ou após inicialização dinâmica),
   // para que o estado seja compartilhado de forma consistente com o Dashboard.
@@ -111,9 +114,10 @@ export default function Vendas() {
         if (stats.filterOptions) {
           setFilterOptions(stats.filterOptions)
 
-          // Se for o primeiro acesso sem filtros salvos na sessão, ajusta os filtros
-          // com os valores dinâmicos reais da base (mês atual se existir, senão último mês da base)
-          if (!hadSavedFiltersAtMount.current && !initializedFromBase) {
+          // Se ainda não foi inicializado com as opções dinâmicas da base, OU se os filtros atuais
+          // estiverem com ano/mês vazios, aplica os filtros dinâmicos padrão da base.
+          const needsDynamicInit = !initializedFromBase || !hasValidPeriodFilters(activeFilters)
+          if (needsDynamicInit) {
             const dynamicFilters = buildDynamicInitialFilters(stats.filterOptions)
             setInitializedFromBase(true)
             saveFiltersToSession(dynamicFilters)
