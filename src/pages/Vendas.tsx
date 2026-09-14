@@ -18,6 +18,9 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Database,
+  Maximize2,
+  Minimize2,
+  RotateCw,
 } from 'lucide-react'
 import { fetchVendasList, fetchVendasExport, fetchDashboardStats } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -49,6 +52,24 @@ const PAGE_SIZE = 20
 
 type SortField = Extract<keyof VendaConsolidada, string>
 
+// Configurações padrão de largura para as 10 colunas solicitadas
+const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
+  data_lancamento: 110,
+  numero_nfe: 120,
+  tipo_documento: 160,
+  nome_cliente: 240,
+  vendedor_cliente: 220,
+  descricao_item: 280,
+  quantidade: 90,
+  grupo_item: 140,
+  total_linha: 140,
+  utilizacao: 180,
+}
+
+const MIN_COLUMN_WIDTH = 60
+const STORAGE_KEY_WIDTHS = 'relatorio_vendas_col_widths_v2'
+const STORAGE_KEY_EXPANDED = 'relatorio_vendas_col_expanded_v2'
+
 export default function Vendas() {
   const [paginatedVendas, setPaginatedVendas] = useState<VendaConsolidada[]>([])
   const [totalItems, setTotalItems] = useState(0)
@@ -60,6 +81,110 @@ export default function Vendas() {
   const [page, setPage] = useState(1)
   const sort = useTableSort<SortField>()
   const { toast } = useToast()
+
+  // Largura e modo expandido por coluna (persistido em localStorage)
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_WIDTHS)
+      if (saved) {
+        return { ...DEFAULT_COLUMN_WIDTHS, ...JSON.parse(saved) }
+      }
+    } catch (_) {
+      // fallback
+    }
+    return DEFAULT_COLUMN_WIDTHS
+  })
+
+  const [expandedCols, setExpandedCols] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_EXPANDED)
+      if (saved) {
+        return JSON.parse(saved)
+      }
+    } catch (_) {
+      // fallback
+    }
+    return {}
+  })
+
+  // Salvar larguras e colunas expandidas no localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_WIDTHS, JSON.stringify(columnWidths))
+    } catch (_) {
+      // ignore
+    }
+  }, [columnWidths])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_EXPANDED, JSON.stringify(expandedCols))
+    } catch (_) {
+      // ignore
+    }
+  }, [expandedCols])
+
+  // Lógica de Redimensionamento Interativo (arrastar borda da coluna)
+  const resizingColRef = useRef<{ key: string; startX: number; startWidth: number } | null>(null)
+
+  const handleResizeStart = (e: React.MouseEvent, key: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const currentWidth = columnWidths[key] || DEFAULT_COLUMN_WIDTHS[key] || 150
+    resizingColRef.current = {
+      key,
+      startX: e.clientX,
+      startWidth: currentWidth,
+    }
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      if (!resizingColRef.current) return
+      const delta = moveEvent.clientX - resizingColRef.current.startX
+      const newWidth = Math.max(MIN_COLUMN_WIDTH, resizingColRef.current.startWidth + delta)
+      setColumnWidths((prev) => ({
+        ...prev,
+        [resizingColRef.current!.key]: newWidth,
+      }))
+    }
+
+    const onMouseUp = () => {
+      resizingColRef.current = null
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+  }
+
+  // Toggle de visualização expandida de coluna (revela todo o texto sem truncar)
+  const toggleColumnExpand = (key: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setExpandedCols((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }))
+  }
+
+  // Resetar larguras para os padrões
+  const resetColumnWidths = () => {
+    setColumnWidths(DEFAULT_COLUMN_WIDTHS)
+    setExpandedCols({})
+    try {
+      localStorage.removeItem(STORAGE_KEY_WIDTHS)
+      localStorage.removeItem(STORAGE_KEY_EXPANDED)
+    } catch (_) {
+      // ignore
+    }
+    toast({
+      title: 'Larguras redefinidas',
+      description: 'As larguras das colunas retornaram aos valores padrão.',
+    })
+  }
 
   // Agrupamento por Nº NFe
   // collapsedNfes armazena os números de NFe colapsados (se não estiver no set, está expandido)
@@ -210,34 +335,87 @@ export default function Vendas() {
     setPage(1)
   }
 
-  // Column definitions for Table & Export (exact order requested)
+  // Column definitions for Table & Export (exact sequence requested by user):
+  // 1. Data
+  // 2. Nr. NF
+  // 3. Tipo de Documento
+  // 4. Cliente
+  // 5. Vendedor
+  // 6. Item
+  // 7. Qtde
+  // 8. Grupo
+  // 9. Total da Linha
+  // 10. Utilização
+  // Seguidas pelas colunas complementares já existentes
   const columns = [
-    { key: 'data_lancamento', label: 'Data de Lançamento', type: 'date' },
-    { key: 'numero_nfe', label: 'Nº NFe', type: 'text' },
-    { key: 'numero_sap', label: 'Número SAP', type: 'text' },
-    { key: 'tipo_documento', label: 'Tipo de Documento', type: 'text' },
-    { key: 'codigo_cliente', label: 'Código do Cliente', type: 'text' },
-    { key: 'nome_cliente', label: 'Nome do Cliente', type: 'text' },
-    { key: 'vendedor_cliente', label: 'Vendedor > Cliente', type: 'text' },
-    { key: 'nome_vendedor', label: 'Nome do Vendedor', type: 'text' },
-    { key: 'codigo_item', label: 'Cód. do Item', type: 'text' },
-    { key: 'descricao_item', label: 'Descrição do Item', type: 'text' },
-    { key: 'grupo_item', label: 'Grupo do Item', type: 'badge' },
-    { key: 'quantidade', label: 'Quantidade', type: 'number' },
-    { key: 'preco_item', label: 'Preço do Item', type: 'currency' },
-    { key: 'preco_unitario', label: 'Preço Unitário', type: 'currency' },
-    { key: 'total_linha', label: 'Valor Mercadoria (Total da Linha)', type: 'currency' },
-    { key: 'total_nf_sem_frete', label: 'Total NF SEM Frete', type: 'currency' },
-    { key: 'valor_liquido', label: 'Valor Liquido', type: 'currency' },
-    { key: 'custo_total', label: 'Custo Total', type: 'currency' },
-    { key: 'utilizacao', label: 'Utilização', type: 'text' },
-    { key: 'estado', label: 'Estado', type: 'text' },
-    { key: 'cidade', label: 'Cidade', type: 'text' },
-    { key: 'classificacao', label: 'Classificacao', type: 'text' },
-    { key: 'grupo_cliente', label: 'Grupo do Cliente', type: 'text' },
-    { key: 'mercado', label: 'Mercado', type: 'text' },
-    { key: 'usuario_emissor_pedido', label: 'Usuário Emitente do Pedido', type: 'text' },
-    { key: 'origem', label: 'Origem', type: 'text' },
+    { key: 'data_lancamento', label: 'Data', type: 'date', sortKey: 'data_lancamento' },
+    { key: 'numero_nfe', label: 'Nr. NF', type: 'text', sortKey: 'numero_nfe' },
+    { key: 'tipo_documento', label: 'Tipo de Documento', type: 'text', sortKey: 'tipo_documento' },
+    { key: 'nome_cliente', label: 'Cliente', type: 'text', sortKey: 'nome_cliente' },
+    { key: 'vendedor_cliente', label: 'Vendedor', type: 'text', sortKey: 'vendedor_cliente' },
+    { key: 'descricao_item', label: 'Item', type: 'text', sortKey: 'descricao_item' },
+    { key: 'quantidade', label: 'Qtde', type: 'number', sortKey: 'quantidade', align: 'center' },
+    { key: 'grupo_item', label: 'Grupo', type: 'badge', sortKey: 'grupo_item' },
+    {
+      key: 'total_linha',
+      label: 'Total da Linha',
+      type: 'currency',
+      sortKey: 'total_linha',
+      align: 'right',
+    },
+    { key: 'utilizacao', label: 'Utilização', type: 'text', sortKey: 'utilizacao' },
+    // Colunas complementares de enriquecimento (disponíveis para consulta/exportação)
+    { key: 'numero_sap', label: 'Número SAP', type: 'text', sortKey: 'numero_sap' },
+    { key: 'codigo_cliente', label: 'Cód. Cliente', type: 'text', sortKey: 'codigo_cliente' },
+    { key: 'nome_vendedor', label: 'Nome Vendedor', type: 'text', sortKey: 'nome_vendedor' },
+    { key: 'codigo_item', label: 'Cód. Item', type: 'text', sortKey: 'codigo_item' },
+    {
+      key: 'preco_item',
+      label: 'Preço Item',
+      type: 'currency',
+      sortKey: 'preco_item',
+      align: 'right',
+    },
+    {
+      key: 'preco_unitario',
+      label: 'Preço Unit.',
+      type: 'currency',
+      sortKey: 'preco_unitario',
+      align: 'right',
+    },
+    {
+      key: 'total_nf_sem_frete',
+      label: 'Total NF sem Frete',
+      type: 'currency',
+      sortKey: 'total_nf_sem_frete',
+      align: 'right',
+    },
+    {
+      key: 'valor_liquido',
+      label: 'Valor Líquido',
+      type: 'currency',
+      sortKey: 'valor_liquido',
+      align: 'right',
+    },
+    {
+      key: 'custo_total',
+      label: 'Custo Total',
+      type: 'currency',
+      sortKey: 'custo_total',
+      align: 'right',
+    },
+    { key: 'estado', label: 'UF', type: 'text', sortKey: 'estado', align: 'center' },
+    { key: 'cidade', label: 'Cidade', type: 'text', sortKey: 'cidade' },
+    { key: 'classificacao', label: 'Classificação', type: 'text', sortKey: 'classificacao' },
+    { key: 'grupo_cliente', label: 'Grupo Cliente', type: 'text', sortKey: 'grupo_cliente' },
+    { key: 'mercado', label: 'Mercado', type: 'text', sortKey: 'mercado' },
+    {
+      key: 'usuario_emissor_pedido',
+      label: 'Usuário Emitente',
+      type: 'text',
+      sortKey: 'usuario_emissor_pedido',
+    },
+    { key: 'origem', label: 'Origem', type: 'text', sortKey: 'origem' },
   ]
 
   // Estrutura de grupos por Nº NFe para a página atual
@@ -488,6 +666,17 @@ export default function Vendas() {
               <Button
                 variant="outline"
                 size="sm"
+                onClick={resetColumnWidths}
+                className="bg-white border-gray-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold gap-1.5 h-8"
+                title="Redefinir larguras das colunas para os padrões"
+              >
+                <RotateCw className="w-3.5 h-3.5 text-slate-500" />
+                Redefinir Larguras
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => handleExportCSV()}
                 disabled={exporting || totalItems === 0}
                 className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 font-bold gap-1.5"
@@ -597,35 +786,84 @@ export default function Vendas() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs whitespace-nowrap">
-                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200/80">
+            <div className="overflow-x-auto relative">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200/80 sticky top-0 z-10 shadow-2xs">
                   <tr>
                     {/* Coluna de controle de grupo NFe */}
                     <th
-                      className="py-3 px-2 w-8 text-center text-slate-400 font-normal"
+                      className="py-3 px-2 w-9 min-w-[36px] text-center text-slate-400 font-normal bg-slate-50 border-r border-slate-200/50"
                       title="Agrupamento NFe"
                     >
                       <Layers className="w-3.5 h-3.5 mx-auto" />
                     </th>
-                    {columns.map((col) => (
-                      <th
-                        key={col.key}
-                        onClick={() => handleSort(col.key as SortField)}
-                        className="py-3 px-3.5 cursor-pointer hover:bg-slate-100/80 transition-colors select-none group"
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <span>{col.label}</span>
-                          {sort.field === col.key ? (
-                            <span className="text-[10px] text-[#0B6E99] font-bold">
-                              {sort.dir === 'asc' ? '▲' : '▼'}
-                            </span>
-                          ) : (
-                            <ArrowUpDown className="w-3 h-3 text-slate-400 group-hover:text-slate-700" />
-                          )}
-                        </div>
-                      </th>
-                    ))}
+                    {columns.map((col) => {
+                      const width = columnWidths[col.key] || DEFAULT_COLUMN_WIDTHS[col.key] || 150
+                      const isExpanded = !!expandedCols[col.key]
+                      const isSorted = sort.field === col.sortKey
+
+                      return (
+                        <th
+                          key={col.key}
+                          style={{
+                            width: isExpanded ? 'auto' : `${width}px`,
+                            minWidth: `${Math.min(width, 80)}px`,
+                            maxWidth: isExpanded ? 'none' : `${Math.max(width, 260)}px`,
+                          }}
+                          className="relative py-2.5 px-3 select-none group border-r border-slate-200/60 bg-slate-50 transition-colors hover:bg-slate-100/70"
+                        >
+                          <div className="flex items-center justify-between gap-1.5">
+                            {/* Título com botão de ordenação */}
+                            <button
+                              type="button"
+                              onClick={() => handleSort(col.sortKey as SortField)}
+                              className="flex items-center gap-1 font-semibold text-slate-700 hover:text-slate-900 truncate focus:outline-hidden text-left flex-1"
+                              title={`Ordenar por ${col.label}`}
+                            >
+                              <span className="truncate">{col.label}</span>
+                              {isSorted ? (
+                                <span className="text-[10px] text-[#0B6E99] font-bold shrink-0">
+                                  {sort.dir === 'asc' ? '▲' : '▼'}
+                                </span>
+                              ) : (
+                                <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity" />
+                              )}
+                            </button>
+
+                            {/* Botão de abrir/fechar coluna (Expandir/Truncar) */}
+                            <button
+                              type="button"
+                              onClick={(e) => toggleColumnExpand(col.key, e)}
+                              className={`p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 shrink-0 transition-colors ${
+                                isExpanded
+                                  ? 'text-[#0B6E99] bg-cyan-50'
+                                  : 'opacity-0 group-hover:opacity-100'
+                              }`}
+                              title={
+                                isExpanded
+                                  ? `Recolher coluna ${col.label} (largura compacta / truncada)`
+                                  : `Expandir coluna ${col.label} (mostrar conteúdo completo sem truncar)`
+                              }
+                            >
+                              {isExpanded ? (
+                                <Minimize2 className="w-3 h-3" />
+                              ) : (
+                                <Maximize2 className="w-3 h-3" />
+                              )}
+                            </button>
+                          </div>
+
+                          {/* Alça interativa de redimensionamento de coluna (arrastar a borda direita) */}
+                          <div
+                            onMouseDown={(e) => handleResizeStart(e, col.key)}
+                            className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize select-none hover:bg-[#0B6E99]/40 active:bg-[#0B6E99] transition-colors z-20 group/handle"
+                            title="Arrastar para ajustar largura da coluna"
+                          >
+                            <span className="absolute right-0 top-1/2 -translate-y-1/2 w-0.5 h-3 bg-slate-300 group-hover/handle:bg-[#0B6E99]" />
+                          </div>
+                        </th>
+                      )
+                    })}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -651,7 +889,7 @@ export default function Vendas() {
                               }`}
                             >
                               {/* Botão de Expandir / Colapsar Grupo NFe */}
-                              <td className="py-2.5 px-2 text-center align-middle">
+                              <td className="py-2 px-2 text-center align-middle border-r border-slate-100 w-9 min-w-[36px]">
                                 {isGrouped && isFirstOfGroup ? (
                                   <button
                                     type="button"
@@ -674,170 +912,503 @@ export default function Vendas() {
                                 ) : null}
                               </td>
 
-                              {/* 1. Data de Lancamento */}
-                              <td className="py-2.5 px-3.5 font-medium text-slate-700">
-                                {formatDate(item.data_lancamento)}
-                              </td>
+                              {/* Renderização de cada coluna na ordem exata configurada */}
+                              {columns.map((col) => {
+                                const isExpanded = !!expandedCols[col.key]
+                                const width =
+                                  columnWidths[col.key] || DEFAULT_COLUMN_WIDTHS[col.key] || 150
+                                const cellStyle: React.CSSProperties = {
+                                  width: isExpanded ? 'auto' : `${width}px`,
+                                  minWidth: `${Math.min(width, 80)}px`,
+                                  maxWidth: isExpanded ? 'none' : `${Math.max(width, 260)}px`,
+                                }
 
-                              {/* 2. Nº NFe com indicador de múltiplos itens se colapsado */}
-                              <td className="py-2.5 px-3.5 font-mono font-semibold text-slate-900">
-                                <div className="flex items-center gap-1.5">
-                                  <span>{item.numero_nfe || '-'}</span>
-                                  {isGrouped && isFirstOfGroup && isCollapsed && (
-                                    <Badge
-                                      variant="secondary"
-                                      className="text-[9px] px-1.5 py-0 h-4 bg-cyan-100 text-cyan-900 hover:bg-cyan-100 border-none font-sans font-bold"
-                                    >
-                                      +{group.items.length - 1} itens
-                                    </Badge>
-                                  )}
-                                </div>
-                              </td>
+                                switch (col.key) {
+                                  // 1. Data de Lançamento
+                                  case 'data_lancamento':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 font-medium text-slate-700 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={isExpanded ? '' : 'truncate'}
+                                          title={formatDate(item.data_lancamento)}
+                                        >
+                                          {formatDate(item.data_lancamento)}
+                                        </div>
+                                      </td>
+                                    )
 
-                              {/* 3. Número SAP */}
-                              <td className="py-2.5 px-3.5 font-mono text-slate-600">
-                                {item.numero_sap || '-'}
-                              </td>
+                                  // 2. Nr. NF
+                                  case 'numero_nfe':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 font-mono font-semibold text-slate-900 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={`flex items-center gap-1.5 ${isExpanded ? '' : 'truncate'}`}
+                                          title={item.numero_nfe || '-'}
+                                        >
+                                          <span className="truncate">{item.numero_nfe || '-'}</span>
+                                          {isGrouped && isFirstOfGroup && isCollapsed && (
+                                            <Badge
+                                              variant="secondary"
+                                              className="text-[9px] px-1.5 py-0 h-4 bg-cyan-100 text-cyan-900 hover:bg-cyan-100 border-none font-sans font-bold shrink-0"
+                                            >
+                                              +{group.items.length - 1}
+                                            </Badge>
+                                          )}
+                                          {isAllGroupedNfe && (
+                                            <Badge
+                                              variant="outline"
+                                              className="text-[8px] px-1 py-0 h-3.5 bg-slate-100 text-slate-600 border-slate-200 shrink-0 font-sans"
+                                            >
+                                              NF
+                                            </Badge>
+                                          )}
+                                        </div>
+                                      </td>
+                                    )
 
-                              {/* 4. Tipo de Documento */}
-                              <td className="py-2.5 px-3.5 text-slate-700">
-                                {item.tipo_documento || '-'}
-                              </td>
+                                  // 3. Tipo de Documento
+                                  case 'tipo_documento':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={
+                                            isExpanded
+                                              ? 'whitespace-normal break-words'
+                                              : 'truncate'
+                                          }
+                                          title={item.tipo_documento || '-'}
+                                        >
+                                          {item.tipo_documento || '-'}
+                                        </div>
+                                      </td>
+                                    )
 
-                              {/* 5. Código do Cliente */}
-                              <td className="py-2.5 px-3.5 font-mono text-slate-700">
-                                {item.codigo_cliente || '-'}
-                              </td>
+                                  // 4. Cliente (Nome do Cliente)
+                                  case 'nome_cliente':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 font-semibold text-slate-900 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={
+                                            isExpanded
+                                              ? 'whitespace-normal break-words'
+                                              : 'truncate'
+                                          }
+                                          title={item.nome_cliente || '-'}
+                                        >
+                                          {item.nome_cliente || '-'}
+                                        </div>
+                                      </td>
+                                    )
 
-                              {/* 5. Nome do Cliente */}
-                              <td className="py-2.5 px-3.5 font-semibold text-slate-900 max-w-[220px] truncate">
-                                {item.nome_cliente || '-'}
-                              </td>
+                                  // 5. Vendedor (Vendedor > Cliente ou Nome Vendedor)
+                                  case 'vendedor_cliente':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-slate-900 font-medium bg-slate-50/40 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={
+                                            isExpanded
+                                              ? 'whitespace-normal break-words'
+                                              : 'truncate'
+                                          }
+                                          title={item.vendedor_cliente || item.nome_vendedor || '-'}
+                                        >
+                                          {item.vendedor_cliente || item.nome_vendedor || '-'}
+                                        </div>
+                                      </td>
+                                    )
 
-                              {/* 6. Vendedor > Cliente */}
-                              <td className="py-2.5 px-3.5 text-slate-900 font-medium max-w-[260px] truncate bg-slate-50/50">
-                                {item.vendedor_cliente || '-'}
-                              </td>
+                                  // 6. Item (Descrição do Item com Cód. opcional)
+                                  case 'descricao_item':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={
+                                            isExpanded
+                                              ? 'whitespace-normal break-words'
+                                              : 'truncate'
+                                          }
+                                          title={item.descricao_item || item.codigo_item || '-'}
+                                        >
+                                          {item.descricao_item ||
+                                            (item.codigo_item ? `Cód. ${item.codigo_item}` : '-')}
+                                        </div>
+                                      </td>
+                                    )
 
-                              {/* 7. Nome do Vendedor */}
-                              <td className="py-2.5 px-3.5 text-slate-700">
-                                {item.nome_vendedor || '-'}
-                              </td>
+                                  // 7. Qtde (Quantidade)
+                                  case 'quantidade':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-center font-medium text-slate-800 border-r border-slate-100"
+                                      >
+                                        <div className={isExpanded ? '' : 'truncate'}>
+                                          {formatNumber(item.quantidade)}
+                                        </div>
+                                      </td>
+                                    )
 
-                              {/* 8. Cód. do Item */}
-                              <td className="py-2.5 px-3.5 font-mono font-semibold text-slate-900">
-                                {item.codigo_item || '-'}
-                              </td>
+                                  // 8. Grupo (Grupo do Item)
+                                  case 'grupo_item':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 border-r border-slate-100"
+                                      >
+                                        {item.grupo_item ? (
+                                          <Badge
+                                            className="text-[10px] font-semibold text-white px-2 py-0.5 truncate max-w-full"
+                                            style={{
+                                              backgroundColor: getGrupoColor(item.grupo_item),
+                                            }}
+                                            title={item.grupo_item}
+                                          >
+                                            {item.grupo_item}
+                                          </Badge>
+                                        ) : (
+                                          <span className="text-slate-400">-</span>
+                                        )}
+                                      </td>
+                                    )
 
-                              {/* 9. Descrição do Item */}
-                              <td className="py-2.5 px-3.5 text-slate-600 max-w-[220px] truncate">
-                                {item.descricao_item || '-'}
-                              </td>
+                                  // 9. Total da Linha (Valor Mercadoria)
+                                  case 'total_linha':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-right font-bold text-slate-900 tabular-nums bg-cyan-50/20 border-r border-slate-100"
+                                      >
+                                        <div className={isExpanded ? '' : 'truncate'}>
+                                          {formatCurrency(item.total_linha)}
+                                        </div>
+                                      </td>
+                                    )
 
-                              {/* 10. Grupo do Item (Badge) */}
-                              <td className="py-2.5 px-3.5">
-                                {item.grupo_item ? (
-                                  <Badge
-                                    className="text-[10px] font-semibold text-white px-2 py-0.5"
-                                    style={{
-                                      backgroundColor: getGrupoColor(item.grupo_item),
-                                    }}
-                                  >
-                                    {item.grupo_item}
-                                  </Badge>
-                                ) : (
-                                  <span className="text-slate-400">-</span>
-                                )}
-                              </td>
+                                  // 10. Utilização
+                                  case 'utilizacao':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={
+                                            isExpanded
+                                              ? 'whitespace-normal break-words'
+                                              : 'truncate'
+                                          }
+                                          title={item.utilizacao || '-'}
+                                        >
+                                          {item.utilizacao || '-'}
+                                        </div>
+                                      </td>
+                                    )
 
-                              {/* 11. Quantidade */}
-                              <td className="py-2.5 px-3.5 text-center font-medium text-slate-800">
-                                {formatNumber(item.quantidade)}
-                              </td>
-
-                              {/* 12. Preço do Item */}
-                              <td className="py-2.5 px-3.5 text-right font-medium text-slate-700 tabular-nums">
-                                {formatCurrency(item.preco_item)}
-                              </td>
-
-                              {/* 13. Preço Unitário (NetSales) */}
-                              <td className="py-2.5 px-3.5 text-right font-medium text-slate-700 tabular-nums">
-                                {formatCurrency(item.preco_unitario)}
-                              </td>
-
-                              {/* 14. Valor Mercadoria (Total Linha) */}
-                              <td className="py-2.5 px-3.5 text-right font-bold text-slate-900 tabular-nums bg-cyan-50/20">
-                                {formatCurrency(item.total_linha)}
-                              </td>
-
-                              {/* 15. Total NF SEM Frete (NetSales) */}
-                              <td className="py-2.5 px-3.5 text-right font-medium text-slate-700 tabular-nums">
-                                {formatCurrency(item.total_nf_sem_frete)}
-                              </td>
-
-                              {/* 16. Valor Liquido (NetSales) */}
-                              <td className="py-2.5 px-3.5 text-right font-bold text-teal-700 tabular-nums">
-                                {formatCurrency(item.valor_liquido)}
-                              </td>
-
-                              {/* 17. Custo Total (NetSales) */}
-                              <td className="py-2.5 px-3.5 text-right font-medium text-slate-600 tabular-nums">
-                                {formatCurrency(item.custo_total)}
-                              </td>
-
-                              {/* 18. Utilização */}
-                              <td className="py-2.5 px-3.5 text-slate-700">
-                                {item.utilizacao || '-'}
-                              </td>
-
-                              {/* 19. Estado */}
-                              <td className="py-2.5 px-3.5 text-center font-semibold text-slate-800">
-                                {item.estado || '-'}
-                              </td>
-
-                              {/* 20. Cidade */}
-                              <td className="py-2.5 px-3.5 text-slate-700">{item.cidade || '-'}</td>
-
-                              {/* 21. Classificação (NetSales) */}
-                              <td className="py-2.5 px-3.5 text-slate-700">
-                                {item.classificacao || '-'}
-                              </td>
-
-                              {/* 22. Grupo do Cliente (NetSales) */}
-                              <td className="py-2.5 px-3.5 text-slate-600">
-                                {item.grupo_cliente || '-'}
-                              </td>
-
-                              {/* 23. Mercado (NetSales) */}
-                              <td className="py-2.5 px-3.5 text-slate-600">
-                                {item.mercado || '-'}
-                              </td>
-
-                              {/* 24. Usuário Emitente (NetSales) */}
-                              <td className="py-2.5 px-3.5 text-slate-500 font-mono text-[11px]">
-                                {item.usuario_emissor_pedido || '-'}
-                              </td>
-
-                              {/* 25. Origem */}
-                              <td className="py-2.5 px-3.5">
-                                {item.tem_netsales ? (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[10px] font-semibold bg-indigo-50/70 text-indigo-700 border-indigo-200/80 px-2 py-0.5 inline-flex items-center gap-1"
-                                  >
-                                    <Database className="w-3 h-3 text-indigo-600" />
-                                    <span>NetSales</span>
-                                  </Badge>
-                                ) : (
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[10px] font-semibold bg-cyan-100 text-cyan-800 border-cyan-300 px-2 py-0.5 inline-flex items-center gap-1"
-                                  >
-                                    <FileText className="w-3 h-3 text-cyan-700" />
-                                    <span>RacNew</span>
-                                  </Badge>
-                                )}
-                              </td>
+                                  // Colunas complementares
+                                  case 'numero_sap':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 font-mono text-slate-600 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={isExpanded ? '' : 'truncate'}
+                                          title={item.numero_sap || '-'}
+                                        >
+                                          {item.numero_sap || '-'}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'codigo_cliente':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 font-mono text-slate-700 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={isExpanded ? '' : 'truncate'}
+                                          title={item.codigo_cliente || '-'}
+                                        >
+                                          {item.codigo_cliente || '-'}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'nome_vendedor':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={
+                                            isExpanded
+                                              ? 'whitespace-normal break-words'
+                                              : 'truncate'
+                                          }
+                                          title={item.nome_vendedor || '-'}
+                                        >
+                                          {item.nome_vendedor || '-'}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'codigo_item':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 font-mono font-semibold text-slate-900 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={isExpanded ? '' : 'truncate'}
+                                          title={item.codigo_item || '-'}
+                                        >
+                                          {item.codigo_item || '-'}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'preco_item':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
+                                      >
+                                        <div className={isExpanded ? '' : 'truncate'}>
+                                          {formatCurrency(item.preco_item)}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'preco_unitario':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
+                                      >
+                                        <div className={isExpanded ? '' : 'truncate'}>
+                                          {formatCurrency(item.preco_unitario)}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'total_nf_sem_frete':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
+                                      >
+                                        <div className={isExpanded ? '' : 'truncate'}>
+                                          {formatCurrency(item.total_nf_sem_frete)}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'valor_liquido':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-right font-bold text-teal-700 tabular-nums border-r border-slate-100"
+                                      >
+                                        <div className={isExpanded ? '' : 'truncate'}>
+                                          {formatCurrency(item.valor_liquido)}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'custo_total':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-right font-medium text-slate-600 tabular-nums border-r border-slate-100"
+                                      >
+                                        <div className={isExpanded ? '' : 'truncate'}>
+                                          {formatCurrency(item.custo_total)}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'estado':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-center font-semibold text-slate-800 border-r border-slate-100"
+                                      >
+                                        {item.estado || '-'}
+                                      </td>
+                                    )
+                                  case 'cidade':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={
+                                            isExpanded
+                                              ? 'whitespace-normal break-words'
+                                              : 'truncate'
+                                          }
+                                          title={item.cidade || '-'}
+                                        >
+                                          {item.cidade || '-'}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'classificacao':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={
+                                            isExpanded
+                                              ? 'whitespace-normal break-words'
+                                              : 'truncate'
+                                          }
+                                          title={item.classificacao || '-'}
+                                        >
+                                          {item.classificacao || '-'}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'grupo_cliente':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-slate-600 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={
+                                            isExpanded
+                                              ? 'whitespace-normal break-words'
+                                              : 'truncate'
+                                          }
+                                          title={item.grupo_cliente || '-'}
+                                        >
+                                          {item.grupo_cliente || '-'}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'mercado':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-slate-600 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={
+                                            isExpanded
+                                              ? 'whitespace-normal break-words'
+                                              : 'truncate'
+                                          }
+                                          title={item.mercado || '-'}
+                                        >
+                                          {item.mercado || '-'}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'usuario_emissor_pedido':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-slate-500 font-mono text-[11px] border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={
+                                            isExpanded ? 'whitespace-normal break-all' : 'truncate'
+                                          }
+                                          title={item.usuario_emissor_pedido || '-'}
+                                        >
+                                          {item.usuario_emissor_pedido || '-'}
+                                        </div>
+                                      </td>
+                                    )
+                                  case 'origem':
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 border-r border-slate-100"
+                                      >
+                                        {item.tem_netsales ? (
+                                          <Badge
+                                            variant="outline"
+                                            className="text-[10px] font-semibold bg-indigo-50/70 text-indigo-700 border-indigo-200/80 px-2 py-0.5 inline-flex items-center gap-1"
+                                          >
+                                            <Database className="w-3 h-3 text-indigo-600" />
+                                            <span>NetSales</span>
+                                          </Badge>
+                                        ) : (
+                                          <Badge
+                                            variant="outline"
+                                            className="text-[10px] font-semibold bg-cyan-100 text-cyan-800 border-cyan-300 px-2 py-0.5 inline-flex items-center gap-1"
+                                          >
+                                            <FileText className="w-3 h-3 text-cyan-700" />
+                                            <span>RacNew</span>
+                                          </Badge>
+                                        )}
+                                      </td>
+                                    )
+                                  default:
+                                    return (
+                                      <td
+                                        key={col.key}
+                                        style={cellStyle}
+                                        className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                                      >
+                                        <div
+                                          className={
+                                            isExpanded
+                                              ? 'whitespace-normal break-words'
+                                              : 'truncate'
+                                          }
+                                        >
+                                          {String(
+                                            (item as unknown as Record<string, unknown>)[col.key] ??
+                                              '-',
+                                          )}
+                                        </div>
+                                      </td>
+                                    )
+                                }
+                              })}
                             </tr>
                           )
                         })}
