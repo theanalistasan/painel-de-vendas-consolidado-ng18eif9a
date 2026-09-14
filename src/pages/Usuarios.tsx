@@ -26,6 +26,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { AlertCircle, RefreshCw } from 'lucide-react'
 import {
   Select,
   SelectContent,
@@ -43,6 +45,7 @@ import {
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import { extractFieldErrors } from '@/lib/pocketbase/errors'
 
 const PER_PAGE = 10
 
@@ -76,6 +79,7 @@ export default function Usuarios() {
   const [editing, setEditing] = useState<UserRecord | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const [deleteTarget, setDeleteTarget] = useState<UserRecord | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -125,6 +129,7 @@ export default function Usuarios() {
   const openCreate = () => {
     setEditing(null)
     setForm(emptyForm)
+    setSaveError(null)
     setModalOpen(true)
   }
 
@@ -138,6 +143,7 @@ export default function Usuarios() {
       role: (u.role as UserRole) || 'user',
       active: u.active !== false,
     })
+    setSaveError(null)
     setModalOpen(true)
   }
 
@@ -159,35 +165,80 @@ export default function Usuarios() {
   const handleSave = async () => {
     const err = validate()
     if (err) {
+      setSaveError(err)
       toast({ variant: 'destructive', title: 'Validação', description: err })
       return
     }
     setSaving(true)
-    try {
+    setSaveError(null)
+
+    // Timeout de salvamento na UI para nunca travar em "Salvando..."
+    const savePromise = (async () => {
       if (editing) {
-        await updateUser(editing.id, {
+        return await updateUser(editing.id, {
           name: form.name.trim(),
           email: form.email.trim(),
           role: form.role,
           active: form.active,
           password: form.password || undefined,
         })
-        toast({ title: 'Usuário atualizado', description: form.name })
       } else {
-        await createUser({
+        return await createUser({
           name: form.name.trim(),
           email: form.email.trim(),
           password: form.password,
           role: form.role,
           active: form.active,
         })
-        toast({ title: 'Usuário criado', description: form.name })
       }
+    })()
+
+    try {
+      await Promise.race([
+        savePromise,
+        new Promise((_, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  'A requisição demorou muito para responder (18s). Verifique sua conexão e tente novamente.',
+                ),
+              ),
+            18000,
+          ),
+        ),
+      ])
+
+      toast({
+        title: editing ? 'Usuário atualizado' : 'Usuário criado com sucesso',
+        description: form.name.trim(),
+      })
       setModalOpen(false)
       await load()
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Falha ao salvar usuário.'
-      toast({ variant: 'destructive', title: 'Erro', description: msg })
+      console.error('Erro ao salvar usuário:', e)
+      let msg = 'Falha ao salvar usuário.'
+
+      // Extrai mensagens específicas do PocketBase
+      const fieldErrors = extractFieldErrors(e)
+      const fieldErrorKeys = Object.keys(fieldErrors)
+      if (fieldErrorKeys.length > 0) {
+        msg = fieldErrorKeys.map((k) => `${k}: ${fieldErrors[k]}`).join(' | ')
+      } else if (e instanceof Error && e.message) {
+        msg = e.message
+      }
+
+      // Tratamento de conflito de email duplicado
+      if (
+        msg.toLowerCase().includes('already exists') ||
+        msg.toLowerCase().includes('unique') ||
+        msg.toLowerCase().includes('email já cadastrado')
+      ) {
+        msg = 'Este e-mail já está em uso por outro usuário.'
+      }
+
+      setSaveError(msg)
+      toast({ variant: 'destructive', title: 'Erro ao salvar', description: msg })
     } finally {
       setSaving(false)
     }
@@ -515,11 +566,20 @@ export default function Usuarios() {
           </DialogHeader>
 
           <div className="space-y-3">
+            {saveError && (
+              <Alert variant="destructive" className="py-2 px-3 text-xs">
+                <AlertDescription className="text-xs font-medium">{saveError}</AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold text-slate-700">Nome completo</Label>
               <Input
                 value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                onChange={(e) => {
+                  setSaveError(null)
+                  setForm((f) => ({ ...f, name: e.target.value }))
+                }}
                 placeholder="Nome do usuário"
                 className="rounded-lg border-slate-200 focus-visible:ring-indigo-500 text-xs"
               />
@@ -529,7 +589,10 @@ export default function Usuarios() {
               <Input
                 type="email"
                 value={form.email}
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                onChange={(e) => {
+                  setSaveError(null)
+                  setForm((f) => ({ ...f, email: e.target.value }))
+                }}
                 placeholder="email@empresa.com.br"
                 className="rounded-lg border-slate-200 focus-visible:ring-indigo-500 text-xs"
               />
@@ -542,7 +605,10 @@ export default function Usuarios() {
                 <Input
                   type="password"
                   value={form.password}
-                  onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+                  onChange={(e) => {
+                    setSaveError(null)
+                    setForm((f) => ({ ...f, password: e.target.value }))
+                  }}
                   placeholder="••••••••"
                   className="rounded-lg border-slate-200 focus-visible:ring-indigo-500 text-xs"
                 />
@@ -552,7 +618,10 @@ export default function Usuarios() {
                 <Input
                   type="password"
                   value={form.confirmPassword}
-                  onChange={(e) => setForm((f) => ({ ...f, confirmPassword: e.target.value }))}
+                  onChange={(e) => {
+                    setSaveError(null)
+                    setForm((f) => ({ ...f, confirmPassword: e.target.value }))
+                  }}
                   placeholder="••••••••"
                   className="rounded-lg border-slate-200 focus-visible:ring-indigo-500 text-xs"
                 />
@@ -595,12 +664,26 @@ export default function Usuarios() {
           <DialogFooter className="gap-2 sm:gap-2">
             <Button
               variant="outline"
-              onClick={() => setModalOpen(false)}
+              onClick={() => {
+                setModalOpen(false)
+                setSaveError(null)
+              }}
               disabled={saving}
               className="text-xs"
             >
               Cancelar
             </Button>
+            {saveError && !saving && (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleSave}
+                className="text-xs text-indigo-700 bg-indigo-50 hover:bg-indigo-100"
+              >
+                <RefreshCw className="w-3.5 h-3.5 mr-1" />
+                Tentar novamente
+              </Button>
+            )}
             <Button
               onClick={handleSave}
               disabled={saving}

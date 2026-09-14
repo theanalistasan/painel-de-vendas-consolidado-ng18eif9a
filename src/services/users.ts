@@ -1,5 +1,11 @@
 import pb from '@/lib/pocketbase/client'
-import { safeAuthRefresh, ensureAuthToken } from '@/lib/pocketbase/auth-session'
+import {
+  safeAuthRefresh,
+  ensureAuthToken,
+  notifySessionExpired,
+} from '@/lib/pocketbase/auth-session'
+import { extractFieldErrors } from '@/lib/pocketbase/errors'
+import { ClientResponseError } from 'pocketbase'
 
 export type UserRole = 'admin' | 'user'
 
@@ -45,11 +51,21 @@ export async function fetchUsers(params: FetchUsersParams): Promise<UsersListRes
   // 1. Assegura que o token de autenticação esteja disponível antes da requisição
   await ensureAuthToken()
 
-  const runQuery = async () =>
-    pb.collection<UserRecord>('users').getList(page, perPage, {
-      sort: '-created',
-      filter,
-    })
+  const runQuery = async () => {
+    return Promise.race([
+      pb.collection<UserRecord>('users').getList(page, perPage, {
+        sort: '-created',
+        filter,
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(new Error('Tempo limite excedido ao buscar usuários. Verifique sua conexão.')),
+          15000,
+        ),
+      ),
+    ])
+  }
 
   let result
   try {
@@ -94,10 +110,10 @@ export interface CreateUserPayload {
  */
 export async function createUser(payload: CreateUserPayload): Promise<UserRecord> {
   await ensureAuthToken()
-  const run = () =>
-    pb.collection<UserRecord>('users').create({
-      name: payload.name,
-      email: payload.email,
+  const run = () => {
+    const createPromise = pb.collection<UserRecord>('users').create({
+      name: payload.name.trim(),
+      email: payload.email.trim(),
       password: payload.password,
       passwordConfirm: payload.password,
       role: payload.role,
@@ -106,6 +122,22 @@ export async function createUser(payload: CreateUserPayload): Promise<UserRecord
       // sem isso o campo vem vazio e não dá para identificar/logar/buscar.
       emailVisibility: true,
     })
+
+    return Promise.race([
+      createPromise,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                'Tempo limite excedido ao criar usuário (15s). Verifique sua conexão e tente novamente.',
+              ),
+            ),
+          15000,
+        ),
+      ),
+    ])
+  }
 
   try {
     return await run()
@@ -116,6 +148,7 @@ export async function createUser(payload: CreateUserPayload): Promise<UserRecord
       if (refreshed && pb.authStore.isValid) {
         return await run()
       }
+      throw new Error('Sessão expirada. Faça login novamente.')
     }
     throw err
   }
@@ -147,7 +180,20 @@ export async function updateUser(id: string, payload: UpdateUserPayload): Promis
   // criados anteriormente com emailVisibility=false, ex: Nicolas Brito).
   data.emailVisibility = true
 
-  const run = () => pb.collection<UserRecord>('users').update(id, data)
+  const run = () => {
+    const updatePromise = pb.collection<UserRecord>('users').update(id, data)
+    return Promise.race([
+      updatePromise,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(new Error('Tempo limite excedido ao atualizar usuário (15s). Tente novamente.')),
+          15000,
+        ),
+      ),
+    ])
+  }
+
   try {
     return await run()
   } catch (err: unknown) {
@@ -157,6 +203,7 @@ export async function updateUser(id: string, payload: UpdateUserPayload): Promis
       if (refreshed && pb.authStore.isValid) {
         return await run()
       }
+      throw new Error('Sessão expirada. Faça login novamente.')
     }
     throw err
   }
@@ -167,7 +214,20 @@ export async function updateUser(id: string, payload: UpdateUserPayload): Promis
  */
 export async function deleteUser(id: string): Promise<void> {
   await ensureAuthToken()
-  const run = () => pb.collection('users').delete(id)
+  const run = () => {
+    const deletePromise = pb.collection('users').delete(id)
+    return Promise.race([
+      deletePromise,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(new Error('Tempo limite excedido ao excluir usuário (15s). Tente novamente.')),
+          15000,
+        ),
+      ),
+    ])
+  }
+
   try {
     await run()
   } catch (err: unknown) {
@@ -178,6 +238,7 @@ export async function deleteUser(id: string): Promise<void> {
         await run()
         return
       }
+      throw new Error('Sessão expirada. Faça login novamente.')
     }
     throw err
   }
