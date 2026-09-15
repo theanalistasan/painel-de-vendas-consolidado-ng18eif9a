@@ -314,9 +314,17 @@ export default function DashboardGeral() {
       typeof midAngle !== 'number' ||
       typeof innerRadius !== 'number' ||
       typeof outerRadius !== 'number' ||
-      typeof percent !== 'number' ||
-      percent < 0.05
+      typeof percent !== 'number'
     ) {
+      return null
+    }
+
+    // Suporta tanto percentual fracionário (0.42) quanto inteiro já em base 100 (42)
+    const isFractional = percent <= 1
+    const pctValue = isFractional ? Math.round(percent * 100) : Math.round(percent)
+
+    // Regra: só exibir rótulo em fatias >= 5%
+    if (pctValue < 5) {
       return null
     }
 
@@ -334,7 +342,7 @@ export default function DashboardGeral() {
         dominantBaseline="central"
         className="text-[11px] font-extrabold select-none drop-shadow-sm pointer-events-none"
       >
-        {`${Math.round(percent * 100)}%`}
+        {`${pctValue}%`}
       </text>
     )
   }
