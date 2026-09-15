@@ -33,7 +33,7 @@ import {
   type DashboardStatsResult,
 } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { FilterState } from '@/types/sales'
+import type { FilterState, VendaConsolidada } from '@/types/sales'
 import {
   formatCurrency,
   formatNumber,
@@ -59,8 +59,12 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTableSort } from '@/hooks/use-table-sort'
+import { VendasRelatorioTable, RELATORIO_COLUMNS } from '@/components/VendasRelatorioTable'
 
 const COLOR_BLUE = '#0B6E99'
+const RELATORIO_PAGE_SIZE = 15
+
+type SortField = Extract<keyof VendaConsolidada, string>
 
 const tooltipContentStyle = {
   backgroundColor: '#0F172A',
@@ -75,37 +79,26 @@ const currencyFormatter =
   (val: number | string | undefined) =>
     [formatCurrency(typeof val === 'number' ? val : Number(val)), label] as [string, string]
 
-type DashboardSortField =
-  | 'data_lancamento'
-  | 'nome_cliente'
-  | 'vendedor_cliente'
-  | 'codigo_item'
-  | 'grupo_item'
-  | 'quantidade'
-  | 'total_linha'
-
 export default function DashboardCanais() {
   const [data, setData] = useState<DashboardStatsResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [recentSalesList, setRecentSalesList] = useState<
-    Array<{
-      id: string
-      data_lancamento: string
-      nome_cliente: string
-      vendedor_cliente: string
-      codigo_item: string
-      descricao_item: string
-      grupo_item: string
-      quantidade: number
-      total_linha: number
-    }>
-  >([])
-  const [recentSalesLoading, setRecentSalesLoading] = useState(false)
+
+  // Relatório de Lançamentos/Vendas no modelo de Vendas.tsx
+  const [reportVendas, setReportVendas] = useState<(VendaConsolidada & { itens_qtd?: number })[]>(
+    [],
+  )
+  const [reportLoading, setReportLoading] = useState(false)
+  const [reportPage, setReportPage] = useState(1)
+  const [reportTotalItems, setReportTotalItems] = useState(0)
+  const [reportTotalPages, setReportTotalPages] = useState(1)
+  const [reportTotalNetsales, setReportTotalNetsales] = useState(0)
+  const [reportTotalRacnew, setReportTotalRacnew] = useState(0)
+  const [isGroupedByNfe, setIsGroupedByNfe] = useState(false)
   const [exportingReport, setExportingReport] = useState(false)
 
-  // Ordenação server-side por clique nos cabeçalhos da tabela "Vendas Recentes".
-  const sort = useTableSort<DashboardSortField>()
+  // Ordenação server-side por clique nos cabeçalhos da tabela do relatório
+  const sort = useTableSort<SortField>()
 
   const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
@@ -163,9 +156,6 @@ export default function DashboardCanais() {
       }
 
       setData(res)
-      if (!sort.field) {
-        setRecentSalesList(res?.recentSales || [])
-      }
       setLoading(false)
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
@@ -182,48 +172,42 @@ export default function DashboardCanais() {
     }
   }
 
-  const loadRecentSalesWithSort = async (
+  // Carrega relatório paginado com suporte a ordenação server-side e colapsado por NF
+  const loadReportData = async (
     activeFilters = filters,
-    field = sort.field,
-    dir = sort.dir,
+    targetPage = reportPage,
+    sortField = sort.field,
+    sortDir = sort.dir,
+    grouped = isGroupedByNfe,
   ) => {
-    if (!field) {
-      if (data?.recentSales) {
-        setRecentSalesList(data.recentSales)
-      }
-      return
-    }
-    setRecentSalesLoading(true)
+    setReportLoading(true)
     try {
       const res = await fetchVendasList({
-        page: 1,
-        perPage: 8,
-        sortField: field,
-        sortDirection: dir,
+        page: targetPage,
+        perPage: RELATORIO_PAGE_SIZE,
+        sortField: sortField || undefined,
+        sortDirection: sortField ? sortDir : undefined,
+        sort: sortField ? undefined : '-data_lancamento',
+        groupByNfe: grouped,
         filters: activeFilters as unknown as Record<string, unknown>,
       })
-      setRecentSalesList(
-        (res.items || []).map((item) => ({
-          id: item.id,
-          data_lancamento: item.data_lancamento,
-          nome_cliente: item.nome_cliente,
-          vendedor_cliente: item.vendedor_cliente,
-          codigo_item: item.codigo_item,
-          descricao_item: item.descricao_item,
-          grupo_item: item.grupo_item,
-          quantidade: item.quantidade,
-          total_linha: item.total_linha,
-        })),
-      )
+
+      setReportVendas(res.items || [])
+      setReportTotalItems(res.totalItems || 0)
+      setReportTotalPages(res.totalPages || 1)
+      setReportTotalNetsales(res.totalNetsales || 0)
+      setReportTotalRacnew(res.totalRacnew || 0)
     } catch (err) {
-      console.error('Erro ao carregar vendas recentes ordenadas:', err)
+      console.error('[DashboardCanais] Erro ao carregar relatório:', err)
     } finally {
-      setRecentSalesLoading(false)
+      setReportLoading(false)
     }
   }
 
   useEffect(() => {
     loadData(filters)
+    loadReportData(filters, 1, sort.field, sort.dir, isGroupedByNfe)
+    setReportPage(1)
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
@@ -231,13 +215,30 @@ export default function DashboardCanais() {
     }
   }, [filters])
 
-  useEffect(() => {
-    if (sort.field) {
-      loadRecentSalesWithSort(filters, sort.field, sort.dir)
-    } else if (data?.recentSales) {
-      setRecentSalesList(data.recentSales)
-    }
-  }, [sort.field, sort.dir, filters])
+  const handleReportPageChange = (newPage: number) => {
+    setReportPage(newPage)
+    loadReportData(filters, newPage, sort.field, sort.dir, isGroupedByNfe)
+  }
+
+  const handleReportSort = (field: string) => {
+    sort.toggle(field as SortField)
+    const nextDir = sort.field === field && sort.dir === 'asc' ? 'desc' : 'asc'
+    setReportPage(1)
+    loadReportData(filters, 1, field as SortField, nextDir, isGroupedByNfe)
+  }
+
+  const handleToggleGroupByNfe = () => {
+    const nextGrouped = !isGroupedByNfe
+    setIsGroupedByNfe(nextGrouped)
+    setReportPage(1)
+    loadReportData(filters, 1, sort.field, sort.dir, nextGrouped)
+    toast({
+      title: nextGrouped ? 'Relatório colapsado por NF' : 'Relatório expandido',
+      description: nextGrouped
+        ? 'Exibindo 1 linha consolidada por Nota Fiscal para todos os dados do filtro.'
+        : 'Exibindo todos os itens detalhados de cada Nota Fiscal.',
+    })
+  }
 
   useRealtime('vendas', () => {
     loadData()
@@ -275,18 +276,6 @@ export default function DashboardCanais() {
   const chartTopClientes = data?.charts?.topClientes || []
   const chartEstado = data?.charts?.estado || []
   const revendasFaturamento = data?.charts?.revendasFaturamento
-  const recentSales =
-    recentSalesList.length > 0 || sort.field ? recentSalesList : data?.recentSales || []
-
-  const recentSalesColumns: { key: DashboardSortField; label: string; className?: string }[] = [
-    { key: 'data_lancamento', label: 'Data' },
-    { key: 'nome_cliente', label: 'Cliente' },
-    { key: 'vendedor_cliente', label: 'Vendedor > Cliente' },
-    { key: 'codigo_item', label: 'Item' },
-    { key: 'grupo_item', label: 'Grupo' },
-    { key: 'quantidade', label: 'Qtd', className: 'text-center' },
-    { key: 'total_linha', label: 'Total Linha', className: 'text-right' },
-  ]
 
   const isNoData =
     !loading &&
@@ -294,7 +283,7 @@ export default function DashboardCanais() {
     data !== null &&
     kpis.faturamento === 0 &&
     kpis.documentos === 0 &&
-    recentSales.length === 0
+    reportTotalItems === 0
 
   const handleClearFilters = () => {
     const cleared: FilterState = {
@@ -316,11 +305,13 @@ export default function DashboardCanais() {
     setFilters(cleared)
   }
 
-  // Exportação de relatórios
-  const handleExportDashboardReport = async (groupByNfe = false) => {
+  // Exportação de relatórios seguindo exatamente o modelo e colunas de Vendas
+  const handleExportDashboardReport = async (forceGrouped?: boolean) => {
+    const shouldGroup = forceGrouped !== undefined ? forceGrouped : isGroupedByNfe
+
     setExportingReport(true)
     toast({
-      title: groupByNfe
+      title: shouldGroup
         ? 'Gerando relatório consolidado por NF...'
         : 'Gerando relatório completo de Canais...',
       description: 'Buscando todos os registros filtrados no servidor...',
@@ -328,9 +319,11 @@ export default function DashboardCanais() {
 
     try {
       const res = await fetchVendasExport({
-        sort: '-data_lancamento',
-        groupByNfe,
-        collapsed: groupByNfe,
+        sortField: sort.field || undefined,
+        sortDirection: sort.field ? sort.dir : undefined,
+        sort: sort.field ? undefined : '-data_lancamento',
+        groupByNfe: shouldGroup,
+        collapsed: shouldGroup,
         filters: filters as unknown as Record<string, unknown>,
       })
 
@@ -345,34 +338,11 @@ export default function DashboardCanais() {
         return
       }
 
-      const exportColumns = [
-        { key: 'data_lancamento', label: 'Data de Lançamento' },
-        { key: 'numero_nfe', label: 'Nº NFe' },
-        { key: 'numero_sap', label: 'Número SAP' },
-        { key: 'tipo_documento', label: 'Tipo de Documento' },
-        { key: 'codigo_cliente', label: 'Código do Cliente' },
-        { key: 'nome_cliente', label: 'Nome do Cliente' },
-        { key: 'vendedor_cliente', label: 'Vendedor > Cliente' },
-        { key: 'nome_vendedor', label: 'Nome do Vendedor' },
-        { key: 'codigo_item', label: 'Cód. do Item' },
-        { key: 'descricao_item', label: 'Descrição do Item' },
-        { key: 'grupo_item', label: 'Grupo do Item' },
-        { key: 'quantidade', label: 'Quantidade' },
-        { key: 'preco_item', label: 'Preço do Item' },
-        { key: 'preco_unitario', label: 'Preço Unitário' },
-        { key: 'total_linha', label: 'Valor Mercadoria (Total da Linha)' },
-        { key: 'total_nf_sem_frete', label: 'Total NF SEM Frete' },
-        { key: 'valor_liquido', label: 'Valor Liquido' },
-        { key: 'custo_total', label: 'Custo Total' },
-        { key: 'utilizacao', label: 'Utilização' },
-        { key: 'estado', label: 'Estado' },
-        { key: 'cidade', label: 'Cidade' },
-        { key: 'classificacao', label: 'Classificacao' },
-        { key: 'grupo_cliente', label: 'Grupo do Cliente' },
-        { key: 'mercado', label: 'Mercado' },
-        { key: 'usuario_emissor_pedido', label: 'Usuário Emitente do Pedido' },
-        { key: 'origem', label: 'Origem' },
-      ]
+      // Ordem exata das 10 primeiras colunas + complementares (RELATORIO_COLUMNS)
+      const exportColumns = RELATORIO_COLUMNS.map((c) => ({
+        key: c.key,
+        label: c.label,
+      }))
 
       const formattedRows = rowsToExport.map((row) => ({
         ...row,
@@ -385,17 +355,16 @@ export default function DashboardCanais() {
       }))
 
       const dateStr = new Date().toISOString().slice(0, 10)
-      const filename = groupByNfe
-        ? `relatorio_canais_por_nf_${dateStr}`
-        : `relatorio_canais_completo_${dateStr}`
+      const filenameSuffix = shouldGroup ? 'por_nf' : 'detalhado'
+      const filename = `relatorio_canais_${filenameSuffix}_${dateStr}`
 
       exportToCSV(filename, formattedRows as unknown as Record<string, unknown>[], exportColumns)
 
       toast({
         title: 'Relatório exportado com sucesso!',
-        description: groupByNfe
+        description: shouldGroup
           ? `${rowsToExport.length} Notas Fiscais consolidadas exportadas em formato Excel/CSV.`
-          : `Todos os ${rowsToExport.length} registros detalhados foram exportados com sucesso.`,
+          : `Todos os ${rowsToExport.length} registros foram exportados em formato Excel/CSV (UTF-8 BOM).`,
       })
     } catch (err) {
       console.error('Erro na exportação do relatório de canais:', err)
@@ -769,50 +738,20 @@ export default function DashboardCanais() {
             </ChartCard>
           </div>
 
-          {/* Highlights Table: 8 Most Recent Sales */}
+          {/* Relatório de Vendas da Visão Canais (mesmo modelo estrutural e comportamental de Vendas) */}
           <Card className="rounded-xl border border-gray-200 bg-white overflow-hidden">
             <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4">
               <div>
                 <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                   <FileSpreadsheet className="w-4 h-4 text-[#0B6E99]" />
-                  Vendas Recentes &amp; Relatório
+                  Relatório de Vendas — Visão Canais
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500 font-medium">
-                  Últimos lançamentos consolidados no sistema com exportação completa
+                  {reportTotalItems} registros encontrados • Base RacNew + NetSales • Ordenação
+                  server-side, colunas ajustáveis e colapso por NF
                 </CardDescription>
               </div>
               <div className="flex items-center flex-wrap gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleExportDashboardReport(false)}
-                  disabled={exportingReport || isNoData}
-                  className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 font-bold gap-1.5 text-xs shadow-2xs h-8"
-                  title="Exportar todos os registros que atendem aos filtros ativos em formato CSV/Excel"
-                >
-                  {exportingReport ? (
-                    <>
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#0B6E99]" />
-                      Exportando...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-3.5 h-3.5 text-[#0B6E99]" />
-                      Exportar Relatório Detalhado
-                    </>
-                  )}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleExportDashboardReport(true)}
-                  disabled={exportingReport || isNoData}
-                  className="bg-cyan-50 border-cyan-200 text-[#0B6E99] hover:bg-cyan-100 font-bold gap-1.5 text-xs shadow-2xs h-8"
-                  title="Exportar relatório consolidado (1 linha compacta por Nota Fiscal)"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Exportar por NF
-                </Button>
                 <Button
                   asChild
                   variant="ghost"
@@ -820,110 +759,33 @@ export default function DashboardCanais() {
                   className="text-[#0B6E99] hover:text-[#084F6E] hover:bg-cyan-50 font-bold gap-1 text-xs h-8"
                 >
                   <Link to="/vendas">
-                    Ver todas
+                    Abrir em Vendas
                     <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 text-slate-700 font-bold border-y border-gray-200">
-                    <tr>
-                      {recentSalesColumns.map((col) => (
-                        <th
-                          key={col.key}
-                          onClick={() => sort.toggle(col.key)}
-                          className={`py-3 px-4 cursor-pointer hover:bg-slate-100/80 transition-colors select-none group ${
-                            col.className || ''
-                          }`}
-                        >
-                          <div
-                            className={`flex items-center gap-1.5 ${
-                              col.className === 'text-right'
-                                ? 'justify-end'
-                                : col.className === 'text-center'
-                                  ? 'justify-center'
-                                  : ''
-                            }`}
-                          >
-                            <span>{col.label}</span>
-                            {sort.field === col.key ? (
-                              <span className="text-[10px] text-[#0B6E99] font-extrabold">
-                                {sort.dir === 'asc' ? '▲' : '▼'}
-                              </span>
-                            ) : (
-                              <ArrowUpDown className="w-3 h-3 text-slate-400 group-hover:text-slate-700" />
-                            )}
-                          </div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {recentSalesLoading ? (
-                      <tr>
-                        <td colSpan={7} className="py-8 text-center text-slate-400">
-                          <div className="flex items-center justify-center gap-2">
-                            <RefreshCw className="w-4 h-4 animate-spin text-[#0B6E99]" />
-                            <span className="font-medium">Carregando vendas ordenadas...</span>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : recentSales.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="py-6 text-center text-slate-400">
-                          Nenhum registro encontrado
-                        </td>
-                      </tr>
-                    ) : (
-                      recentSales.map((item) => (
-                        <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="py-3 px-4 font-medium text-slate-700 whitespace-nowrap">
-                            {formatDate(item.data_lancamento)}
-                          </td>
-                          <td className="py-3 px-4 font-bold text-slate-900 max-w-[200px] truncate">
-                            {item.nome_cliente || '-'}
-                          </td>
-                          <td className="py-3 px-4 text-slate-600 max-w-[240px] truncate font-medium">
-                            {item.vendedor_cliente || '-'}
-                          </td>
-                          <td className="py-3 px-4 text-slate-700 max-w-[200px] truncate">
-                            <span className="font-mono font-bold text-slate-800">
-                              {item.codigo_item}
-                            </span>
-                            {item.descricao_item && (
-                              <span className="text-slate-500 block text-[11px] truncate">
-                                {item.descricao_item}
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 whitespace-nowrap">
-                            {item.grupo_item ? (
-                              <Badge
-                                className="text-[10px] font-bold text-white"
-                                style={{ backgroundColor: getGrupoColor(item.grupo_item) }}
-                              >
-                                {item.grupo_item}
-                              </Badge>
-                            ) : (
-                              <span className="text-slate-400">-</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 text-center font-bold text-slate-800">
-                            {formatNumber(item.quantidade)}
-                          </td>
-                          <td className="py-3 px-4 text-right font-extrabold text-slate-900 tabular-nums">
-                            {formatCurrency(item.total_linha)}
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
+
+            <VendasRelatorioTable
+              items={reportVendas}
+              loading={reportLoading}
+              totalItems={reportTotalItems}
+              totalNetsales={reportTotalNetsales}
+              totalRacnew={reportTotalRacnew}
+              page={reportPage}
+              pageSize={RELATORIO_PAGE_SIZE}
+              totalPages={reportTotalPages}
+              onPageChange={handleReportPageChange}
+              sortField={sort.field}
+              sortDir={sort.dir}
+              onSort={handleReportSort}
+              isGroupedByNfe={isGroupedByNfe}
+              onToggleGroupByNfe={handleToggleGroupByNfe}
+              storageKeyPrefix="relatorio_canais"
+              exporting={exportingReport}
+              onExport={handleExportDashboardReport}
+              showOriginSummary={true}
+            />
           </Card>
 
           {/* Footer note */}
@@ -933,7 +795,8 @@ export default function DashboardCanais() {
               Sincronização em tempo real ativa
             </span>
             <span className="font-medium">
-              Exibindo {recentSales.length} registros recentes consolidados
+              Exibindo {reportVendas.length} de {reportTotalItems}{' '}
+              {isGroupedByNfe ? 'notas fiscais' : 'registros'} consolidados
             </span>
           </div>
         </>
