@@ -262,12 +262,32 @@ export default function DashboardGeral() {
   }, [chartGrupoItem])
 
   const chartGrupoItemWithPercent = useMemo(() => {
-    return chartGrupoItem.map((item) => {
+    if (totalGrupoItemFaturamento <= 0 || chartGrupoItem.length === 0) {
+      return chartGrupoItem.map((item) => ({
+        ...item,
+        percent: 0,
+      }))
+    }
+
+    // Calcula percentual arredondado para inteiro (0 casas decimais)
+    // Para manter a soma em 100% caso haja pequenas divergências de arredondamento:
+    // o último grupo recebe 100 menos a soma dos anteriores (se positivo), mantendo consistência visual
+    let acumulado = 0
+    return chartGrupoItem.map((item, index) => {
       const val = Number(item.value) || 0
-      const pct = totalGrupoItemFaturamento > 0 ? (val / totalGrupoItemFaturamento) * 100 : 0
+      const isLast = index === chartGrupoItem.length - 1
+      let roundedPct: number
+
+      if (isLast && chartGrupoItem.length > 1) {
+        roundedPct = Math.max(0, 100 - acumulado)
+      } else {
+        roundedPct = Math.round((val / totalGrupoItemFaturamento) * 100)
+        acumulado += roundedPct
+      }
+
       return {
         ...item,
-        percent: pct,
+        percent: roundedPct,
       }
     })
   }, [chartGrupoItem, totalGrupoItemFaturamento])
@@ -314,7 +334,7 @@ export default function DashboardGeral() {
         dominantBaseline="central"
         className="text-[11px] font-extrabold select-none drop-shadow-sm pointer-events-none"
       >
-        {`${(percent * 100).toFixed(0)}%`}
+        {`${Math.round(percent * 100)}%`}
       </text>
     )
   }
@@ -1286,10 +1306,13 @@ export default function DashboardGeral() {
                       const item = payload[0]
                       const name = String(item.name || '')
                       const val = Number(item.value || 0)
+                      const matchedItem = chartGrupoItemWithPercent.find((g) => g.name === name)
                       const pct =
-                        totalGrupoItemFaturamento > 0
-                          ? ((val / totalGrupoItemFaturamento) * 100).toFixed(1)
-                          : '0.0'
+                        matchedItem !== undefined
+                          ? matchedItem.percent
+                          : totalGrupoItemFaturamento > 0
+                            ? Math.round((val / totalGrupoItemFaturamento) * 100)
+                            : 0
                       return (
                         <div className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white border border-slate-700 shadow-md">
                           <div className="flex items-center gap-2 mb-1">
@@ -1316,7 +1339,7 @@ export default function DashboardGeral() {
                     height={44}
                     formatter={(value) => {
                       const item = chartGrupoItemWithPercent.find((g) => g.name === value)
-                      const pctStr = item ? ` (${item.percent.toFixed(1)}%)` : ''
+                      const pctStr = item ? ` (${item.percent}%)` : ''
                       return (
                         <span className="text-xs font-bold text-slate-700">
                           {value}
