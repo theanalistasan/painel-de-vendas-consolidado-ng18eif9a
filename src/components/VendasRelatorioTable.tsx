@@ -339,7 +339,7 @@ export function VendasRelatorioTable({
   const columns = RELATORIO_COLUMNS
 
   return (
-    <div className="w-full">
+    <div className="w-full min-w-0 max-w-full">
       {/* Barra de controle de NFs e Redefinir Larguras */}
       <div className="px-6 py-2.5 bg-slate-50/60 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
         {/* Lado esquerdo: Botão de Colapsar / Expandir itens de NFe */}
@@ -452,7 +452,7 @@ export function VendasRelatorioTable({
       </div>
 
       {/* Conteúdo da Tabela */}
-      <div className="p-0">
+      <div className="p-0 min-w-0 max-w-full">
         {loading ? (
           <div className="p-8 space-y-3">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -470,8 +470,11 @@ export function VendasRelatorioTable({
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto relative">
-            <table className="w-full text-left text-xs border-collapse">
+          <div className="w-full min-w-0 max-w-full overflow-x-auto relative custom-scrollbar">
+            <table
+              className="text-left text-xs border-collapse"
+              style={{ minWidth: 'max-content', width: '100%' }}
+            >
               <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200/80 sticky top-0 z-10 shadow-2xs">
                 <tr>
                   {/* Coluna de controle de grupo NFe */}

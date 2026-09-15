@@ -379,7 +379,7 @@ export default function DashboardCanais() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 max-w-full">
       {/* Filters Bar */}
       <FilterBar
         filters={filters}
@@ -739,7 +739,7 @@ export default function DashboardCanais() {
           </div>
 
           {/* Relatório de Vendas da Visão Canais (mesmo modelo estrutural e comportamental de Vendas) */}
-          <Card className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+          <Card className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0 max-w-full">
             <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4">
               <div>
                 <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">

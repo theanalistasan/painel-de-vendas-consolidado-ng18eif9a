@@ -574,7 +574,7 @@ export default function Layout() {
       {/* Main Content Area */}
       <div
         className={cn(
-          'flex-1 flex flex-col min-h-screen transition-all duration-300 ease-in-out',
+          'flex-1 flex flex-col min-h-screen min-w-0 max-w-full transition-all duration-300 ease-in-out',
           sidebarCollapsed ? 'lg:pl-[72px]' : 'lg:pl-[260px]',
         )}
       >
@@ -628,7 +628,7 @@ export default function Layout() {
         </header>
 
         {/* Page Body */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden">
           <Outlet />
         </main>
 

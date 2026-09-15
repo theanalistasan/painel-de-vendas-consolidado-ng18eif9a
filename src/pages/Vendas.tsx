@@ -310,7 +310,7 @@ export default function Vendas() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 max-w-full">
       {/* Filters Bar with Text Search */}
       <FilterBar
         filters={filters}
@@ -368,7 +368,7 @@ export default function Vendas() {
       </div>
 
       {/* Main Table Card */}
-      <Card className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      <Card className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0 max-w-full">
         <CardHeader className="border-b border-slate-100 pb-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
