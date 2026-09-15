@@ -646,6 +646,7 @@ export default function DashboardGeral() {
         filters={filters}
         setFilters={setFilters}
         options={filterOptions}
+        isLoading={loading}
         onApplyFilters={(applied) => loadData(applied)}
       />
 

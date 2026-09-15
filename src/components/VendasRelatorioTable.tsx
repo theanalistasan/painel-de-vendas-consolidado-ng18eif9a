@@ -16,6 +16,7 @@ import {
   FileText,
   Download,
   RefreshCw,
+  Loader2,
 } from 'lucide-react'
 import type { VendaConsolidada } from '@/types/sales'
 import { formatCurrency, formatNumber, formatDate, getGrupoColor } from '@/lib/formatters'
@@ -451,9 +452,18 @@ export function VendasRelatorioTable({
         </div>
       </div>
 
-      {/* Conteúdo da Tabela */}
-      <div className="p-0 min-w-0 max-w-full">
-        {loading ? (
+      {/* Conteúdo da Tabela com Overlay Translúcido quando Loading e já com itens */}
+      <div className="p-0 min-w-0 max-w-full relative">
+        {loading && items.length > 0 && (
+          <div className="absolute inset-0 z-30 bg-white/70 backdrop-blur-[1px] flex flex-col items-center justify-center gap-2 pointer-events-auto transition-opacity animate-in fade-in duration-150">
+            <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-white shadow-md border border-slate-200">
+              <Loader2 className="w-4 h-4 text-[#0B6E99] animate-spin" />
+              <span className="text-xs font-bold text-slate-800">Recalculando dados...</span>
+            </div>
+          </div>
+        )}
+
+        {loading && items.length === 0 ? (
           <div className="p-8 space-y-3">
             {[1, 2, 3, 4, 5, 6].map((i) => (
               <Skeleton key={i} className="h-10 w-full rounded-md" />

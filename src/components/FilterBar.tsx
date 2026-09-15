@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
-import { Check, ChevronDown, X, Filter } from 'lucide-react'
+import { Check, ChevronDown, X, Filter, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -33,6 +33,8 @@ interface FilterBarProps {
   }
   showSearch?: boolean
   onApplyFilters?: (appliedFilters: FilterState) => void
+  isLoading?: boolean
+  loadingMessage?: string
 }
 
 // Reusable MultiSelect Dropdown with Roland DG Accent
@@ -226,6 +228,8 @@ export default function FilterBar({
   options,
   showSearch = false,
   onApplyFilters,
+  isLoading = false,
+  loadingMessage = 'Atualizando...',
 }: FilterBarProps) {
   const [collapsed, setCollapsed] = useState(false)
 
@@ -500,16 +504,28 @@ export default function FilterBar({
             type="button"
             size="sm"
             onClick={handleApply}
+            disabled={isLoading}
             className={cn(
               'h-8 px-4 text-xs font-bold rounded-lg transition-all',
-              hasPendingChanges
-                ? 'bg-[#0B6E99] hover:bg-[#084F6E] text-white ring-2 ring-[#0B6E99]/30 animate-pulse'
-                : 'bg-slate-900 hover:bg-slate-800 text-white',
+              isLoading
+                ? 'bg-[#0B6E99] text-white cursor-not-allowed opacity-90'
+                : hasPendingChanges
+                  ? 'bg-[#0B6E99] hover:bg-[#084F6E] text-white ring-2 ring-[#0B6E99]/30 animate-pulse'
+                  : 'bg-slate-900 hover:bg-slate-800 text-white',
             )}
           >
-            Aplicar Filtros
-            {hasPendingChanges && (
-              <span className="ml-1.5 text-[10px] bg-white/20 px-1 rounded">●</span>
+            {isLoading ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                {loadingMessage}
+              </>
+            ) : (
+              <>
+                Aplicar Filtros
+                {hasPendingChanges && (
+                  <span className="ml-1.5 text-[10px] bg-white/20 px-1 rounded">●</span>
+                )}
+              </>
             )}
           </Button>
 
@@ -518,7 +534,11 @@ export default function FilterBar({
               variant="ghost"
               size="sm"
               onClick={clearAllFilters}
-              className="text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 h-8 px-2.5 rounded-lg font-semibold"
+              disabled={isLoading}
+              className={cn(
+                'text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 h-8 px-2.5 rounded-lg font-semibold',
+                isLoading && 'cursor-not-allowed opacity-50',
+              )}
             >
               <X className="w-3.5 h-3.5 mr-1" />
               Limpar filtros

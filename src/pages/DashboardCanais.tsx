@@ -385,6 +385,7 @@ export default function DashboardCanais() {
         filters={filters}
         setFilters={setFilters}
         options={filterOptions}
+        isLoading={loading || reportLoading}
         onApplyFilters={(applied) => loadData(applied)}
       />
 

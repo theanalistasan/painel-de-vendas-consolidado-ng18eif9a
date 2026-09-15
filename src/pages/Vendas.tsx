@@ -317,6 +317,7 @@ export default function Vendas() {
         setFilters={setFilters}
         options={filterOptions}
         showSearch
+        isLoading={loading}
         onApplyFilters={(applied) => {
           loadStats(applied)
           loadData(applied, 1, sort.field, sort.dir)
