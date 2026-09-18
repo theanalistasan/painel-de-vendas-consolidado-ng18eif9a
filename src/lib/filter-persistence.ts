@@ -228,14 +228,11 @@ export function loadFiltersFromSession(): FilterState {
     const parsedTipoDoc = normalizeArray(parsed.tipoDocumento)
     const parsedUtilizacao = normalizeArray(parsed.utilizacao)
 
-    // Se o filtro salvo na sessão tiver ano ou mês vazios (incompleto / residual de "Limpar Filtros"),
-    // garante os valores padrão para não quebrar a visualização inicial das páginas de Dashboard.
-    const ano = parsedAno.length > 0 ? parsedAno : [...DEFAULT_FILTERS.ano]
-    const mes = parsedMes.length > 0 ? parsedMes : [...DEFAULT_FILTERS.mes]
-    // Migra automaticamente valores salvos em Title Case ('Equipamentos' -> 'EQUIPAMENTOS', etc.)
-    const grupoItemMapped = (
-      parsedGrupoItem.length > 0 ? parsedGrupoItem : [...DEFAULT_FILTERS.grupoItem]
-    ).map((g) => {
+    // Se há um estado salvo no sessionStorage (inclusive após "Limpar Filtros", onde ano e mes
+    // são arrays vazios []), respeita exatamente o que o usuário definiu no estado salvo!
+    // Não força DEFAULT_FILTERS.ano / DEFAULT_FILTERS.mes quando o usuário intencionalmente
+    // limpou os filtros ou escolheu ver todos os períodos.
+    const grupoItemMapped = parsedGrupoItem.map((g) => {
       const up = g.toUpperCase().trim()
       if (up === 'EQUIPAMENTOS') return 'EQUIPAMENTOS'
       if (up === 'ACESSÓRIOS' || up === 'ACESSORIOS') return 'ACESSÓRIOS'
@@ -243,25 +240,20 @@ export function loadFiltersFromSession(): FilterState {
       if (up === 'PEÇAS' || up === 'PECAS') return 'PEÇAS'
       return g
     })
-    const grupoItem = grupoItemMapped
-    const tipoDocumento =
-      parsedTipoDoc.length > 0 ? parsedTipoDoc : [...DEFAULT_FILTERS.tipoDocumento]
-    const utilizacao =
-      parsedUtilizacao.length > 0 ? parsedUtilizacao : ['VENDA DE MERCADORIA', 'VENDA CONSUMO']
 
     const merged: FilterState = {
       ...EMPTY_FILTERS,
       ...parsed,
       base: normalizeBase(parsed.base),
-      ano,
-      mes,
+      ano: parsedAno,
+      mes: parsedMes,
       dia: normalizeArray(parsed.dia),
       vendedorCliente: normalizeArray(parsed.vendedorCliente),
       vendedor: normalizeArray(parsed.vendedor),
-      grupoItem,
+      grupoItem: grupoItemMapped,
       estado: normalizeArray(parsed.estado),
-      utilizacao,
-      tipoDocumento,
+      utilizacao: parsedUtilizacao,
+      tipoDocumento: parsedTipoDoc,
       dataDe: typeof parsed.dataDe === 'string' ? parsed.dataDe : '',
       dataAte: typeof parsed.dataAte === 'string' ? parsed.dataAte : '',
       search: typeof parsed.search === 'string' ? parsed.search : '',

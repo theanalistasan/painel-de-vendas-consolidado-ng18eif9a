@@ -279,41 +279,66 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
       }
 
       // Contagem de NFs distintas e origens
+      // OTIMIZAÇÃO: Não roda COUNT(DISTINCT numero_nfe) em toda a base sem filtros (1=1) ou quando groupedRows já traz a última página
       let totalItems = 0
       let totalNetsales = 0
       let totalRacnew = 0
-      try {
-        const countRows = arrayOf(
-          new DynamicModel({
-            total_nfe: '',
-            total_netsales: '',
-            total_racnew: '',
-          }),
-        )
-        $app
-          .db()
-          .newQuery(
-            'SELECT ' +
-              "COUNT(DISTINCT COALESCE(NULLIF(numero_nfe,''), '(Sem NFe)')) as total_nfe, " +
-              'COUNT(CASE WHEN tem_netsales = 1 THEN 1 END) as total_netsales, ' +
-              'COUNT(CASE WHEN tem_netsales = 0 OR tem_netsales IS NULL THEN 1 END) as total_racnew ' +
-              'FROM vendas WHERE ' +
-              sqlWhere,
-          )
-          .all(countRows)
-        if (countRows.length > 0) {
-          const n = parseInt(countRows[0].total_nfe, 10)
-          if (!isNaN(n)) totalItems = n
-          const ns = parseInt(countRows[0].total_netsales, 10)
-          if (!isNaN(ns)) totalNetsales = ns
-          const rn = parseInt(countRows[0].total_racnew, 10)
-          if (!isNaN(rn)) totalRacnew = rn
-        }
-      } catch (err) {
-        console.error('vendas_list (grouped): COUNT falhou:', err)
-        totalItems = groupedRows.length
-      }
+      const hasMoreGrouped = groupedRows.length === perPage
 
+      // Se a primeira página retornou menos itens do que perPage, já temos o total exato sem COUNT
+      // Se a página retornou menos itens do que perPage, já sabemos que é a última página
+      if (groupedRows.length < perPage) {
+        totalItems = (page - 1) * perPage + groupedRows.length
+        for (let i = 0; i < groupedRows.length; i++) {
+          if (
+            groupedRows[i].tem_netsales === '1' ||
+            groupedRows[i].tem_netsales === 1 ||
+            groupedRows[i].tem_netsales === true
+          ) {
+            totalNetsales++
+          } else {
+            totalRacnew++
+          }
+        }
+      } else {
+        try {
+          // Apenas tenta COUNT pesado se ainda restarem mais de 25 segundos do orçamento
+          if (Date.now() - startTime < 10000) {
+            const countRows = arrayOf(
+              new DynamicModel({
+                total_nfe: '',
+                total_netsales: '',
+                total_racnew: '',
+              }),
+            )
+            $app
+              .db()
+              .newQuery(
+                'SELECT ' +
+                  "COUNT(DISTINCT COALESCE(NULLIF(numero_nfe,''), '(Sem NFe)')) as total_nfe, " +
+                  'COUNT(CASE WHEN tem_netsales = 1 THEN 1 END) as total_netsales, ' +
+                  'COUNT(CASE WHEN tem_netsales = 0 OR tem_netsales IS NULL THEN 1 END) as total_racnew ' +
+                  'FROM vendas WHERE ' +
+                  sqlWhere,
+              )
+              .all(countRows)
+            if (countRows.length > 0) {
+              const n = parseInt(countRows[0].total_nfe, 10)
+              if (!isNaN(n)) totalItems = n
+              const ns = parseInt(countRows[0].total_netsales, 10)
+              if (!isNaN(ns)) totalNetsales = ns
+              const rn = parseInt(countRows[0].total_racnew, 10)
+              if (!isNaN(rn)) totalRacnew = rn
+            }
+          } else {
+            // Tempo apertado: estima totalItems e garante hasMore: true
+            totalItems = (page - 1) * perPage + groupedRows.length + 1
+          }
+        } catch (err) {
+          console.error('vendas_list (grouped): COUNT falhou ou pulado:', err)
+          totalItems = (page - 1) * perPage + groupedRows.length + (hasMoreGrouped ? 1 : 0)
+        }
+      }
       const items = []
       for (let i = 0; i < groupedRows.length; i++) {
         const r = groupedRows[i]
@@ -371,6 +396,7 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
         totalNetsales: totalNetsales,
         totalRacnew: totalRacnew,
         totalPages: Math.max(1, Math.ceil(totalItems / perPage)),
+        hasMore: hasMoreGrouped,
         isGrouped: true,
       })
     }
@@ -458,45 +484,66 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
     let totalItems = 0
     let totalNetsales = 0
     let totalRacnew = 0
-    try {
-      // Se a query sem filtros for 1=1, usa countRecords rápido sem varredura pesada
-      if (sqlWhere === '1=1') {
-        try {
-          totalItems = $app.countRecords('vendas')
-        } catch (_) {
-          totalItems = 0
-        }
-      } else {
-        const countRows = arrayOf(
-          new DynamicModel({
-            total: '',
-            total_netsales: '',
-            total_racnew: '',
-          }),
-        )
-        $app
-          .db()
-          .newQuery(
-            'SELECT ' +
-              'COUNT(*) as total, ' +
-              'COUNT(CASE WHEN tem_netsales = 1 THEN 1 END) as total_netsales, ' +
-              'COUNT(CASE WHEN tem_netsales = 0 OR tem_netsales IS NULL THEN 1 END) as total_racnew ' +
-              'FROM vendas WHERE ' +
-              sqlWhere,
-          )
-          .all(countRows)
-        if (countRows.length > 0) {
-          const n = parseInt(countRows[0].total, 10)
-          if (!isNaN(n)) totalItems = n
-          const ns = parseInt(countRows[0].total_netsales, 10)
-          if (!isNaN(ns)) totalNetsales = ns
-          const rn = parseInt(countRows[0].total_racnew, 10)
-          if (!isNaN(rn)) totalRacnew = rn
+    const hasMoreDetailed = dataRows.length === perPage
+
+    // Se a página retornou menos itens do que perPage, já sabemos que é a última página
+    if (dataRows.length < perPage) {
+      totalItems = (page - 1) * perPage + dataRows.length
+      for (let i = 0; i < dataRows.length; i++) {
+        if (
+          dataRows[i].tem_netsales === '1' ||
+          dataRows[i].tem_netsales === 1 ||
+          dataRows[i].tem_netsales === true
+        ) {
+          totalNetsales++
+        } else {
+          totalRacnew++
         }
       }
-    } catch (err) {
-      console.error('vendas_list: COUNT falhou:', err)
-      totalItems = dataRows.length
+    } else {
+      try {
+        // Se a query sem filtros for 1=1 ("Ver Tudo"), usa countRecords instantâneo
+        if (sqlWhere === '1=1') {
+          try {
+            totalItems = $app.countRecords('vendas')
+          } catch (_) {
+            totalItems = (page - 1) * perPage + dataRows.length + 1
+          }
+        } else if (Date.now() - startTime < 12000) {
+          const countRows = arrayOf(
+            new DynamicModel({
+              total: '',
+              total_netsales: '',
+              total_racnew: '',
+            }),
+          )
+          $app
+            .db()
+            .newQuery(
+              'SELECT ' +
+                'COUNT(*) as total, ' +
+                'COUNT(CASE WHEN tem_netsales = 1 THEN 1 END) as total_netsales, ' +
+                'COUNT(CASE WHEN tem_netsales = 0 OR tem_netsales IS NULL THEN 1 END) as total_racnew ' +
+                'FROM vendas WHERE ' +
+                sqlWhere,
+            )
+            .all(countRows)
+          if (countRows.length > 0) {
+            const n = parseInt(countRows[0].total, 10)
+            if (!isNaN(n)) totalItems = n
+            const ns = parseInt(countRows[0].total_netsales, 10)
+            if (!isNaN(ns)) totalNetsales = ns
+            const rn = parseInt(countRows[0].total_racnew, 10)
+            if (!isNaN(rn)) totalRacnew = rn
+          }
+        } else {
+          // Se o tempo estiver apertado, não arrisca 504: devolve a página com hasMore: true
+          totalItems = (page - 1) * perPage + dataRows.length + 1
+        }
+      } catch (err) {
+        console.error('vendas_list: COUNT falhou ou pulado:', err)
+        totalItems = (page - 1) * perPage + dataRows.length + (hasMoreDetailed ? 1 : 0)
+      }
     }
 
     if (Date.now() - startTime > MAX_EXEC_TIME_MS) {
@@ -578,6 +625,7 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
       totalNetsales: totalNetsales,
       totalRacnew: totalRacnew,
       totalPages: Math.max(1, Math.ceil(totalItems / perPage)),
+      hasMore: hasMoreDetailed,
     })
   } catch (err) {
     if (err && String(err.message).indexOf('TIMEOUT_EXCEEDED') >= 0) {

@@ -326,6 +326,7 @@ export interface VendasListResult {
   totalNetsales?: number
   totalRacnew?: number
   totalPages: number
+  hasMore?: boolean
   isGrouped?: boolean
 }
 
@@ -382,7 +383,7 @@ export async function fetchVendasList(params?: {
     }
     if (status === 504) {
       throw new Error(
-        'A listagem de vendas demorou mais do que o esperado. Refine os filtros selecionados.',
+        'A consulta demorou mais do que o esperado. Por favor, refine os filtros selecionados.',
       )
     }
     const isAbort =

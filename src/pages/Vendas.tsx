@@ -65,9 +65,7 @@ export default function Vendas() {
 
   const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
-  const [initializedFromBase, setInitializedFromBase] = useState(
-    () => hasSavedFiltersInSession() && hasValidPeriodFilters(loadFiltersFromSession()),
-  )
+  const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
 
   // Persistir filtros no sessionStorage sempre que mudarem (após aplicar ou após inicialização dinâmica),
   // para que o estado seja compartilhado de forma consistente com o Dashboard.
@@ -98,8 +96,11 @@ export default function Vendas() {
   })
 
   // Carrega opções de filtro e KPIs via endpoint do dashboard
+  const [statsLoading, setStatsLoading] = useState(false)
+
   const loadStats = async (activeFilters = filters) => {
     try {
+      setStatsLoading(true)
       const stats = await fetchDashboardStats(activeFilters as unknown as Record<string, unknown>)
       if (stats) {
         setKpis({
@@ -112,25 +113,29 @@ export default function Vendas() {
         if (stats.filterOptions) {
           setFilterOptions(stats.filterOptions)
 
-          // Se ainda não foi inicializado com as opções dinâmicas da base, OU se os filtros atuais
-          // estiverem com ano/mês vazios, aplica os filtros dinâmicos padrão da base.
-          const needsDynamicInit = !initializedFromBase || !hasValidPeriodFilters(activeFilters)
-          if (needsDynamicInit) {
+          // Se ainda não foi inicializado com as opções dinâmicas da base (primeiro acesso sem sessão),
+          // aplica os filtros dinâmicos padrão da base APENAS se não houver sessão prévia.
+          if (!initializedFromBase && !hasSavedFiltersInSession()) {
             const dynamicFilters = buildDynamicInitialFilters(stats.filterOptions)
             setInitializedFromBase(true)
             saveFiltersToSession(dynamicFilters)
             setFilters(dynamicFilters)
             return
+          } else if (!initializedFromBase) {
+            setInitializedFromBase(true)
           }
         }
       }
     } catch (err) {
       console.error('Erro ao carregar estatísticas:', err)
+    } finally {
+      setStatsLoading(false)
     }
   }
 
   // Modo global de colapso/agrupamento por NFe em todo o relatório
   const [isAllGroupedNfe, setIsAllGroupedNfe] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
 
   // Carrega a página atual de vendas via endpoint paginado com ordenação server-side
   const loadData = async (
@@ -153,6 +158,7 @@ export default function Vendas() {
       })
       setPaginatedVendas(res.items || [])
       setTotalItems(res.totalItems || 0)
+      setHasMore(!!res.hasMore)
       setTotalNetsales(
         res.totalNetsales !== undefined
           ? res.totalNetsales
@@ -175,9 +181,12 @@ export default function Vendas() {
         variant: 'destructive',
         title:
           msg.toLowerCase().includes('tempo limite') || msg.toLowerCase().includes('demorou')
-            ? 'Consulta demorou demais'
+            ? 'A consulta demorou demais'
             : 'Erro ao carregar vendas',
-        description: msg,
+        description:
+          msg.toLowerCase().includes('tempo limite') || msg.toLowerCase().includes('demorou')
+            ? 'A base de dados é muito volumosa para essa combinação. Tente selecionar um ano ou refinar os filtros.'
+            : msg,
       })
     } finally {
       setLoading(false)
@@ -314,10 +323,13 @@ export default function Vendas() {
       {/* Filters Bar with Text Search */}
       <FilterBar
         filters={filters}
-        setFilters={setFilters}
+        setFilters={(newFilters) => {
+          setFilters(newFilters)
+        }}
         options={filterOptions}
         showSearch
-        isLoading={loading}
+        isLoading={loading || statsLoading}
+        loadingMessage="Atualizando relatório de vendas..."
         onApplyFilters={(applied) => {
           loadStats(applied)
           loadData(applied, 1, sort.field, sort.dir)
@@ -378,8 +390,8 @@ export default function Vendas() {
                 Vendas Consolidadas (RacNew + NetSales + Produtos)
               </CardTitle>
               <CardDescription className="text-xs text-slate-500 font-medium">
-                {totalItems} linhas encontradas • Base mestre RacNew com enriquecimento NetSales •
-                Ordenação server-side ativa
+                {totalItems} {hasMore ? '+' : ''} linhas encontradas • Base mestre RacNew com
+                enriquecimento NetSales • Ordenação server-side ativa
               </CardDescription>
             </div>
           </div>
