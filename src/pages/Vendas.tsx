@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { fetchVendasList, fetchVendasExport, fetchDashboardStats } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { VendaConsolidada, FilterState, CanalOption } from '@/types/sales'
+import type { VendaConsolidada, FilterState, CanalOption, CanalClienteOption } from '@/types/sales'
 import {
   formatCurrency,
   formatNumber,
@@ -91,6 +91,7 @@ export default function Vendas() {
     utilizacao: string[]
     tipoDocumento: string[]
     canais?: CanalOption[]
+    canaisClientes?: CanalClienteOption[]
     anos: number[]
     meses: number[]
     dias: number[]
@@ -102,6 +103,7 @@ export default function Vendas() {
     utilizacao: [],
     tipoDocumento: [],
     canais: [],
+    canaisClientes: [],
     anos: [],
     meses: [],
     dias: [],

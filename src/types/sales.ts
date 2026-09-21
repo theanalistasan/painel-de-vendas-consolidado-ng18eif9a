@@ -92,9 +92,15 @@ export interface CanalCliente extends RecordModel {
 
 export interface CanalOption {
   nome: string
-  deploy: string
+  deploy?: string
 }
 
+export interface CanalClienteOption {
+  nome_canal: string
+  nome_cliente: string
+  codigo_cliente?: string
+  deploy?: string
+}
 export interface VendaConsolidada extends RecordModel {
   tipo_documento: string
   nf_entrega_futura: string
@@ -160,6 +166,8 @@ export interface FilterState {
   estado: string[]
   utilizacao: string[]
   canal: string[]
+  canalClientes?: string[]
+  deploy?: string[]
   search: string
   /** Anos (string[]) extraídos da Data de Lançamento, ex: ["2024", "2025"] */
   ano: string[]

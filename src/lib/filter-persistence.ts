@@ -13,6 +13,8 @@ const EMPTY_FILTERS: FilterState = {
   utilizacao: [],
   tipoDocumento: [],
   canal: [],
+  canalClientes: [],
+  deploy: [],
   search: '',
   ano: [],
   mes: [],
@@ -40,6 +42,8 @@ export const DEFAULT_FILTERS: FilterState = {
   utilizacao: [],
   tipoDocumento: ['NF de Saída'],
   canal: [],
+  canalClientes: [],
+  deploy: [],
   search: '',
   ano: ['2026'],
   mes: ['8'],
@@ -186,6 +190,8 @@ export function buildDynamicInitialFilters(options?: {
     grupoItem: selectedGrupos,
     utilizacao: selectedUtilizacao,
     canal: [],
+    canalClientes: [],
+    deploy: [],
   }
 }
 
@@ -258,6 +264,8 @@ export function loadFiltersFromSession(): FilterState {
       utilizacao: parsedUtilizacao,
       tipoDocumento: parsedTipoDoc,
       canal: normalizeArray(parsed.canal),
+      canalClientes: normalizeArray(parsed.canalClientes),
+      deploy: normalizeArray(parsed.deploy),
       dataDe: typeof parsed.dataDe === 'string' ? parsed.dataDe : '',
       dataAte: typeof parsed.dataAte === 'string' ? parsed.dataAte : '',
       search: typeof parsed.search === 'string' ? parsed.search : '',

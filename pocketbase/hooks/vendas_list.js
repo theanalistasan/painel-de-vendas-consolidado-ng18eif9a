@@ -19,6 +19,9 @@
 //     tipoDocumento[]         (string[])
 //     tipoDevolucao           (string)
 //     search                  (string)
+//     canal[]                 (string[])
+//     canalClientes[]         (string[])
+//     deploy[]                (string[])
 //
 // Retorna: { items, page, perPage, totalItems, totalPages }
 routerAdd('POST', '/backend/v1/vendas/list', (e) => {
@@ -98,34 +101,88 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
 
     const sqlParts = []
 
-    // Expansão do filtro 'canal': busca os codigo_cliente vinculados ao canal em canais_clientes
+    // Bloco de filtros "Canais":
+    // 1. Nome do Canal (f.canal)
+    // 2. Clientes do Canal (f.canalClientes)
+    // 3. Deploy (f.deploy: 'AGIS' | 'Roland' | 'Nenhum' | '' | array)
     const canaisFilter = Array.isArray(f.canal) ? f.canal : f.canal ? [f.canal] : []
-    if (canaisFilter.length > 0) {
-      try {
-        const canaisSqlList = canaisFilter.map((c) => "'" + sqlEsc(c) + "'").join(',')
-        const ccRows = arrayOf(new DynamicModel({ cc: '' }))
-        $app
-          .db()
-          .newQuery(
-            'SELECT DISTINCT codigo_cliente AS cc FROM canais_clientes WHERE nome_canal IN (' +
-              canaisSqlList +
-              ") AND codigo_cliente IS NOT NULL AND codigo_cliente != ''",
-          )
-          .all(ccRows)
+    const canalClientesFilter = Array.isArray(f.canalClientes)
+      ? f.canalClientes
+      : f.canalClientes
+        ? [f.canalClientes]
+        : []
+    const deployFilter = Array.isArray(f.deploy) ? f.deploy : f.deploy ? [f.deploy] : []
 
-        const matchedClientes = []
-        for (let k = 0; k < ccRows.length; k++) {
-          if (ccRows[k].cc) matchedClientes.push(ccRows[k].cc)
+    const hasCanalFilter = canaisFilter.length > 0
+    const hasCanalClientesFilter = canalClientesFilter.length > 0
+    const hasDeployFilter = deployFilter.length > 0 && !deployFilter.includes('TODOS')
+
+    if (hasCanalFilter || hasCanalClientesFilter || hasDeployFilter) {
+      try {
+        const ccWhereClauses = [
+          "(eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's')",
+        ]
+
+        if (hasCanalFilter) {
+          const canaisSqlList = canaisFilter.map((c) => "'" + sqlEsc(c) + "'").join(',')
+          ccWhereClauses.push('nome_canal IN (' + canaisSqlList + ')')
         }
 
-        if (matchedClientes.length > 0) {
-          const cliSqlIn = matchedClientes.map((c) => "'" + sqlEsc(c) + "'").join(',')
-          sqlParts.push('codigo_cliente IN (' + cliSqlIn + ')')
+        if (hasCanalClientesFilter) {
+          const clisSqlList = canalClientesFilter.map((c) => "'" + sqlEsc(c) + "'").join(',')
+          ccWhereClauses.push('nome_cliente IN (' + clisSqlList + ')')
+        }
+
+        if (hasDeployFilter) {
+          const depConditions = []
+          for (let d = 0; d < deployFilter.length; d++) {
+            const rawDep = String(deployFilter[d]).trim()
+            const depUpper = rawDep.toUpperCase()
+            if (depUpper === 'AGIS') {
+              depConditions.push("UPPER(deploy) = 'AGIS'")
+            } else if (depUpper === 'ROLAND') {
+              depConditions.push("UPPER(deploy) = 'ROLAND'")
+            } else if (depUpper === 'NENHUM' || depUpper === 'SEM DEPLOY' || depUpper === 'VAZIO') {
+              depConditions.push("(deploy IS NULL OR deploy = '' OR UPPER(deploy) = 'NENHUM')")
+            }
+          }
+          if (depConditions.length > 0) {
+            ccWhereClauses.push('(' + depConditions.join(' OR ') + ')')
+          }
+        }
+
+        const ccQuerySql =
+          'SELECT DISTINCT codigo_cliente AS cc, nome_cliente AS nc FROM canais_clientes WHERE ' +
+          ccWhereClauses.join(' AND ')
+
+        const ccRows = arrayOf(new DynamicModel({ cc: '', nc: '' }))
+        $app.db().newQuery(ccQuerySql).all(ccRows)
+
+        const matchedCodigos = []
+        const matchedNomes = []
+        for (let k = 0; k < ccRows.length; k++) {
+          const cod = (ccRows[k].cc || '').trim()
+          const nom = (ccRows[k].nc || '').trim()
+          if (cod && cod !== '-') matchedCodigos.push(cod)
+          if (nom) matchedNomes.push(nom)
+        }
+
+        if (matchedCodigos.length > 0 || matchedNomes.length > 0) {
+          const subClauses = []
+          if (matchedCodigos.length > 0) {
+            const codSqlIn = matchedCodigos.map((c) => "'" + sqlEsc(c) + "'").join(',')
+            subClauses.push('codigo_cliente IN (' + codSqlIn + ')')
+          }
+          if (matchedNomes.length > 0) {
+            const nomSqlIn = matchedNomes.map((n) => "'" + sqlEsc(n) + "'").join(',')
+            subClauses.push('nome_cliente IN (' + nomSqlIn + ')')
+          }
+          sqlParts.push('(' + subClauses.join(' OR ') + ')')
         } else {
           sqlParts.push('1=0')
         }
       } catch (canalErr) {
-        console.warn('vendas_list: expansao canal warning:', canalErr)
+        console.warn('vendas_list: expansao canais/deploy warning:', canalErr)
       }
     }
 
