@@ -57,65 +57,143 @@ routerAdd(
       return s === 'SIM' || s === 'S' || s === 'TRUE' || s === '1' || s === 'YES' || s === 'Y'
     }
 
-    const getVal = (row, candidates) => {
-      for (let i = 0; i < candidates.length; i++) {
-        const k = candidates[i]
-        if (row[k] !== undefined && row[k] !== null && String(row[k]).trim() !== '') {
-          return String(row[k]).trim()
+    // Função de normalização robusta de cabeçalhos / chaves:
+    // Remove BOM UTF-8, acentos, pontuação, múltiplos espaços e converte para minúsculas
+    const normalizeKey = (k) => {
+      if (!k) return ''
+      return String(k)
+        .replace(/^\uFEFF/, '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+    }
+
+    // Normaliza mapa de propriedades de cada linha para busca rápida e insensível
+    const getRowVal = (normalizedRow, candidateKeys) => {
+      for (let i = 0; i < candidateKeys.length; i++) {
+        const ck = normalizeKey(candidateKeys[i])
+        if (
+          normalizedRow[ck] !== undefined &&
+          normalizedRow[ck] !== null &&
+          String(normalizedRow[ck]).trim() !== ''
+        ) {
+          return String(normalizedRow[ck]).trim()
         }
       }
       return ''
     }
 
+    // Mapeamento de chaves candidatas com todas as variações semânticas possíveis
+    const CANAL_KEYS = [
+      'nome do canal',
+      'nome canal',
+      'canal',
+      'nome_canal',
+      'canal de vendas',
+      'canal vendas',
+      'revenda',
+      'revenda oficial',
+      'parceiro',
+      'nome do parceiro',
+      'distribuidor',
+      'canal marketing',
+    ]
+
+    const CLIENTE_NOME_KEYS = [
+      'nome do cliente',
+      'nome cliente',
+      'cliente',
+      'nome_cliente',
+      'razao social',
+      'razao social cliente',
+      'cardname',
+      'nome razao social',
+    ]
+
+    const CLIENTE_COD_KEYS = [
+      'codigo do cliente',
+      'codigo cliente',
+      'cod cliente',
+      'cod do cliente',
+      'codigo_cliente',
+      'cliente codigo',
+      'cardcode',
+      'id cliente',
+      'cliente id',
+    ]
+
+    const DEPLOY_KEYS = [
+      'deploy',
+      'modelo',
+      'tipo deploy',
+      'modelo deploy',
+      'deploy tipo',
+      'direta revenda',
+      'tipo',
+    ]
+
+    const EH_CANAL_KEYS = [
+      'canais',
+      'eh canal',
+      'eh_canal',
+      'e canal',
+      'canal?',
+      'e canal?',
+      'eh canal?',
+      'is canal',
+      'ativo como canal',
+    ]
+
+    const STATUS_KEYS = ['status', 'situacao', 'estado cliente']
+    const SERIE_KEYS = ['serie', 'serial', 'n serie', 'numero serie', 'tipo serie']
+    const CONTATO_KEYS = ['contato', 'telefone', 'celular', 'fone']
+    const EMAIL_KEYS = ['email', 'e mail', 'correio']
+
+    // Identificação de cabeçalhos presentes para aviso / telemetria
+    const firstRow = rows[0] || {}
+    const originalHeaders = Object.keys(firstRow)
+    const normalizedHeaders = originalHeaders.map(normalizeKey)
+
+    const hasCanalHeader = normalizedHeaders.some((nh) =>
+      CANAL_KEYS.some((ck) => nh === ck || nh.includes('canal')),
+    )
+
+    let lastKnownCanal = '' // Para forward-fill de células mescladas na planilha
+
     for (let i = 0; i < rows.length; i++) {
-      const row = rows[i]
+      const rawRow = rows[i]
       const lineNum = i + 1
 
-      const codigoCliente = getVal(row, [
-        'codigo_cliente',
-        'Código do Cliente',
-        'Codigo do Cliente',
-        'Código Cliente',
-        'Codigo Cliente',
-        'Cód. Cliente',
-        'Cod. Cliente',
-        'Cliente Código',
-        'CardCode',
-      ])
+      // Cria dicionário com chaves normalizadas para esta linha
+      const normRow = {}
+      const keys = Object.keys(rawRow)
+      for (let k = 0; k < keys.length; k++) {
+        const origK = keys[k]
+        normRow[normalizeKey(origK)] = rawRow[origK]
+      }
 
-      const nomeCanal = getVal(row, ['nome_canal', 'Nome do Canal', 'Nome Canal', 'Canal', 'CANAL'])
-
-      const nomeCliente = getVal(row, [
-        'nome_cliente',
-        'Nome do Cliente',
-        'Nome Cliente',
-        'Cliente',
-        'CLIENTE',
-        'CardName',
-      ])
-
-      const deploy = getVal(row, [
-        'deploy',
-        'DEPLOY',
-        'Deploy',
-        'Modelo',
-        'Tipo Deploy',
-      ]).toUpperCase()
-
-      const ehCanalRaw = getVal(row, [
-        'eh_canal',
-        'CANAIS',
-        'Canais',
-        'Canal?',
-        'É Canal',
-        'Eh Canal',
-      ])
+      let codigoCliente = getRowVal(normRow, CLIENTE_COD_KEYS)
+      let nomeCanal = getRowVal(normRow, CANAL_KEYS)
+      const nomeCliente = getRowVal(normRow, CLIENTE_NOME_KEYS)
+      const deploy = getRowVal(normRow, DEPLOY_KEYS).toUpperCase()
+      const ehCanalRaw = getRowVal(normRow, EH_CANAL_KEYS)
       const ehCanal = parseBool(ehCanalRaw)
+      const status = getRowVal(normRow, STATUS_KEYS)
+      const serie = getRowVal(normRow, SERIE_KEYS)
+      const contato = getRowVal(normRow, CONTATO_KEYS)
+      const email = getRowVal(normRow, EMAIL_KEYS)
 
-      const status = getVal(row, ['status', 'Status', 'STATUS', 'Situação', 'Situacao'])
-      const serie = getVal(row, ['serie', 'Série', 'Serie', 'SERIE', 'Serial'])
-      const contato = getVal(row, ['contato', 'Contato', 'CONTATO'])
-      const email = getVal(row, ['email', 'Email', 'E-mail', 'EMAIL', 'E-Mail'])
+      // Forward-fill para células mescladas de canal:
+      // Se a linha tem nomeCanal preenchido, memoriza como lastKnownCanal.
+      // Se não tem nomeCanal, mas lastKnownCanal existe e a linha tem cliente/código, preenche com lastKnownCanal.
+      if (nomeCanal) {
+        lastKnownCanal = nomeCanal
+      } else if (lastKnownCanal && (codigoCliente || nomeCliente)) {
+        nomeCanal = lastKnownCanal
+      }
 
       // Validação: linha precisa ter ao menos código do cliente ou nome do canal ou nome do cliente
       if (!codigoCliente && !nomeCanal && !nomeCliente) {
@@ -146,6 +224,23 @@ routerAdd(
               isUpdate = true
             }
           } catch (_) {}
+          // Se não encontrou por codigo_cliente + nome_canal, procura se existe registro do cliente com nome_canal vazio
+          if (!record && codigoCliente) {
+            try {
+              const emptyCanalRows = arrayOf(new DynamicModel({ id: '' }))
+              $app
+                .db()
+                .newQuery(
+                  "SELECT id FROM canais_clientes WHERE codigo_cliente = {:cod} AND (nome_canal IS NULL OR nome_canal = '') LIMIT 1",
+                )
+                .bind({ cod: codigoCliente })
+                .all(emptyCanalRows)
+              if (emptyCanalRows.length > 0 && emptyCanalRows[0].id) {
+                record = $app.findRecordById('canais_clientes', emptyCanalRows[0].id)
+                isUpdate = true
+              }
+            } catch (_) {}
+          }
         } else if (codigoCliente) {
           try {
             record = $app.findFirstRecordByData('canais_clientes', 'codigo_cliente', codigoCliente)
@@ -183,12 +278,21 @@ routerAdd(
       }
     }
 
+    const avisos = []
+    if (!hasCanalHeader) {
+      avisos.push(
+        `Nenhuma coluna com nome de canal encontrada nos cabeçalhos recebidos: [${originalHeaders.join(', ')}]. Colunas esperadas incluem "Nome do Canal" ou "Canal".`,
+      )
+    }
+
     return e.json(200, {
       success: true,
       importados,
       atualizados,
       ignorados,
       erros,
+      avisos,
+      headersRecebidos: originalHeaders,
       data_carga: nowIso,
     })
   },

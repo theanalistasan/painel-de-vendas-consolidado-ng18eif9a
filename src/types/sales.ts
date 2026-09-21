@@ -218,6 +218,8 @@ export interface ImportResult {
   atualizados: number
   ignorados: number
   erros: string[]
+  avisos?: string[]
+  headersRecebidos?: string[]
   data_carga: string
   message?: string
 }

@@ -44,6 +44,7 @@ interface BatchResult {
   atualizados: number
   ignorados: number
   erros: string[]
+  avisos: string[]
   failedBatches: number[]
   totalBatches: number
 }
@@ -189,6 +190,7 @@ function BaseImportCard({
       atualizados: 0,
       ignorados: 0,
       erros: [],
+      avisos: [],
       failedBatches: [],
       totalBatches,
     }
@@ -205,6 +207,9 @@ function BaseImportCard({
           acc.ignorados += res.ignorados || 0
           if (res.erros && res.erros.length > 0) {
             acc.erros.push(...res.erros.slice(0, 20))
+          }
+          if (res.avisos && res.avisos.length > 0) {
+            acc.avisos.push(...res.avisos)
           }
         } catch (err: unknown) {
           acc.failedBatches.push(batchNum)
@@ -224,6 +229,7 @@ function BaseImportCard({
         atualizados: acc.atualizados,
         ignorados: acc.ignorados,
         erros: acc.erros,
+        avisos: Array.from(new Set(acc.avisos)),
         data_carga: new Date().toISOString(),
       }
       setResult(finalResult)
@@ -554,6 +560,22 @@ function BaseImportCard({
                 <span className="text-sm font-bold text-cyan-600">{result.ignorados}</span>
               </div>
             </div>
+
+            {/* Warning notice if expected columns (e.g. Nome do Canal) were missing */}
+            {result.avisos && result.avisos.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-slate-200">
+                <span className="text-[11px] font-semibold text-amber-700 block mb-1">
+                  Avisos de Mapeamento:
+                </span>
+                <div className="max-h-24 overflow-y-auto space-y-1 text-[10px] text-amber-800 bg-amber-50/80 p-2 rounded-md border border-amber-200">
+                  {result.avisos.map((aviso, i) => (
+                    <div key={i} className="leading-snug">
+                      ⚠️ {aviso}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Validation errors list */}
             {result.erros && result.erros.length > 0 && (
