@@ -98,6 +98,37 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
 
     const sqlParts = []
 
+    // Expansão do filtro 'canal': busca os codigo_cliente vinculados ao canal em canais_clientes
+    const canaisFilter = Array.isArray(f.canal) ? f.canal : f.canal ? [f.canal] : []
+    if (canaisFilter.length > 0) {
+      try {
+        const canaisSqlList = canaisFilter.map((c) => "'" + sqlEsc(c) + "'").join(',')
+        const ccRows = arrayOf(new DynamicModel({ cc: '' }))
+        $app
+          .db()
+          .newQuery(
+            'SELECT DISTINCT codigo_cliente AS cc FROM canais_clientes WHERE nome_canal IN (' +
+              canaisSqlList +
+              ") AND codigo_cliente IS NOT NULL AND codigo_cliente != ''",
+          )
+          .all(ccRows)
+
+        const matchedClientes = []
+        for (let k = 0; k < ccRows.length; k++) {
+          if (ccRows[k].cc) matchedClientes.push(ccRows[k].cc)
+        }
+
+        if (matchedClientes.length > 0) {
+          const cliSqlIn = matchedClientes.map((c) => "'" + sqlEsc(c) + "'").join(',')
+          sqlParts.push('codigo_cliente IN (' + cliSqlIn + ')')
+        } else {
+          sqlParts.push('1=0')
+        }
+      } catch (canalErr) {
+        console.warn('vendas_list: expansao canal warning:', canalErr)
+      }
+    }
+
     // Filtro de BASE (Seleção de Bases: ambos | racnew | netsales)
     if (f.base === 'racnew') {
       sqlParts.push('(tem_netsales = 0 OR tem_netsales IS NULL)')

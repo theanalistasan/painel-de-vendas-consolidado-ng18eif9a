@@ -12,6 +12,7 @@ import type {
   VendaPorAnoMes,
   ClientesAtivosEquipamentos,
   ClientesAtivosInsumos,
+  CanalOption,
 } from '@/types/sales'
 
 export async function fetchProdutos(): Promise<Produto[]> {
@@ -59,6 +60,16 @@ export async function importNetSalesApi(rows: Record<string, unknown>[]): Promis
   })
 }
 
+export async function importCanaisClientesApi(
+  rows: Record<string, unknown>[],
+  options?: { clearBefore?: boolean; replace?: boolean },
+): Promise<ImportResult> {
+  return pb.send<ImportResult>('/backend/v1/import/canais-clientes', {
+    method: 'POST',
+    body: { rows, ...options },
+  })
+}
+
 export async function consolidarVendasApi(): Promise<ConsolidarResult> {
   return pb.send<ConsolidarResult>('/backend/v1/vendas/consolidar', {
     method: 'POST',
@@ -98,6 +109,7 @@ export interface CountsSummary {
   racnew: number
   netsales: number
   vendas: number
+  canais_clientes: number
   ultimaCarga: string | null
 }
 
@@ -144,6 +156,7 @@ export async function getCountsSummary(): Promise<CountsSummary> {
     racnew: data.racnew ?? 0,
     netsales: data.netsales ?? 0,
     vendas: data.vendas ?? 0,
+    canais_clientes: (data as unknown as Record<string, number>).canais_clientes ?? 0,
     ultimaCarga: data.ultimaCarga || null,
   }
 }
@@ -201,6 +214,7 @@ export interface DashboardStatsResult {
     estado: string[]
     utilizacao: string[]
     tipoDocumento: string[]
+    canais?: CanalOption[]
     anos: number[]
     meses: number[]
     dias: number[]

@@ -76,6 +76,25 @@ export interface NetSales extends RecordModel {
   data_carga: string
 }
 
+export interface CanalCliente extends RecordModel {
+  eh_canal: boolean
+  deploy: string
+  nome_canal: string
+  nome_cliente: string
+  status: string
+  serie: string
+  codigo_cliente: string
+  contato: string
+  email: string
+  origem?: string
+  data_carga?: string
+}
+
+export interface CanalOption {
+  nome: string
+  deploy: string
+}
+
 export interface VendaConsolidada extends RecordModel {
   tipo_documento: string
   nf_entrega_futura: string
@@ -140,6 +159,7 @@ export interface FilterState {
   grupoItem: string[]
   estado: string[]
   utilizacao: string[]
+  canal: string[]
   search: string
   /** Anos (string[]) extraídos da Data de Lançamento, ex: ["2024", "2025"] */
   ano: string[]

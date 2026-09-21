@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-18T13:34:30.331Z",
+  "generatedAt": "2026-09-21T18:31:39.243Z",
   "collections": [
     {
       "name": "users",
@@ -963,6 +963,105 @@
         "CREATE INDEX idx_audit_logs_created ON audit_logs (created DESC)",
         "CREATE INDEX idx_audit_logs_action ON audit_logs (action)",
         "CREATE INDEX idx_audit_logs_user_id ON audit_logs (user_id)"
+      ]
+    },
+    {
+      "name": "canais_clientes",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "eh_canal",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "deploy",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_canal",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "serie",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contato",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "email",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_carga",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_cc_codigo_cliente ON canais_clientes (codigo_cliente)",
+        "CREATE INDEX idx_cc_nome_canal ON canais_clientes (nome_canal)",
+        "CREATE INDEX idx_cc_eh_canal ON canais_clientes (eh_canal)",
+        "CREATE INDEX idx_cc_deploy ON canais_clientes (deploy)"
       ]
     }
   ]

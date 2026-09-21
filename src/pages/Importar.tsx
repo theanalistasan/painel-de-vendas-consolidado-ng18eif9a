@@ -17,6 +17,7 @@ import {
   importProdutosApi,
   importRacNewApi,
   importNetSalesApi,
+  importCanaisClientesApi,
   consolidarVendasApi,
   getCountsSummary,
 } from '@/services/sales'
@@ -47,7 +48,7 @@ interface BatchResult {
   totalBatches: number
 }
 
-type BaseKey = 'produtos' | 'racnew' | 'netsales'
+type BaseKey = 'produtos' | 'racnew' | 'netsales' | 'canais_clientes'
 
 interface CardImportProps {
   title: string
@@ -582,6 +583,7 @@ export default function Importar() {
     racnew: 0,
     netsales: 0,
     vendas: 0,
+    canais_clientes: 0,
     ultimaCarga: null as string | null,
   })
   const [consolidating, setConsolidating] = useState(false)
@@ -592,6 +594,7 @@ export default function Importar() {
     produtos?: ImportResult
     racnew?: ImportResult
     netsales?: ImportResult
+    canais_clientes?: ImportResult
   }>({})
   const { toast } = useToast()
 
@@ -642,6 +645,7 @@ export default function Importar() {
     { base: 'produtos', label: 'Produtos', color: 'text-cyan-700' },
     { base: 'racnew', label: 'RacNew', color: 'text-indigo-700' },
     { base: 'netsales', label: 'NetSales', color: 'text-teal-700' },
+    { base: 'canais_clientes', label: 'Canais x Clientes', color: 'text-sky-700' },
   ]
   const hasAnyImportResult = Object.values(importResults).some((r) => r)
 
@@ -690,7 +694,7 @@ export default function Importar() {
           </div>
 
           {/* Counts metrics bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-slate-800/80">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-6 pt-6 border-t border-slate-800/80">
             <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/50">
               <span className="text-[11px] text-slate-400 block font-medium">
                 Produtos Cadastrados
@@ -715,6 +719,12 @@ export default function Importar() {
                 {formatNumber(counts.netsales)}
               </span>
             </div>
+            <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/50">
+              <span className="text-[11px] text-sky-300 block font-medium">Canais x Clientes</span>
+              <span className="text-lg font-bold text-sky-200 tabular-nums">
+                {formatNumber(counts.canais_clientes ?? 0)}
+              </span>
+            </div>
             <div className="bg-indigo-950/80 p-3 rounded-lg border border-indigo-700/50">
               <span className="text-[11px] text-indigo-300 block font-semibold">
                 Vendas Consolidadas
@@ -734,8 +744,8 @@ export default function Importar() {
         </CardContent>
       </Card>
 
-      {/* 3 Import Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* 4 Import Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Card 1: Produtos */}
         <BaseImportCard
           title="Produtos"
@@ -797,6 +807,28 @@ export default function Importar() {
           baseCount={counts.netsales}
           onImported={(r) => handleImported('netsales', r)}
         />
+
+        {/* Card 4: Canais x Clientes (Marketing) */}
+        <BaseImportCard
+          title="Canais x Clientes"
+          subtitle="Vínculo de canais aos clientes e modelo deploy"
+          badgeLabel="Canais"
+          badgeColor="bg-[#0B6E99]"
+          expectedColumns={[
+            'CANAIS (Sim/Não)',
+            'DEPLOY (AGIS/ROLAND)',
+            'Nome do Canal',
+            'Nome do Cliente',
+            'Código do Cliente',
+            'Status',
+            'Série',
+            'Contato',
+            'E-mail',
+          ]}
+          onImport={(rows) => importCanaisClientesApi(rows)}
+          baseCount={counts.canais_clientes ?? 0}
+          onImported={(r) => handleImported('canais_clientes', r)}
+        />
       </div>
 
       {/* Resumo final por base — cada base mantém seu próprio resultado */}
@@ -812,7 +844,7 @@ export default function Importar() {
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {summaryEntries.map(({ base, label, color }) => {
                 const r = importResults[base]
                 const totalNaBase =
@@ -820,7 +852,9 @@ export default function Importar() {
                     ? counts.produtos
                     : base === 'racnew'
                       ? counts.racnew
-                      : counts.netsales
+                      : base === 'netsales'
+                        ? counts.netsales
+                        : (counts.canais_clientes ?? 0)
                 return (
                   <div
                     key={base}

@@ -298,6 +298,45 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const sqlHistParts = []
     const sqlVendasParts = [] // Cláusulas compatíveis diretamente com as colunas da tabela vendas
 
+    // Expansão do filtro 'canal': se o usuário selecionou canais, buscamos na coleção `canais_clientes`
+    // os codigo_cliente vinculados àqueles canais e injetamos como filtro de clientes
+    const canaisFilter = Array.isArray(f.canal) ? f.canal : f.canal ? [f.canal] : []
+    if (canaisFilter.length > 0) {
+      try {
+        const canaisSqlList = canaisFilter.map((c) => "'" + sqlEsc(c) + "'").join(',')
+        const ccRows = arrayOf(new DynamicModel({ cc: '' }))
+        $app
+          .db()
+          .newQuery(
+            'SELECT DISTINCT codigo_cliente AS cc FROM canais_clientes WHERE nome_canal IN (' +
+              canaisSqlList +
+              ") AND codigo_cliente IS NOT NULL AND codigo_cliente != ''",
+          )
+          .all(ccRows)
+
+        const matchedClientes = []
+        for (let k = 0; k < ccRows.length; k++) {
+          if (ccRows[k].cc) matchedClientes.push(ccRows[k].cc)
+        }
+
+        if (matchedClientes.length > 0) {
+          const cliSqlIn = matchedClientes.map((c) => "'" + sqlEsc(c) + "'").join(',')
+          const clause = 'codigo_cliente IN (' + cliSqlIn + ')'
+          sqlParts.push(clause)
+          sqlDimParts.push(clause)
+          sqlVendasParts.push(clause)
+        } else {
+          // Se o canal não tem clientes vinculados ainda, força resultado vazio
+          const emptyClause = '1=0'
+          sqlParts.push(emptyClause)
+          sqlDimParts.push(emptyClause)
+          sqlVendasParts.push(emptyClause)
+        }
+      } catch (canalErr) {
+        console.warn('dashboard_stats: expansao canal warning:', canalErr)
+      }
+    }
+
     // Filtro de base
     if (f.base === 'racnew') {
       const clause = '(tem_netsales = 0 OR tem_netsales IS NULL)'
@@ -971,6 +1010,35 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       anosList = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
     }
 
+    // Opções de canais (dropdown: apenas registros onde eh_canal = 1 / true)
+    let canaisOptions = []
+    try {
+      const canalRows = arrayOf(
+        new DynamicModel({
+          nome_canal: '',
+          deploy: '',
+        }),
+      )
+      $app
+        .db()
+        .newQuery(
+          "SELECT nome_canal, MAX(deploy) AS deploy FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND nome_canal IS NOT NULL AND nome_canal != '' GROUP BY nome_canal ORDER BY nome_canal ASC",
+        )
+        .all(canalRows)
+
+      for (let i = 0; i < canalRows.length; i++) {
+        const nc = (canalRows[i].nome_canal || '').trim()
+        if (nc) {
+          canaisOptions.push({
+            nome: nc,
+            deploy: (canalRows[i].deploy || '').trim().toUpperCase(),
+          })
+        }
+      }
+    } catch (canalOptErr) {
+      console.warn('dashboard_stats: consulta de canais warning:', canalOptErr)
+    }
+
     const filterOptions = {
       vendedorCliente: cleanFilterOptions(distinctSummaryCol('vendedor_cliente', 3000), true),
       vendedor: cleanFilterOptions(distinctSummaryCol('nome_vendedor', 500)),
@@ -978,6 +1046,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       estado: cleanFilterOptions(distinctSummaryCol('estado', 50)),
       utilizacao: cleanFilterOptions(distinctSummaryCol('utilizacao', 200)),
       tipoDocumento: cleanFilterOptions(distinctSummaryCol('tipo_documento', 50)),
+      canais: canaisOptions,
       anos: anosList,
       meses: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
       dias: [

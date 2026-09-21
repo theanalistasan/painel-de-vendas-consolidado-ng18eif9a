@@ -12,7 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import type { FilterState } from '@/types/sales'
+import type { FilterState, CanalOption } from '@/types/sales'
 import { DEVOLUCAO_TIPOS } from '@/types/sales'
 import { MESES_PT_BR, nomeMes } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
@@ -27,6 +27,7 @@ interface FilterBarProps {
     estado: string[]
     utilizacao: string[]
     tipoDocumento: string[]
+    canais?: CanalOption[]
     anos: number[]
     meses: number[]
     dias: number[]
@@ -248,6 +249,7 @@ export default function FilterBar({
       (filters.base && filters.base !== 'ambos' ? 1 : 0) +
       (filters.dataDe ? 1 : 0) +
       (filters.dataAte ? 1 : 0) +
+      (filters.canal?.length || 0) +
       filters.vendedorCliente.length +
       filters.vendedor.length +
       filters.grupoItem.length +
@@ -280,6 +282,7 @@ export default function FilterBar({
       estado: [],
       utilizacao: [],
       tipoDocumento: [],
+      canal: [],
       search: '',
       ano: [],
       mes: [],
@@ -315,6 +318,7 @@ export default function FilterBar({
         type === 'grupoItem' ||
         type === 'estado' ||
         type === 'utilizacao' ||
+        type === 'canal' ||
         type === 'tipoDocumento')
     ) {
       nextState = {
@@ -451,6 +455,20 @@ export default function FilterBar({
         bgClass: 'bg-cyan-50 border-cyan-200 text-cyan-950 font-semibold',
       })
     })
+
+    if (Array.isArray(filters.canal)) {
+      filters.canal.forEach((item) => {
+        const deployInfo = (options.canais || []).find((c) => c.nome === item)?.deploy
+        const deployBadge = deployInfo ? ` [${deployInfo}]` : ''
+        list.push({
+          id: `canal-${item}`,
+          label: `Canal: ${item}${deployBadge}`,
+          type: 'canal',
+          value: item,
+          bgClass: 'bg-[#0B6E99]/10 border-[#0B6E99]/30 text-[#084F6E] font-bold',
+        })
+      })
+    }
 
     if (filters.search) {
       list.push({
@@ -696,13 +714,49 @@ export default function FilterBar({
         </div>
       </div>
 
-      {/* Linha 2: Seleção de Bases, Utilização e Busca Opcional */}
+      {/* Linha 2: Canal (destaque), Seleção de Bases, Utilização e Busca */}
       <div
         className={cn(
           'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 pt-3',
           collapsed && 'hidden lg:grid',
         )}
       >
+        {/* Filtro Canal (Marketing) */}
+        <div className="sm:col-span-2">
+          <div className="flex items-center justify-between mb-1">
+            <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#0B6E99]" />
+              Filtro Canal (eh_canal = SIM)
+            </Label>
+            {options.canais && options.canais.length > 0 && (
+              <span className="text-[10px] text-slate-400 font-medium">
+                {options.canais.length} canais
+              </span>
+            )}
+          </div>
+          <MultiSelectDropdown
+            label="Canal"
+            options={(options.canais || []).map((c) => c.nome)}
+            selected={localFilters.canal || []}
+            onChange={(values) => setLocalFilters((prev) => ({ ...prev, canal: values }))}
+            placeholder="Todos os Canais"
+            highlight={(localFilters.canal || []).length > 0}
+            getOptionLabel={(nome) => {
+              const opt = (options.canais || []).find((c) => c.nome === nome)
+              if (opt && opt.deploy) {
+                const depDesc =
+                  opt.deploy === 'AGIS'
+                    ? 'AGIS (revenda)'
+                    : opt.deploy === 'ROLAND'
+                      ? 'ROLAND (direta)'
+                      : opt.deploy
+                return `${nome} • ${depDesc}`
+              }
+              return nome
+            }}
+          />
+        </div>
+
         {/* Seleção de Bases */}
         <div>
           <Label className="text-[11px] font-bold text-slate-500 mb-1 block">
@@ -807,9 +861,7 @@ export default function FilterBar({
               )}
             </div>
           </div>
-        ) : (
-          <div className="hidden sm:block sm:col-span-2" />
-        )}
+        ) : null}
       </div>
 
       {/* Seção de Pílulas de Filtros Ativos Roland DG */}

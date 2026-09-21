@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 import { fetchVendasList, fetchVendasExport, fetchDashboardStats } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { VendaConsolidada, FilterState } from '@/types/sales'
+import type { VendaConsolidada, FilterState, CanalOption } from '@/types/sales'
 import {
   formatCurrency,
   formatNumber,
@@ -83,16 +83,28 @@ export default function Vendas() {
     devolucoes: 0,
   })
 
-  const [filterOptions, setFilterOptions] = useState({
-    vendedorCliente: [] as string[],
-    vendedor: [] as string[],
-    grupoItem: [] as string[],
-    estado: [] as string[],
-    utilizacao: [] as string[],
-    tipoDocumento: [] as string[],
-    anos: [] as number[],
-    meses: [] as number[],
-    dias: [] as number[],
+  const [filterOptions, setFilterOptions] = useState<{
+    vendedorCliente: string[]
+    vendedor: string[]
+    grupoItem: string[]
+    estado: string[]
+    utilizacao: string[]
+    tipoDocumento: string[]
+    canais?: CanalOption[]
+    anos: number[]
+    meses: number[]
+    dias: number[]
+  }>({
+    vendedorCliente: [],
+    vendedor: [],
+    grupoItem: [],
+    estado: [],
+    utilizacao: [],
+    tipoDocumento: [],
+    canais: [],
+    anos: [],
+    meses: [],
+    dias: [],
   })
 
   // Carrega opções de filtro e KPIs via endpoint do dashboard
