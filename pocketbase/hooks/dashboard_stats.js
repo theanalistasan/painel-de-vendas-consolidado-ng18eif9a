@@ -1272,6 +1272,186 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       console.error('dashboard_stats: clientesAtivos queries falharam:', err)
     }
 
+    // ============================================================
+    // 5.5) Vendas por Canal & Vendas por Deploy (Visão Geral & Canais)
+    // Agregação rápida cruzando canais_clientes (eh_canal = SIM/1/true) com resumo_vendas_mensal
+    // Respeita todos os filtros ativos (sqlWhere)
+    // ============================================================
+    const vendasPorCanal = []
+    const vendasPorDeploy = []
+    let canaisSummary = { canaisAtivos: 0, clientesVinculados: 0, faturamentoTotal: 0 }
+
+    try {
+      // 1. Mapa de todos os canais_clientes ativos (eh_canal = true)
+      // Carrega em memória (são poucas centenas de registros na tabela canais_clientes)
+      const ccMapRows = arrayOf(
+        new DynamicModel({
+          codigo_cliente: '',
+          nome_cliente: '',
+          nome_canal: '',
+          deploy: '',
+        }),
+      )
+      $app
+        .db()
+        .newQuery(
+          "SELECT COALESCE(codigo_cliente,'') AS codigo_cliente, " +
+            "COALESCE(nome_cliente,'') AS nome_cliente, " +
+            "COALESCE(nome_canal,'') AS nome_canal, " +
+            "COALESCE(deploy,'') AS deploy " +
+            "FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') " +
+            "AND nome_canal IS NOT NULL AND nome_canal != ''",
+        )
+        .all(ccMapRows)
+
+      // Mapas: codigo_cliente -> lista de { canal, deploy }
+      // e nome_cliente (fallback) -> lista de { canal, deploy }
+      const codToCanalMap = {}
+      const nomToCanalMap = {}
+      const todosCanaisSet = new Set()
+      const todosClientesSet = new Set()
+
+      for (let i = 0; i < ccMapRows.length; i++) {
+        const cod = (ccMapRows[i].codigo_cliente || '').trim()
+        const nom = (ccMapRows[i].nome_cliente || '').trim().toUpperCase()
+        const canal = (ccMapRows[i].nome_canal || '').trim()
+        let dep = (ccMapRows[i].deploy || '').trim().toUpperCase()
+        if (dep === 'AGIS') dep = 'AGIS'
+        else if (dep === 'ROLAND') dep = 'ROLAND'
+        else dep = 'Nenhum'
+
+        if (canal) {
+          todosCanaisSet.add(canal)
+          if (cod && cod !== '-') {
+            todosClientesSet.add(cod)
+            if (!codToCanalMap[cod]) codToCanalMap[cod] = []
+            codToCanalMap[cod].push({ canal: canal, deploy: dep })
+          }
+          if (nom) {
+            todosClientesSet.add(nom)
+            if (!nomToCanalMap[nom]) nomToCanalMap[nom] = []
+            nomToCanalMap[nom].push({ canal: canal, deploy: dep })
+          }
+        }
+      }
+
+      // 2. Consulta agrupada por cliente (codigo_cliente, nome_cliente) a partir do resumo_vendas_mensal (ou vendas se hasSearchOrDay)
+      // aplicando todos os filtros ativos (sqlWhere)
+      let cliSalesSql = ''
+      if (!hasSearchOrDay) {
+        cliSalesSql =
+          "SELECT COALESCE(codigo_cliente,'') AS a, COALESCE(nome_cliente,'') AS b, COALESCE(SUM(total_linha),0) AS c, COUNT(DISTINCT qtd_documentos) AS d " +
+          'FROM resumo_vendas_mensal WHERE ' +
+          sqlWhere +
+          ' GROUP BY codigo_cliente, nome_cliente'
+      } else {
+        cliSalesSql =
+          "SELECT COALESCE(codigo_cliente,'') AS a, COALESCE(nome_cliente,'') AS b, COALESCE(SUM(total_linha),0) AS c, COUNT(DISTINCT numero_nfe) AS d " +
+          'FROM vendas WHERE ' +
+          sqlWhereVendas +
+          ' GROUP BY codigo_cliente, nome_cliente'
+      }
+
+      const cliSalesRows = arrayOf(
+        new DynamicModel({
+          a: '',
+          b: '',
+          c: '',
+          d: '',
+        }),
+      )
+      $app.db().newQuery(cliSalesSql).all(cliSalesRows)
+
+      const canalTotals = {}
+      const canalClientesUnicos = {}
+      const deployTotals = {
+        AGIS: 0,
+        Roland: 0,
+        Nenhum: 0,
+      }
+      let totalRecorteCanais = 0
+      const clientesComVendaNoRecorte = new Set()
+      const canaisComVendaNoRecorte = new Set()
+
+      for (let i = 0; i < cliSalesRows.length; i++) {
+        const cod = (cliSalesRows[i].a || '').trim()
+        const nom = (cliSalesRows[i].b || '').trim().toUpperCase()
+        const total = toNum(cliSalesRows[i].c)
+        if (total === 0) continue
+
+        // Encontra os canais associados a este cliente
+        let matches = codToCanalMap[cod]
+        if (!matches || matches.length === 0) {
+          matches = nomToCanalMap[nom]
+        }
+
+        if (matches && matches.length > 0) {
+          // Cliente vinculado a canal(is)
+          // Se houver mais de 1 canal para o mesmo cliente, distribui proporcionalmente ou associa a cada um
+          const splitFactor = matches.length
+          for (let m = 0; m < matches.length; m++) {
+            const canalName = matches[m].canal
+            const depName = matches[m].deploy
+            const partTotal = total / splitFactor
+
+            if (!canalTotals[canalName]) {
+              canalTotals[canalName] = 0
+              canalClientesUnicos[canalName] = new Set()
+            }
+            canalTotals[canalName] += partTotal
+            if (cod) canalClientesUnicos[canalName].add(cod)
+            else canalClientesUnicos[canalName].add(nom)
+
+            if (depName === 'AGIS') {
+              deployTotals.AGIS += partTotal
+            } else if (depName === 'ROLAND') {
+              deployTotals.Roland += partTotal
+            } else {
+              deployTotals.Nenhum += partTotal
+            }
+
+            totalRecorteCanais += partTotal
+            canaisComVendaNoRecorte.add(canalName)
+            if (cod) clientesComVendaNoRecorte.add(cod)
+            else clientesComVendaNoRecorte.add(nom)
+          }
+        } else {
+          // Vendas de clientes que NÃO estão vinculados a nenhum canal (Deploy: Nenhum)
+          deployTotals.Nenhum += total
+        }
+      }
+
+      // Ordena os canais por faturamento decrescente
+      const sortedCanais = Object.keys(canalTotals).sort((a, b) => canalTotals[b] - canalTotals[a])
+
+      for (let i = 0; i < sortedCanais.length; i++) {
+        const cName = sortedCanais[i]
+        vendasPorCanal.push({
+          canal: cName,
+          faturamento: canalTotals[cName],
+          clientesQtd: canalClientesUnicos[cName] ? canalClientesUnicos[cName].size : 0,
+        })
+      }
+
+      // Estrutura do deploy (AGIS, Roland, Nenhum)
+      vendasPorDeploy.push(
+        { deploy: 'AGIS', faturamento: deployTotals.AGIS, label: 'AGIS (revenda)' },
+        { deploy: 'Roland', faturamento: deployTotals.Roland, label: 'Roland (direta)' },
+        { deploy: 'Nenhum', faturamento: deployTotals.Nenhum, label: 'Nenhum (sem deploy)' },
+      )
+
+      canaisSummary = {
+        canaisAtivos: canaisComVendaNoRecorte.size,
+        clientesVinculados: clientesComVendaNoRecorte.size,
+        faturamentoTotal: totalRecorteCanais,
+      }
+    } catch (canalAggErr) {
+      console.error(
+        'dashboard_stats: agregacao vendasPorCanal/vendasPorDeploy falhou:',
+        canalAggErr,
+      )
+    }
+
     const responsePayload = {
       kpis: kpis,
       charts: {
@@ -1289,6 +1469,9 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         topClientes: topClientes,
         estado: estado,
         revendasFaturamento: revendasFaturamento,
+        vendasPorCanal: vendasPorCanal,
+        vendasPorDeploy: vendasPorDeploy,
+        canaisSummary: canaisSummary,
       },
       recentSales: recentSales,
       filterOptions: filterOptions,

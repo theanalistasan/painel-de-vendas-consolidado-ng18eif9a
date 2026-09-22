@@ -8,6 +8,8 @@ import {
   Users,
   Download,
   Sparkles,
+  Layers,
+  Network,
 } from 'lucide-react'
 import {
   XAxis,
@@ -48,6 +50,7 @@ import {
 import FilterBar from '@/components/FilterBar'
 import ChartCard from '@/components/ChartCard'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -252,11 +255,65 @@ export default function DashboardGeral() {
     data?.charts?.vendasInsumosHistorico || data?.charts?.vendasInsumosPorAno || []
   const chartClientesAtivosEquipamentos = data?.charts?.clientesAtivosEquipamentos || []
   const chartClientesAtivosInsumos = data?.charts?.clientesAtivosInsumos || []
+  const chartVendasPorCanal = data?.charts?.vendasPorCanal || []
+  const chartVendasPorDeploy = data?.charts?.vendasPorDeploy || []
+  const canaisSummary = data?.charts?.canaisSummary || {
+    canaisAtivos: 0,
+    clientesVinculados: 0,
+    faturamentoTotal: 0,
+  }
+
+  // Total faturamento dos Canais no recorte para % nos tooltips
+  const totalFaturamentoCanais = useMemo(() => {
+    return chartVendasPorCanal.reduce((acc, cur) => acc + (Number(cur.faturamento) || 0), 0)
+  }, [chartVendasPorCanal])
+
+  // Total faturamento do Deploy para % nos tooltips
+  const totalFaturamentoDeploy = useMemo(() => {
+    return chartVendasPorDeploy.reduce((acc, cur) => acc + (Number(cur.faturamento) || 0), 0)
+  }, [chartVendasPorDeploy])
 
   // Total de faturamento dos grupos para cálculo de percentual no gráfico Donut
   const totalGrupoItemFaturamento = useMemo(() => {
     return chartGrupoItem.reduce((acc, cur) => acc + (Number(cur.value) || 0), 0)
   }, [chartGrupoItem])
+
+  // Dados com percentual arredondado (0 casas decimais) para Vendas por Deploy
+  const chartDeployWithPercent = useMemo(() => {
+    if (totalFaturamentoDeploy <= 0 || chartVendasPorDeploy.length === 0) {
+      return chartVendasPorDeploy.map((item) => ({
+        ...item,
+        name: item.label || item.deploy,
+        value: Number(item.faturamento) || 0,
+        percent: 0,
+      }))
+    }
+    let acumulado = 0
+    return chartVendasPorDeploy.map((item, index) => {
+      const val = Number(item.faturamento) || 0
+      const isLast = index === chartVendasPorDeploy.length - 1
+      let roundedPct: number
+      if (isLast && chartVendasPorDeploy.length > 1) {
+        roundedPct = Math.max(0, 100 - acumulado)
+      } else {
+        roundedPct = Math.round((val / totalFaturamentoDeploy) * 100)
+        acumulado += roundedPct
+      }
+      return {
+        ...item,
+        name: item.label || item.deploy,
+        value: val,
+        percent: roundedPct,
+      }
+    })
+  }, [chartVendasPorDeploy, totalFaturamentoDeploy])
+
+  // Cores Roland DG para os Deploys
+  const DEPLOY_COLORS: Record<string, string> = {
+    AGIS: '#0B6E99', // Azul Roland DG (revenda)
+    Roland: '#1895A8', // Ciano Roland DG (direta)
+    Nenhum: '#94A3B8', // Slate suave para Nenhum / Sem deploy
+  }
 
   const chartGrupoItemWithPercent = useMemo(() => {
     if (totalGrupoItemFaturamento <= 0 || chartGrupoItem.length === 0) {
@@ -351,7 +408,8 @@ export default function DashboardGeral() {
     (data.kpis?.faturamento ?? 0) === 0 &&
     (data.kpis?.documentos ?? 0) === 0 &&
     chartVendasPorMes.length === 0 &&
-    chartGrupoItem.length === 0
+    chartGrupoItem.length === 0 &&
+    chartVendasPorCanal.length === 0
 
   // Normalização para série temporal contínua de Equipamentos (linha única)
   const dataTendenciaEquipamentos = useMemo(() => {
@@ -1430,6 +1488,275 @@ export default function DashboardGeral() {
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
+          </div>
+
+          {/* Linha 5: Painel Vendas por Canal & Deploy */}
+          <div className="rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/50 p-6 shadow-sm space-y-6">
+            {/* Cabeçalho do Painel e KPIs de Apoio */}
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 border-b border-slate-200">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700 border border-cyan-200">
+                    <Network className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900 tracking-tight">
+                      Vendas por Canal & Deploy
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Indicadores de faturamento agregados pela rede de canais oficiais e modelo de
+                      deploy
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* KPIs de apoio do recorte */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-3 bg-white px-3.5 py-2 rounded-lg border border-slate-200 shadow-2xs">
+                  <div className="w-2 h-2 rounded-full bg-cyan-600 animate-pulse" />
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Canais Ativos
+                    </p>
+                    <p className="text-sm font-extrabold text-slate-800">
+                      {canaisSummary.canaisAtivos}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 bg-white px-3.5 py-2 rounded-lg border border-slate-200 shadow-2xs">
+                  <div className="w-2 h-2 rounded-full bg-[#0B6E99]" />
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                      Clientes Vinculados
+                    </p>
+                    <p className="text-sm font-extrabold text-slate-800">
+                      {canaisSummary.clientesVinculados}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 bg-cyan-50/50 px-3.5 py-2 rounded-lg border border-cyan-200/80 shadow-2xs">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-800">
+                      Total Rede Canais
+                    </p>
+                    <p className="text-sm font-extrabold text-cyan-900">
+                      {formatCurrency(canaisSummary.faturamentoTotal || 0)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Grid dos dois gráficos: Vendas por Canal (barras horizontais) & Vendas por Deploy (donut) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Gráfico 1: Vendas por Canal */}
+              <div className="lg:col-span-7 bg-white rounded-xl border border-slate-200 p-5 shadow-2xs flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Network className="h-4 w-4 text-[#0B6E99]" />
+                    <h4 className="text-sm font-bold text-slate-800">Faturamento por Canal</h4>
+                  </div>
+                  <span className="text-[11px] text-slate-400">
+                    {chartVendasPorCanal.length}{' '}
+                    {chartVendasPorCanal.length === 1 ? 'canal' : 'canais'} com vendas
+                  </span>
+                </div>
+
+                {chartVendasPorCanal.length === 0 ? (
+                  <div className="flex flex-1 flex-col items-center justify-center p-8 text-center text-slate-400">
+                    <Network className="h-10 w-10 text-slate-300 mb-2 stroke-[1.5]" />
+                    <p className="text-sm font-medium">
+                      Nenhuma venda de canal registrada no recorte
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Ajuste os filtros de período ou de canais acima
+                    </p>
+                  </div>
+                ) : (
+                  <div className="h-[340px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={chartVendasPorCanal.slice(0, 10)}
+                        layout="vertical"
+                        margin={{ top: 10, right: 30, left: 10, bottom: 10 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
+                        <XAxis
+                          type="number"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fill: '#64748B', fontSize: 11 }}
+                          tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="canal"
+                          tickLine={false}
+                          axisLine={{ stroke: '#E2E8F0' }}
+                          tick={{ fill: '#334155', fontSize: 11, fontWeight: 600 }}
+                          width={110}
+                        />
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (!active || !payload || payload.length === 0) return null
+                            const item = payload[0].payload as {
+                              canal: string
+                              faturamento: number
+                              clientesQtd: number
+                            }
+                            const val = Number(item.faturamento) || 0
+                            const pct =
+                              totalFaturamentoCanais > 0
+                                ? Math.round((val / totalFaturamentoCanais) * 100)
+                                : 0
+                            return (
+                              <div className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white border border-slate-700 shadow-md">
+                                <div className="flex items-center gap-2 mb-1.5 pb-1 border-b border-slate-700">
+                                  <span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#0B6E99]" />
+                                  <span className="font-bold text-slate-100">{item.canal}</span>
+                                  <Badge
+                                    variant="secondary"
+                                    className="ml-auto bg-cyan-950 text-cyan-300 border border-cyan-800 text-[10px] px-1.5 py-0"
+                                  >
+                                    {pct}%
+                                  </Badge>
+                                </div>
+                                <div className="space-y-1 text-slate-300">
+                                  <div className="flex justify-between gap-4">
+                                    <span>Faturamento:</span>
+                                    <span className="font-bold text-white">
+                                      {formatCurrency(val)}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between gap-4">
+                                    <span>Clientes com compra:</span>
+                                    <span className="font-bold text-cyan-300">
+                                      {item.clientesQtd}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          }}
+                          cursor={{ fill: 'rgba(11,110,153,0.06)' }}
+                        />
+                        <Bar
+                          dataKey="faturamento"
+                          fill="#0B6E99"
+                          radius={[0, 4, 4, 0]}
+                          maxBarSize={24}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+
+              {/* Gráfico 2: Vendas por Deploy */}
+              <div className="lg:col-span-5 bg-white rounded-xl border border-slate-200 p-5 shadow-2xs flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-4 w-4 text-cyan-600" />
+                    <h4 className="text-sm font-bold text-slate-800">Vendas por Deploy</h4>
+                  </div>
+                  <span className="text-[11px] text-slate-400">AGIS, Roland e Sem Deploy</span>
+                </div>
+
+                {totalFaturamentoDeploy === 0 ? (
+                  <div className="flex flex-1 flex-col items-center justify-center p-8 text-center text-slate-400">
+                    <Layers className="h-10 w-10 text-slate-300 mb-2 stroke-[1.5]" />
+                    <p className="text-sm font-medium">Nenhum faturamento apurado para deploy</p>
+                  </div>
+                ) : (
+                  <div className="h-[340px] w-full flex flex-col">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={chartDeployWithPercent}
+                          cx="50%"
+                          cy="48%"
+                          innerRadius={60}
+                          outerRadius={95}
+                          paddingAngle={3}
+                          dataKey="value"
+                          label={renderDonutCustomLabel}
+                          labelLine={false}
+                        >
+                          {chartDeployWithPercent.map((entry, index) => (
+                            <Cell
+                              key={`cell-deploy-${index}`}
+                              fill={
+                                DEPLOY_COLORS[entry.deploy] ||
+                                CHART_PALETTE[index % CHART_PALETTE.length]
+                              }
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (!active || !payload || payload.length === 0) return null
+                            const item = payload[0]
+                            const dep = String(item.payload?.deploy || '')
+                            const label = String(item.payload?.label || item.name || dep)
+                            const val = Number(item.value || 0)
+                            const pct =
+                              item.payload?.percent !== undefined
+                                ? item.payload.percent
+                                : totalFaturamentoDeploy > 0
+                                  ? Math.round((val / totalFaturamentoDeploy) * 100)
+                                  : 0
+                            return (
+                              <div className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white border border-slate-700 shadow-md">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span
+                                    className="inline-block w-2.5 h-2.5 rounded-sm"
+                                    style={{
+                                      backgroundColor:
+                                        DEPLOY_COLORS[dep] ||
+                                        item.payload?.fill ||
+                                        CHART_PALETTE[0],
+                                    }}
+                                  />
+                                  <span className="font-bold text-slate-200">{label}</span>
+                                  <span className="ml-auto font-extrabold text-cyan-300">
+                                    {pct}%
+                                  </span>
+                                </div>
+                                <div className="text-slate-300 flex justify-between gap-4">
+                                  <span>Faturamento:</span>
+                                  <span className="font-bold text-white">
+                                    {formatCurrency(val)}
+                                  </span>
+                                </div>
+                              </div>
+                            )
+                          }}
+                        />
+                        <Legend
+                          verticalAlign="bottom"
+                          height={44}
+                          formatter={(value) => {
+                            const item = chartDeployWithPercent.find(
+                              (g) => g.name === value || g.label === value || g.deploy === value,
+                            )
+                            const pctStr = item ? ` (${item.percent}%)` : ''
+                            return (
+                              <span className="text-xs font-bold text-slate-700">
+                                {value}
+                                <span className="text-slate-500 font-semibold">{pctStr}</span>
+                              </span>
+                            )
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

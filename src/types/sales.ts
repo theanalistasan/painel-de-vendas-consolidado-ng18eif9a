@@ -211,6 +211,24 @@ export interface ClientesAtivosInsumos {
   clientesAnoAnterior: number
 }
 
+export interface VendaPorCanal {
+  canal: string
+  faturamento: number
+  clientesQtd: number
+}
+
+export interface VendaPorDeploy {
+  deploy: 'AGIS' | 'Roland' | 'Nenhum' | string
+  faturamento: number
+  label: string
+}
+
+export interface CanaisSummary {
+  canaisAtivos: number
+  clientesVinculados: number
+  faturamentoTotal: number
+}
+
 /** Tipos de documento considerados devolução */
 export const DEVOLUCAO_TIPOS = ['Dev. Entrega', 'Dev. NF', 'DEVNF'] as const
 

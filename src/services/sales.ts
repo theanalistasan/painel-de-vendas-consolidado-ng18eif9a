@@ -195,6 +195,13 @@ export interface DashboardStatsResult {
     topClientes: Array<{ name: string; total: number }>
     estado: Array<{ uf: string; total: number }>
     revendasFaturamento?: Record<string, { faturamento: number; documentos: number; itens: number }>
+    vendasPorCanal?: Array<{ canal: string; faturamento: number; clientesQtd: number }>
+    vendasPorDeploy?: Array<{
+      deploy: 'AGIS' | 'Roland' | 'Nenhum' | string
+      faturamento: number
+      label: string
+    }>
+    canaisSummary?: { canaisAtivos: number; clientesVinculados: number; faturamentoTotal: number }
   }
   recentSales: Array<{
     id: string
