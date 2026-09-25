@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-24T13:20:31.397Z",
+  "generatedAt": "2026-09-25T13:55:58.048Z",
   "collections": [
     {
       "name": "users",
@@ -1055,6 +1055,30 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "segmento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "inside",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cargo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "telefone",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

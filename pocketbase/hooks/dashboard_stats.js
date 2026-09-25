@@ -335,12 +335,14 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           for (let d = 0; d < deployFilter.length; d++) {
             const rawDep = String(deployFilter[d]).trim()
             const depUpper = rawDep.toUpperCase()
-            if (depUpper === 'AGIS') {
-              depConditions.push("UPPER(deploy) = 'AGIS'")
-            } else if (depUpper === 'ROLAND') {
-              depConditions.push("UPPER(deploy) = 'ROLAND'")
+            if (depUpper === 'AGIS' || depUpper.indexOf('AGIS') >= 0) {
+              depConditions.push("UPPER(deploy) LIKE '%AGIS%'")
+            } else if (depUpper === 'ROLAND' || depUpper.indexOf('ROLAND') >= 0) {
+              depConditions.push("UPPER(deploy) LIKE '%ROLAND%'")
             } else if (depUpper === 'NENHUM' || depUpper === 'SEM DEPLOY' || depUpper === 'VAZIO') {
-              depConditions.push("(deploy IS NULL OR deploy = '' OR UPPER(deploy) = 'NENHUM')")
+              depConditions.push(
+                "(deploy IS NULL OR deploy = '' OR UPPER(deploy) = 'NENHUM' OR UPPER(deploy) = 'SEM DEPLOY')",
+              )
             }
           }
           if (depConditions.length > 0) {
@@ -1295,7 +1297,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       $app
         .db()
         .newQuery(
-          "SELECT COALESCE(codigo_cliente,'') AS codigo_cliente, " +
+          "SELECT DISTINCT COALESCE(codigo_cliente,'') AS codigo_cliente, " +
             "COALESCE(nome_cliente,'') AS nome_cliente, " +
             "COALESCE(nome_canal,'') AS nome_canal, " +
             "COALESCE(deploy,'') AS deploy " +
@@ -1304,7 +1306,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         )
         .all(ccMapRows)
 
-      // Mapas: codigo_cliente -> lista de { canal, deploy }
+      // Mapas deduplicados: codigo_cliente -> lista de { canal, deploy }
       // e nome_cliente (fallback) -> lista de { canal, deploy }
       const codToCanalMap = {}
       const nomToCanalMap = {}
@@ -1316,8 +1318,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         const nom = (ccMapRows[i].nome_cliente || '').trim().toUpperCase()
         const canal = (ccMapRows[i].nome_canal || '').trim()
         let dep = (ccMapRows[i].deploy || '').trim().toUpperCase()
-        if (dep === 'AGIS') dep = 'AGIS'
-        else if (dep === 'ROLAND') dep = 'ROLAND'
+        if (dep.indexOf('AGIS') >= 0) dep = 'AGIS'
+        else if (dep.indexOf('ROLAND') >= 0) dep = 'ROLAND'
         else dep = 'Nenhum'
 
         if (canal) {
@@ -1325,12 +1327,22 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           if (cod && cod !== '-') {
             todosClientesSet.add(cod)
             if (!codToCanalMap[cod]) codToCanalMap[cod] = []
-            codToCanalMap[cod].push({ canal: canal, deploy: dep })
+            const exists = codToCanalMap[cod].some(
+              (item) => item.canal === canal && item.deploy === dep,
+            )
+            if (!exists) {
+              codToCanalMap[cod].push({ canal: canal, deploy: dep })
+            }
           }
           if (nom) {
             todosClientesSet.add(nom)
             if (!nomToCanalMap[nom]) nomToCanalMap[nom] = []
-            nomToCanalMap[nom].push({ canal: canal, deploy: dep })
+            const exists = nomToCanalMap[nom].some(
+              (item) => item.canal === canal && item.deploy === dep,
+            )
+            if (!exists) {
+              nomToCanalMap[nom].push({ canal: canal, deploy: dep })
+            }
           }
         }
       }

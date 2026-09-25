@@ -129,12 +129,14 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
           for (let d = 0; d < deployFilter.length; d++) {
             const rawDep = String(deployFilter[d]).trim()
             const depUpper = rawDep.toUpperCase()
-            if (depUpper === 'AGIS') {
-              depConditions.push("UPPER(deploy) = 'AGIS'")
-            } else if (depUpper === 'ROLAND') {
-              depConditions.push("UPPER(deploy) = 'ROLAND'")
+            if (depUpper === 'AGIS' || depUpper.indexOf('AGIS') >= 0) {
+              depConditions.push("UPPER(deploy) LIKE '%AGIS%'")
+            } else if (depUpper === 'ROLAND' || depUpper.indexOf('ROLAND') >= 0) {
+              depConditions.push("UPPER(deploy) LIKE '%ROLAND%'")
             } else if (depUpper === 'NENHUM' || depUpper === 'SEM DEPLOY' || depUpper === 'VAZIO') {
-              depConditions.push("(deploy IS NULL OR deploy = '' OR UPPER(deploy) = 'NENHUM')")
+              depConditions.push(
+                "(deploy IS NULL OR deploy = '' OR UPPER(deploy) = 'NENHUM' OR UPPER(deploy) = 'SEM DEPLOY')",
+              )
             }
           }
           if (depConditions.length > 0) {

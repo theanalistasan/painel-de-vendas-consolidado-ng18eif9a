@@ -830,22 +830,26 @@ export default function Importar() {
           onImported={(r) => handleImported('netsales', r)}
         />
 
-        {/* Card 4: Canais x Clientes (Marketing) */}
+        {/* Card 4: Canais x Clientes (Marketing) - Base Única de Canais */}
         <BaseImportCard
           title="Canais x Clientes"
-          subtitle="Vínculo de canais aos clientes e modelo deploy"
+          subtitle="Base Única de Canais e vínculo com revendas"
           badgeLabel="Canais"
           badgeColor="bg-[#0B6E99]"
           expectedColumns={[
-            'CANAIS (Sim/Não)',
-            'DEPLOY (AGIS/ROLAND)',
-            'Nome do Canal',
-            'Nome do Cliente',
-            'Código do Cliente',
             'Status',
             'Série',
-            'Contato',
-            'E-mail',
+            'CANAIS',
+            'CANAL_FATURAMENTO',
+            'SEGMENTO',
+            'INSIDE',
+            'COD',
+            'CANAL',
+            'REVENDA',
+            'NOME DO CONTATO',
+            'CARGO',
+            'E-MAIL',
+            'TELEFONE',
           ]}
           onImport={(rows) => importCanaisClientesApi(rows)}
           baseCount={counts.canais_clientes ?? 0}

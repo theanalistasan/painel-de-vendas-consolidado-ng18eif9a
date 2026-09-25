@@ -86,6 +86,10 @@ export interface CanalCliente extends RecordModel {
   codigo_cliente: string
   contato: string
   email: string
+  segmento?: string
+  inside?: string
+  cargo?: string
+  telefone?: string
   origem?: string
   data_carga?: string
 }
