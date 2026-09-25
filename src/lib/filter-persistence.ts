@@ -15,6 +15,7 @@ const EMPTY_FILTERS: FilterState = {
   canal: [],
   canalClientes: [],
   deploy: [],
+  inside: [],
   search: '',
   ano: [],
   mes: [],
@@ -44,6 +45,7 @@ export const DEFAULT_FILTERS: FilterState = {
   canal: [],
   canalClientes: [],
   deploy: [],
+  inside: [],
   search: '',
   ano: ['2026'],
   mes: ['8'],
@@ -192,6 +194,7 @@ export function buildDynamicInitialFilters(options?: {
     canal: [],
     canalClientes: [],
     deploy: [],
+    inside: [],
   }
 }
 
@@ -266,6 +269,7 @@ export function loadFiltersFromSession(): FilterState {
       canal: normalizeArray(parsed.canal),
       canalClientes: normalizeArray(parsed.canalClientes),
       deploy: normalizeArray(parsed.deploy),
+      inside: normalizeArray(parsed.inside),
       dataDe: typeof parsed.dataDe === 'string' ? parsed.dataDe : '',
       dataAte: typeof parsed.dataAte === 'string' ? parsed.dataAte : '',
       search: typeof parsed.search === 'string' ? parsed.search : '',

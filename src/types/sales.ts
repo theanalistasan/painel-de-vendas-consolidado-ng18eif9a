@@ -172,6 +172,7 @@ export interface FilterState {
   canal: string[]
   canalClientes?: string[]
   deploy?: string[]
+  inside?: string[]
   search: string
   /** Anos (string[]) extraídos da Data de Lançamento, ex: ["2024", "2025"] */
   ano: string[]

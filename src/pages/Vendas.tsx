@@ -92,6 +92,7 @@ export default function Vendas() {
     tipoDocumento: string[]
     canais?: CanalOption[]
     canaisClientes?: CanalClienteOption[]
+    inside?: string[]
     anos: number[]
     meses: number[]
     dias: number[]
@@ -104,6 +105,7 @@ export default function Vendas() {
     tipoDocumento: [],
     canais: [],
     canaisClientes: [],
+    inside: [],
     anos: [],
     meses: [],
     dias: [],

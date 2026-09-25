@@ -29,6 +29,7 @@ interface FilterBarProps {
     tipoDocumento: string[]
     canais?: CanalOption[]
     canaisClientes?: CanalClienteOption[]
+    inside?: string[]
     anos: number[]
     meses: number[]
     dias: number[]
@@ -253,6 +254,7 @@ export default function FilterBar({
       (filters.canal?.length || 0) +
       (filters.canalClientes?.length || 0) +
       (filters.deploy?.length || 0) +
+      (filters.inside?.length || 0) +
       filters.vendedorCliente.length +
       filters.vendedor.length +
       filters.grupoItem.length +
@@ -288,6 +290,7 @@ export default function FilterBar({
       canal: [],
       canalClientes: [],
       deploy: [],
+      inside: [],
       search: '',
       ano: [],
       mes: [],
@@ -326,6 +329,7 @@ export default function FilterBar({
         type === 'canal' ||
         type === 'canalClientes' ||
         type === 'deploy' ||
+        type === 'inside' ||
         type === 'tipoDocumento')
     ) {
       nextState = {
@@ -497,6 +501,18 @@ export default function FilterBar({
           type: 'deploy',
           value: item,
           bgClass: 'bg-indigo-50 border-indigo-200 text-indigo-900 font-semibold',
+        })
+      })
+    }
+
+    if (Array.isArray(filters.inside)) {
+      filters.inside.forEach((item) => {
+        list.push({
+          id: `inside-${item}`,
+          label: `Inside: ${item}`,
+          type: 'inside',
+          value: item,
+          bgClass: 'bg-teal-50 border-teal-200 text-teal-900 font-semibold',
         })
       })
     }
@@ -752,8 +768,8 @@ export default function FilterBar({
           collapsed && 'hidden lg:grid',
         )}
       >
-        {/* Bloco de Filtros: Canais */}
-        <div className="sm:col-span-2 xl:col-span-3 bg-gradient-to-r from-slate-50 to-cyan-50/40 p-2.5 rounded-xl border border-cyan-100">
+        {/* Bloco de Filtros: Canais (Quatro filtros: Canal, Clientes, Deploy, Inside) */}
+        <div className="sm:col-span-2 xl:col-span-4 bg-gradient-to-r from-slate-50 to-cyan-50/40 p-2.5 rounded-xl border border-cyan-100">
           <div className="flex items-center justify-between mb-2">
             <Label className="text-[11px] font-bold text-[#0B6E99] flex items-center gap-1.5 uppercase tracking-wide">
               <span className="w-2 h-2 rounded-full bg-[#0B6E99]" />
@@ -765,9 +781,15 @@ export default function FilterBar({
                   {options.canais.length} canais
                 </span>
               )}
+              {options.inside && options.inside.length > 0 && (
+                <span className="text-[10px] text-teal-700 font-semibold bg-teal-50/80 px-1.5 py-0.5 rounded border border-teal-200">
+                  {options.inside.length} inside
+                </span>
+              )}
               {((localFilters.canal && localFilters.canal.length > 0) ||
                 (localFilters.canalClientes && localFilters.canalClientes.length > 0) ||
-                (localFilters.deploy && localFilters.deploy.length > 0)) && (
+                (localFilters.deploy && localFilters.deploy.length > 0) ||
+                (localFilters.inside && localFilters.inside.length > 0)) && (
                 <button
                   type="button"
                   onClick={() =>
@@ -776,6 +798,7 @@ export default function FilterBar({
                       canal: [],
                       canalClientes: [],
                       deploy: [],
+                      inside: [],
                     }))
                   }
                   className="text-[10px] text-rose-600 hover:underline font-bold"
@@ -786,7 +809,7 @@ export default function FilterBar({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
             {/* 1. Nome do Canal */}
             <div>
               <Label className="text-[10px] font-bold text-slate-600 mb-1 block">
@@ -889,9 +912,21 @@ export default function FilterBar({
                 }}
               />
             </div>
+
+            {/* 4. Inside */}
+            <div>
+              <Label className="text-[10px] font-bold text-slate-600 mb-1 block">Inside</Label>
+              <MultiSelectDropdown
+                label="Inside"
+                options={options.inside || []}
+                selected={localFilters.inside || []}
+                onChange={(values) => setLocalFilters((prev) => ({ ...prev, inside: values }))}
+                placeholder="Todos os inside"
+                highlight={(localFilters.inside || []).length > 0}
+              />
+            </div>
           </div>
         </div>
-
         {/* Seleção de Bases */}
         <div>
           <Label className="text-[11px] font-bold text-slate-500 mb-1 block">

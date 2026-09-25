@@ -96,6 +96,7 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
     // 1. Nome do Canal (f.canal)
     // 2. Clientes do Canal (f.canalClientes)
     // 3. Deploy (f.deploy: 'AGIS' | 'Roland' | 'Nenhum' | '' | array)
+    // 4. Inside (f.inside: string[])
     const canaisFilter = Array.isArray(f.canal) ? f.canal : f.canal ? [f.canal] : []
     const canalClientesFilter = Array.isArray(f.canalClientes)
       ? f.canalClientes
@@ -103,12 +104,14 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
         ? [f.canalClientes]
         : []
     const deployFilter = Array.isArray(f.deploy) ? f.deploy : f.deploy ? [f.deploy] : []
+    const insideFilter = Array.isArray(f.inside) ? f.inside : f.inside ? [f.inside] : []
 
     const hasCanalFilter = canaisFilter.length > 0
     const hasCanalClientesFilter = canalClientesFilter.length > 0
     const hasDeployFilter = deployFilter.length > 0 && !deployFilter.includes('TODOS')
+    const hasInsideFilter = insideFilter.length > 0
 
-    if (hasCanalFilter || hasCanalClientesFilter || hasDeployFilter) {
+    if (hasCanalFilter || hasCanalClientesFilter || hasDeployFilter || hasInsideFilter) {
       try {
         const ccWhereClauses = [
           "(eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's')",
@@ -142,6 +145,13 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
           if (depConditions.length > 0) {
             ccWhereClauses.push('(' + depConditions.join(' OR ') + ')')
           }
+        }
+
+        if (hasInsideFilter) {
+          const insideSqlList = insideFilter
+            .map((ins) => "'" + sqlEsc(String(ins).trim().toUpperCase()) + "'")
+            .join(',')
+          ccWhereClauses.push("UPPER(TRIM(COALESCE(inside, ''))) IN (" + insideSqlList + ')')
         }
 
         const ccQuerySql =

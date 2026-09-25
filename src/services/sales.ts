@@ -223,6 +223,7 @@ export interface DashboardStatsResult {
     tipoDocumento: string[]
     canais?: CanalOption[]
     canaisClientes?: import('../types/sales').CanalClienteOption[]
+    inside?: string[]
     anos: number[]
     meses: number[]
     dias: number[]

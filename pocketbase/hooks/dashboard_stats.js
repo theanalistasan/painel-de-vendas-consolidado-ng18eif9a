@@ -302,6 +302,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     // 1. Nome do Canal (f.canal)
     // 2. Clientes do Canal (f.canalClientes)
     // 3. Deploy (f.deploy: 'AGIS' | 'Roland' | 'Nenhum' | '' | array)
+    // 4. Inside (f.inside: string[])
     const canaisFilter = Array.isArray(f.canal) ? f.canal : f.canal ? [f.canal] : []
     const canalClientesFilter = Array.isArray(f.canalClientes)
       ? f.canalClientes
@@ -309,12 +310,14 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         ? [f.canalClientes]
         : []
     const deployFilter = Array.isArray(f.deploy) ? f.deploy : f.deploy ? [f.deploy] : []
+    const insideFilter = Array.isArray(f.inside) ? f.inside : f.inside ? [f.inside] : []
 
     const hasCanalFilter = canaisFilter.length > 0
     const hasCanalClientesFilter = canalClientesFilter.length > 0
     const hasDeployFilter = deployFilter.length > 0 && !deployFilter.includes('TODOS')
+    const hasInsideFilter = insideFilter.length > 0
 
-    if (hasCanalFilter || hasCanalClientesFilter || hasDeployFilter) {
+    if (hasCanalFilter || hasCanalClientesFilter || hasDeployFilter || hasInsideFilter) {
       try {
         const ccWhereClauses = [
           "(eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's')",
@@ -348,6 +351,13 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           if (depConditions.length > 0) {
             ccWhereClauses.push('(' + depConditions.join(' OR ') + ')')
           }
+        }
+
+        if (hasInsideFilter) {
+          const insideSqlList = insideFilter
+            .map((ins) => "'" + sqlEsc(String(ins).trim().toUpperCase()) + "'")
+            .join(',')
+          ccWhereClauses.push("UPPER(TRIM(COALESCE(inside, ''))) IN (" + insideSqlList + ')')
         }
 
         const ccQuerySql =
@@ -1065,9 +1075,10 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       anosList = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
     }
 
-    // Opções de canais e clientes dos canais (apenas registros onde eh_canal = 1 / true)
+    // Opções de canais, clientes dos canais e inside (apenas registros onde eh_canal = 1 / true)
     let canaisOptions = []
     let canaisClientesOptions = []
+    let insideOptions = []
     try {
       const canalRows = arrayOf(
         new DynamicModel({
@@ -1119,6 +1130,28 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           })
         }
       }
+
+      // Opções deduplicadas e normalizadas de Inside (apenas registros eh_canal = 1)
+      const insideRows = arrayOf(
+        new DynamicModel({
+          inside_val: '',
+        }),
+      )
+      $app
+        .db()
+        .newQuery(
+          "SELECT DISTINCT UPPER(TRIM(inside)) AS inside_val FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND inside IS NOT NULL AND TRIM(inside) != '' ORDER BY 1 ASC",
+        )
+        .all(insideRows)
+
+      const insideSet = new Set()
+      for (let i = 0; i < insideRows.length; i++) {
+        const ins = (insideRows[i].inside_val || '').trim()
+        if (ins && !insideSet.has(ins)) {
+          insideSet.add(ins)
+          insideOptions.push(ins)
+        }
+      }
     } catch (canalOptErr) {
       console.warn('dashboard_stats: consulta de canais warning:', canalOptErr)
     }
@@ -1132,6 +1165,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       tipoDocumento: cleanFilterOptions(distinctSummaryCol('tipo_documento', 50)),
       canais: canaisOptions,
       canaisClientes: canaisClientesOptions,
+      inside: insideOptions,
       anos: anosList,
       meses: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
       dias: [
