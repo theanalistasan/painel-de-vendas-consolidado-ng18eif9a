@@ -32,6 +32,7 @@ import {
   type CanalClientePayload,
 } from '@/services/canais'
 import type { CanalCliente } from '@/types/sales'
+import { CanalDetailModal } from '@/components/CanalDetailModal'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -130,6 +131,36 @@ export default function Canais() {
 
   const [deleteTarget, setDeleteTarget] = useState<CanalCliente | null>(null)
   const [deleting, setDeleting] = useState(false)
+
+  // Estado do Card / Painel de Detalhe do Canal
+  const [selectedCanalForCard, setSelectedCanalForCard] = useState<string | null>(null)
+  const [cardModalOpen, setCardModalOpen] = useState(false)
+
+  // Handler para abrir o card do canal
+  const handleOpenCanalCard = useCallback((nomeCanal: string) => {
+    if (!nomeCanal || nomeCanal === 'Sem Canal' || nomeCanal === '-') return
+    setSelectedCanalForCard(nomeCanal)
+    setCardModalOpen(true)
+  }, [])
+
+  // Handler para cadastrar novo contato diretamente para o canal selecionado no card
+  const handleNewContactForCanal = useCallback((canalNome: string, defaultItem?: CanalCliente) => {
+    setEditing(null)
+    let d = defaultItem?.deploy || 'AGIS'
+    if (d.toUpperCase().includes('AGIS')) d = 'AGIS'
+    else if (d.toUpperCase().includes('ROLAND')) d = 'Roland'
+
+    setForm({
+      ...emptyForm,
+      nome_canal: canalNome,
+      eh_canal: defaultItem?.eh_canal ?? true,
+      deploy: d,
+      inside: defaultItem?.inside || '',
+      segmento: defaultItem?.segmento || 'DIGITAL PRINTING (DP)',
+    })
+    setSaveError(null)
+    setModalOpen(true)
+  }, [])
 
   // Lista única de nomes de canais e insides para os selects rápidos
   const uniqueCanaisList = useMemo(() => {
@@ -710,11 +741,23 @@ export default function Canais() {
                   {indicadores.porNomeCanal.map((c) => (
                     <div
                       key={c.nome}
-                      className="p-3 hover:bg-slate-50/70 flex items-center justify-between text-xs transition-colors"
+                      onClick={() => handleOpenCanalCard(c.nome)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          handleOpenCanalCard(c.nome)
+                        }
+                      }}
+                      className="p-3 hover:bg-cyan-50/60 cursor-pointer flex items-center justify-between text-xs transition-colors group"
+                      title={`Clique para abrir o card do canal ${c.nome}`}
                     >
                       <div className="min-w-0 pr-2">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-slate-800 truncate">{c.nome}</span>
+                          <span className="font-bold text-slate-800 group-hover:text-[#0B6E99] group-hover:underline truncate">
+                            {c.nome}
+                          </span>
                           {c.deploy && (
                             <Badge
                               variant="outline"
@@ -735,11 +778,14 @@ export default function Canais() {
                           {c.totalRegistros} contatos cadastrados
                         </p>
                       </div>
-                      <div className="text-right shrink-0">
-                        <span className="font-extrabold text-[#0B6E99] text-sm">
-                          {c.totalClientes}
-                        </span>
-                        <span className="text-[10px] text-slate-400 block">clientes</span>
+                      <div className="text-right shrink-0 flex items-center gap-1">
+                        <div>
+                          <span className="font-extrabold text-[#0B6E99] text-sm">
+                            {c.totalClientes}
+                          </span>
+                          <span className="text-[10px] text-slate-400 block">clientes</span>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-[#0B6E99] group-hover:translate-x-0.5 transition-all ml-1 shrink-0" />
                       </div>
                     </div>
                   ))}
@@ -1260,9 +1306,26 @@ export default function Canais() {
                           {/* Título do Grupo e Totais Agregados */}
                           <td colSpan={7} className="py-2.5 px-3">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-extrabold text-slate-900 text-xs">
-                                {group.title}
-                              </span>
+                              {groupByLevel === 'canal' ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleOpenCanalCard(group.title)
+                                  }}
+                                  className="font-extrabold text-[#0B6E99] hover:text-[#084F6E] hover:underline text-xs text-left inline-flex items-center gap-1 group/btn cursor-pointer"
+                                  title={`Abrir card consolidado do canal ${group.title}`}
+                                >
+                                  <span>{group.title}</span>
+                                  <span className="text-[10px] text-[#0B6E99] opacity-75 group-hover/btn:opacity-100 font-semibold bg-cyan-100/70 rounded px-1 py-0 ml-0.5">
+                                    abrir card ↗
+                                  </span>
+                                </button>
+                              ) : (
+                                <span className="font-extrabold text-slate-900 text-xs">
+                                  {group.title}
+                                </span>
+                              )}
                               {group.subtitle && (
                                 <span className="text-[11px] font-mono text-slate-500">
                                   ({group.subtitle})
@@ -1271,7 +1334,25 @@ export default function Canais() {
                               {group.badgeText && (
                                 <Badge
                                   variant="outline"
-                                  className={cn('text-[10px] px-1.5 py-0', group.badgeClass)}
+                                  onClick={
+                                    groupByLevel === 'cliente' && group.badgeText
+                                      ? (e) => {
+                                          e.stopPropagation()
+                                          handleOpenCanalCard(group.badgeText!)
+                                        }
+                                      : undefined
+                                  }
+                                  className={cn(
+                                    'text-[10px] px-1.5 py-0',
+                                    group.badgeClass,
+                                    groupByLevel === 'cliente' &&
+                                      'cursor-pointer hover:underline hover:border-[#0B6E99]',
+                                  )}
+                                  title={
+                                    groupByLevel === 'cliente'
+                                      ? `Abrir card do canal ${group.badgeText}`
+                                      : undefined
+                                  }
                                 >
                                   {group.badgeText}
                                 </Badge>
@@ -1335,9 +1416,21 @@ export default function Canais() {
 
                                 {/* Canal */}
                                 <td className="py-2.5 px-3">
-                                  <span className="font-extrabold text-slate-900 block truncate max-w-[130px]">
-                                    {row.nome_canal || '-'}
-                                  </span>
+                                  {row.nome_canal ? (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleOpenCanalCard(row.nome_canal)
+                                      }}
+                                      className="font-extrabold text-[#0B6E99] hover:underline text-left block truncate max-w-[130px] cursor-pointer"
+                                      title={`Abrir card do canal ${row.nome_canal}`}
+                                    >
+                                      {row.nome_canal}
+                                    </button>
+                                  ) : (
+                                    <span className="text-slate-300">-</span>
+                                  )}
                                   {row.status && (
                                     <span className="text-[10px] text-slate-400">{row.status}</span>
                                   )}
@@ -1515,9 +1608,18 @@ export default function Canais() {
                       <tr key={row.id} className="hover:bg-slate-50/70 transition-colors">
                         {/* Canal */}
                         <td className="py-2.5 px-3">
-                          <span className="font-extrabold text-slate-900 block truncate max-w-[130px]">
-                            {row.nome_canal || '-'}
-                          </span>
+                          {row.nome_canal ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenCanalCard(row.nome_canal)}
+                              className="font-extrabold text-[#0B6E99] hover:underline text-left block truncate max-w-[130px] cursor-pointer"
+                              title={`Abrir card do canal ${row.nome_canal}`}
+                            >
+                              {row.nome_canal}
+                            </button>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
                           {row.status && (
                             <span className="text-[10px] text-slate-400">{row.status}</span>
                           )}
@@ -1959,6 +2061,21 @@ export default function Canais() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* CARD / PAINEL DE DETALHE DO CANAL */}
+      <CanalDetailModal
+        canalNome={selectedCanalForCard}
+        open={cardModalOpen}
+        onOpenChange={setCardModalOpen}
+        allItems={items}
+        onEditItem={(item) => {
+          openEdit(item)
+        }}
+        onDeleteItem={(item) => {
+          setDeleteTarget(item)
+        }}
+        onNewContactForCanal={handleNewContactForCanal}
+      />
     </div>
   )
 }
