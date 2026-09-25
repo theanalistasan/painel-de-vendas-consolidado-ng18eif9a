@@ -114,10 +114,24 @@ export async function fetchCanaisClientes(
 
   const runQuery = async () => {
     return Promise.race([
-      pb.collection<CanalCliente>('canais_clientes').getList(page, perPage, {
-        filter,
-        sort,
-      }),
+      perPage === -1
+        ? pb
+            .collection<CanalCliente>('canais_clientes')
+            .getFullList({
+              filter,
+              sort,
+            })
+            .then((items) => ({
+              items,
+              page: 1,
+              perPage: items.length,
+              totalItems: items.length,
+              totalPages: 1,
+            }))
+        : pb.collection<CanalCliente>('canais_clientes').getList(page, perPage, {
+            filter,
+            sort,
+          }),
       new Promise<never>((_, reject) =>
         setTimeout(
           () => reject(new Error('Tempo limite excedido ao buscar registros de canais.')),

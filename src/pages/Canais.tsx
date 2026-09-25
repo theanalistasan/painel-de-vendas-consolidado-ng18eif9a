@@ -5,8 +5,8 @@ import {
   Pencil,
   Trash2,
   Search,
-  ChevronLeft,
   ChevronRight,
+  ChevronDown,
   RotateCcw,
   RefreshCw,
   Building2,
@@ -19,6 +19,8 @@ import {
   Mail,
   User,
   Filter,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from 'lucide-react'
 import {
   fetchCanaisClientes,
@@ -53,8 +55,6 @@ import {
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
-
-const PER_PAGE = 20
 
 const DEPLOY_OPTIONS = ['AGIS', 'Roland', 'Nenhum'] as const
 
@@ -99,18 +99,27 @@ export default function Canais() {
 
   // Estados do CRUD / Tabela
   const [items, setItems] = useState<CanalCliente[]>([])
-  const [page, setPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
+  const [, setPage] = useState(1)
+  const [, setTotalPages] = useState(1)
   const [totalItems, setTotalItems] = useState(0)
   const [loadingList, setLoadingList] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   // Filtros rápidos
+  // Padrão inicial conforme solicitado: filtro "É Canal" pré-selecionado em "Sim" (eh_canal = true)
   const [search, setSearch] = useState('')
   const [canalFilter, setCanalFilter] = useState('__all')
   const [deployFilter, setDeployFilter] = useState('__all')
   const [insideFilter, setInsideFilter] = useState('__all')
-  const [ehCanalFilter, setEhCanalFilter] = useState('all')
+  const [ehCanalFilter, setEhCanalFilter] = useState<'all' | 'true' | 'false'>('true')
+
+  // Estado de Agrupamento / Colapso do Relatório (Nível e nós expandidos)
+  // Níveis possíveis: 'none' (tabela detalhada clássica), 'eh_canal' (É Canal), 'canal' (Canal), 'inside' (Inside), 'cliente' (Cliente)
+  const [groupByLevel, setGroupByLevel] = useState<
+    'eh_canal' | 'canal' | 'inside' | 'cliente' | 'none'
+  >('canal')
+  // Por padrão, o relatório deve ser apresentado colapsado (todos os grupos fechados)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
   // Modais de Criação/Edição e Exclusão
   const [modalOpen, setModalOpen] = useState(false)
@@ -136,6 +145,171 @@ export default function Canais() {
       .sort()
   }, [indicadores])
 
+  // Itens classificados por Canal em ordem alfabética crescente (A→Z), com desempate por Cliente
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a, b) => {
+      const canalA = (a.nome_canal || '').trim()
+      const canalB = (b.nome_canal || '').trim()
+      const compCanal = canalA.localeCompare(canalB, 'pt-BR', { sensitivity: 'base' })
+      if (compCanal !== 0) return compCanal
+      const cliA = (a.nome_cliente || a.codigo_cliente || '').trim()
+      const cliB = (b.nome_cliente || b.codigo_cliente || '').trim()
+      return cliA.localeCompare(cliB, 'pt-BR', { sensitivity: 'base' })
+    })
+  }, [items])
+
+  // Estrutura de grupos agregados de acordo com groupByLevel
+  interface CanalReportGroup {
+    key: string
+    title: string
+    subtitle?: string
+    badgeText?: string
+    badgeVariant?: 'default' | 'secondary' | 'outline'
+    badgeClass?: string
+    totalRegistros: number
+    totalClientes: number
+    totalCanais: number
+    items: CanalCliente[]
+  }
+
+  const groupedData = useMemo<CanalReportGroup[]>(() => {
+    if (groupByLevel === 'none') return []
+
+    const map = new Map<
+      string,
+      {
+        title: string
+        subtitle?: string
+        badgeText?: string
+        badgeVariant?: 'default' | 'secondary' | 'outline'
+        badgeClass?: string
+        items: CanalCliente[]
+        clientesSet: Set<string>
+        canaisSet: Set<string>
+      }
+    >()
+
+    for (const item of sortedItems) {
+      let groupKey = ''
+      let groupTitle = ''
+      let groupSubtitle: string | undefined
+      let badgeText: string | undefined
+      let badgeClass: string | undefined
+
+      if (groupByLevel === 'eh_canal') {
+        const isTrue = item.eh_canal === true
+        groupKey = isTrue ? 'eh_canal_sim' : 'eh_canal_nao'
+        groupTitle = isTrue
+          ? 'É Canal Oficial (Canais = SIM)'
+          : 'Não é Canal Oficial (Canais = NÃO)'
+        badgeText = isTrue ? 'SIM' : 'NÃO'
+        badgeClass = isTrue
+          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+          : 'bg-slate-100 text-slate-600 border-slate-200'
+      } else if (groupByLevel === 'canal') {
+        const canalName = (item.nome_canal || 'Sem Canal').trim()
+        groupKey = `canal_${canalName}`
+        groupTitle = canalName
+        const rawDeploy = (item.deploy || '').trim().toUpperCase()
+        if (rawDeploy.includes('AGIS')) {
+          badgeText = 'AGIS'
+          badgeClass = 'bg-cyan-50 text-[#0B6E99] border-cyan-200 font-bold'
+        } else if (rawDeploy.includes('ROLAND')) {
+          badgeText = 'Roland'
+          badgeClass = 'bg-teal-50 text-teal-700 border-teal-200 font-bold'
+        } else if (item.deploy) {
+          badgeText = item.deploy
+          badgeClass = 'bg-slate-100 text-slate-600 border-slate-200'
+        }
+      } else if (groupByLevel === 'inside') {
+        const insideName = (item.inside || 'SEM INSIDE').trim().toUpperCase()
+        groupKey = `inside_${insideName}`
+        groupTitle = insideName
+        badgeText = 'Inside'
+        badgeClass = 'bg-teal-50 text-teal-800 border-teal-200'
+      } else if (groupByLevel === 'cliente') {
+        const cod = (item.codigo_cliente || '').trim().toUpperCase()
+        const nomeCli = (item.nome_cliente || 'Sem Nome').trim()
+        groupKey = `cli_${cod}_${nomeCli}`
+        groupTitle = nomeCli
+        groupSubtitle = cod ? `Cód: ${cod}` : undefined
+        if (item.nome_canal) {
+          badgeText = item.nome_canal
+          badgeClass = 'bg-cyan-50 text-[#0B6E99] border-cyan-200'
+        }
+      }
+
+      if (!map.has(groupKey)) {
+        map.set(groupKey, {
+          title: groupTitle,
+          subtitle: groupSubtitle,
+          badgeText,
+          badgeClass,
+          items: [],
+          clientesSet: new Set(),
+          canaisSet: new Set(),
+        })
+      }
+
+      const entry = map.get(groupKey)!
+      entry.items.push(item)
+      if (item.codigo_cliente || item.nome_cliente) {
+        entry.clientesSet.add(item.codigo_cliente || item.nome_cliente)
+      }
+      if (item.nome_canal) {
+        entry.canaisSet.add(item.nome_canal)
+      }
+    }
+
+    const groups: CanalReportGroup[] = Array.from(map.entries()).map(([key, data]) => ({
+      key,
+      title: data.title,
+      subtitle: data.subtitle,
+      badgeText: data.badgeText,
+      badgeClass: data.badgeClass,
+      totalRegistros: data.items.length,
+      totalClientes: data.clientesSet.size,
+      totalCanais: data.canaisSet.size,
+      items: data.items,
+    }))
+
+    // Ordenação padrão por Canal em ordem alfabética crescente (A→Z)
+    // Se o agrupamento for por Canal, ordena os títulos em ordem alfabética A→Z
+    if (groupByLevel === 'canal') {
+      groups.sort((a, b) => a.title.localeCompare(b.title, 'pt-BR', { sensitivity: 'base' }))
+    } else if (groupByLevel === 'eh_canal') {
+      // Sim primeiro, depois Não
+      groups.sort((a, b) => (a.key === 'eh_canal_sim' ? -1 : 1))
+    } else {
+      // Demais grupos em ordem alfabética do título
+      groups.sort((a, b) => a.title.localeCompare(b.title, 'pt-BR', { sensitivity: 'base' }))
+    }
+
+    return groups
+  }, [sortedItems, groupByLevel])
+
+  // Handlers para expandir / colapsar grupos
+  const toggleGroup = useCallback((groupKey: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupKey)) {
+        next.delete(groupKey)
+      } else {
+        next.add(groupKey)
+      }
+      return next
+    })
+  }, [])
+
+  const expandAllGroups = useCallback(() => {
+    const allKeys = new Set(groupedData.map((g) => g.key))
+    setExpandedGroups(allKeys)
+  }, [groupedData])
+
+  const collapseAllGroups = useCallback(() => {
+    setExpandedGroups(new Set())
+  }, [])
+
   // Carrega Indicadores
   const loadIndicadores = useCallback(async () => {
     try {
@@ -159,18 +333,23 @@ export default function Canais() {
     try {
       setLoadingList(true)
       setLoadError(null)
+      // Carrega a base filtrada completa (perPage: -1) para permitir agrupamento colapsado multinível
+      // (a base tem poucas centenas de registros, ~576 no total)
       const res = await fetchCanaisClientes({
-        page,
-        perPage: PER_PAGE,
+        page: 1,
+        perPage: -1,
         search: search.trim() || undefined,
         canal: canalFilter,
         deploy: deployFilter,
         inside: insideFilter,
         ehCanal: ehCanalFilter,
+        sort: 'nome_canal,nome_cliente',
       })
       setItems(res.items || [])
-      setTotalPages(res.totalPages || 1)
+      setTotalPages(1)
       setTotalItems(res.totalItems || 0)
+      // Mantém o estado padrão colapsado ao recarregar a lista
+      setExpandedGroups(new Set())
     } catch (err) {
       console.error('Erro ao buscar canais_clientes:', err)
       const msg = err instanceof Error ? err.message : 'Falha ao carregar lista de canais.'
@@ -183,7 +362,7 @@ export default function Canais() {
     } finally {
       setLoadingList(false)
     }
-  }, [page, search, canalFilter, deployFilter, insideFilter, ehCanalFilter, toast])
+  }, [search, canalFilter, deployFilter, insideFilter, ehCanalFilter, toast])
 
   useEffect(() => {
     loadIndicadores()
@@ -194,7 +373,7 @@ export default function Canais() {
   }, [loadList])
 
   // Reset page when filters change
-  const handleFilterChange = (setter: (val: string) => void, val: string) => {
+  const handleFilterChange = <T,>(setter: React.Dispatch<React.SetStateAction<T>>, val: T) => {
     setter(val)
     setPage(1)
   }
@@ -204,8 +383,9 @@ export default function Canais() {
     setCanalFilter('__all')
     setDeployFilter('__all')
     setInsideFilter('__all')
-    setEhCanalFilter('all')
+    setEhCanalFilter('true')
     setPage(1)
+    setExpandedGroups(new Set())
   }
 
   // Abertura do modal de criação
@@ -798,32 +978,23 @@ export default function Canais() {
           </div>
 
           {/* Segunda linha de filtros rápidos: eh_canal e botão Limpar */}
-          <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-bold text-slate-500">É Canal:</span>
               <div className="flex items-center gap-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={ehCanalFilter === 'all' ? 'default' : 'outline'}
-                  onClick={() => handleFilterChange(setEhCanalFilter, 'all')}
-                  className={cn(
-                    'h-7 px-2.5 text-[11px] rounded-full',
-                    ehCanalFilter === 'all' ? 'bg-[#0B6E99] text-white' : 'text-slate-600',
-                  )}
-                >
-                  Todos
-                </Button>
                 <Button
                   type="button"
                   size="sm"
                   variant={ehCanalFilter === 'true' ? 'default' : 'outline'}
                   onClick={() => handleFilterChange(setEhCanalFilter, 'true')}
                   className={cn(
-                    'h-7 px-2.5 text-[11px] rounded-full',
-                    ehCanalFilter === 'true' ? 'bg-[#0B6E99] text-white' : 'text-slate-600',
+                    'h-7 px-2.5 text-[11px] rounded-full font-bold',
+                    ehCanalFilter === 'true'
+                      ? 'bg-[#0B6E99] text-white hover:bg-[#085273]'
+                      : 'text-slate-600 hover:text-slate-900',
                   )}
                 >
+                  <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-300" />
                   Sim (Canais)
                 </Button>
                 <Button
@@ -832,11 +1003,28 @@ export default function Canais() {
                   variant={ehCanalFilter === 'false' ? 'default' : 'outline'}
                   onClick={() => handleFilterChange(setEhCanalFilter, 'false')}
                   className={cn(
-                    'h-7 px-2.5 text-[11px] rounded-full',
-                    ehCanalFilter === 'false' ? 'bg-[#0B6E99] text-white' : 'text-slate-600',
+                    'h-7 px-2.5 text-[11px] rounded-full font-bold',
+                    ehCanalFilter === 'false'
+                      ? 'bg-[#0B6E99] text-white hover:bg-[#085273]'
+                      : 'text-slate-600 hover:text-slate-900',
                   )}
                 >
+                  <XCircle className="w-3 h-3 mr-1 text-rose-300" />
                   Não
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={ehCanalFilter === 'all' ? 'default' : 'outline'}
+                  onClick={() => handleFilterChange(setEhCanalFilter, 'all')}
+                  className={cn(
+                    'h-7 px-2.5 text-[11px] rounded-full font-bold',
+                    ehCanalFilter === 'all'
+                      ? 'bg-[#0B6E99] text-white hover:bg-[#085273]'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                >
+                  Todos
                 </Button>
               </div>
             </div>
@@ -845,7 +1033,7 @@ export default function Canais() {
               canalFilter !== '__all' ||
               deployFilter !== '__all' ||
               insideFilter !== '__all' ||
-              ehCanalFilter !== 'all') && (
+              ehCanalFilter !== 'true') && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -859,7 +1047,133 @@ export default function Canais() {
           </div>
         </CardHeader>
 
-        {/* Tabela de Registros */}
+        {/* Barra de Controle de Colapso e Agrupamento do Relatório */}
+        <div className="px-4 sm:px-6 py-2.5 bg-slate-50/80 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+          {/* Nível de Agrupamento */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-slate-700 font-bold">
+              <Layers className="w-3.5 h-3.5 text-[#0B6E99]" />
+              <span className="text-[11px]">Agrupar / Colapsar por:</span>
+            </div>
+            <div className="inline-flex rounded-lg bg-slate-200/70 p-0.5 gap-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setGroupByLevel('eh_canal')
+                  setExpandedGroups(new Set())
+                }}
+                className={cn(
+                  'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all',
+                  groupByLevel === 'eh_canal'
+                    ? 'bg-white text-[#0B6E99] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900',
+                )}
+                title="Agrupar e colapsar por É Canal (SIM / NÃO)"
+              >
+                É Canal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGroupByLevel('canal')
+                  setExpandedGroups(new Set())
+                }}
+                className={cn(
+                  'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all',
+                  groupByLevel === 'canal'
+                    ? 'bg-white text-[#0B6E99] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900',
+                )}
+                title="Agrupar e colapsar por Canal (nome_canal em ordem alfabética)"
+              >
+                Canal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGroupByLevel('inside')
+                  setExpandedGroups(new Set())
+                }}
+                className={cn(
+                  'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all',
+                  groupByLevel === 'inside'
+                    ? 'bg-white text-[#0B6E99] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900',
+                )}
+                title="Agrupar e colapsar por Inside Sales"
+              >
+                Inside
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGroupByLevel('cliente')
+                  setExpandedGroups(new Set())
+                }}
+                className={cn(
+                  'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all',
+                  groupByLevel === 'cliente'
+                    ? 'bg-white text-[#0B6E99] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900',
+                )}
+                title="Agrupar e colapsar por Cliente"
+              >
+                Cliente
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGroupByLevel('none')
+                  setExpandedGroups(new Set())
+                }}
+                className={cn(
+                  'px-2.5 py-1 text-[11px] font-medium rounded-md transition-all',
+                  groupByLevel === 'none'
+                    ? 'bg-white text-slate-900 shadow-xs font-bold'
+                    : 'text-slate-500 hover:text-slate-800',
+                )}
+                title="Visualização direta sem agrupamento (todos os registros)"
+              >
+                Sem Agrupamento
+              </button>
+            </div>
+          </div>
+
+          {/* Botões de Ação Rápida de Expansão / Colapso */}
+          {groupByLevel !== 'none' && groupedData.length > 0 && (
+            <div className="flex items-center gap-1.5 self-end sm:self-auto">
+              <span className="text-[11px] text-slate-500 font-medium mr-1 hidden sm:inline">
+                {groupedData.length} grupo(s) •
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={collapseAllGroups}
+                disabled={expandedGroups.size === 0}
+                className="h-7 px-2.5 text-[11px] bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-bold gap-1 shadow-2xs"
+                title="Colapsar todos os grupos (modo compacto com totais)"
+              >
+                <ChevronsDownUp className="w-3 h-3 text-[#0B6E99]" />
+                Colapsar Todos
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={expandAllGroups}
+                disabled={expandedGroups.size === groupedData.length}
+                className="h-7 px-2.5 text-[11px] bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-bold gap-1 shadow-2xs"
+                title="Expandir todos os grupos para ver os registros individuais"
+              >
+                <ChevronsUpDown className="w-3 h-3 text-[#0B6E99]" />
+                Expandir Todos
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* Tabela de Registros com Colapso / Agrupamento */}
         <CardContent className="p-0">
           {loadingList ? (
             <div className="p-12 flex flex-col items-center justify-center gap-3 text-slate-400">
@@ -878,7 +1192,7 @@ export default function Canais() {
                 Tentar novamente
               </Button>
             </div>
-          ) : items.length === 0 ? (
+          ) : sortedItems.length === 0 ? (
             <div className="p-12 text-center text-slate-400">
               <Filter className="w-8 h-8 mx-auto mb-2 text-slate-300" />
               <p className="text-xs font-semibold text-slate-600">Nenhum registro encontrado</p>
@@ -886,7 +1200,296 @@ export default function Canais() {
                 Tente ajustar a busca ou os filtros rápidos acima
               </p>
             </div>
+          ) : groupByLevel !== 'none' ? (
+            /* VISUALIZAÇÃO AGRUPADA E COLAPSÁVEL (PADRÃO COLAPSADO) */
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="py-2.5 px-3 w-10 text-center">
+                      <Layers className="w-3.5 h-3.5 mx-auto text-slate-400" />
+                    </th>
+                    <th className="py-2.5 px-3">Canal</th>
+                    <th className="py-2.5 px-3">Deploy</th>
+                    <th className="py-2.5 px-3">COD</th>
+                    <th className="py-2.5 px-3">Cliente / Razão Social</th>
+                    <th className="py-2.5 px-3">Contato / Cargo</th>
+                    <th className="py-2.5 px-3">E-mail / Telefone</th>
+                    <th className="py-2.5 px-3">Inside</th>
+                    <th className="py-2.5 px-3 text-center">É Canal</th>
+                    <th className="py-2.5 px-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {groupedData.map((group) => {
+                    const isExpanded = expandedGroups.has(group.key)
+
+                    return (
+                      <React.Fragment key={group.key}>
+                        {/* Linha de Cabeçalho do Grupo (Agregada / Colapsável) */}
+                        <tr
+                          onClick={() => toggleGroup(group.key)}
+                          className={cn(
+                            'cursor-pointer transition-colors border-y border-slate-200/80 font-semibold select-none',
+                            isExpanded
+                              ? 'bg-cyan-50/60 hover:bg-cyan-100/50 text-slate-900'
+                              : 'bg-slate-50/90 hover:bg-slate-100/80 text-slate-800',
+                          )}
+                          title={
+                            isExpanded ? 'Clique para recolher grupo' : 'Clique para expandir grupo'
+                          }
+                        >
+                          {/* Botão de Toggle */}
+                          <td className="py-2.5 px-3 text-center align-middle">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleGroup(group.key)
+                              }}
+                              className="p-1 rounded hover:bg-cyan-200/60 text-[#0B6E99] focus:outline-hidden transition-colors"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-[#0B6E99]" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-slate-500" />
+                              )}
+                            </button>
+                          </td>
+
+                          {/* Título do Grupo e Totais Agregados */}
+                          <td colSpan={7} className="py-2.5 px-3">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-extrabold text-slate-900 text-xs">
+                                {group.title}
+                              </span>
+                              {group.subtitle && (
+                                <span className="text-[11px] font-mono text-slate-500">
+                                  ({group.subtitle})
+                                </span>
+                              )}
+                              {group.badgeText && (
+                                <Badge
+                                  variant="outline"
+                                  className={cn('text-[10px] px-1.5 py-0', group.badgeClass)}
+                                >
+                                  {group.badgeText}
+                                </Badge>
+                              )}
+                              <span className="text-[11px] text-slate-400 font-normal ml-2">•</span>
+                              <Badge
+                                variant="secondary"
+                                className="text-[10px] bg-slate-200/70 text-slate-700 font-bold px-2 py-0.2"
+                              >
+                                {group.totalRegistros} contato(s)
+                              </Badge>
+                              {groupByLevel !== 'cliente' && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] bg-white text-[#0B6E99] border-cyan-200 font-bold px-2 py-0.2"
+                                >
+                                  {group.totalClientes} cliente(s) único(s)
+                                </Badge>
+                              )}
+                              {groupByLevel === 'eh_canal' || groupByLevel === 'inside' ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] bg-white text-teal-700 border-teal-200 font-bold px-2 py-0.2"
+                                >
+                                  {group.totalCanais} canal(is)
+                                </Badge>
+                              ) : null}
+                            </div>
+                          </td>
+
+                          {/* Status consolidado / Indicador de estado */}
+                          <td className="py-2.5 px-3 text-center">
+                            <span className="text-[10px] font-bold text-[#0B6E99]">
+                              {isExpanded ? 'Expandido' : 'Colapsado'}
+                            </span>
+                          </td>
+
+                          {/* Ação rápida de alternar */}
+                          <td className="py-2.5 px-3 text-right">
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {isExpanded ? 'Recolher ▲' : 'Expandir ▼'}
+                            </span>
+                          </td>
+                        </tr>
+
+                        {/* Linhas detalhadas quando o grupo está expandido */}
+                        {isExpanded &&
+                          group.items.map((row) => {
+                            const deployRaw = (row.deploy || '').toUpperCase()
+                            const isAgis = deployRaw.includes('AGIS')
+                            const isRoland = deployRaw.includes('ROLAND')
+
+                            return (
+                              <tr
+                                key={row.id}
+                                className="bg-white hover:bg-slate-50/80 transition-colors border-b border-slate-100"
+                              >
+                                <td className="py-2.5 px-3 text-center text-slate-300">
+                                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
+                                </td>
+
+                                {/* Canal */}
+                                <td className="py-2.5 px-3">
+                                  <span className="font-extrabold text-slate-900 block truncate max-w-[130px]">
+                                    {row.nome_canal || '-'}
+                                  </span>
+                                  {row.status && (
+                                    <span className="text-[10px] text-slate-400">{row.status}</span>
+                                  )}
+                                </td>
+
+                                {/* Deploy */}
+                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                  {isAgis ? (
+                                    <Badge className="bg-cyan-50 text-[#0B6E99] border-cyan-200 hover:bg-cyan-50 text-[10px] font-bold">
+                                      AGIS
+                                    </Badge>
+                                  ) : isRoland ? (
+                                    <Badge className="bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-50 text-[10px] font-bold">
+                                      Roland
+                                    </Badge>
+                                  ) : (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-slate-500 border-slate-200 text-[10px]"
+                                    >
+                                      {row.deploy || 'Nenhum'}
+                                    </Badge>
+                                  )}
+                                </td>
+
+                                {/* COD */}
+                                <td className="py-2.5 px-3 font-mono font-bold text-[#0B6E99]">
+                                  {row.codigo_cliente || '-'}
+                                </td>
+
+                                {/* Cliente / Razão Social */}
+                                <td className="py-2.5 px-3 max-w-[220px]">
+                                  <span
+                                    className="font-semibold text-slate-800 block truncate"
+                                    title={row.nome_cliente}
+                                  >
+                                    {row.nome_cliente || '-'}
+                                  </span>
+                                  {row.segmento && (
+                                    <span className="text-[10px] text-slate-400 block truncate">
+                                      {row.segmento}
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Contato / Cargo */}
+                                <td className="py-2.5 px-3 max-w-[160px]">
+                                  <span
+                                    className="text-slate-700 font-medium block truncate"
+                                    title={row.contato}
+                                  >
+                                    {row.contato || '-'}
+                                  </span>
+                                  {row.cargo && (
+                                    <span className="text-[10px] text-slate-400 block truncate">
+                                      {row.cargo}
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* E-mail / Telefone */}
+                                <td className="py-2.5 px-3 max-w-[180px]">
+                                  {row.email ? (
+                                    <a
+                                      href={`mailto:${row.email}`}
+                                      className="text-[#0B6E99] hover:underline flex items-center gap-1 truncate font-medium text-[11px]"
+                                      title={row.email}
+                                    >
+                                      <Mail className="w-3 h-3 shrink-0" />
+                                      <span className="truncate">{row.email}</span>
+                                    </a>
+                                  ) : null}
+                                  {row.telefone ? (
+                                    <span className="text-slate-500 flex items-center gap-1 text-[10px] mt-0.5">
+                                      <Phone className="w-2.5 h-2.5 shrink-0" />
+                                      {row.telefone}
+                                    </span>
+                                  ) : null}
+                                  {!row.email && !row.telefone && (
+                                    <span className="text-slate-300">-</span>
+                                  )}
+                                </td>
+
+                                {/* Inside */}
+                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                  {row.inside ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-teal-50/60 text-teal-800 border-teal-200 text-[10px] font-semibold"
+                                    >
+                                      {row.inside}
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-slate-300">-</span>
+                                  )}
+                                </td>
+
+                                {/* É Canal */}
+                                <td className="py-2.5 px-3 text-center">
+                                  {row.eh_canal ? (
+                                    <span
+                                      className="inline-flex items-center gap-1 text-emerald-700 font-bold text-[10px]"
+                                      title="Marcado como Canal oficial (CANAIS=SIM)"
+                                    >
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                      Sim
+                                    </span>
+                                  ) : (
+                                    <span
+                                      className="inline-flex items-center gap-1 text-slate-400 text-[10px]"
+                                      title="Não marcado como canal oficial"
+                                    >
+                                      <XCircle className="w-3.5 h-3.5 text-slate-300" />
+                                      Não
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Ações */}
+                                <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => openEdit(row)}
+                                      className="w-7 h-7 text-slate-500 hover:text-[#0B6E99] hover:bg-cyan-50"
+                                      title="Alterar registro"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => setDeleteTarget(row)}
+                                      className="w-7 h-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                                      title="Excluir registro"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                      </React.Fragment>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           ) : (
+            /* VISUALIZAÇÃO DIRETA SEM AGRUPAMENTO */
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
@@ -903,7 +1506,7 @@ export default function Canais() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {items.map((row) => {
+                  {sortedItems.map((row) => {
                     const deployRaw = (row.deploy || '').toUpperCase()
                     const isAgis = deployRaw.includes('AGIS')
                     const isRoland = deployRaw.includes('ROLAND')
@@ -1062,37 +1665,31 @@ export default function Canais() {
             </div>
           )}
 
-          {/* Paginação */}
-          {totalPages > 1 && (
-            <div className="p-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 bg-slate-50/30">
-              <span>
-                Página <strong className="text-slate-800">{page}</strong> de{' '}
-                <strong className="text-slate-800">{totalPages}</strong> ({totalItems} itens)
-              </span>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1 || loadingList}
-                  className="h-8 px-2 text-xs"
-                >
-                  <ChevronLeft className="w-4 h-4 mr-1" />
-                  Anterior
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages || loadingList}
-                  className="h-8 px-2 text-xs"
-                >
-                  Próxima
-                  <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
-              </div>
+          {/* Rodapé informativo de totais e estado colapsado */}
+          <div className="p-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 bg-slate-50/30">
+            <span>
+              Total exibido: <strong className="text-slate-800">{sortedItems.length}</strong>{' '}
+              registro(s)
+              {groupByLevel !== 'none' && (
+                <>
+                  {' '}
+                  distribuídos em <strong className="text-slate-800">
+                    {groupedData.length}
+                  </strong>{' '}
+                  grupo(s)
+                  {expandedGroups.size > 0 && (
+                    <span className="text-[#0B6E99] font-semibold">
+                      {' '}
+                      ({expandedGroups.size} expandido(s))
+                    </span>
+                  )}
+                </>
+              )}
+            </span>
+            <div className="text-[11px] text-slate-400 font-medium">
+              Classificação padrão: <strong className="text-slate-600">Canal (A→Z)</strong>
             </div>
-          )}
+          </div>
         </CardContent>
       </Card>
 
