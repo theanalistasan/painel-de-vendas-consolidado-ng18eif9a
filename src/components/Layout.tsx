@@ -131,6 +131,11 @@ export default function Layout() {
       icon: TableIcon,
     },
     {
+      title: 'Canais',
+      href: '/canais',
+      icon: Network,
+    },
+    {
       title: 'Importar Dados',
       href: '/importar',
       icon: UploadCloud,
@@ -166,6 +171,8 @@ export default function Layout() {
         return 'Dashboard — Visão Canais'
       case '/vendas':
         return 'Relatório Consolidado de Vendas'
+      case '/canais':
+        return 'Manutenção de Canais'
       case '/importar':
         return 'Importação e Consolidação de Bases'
       case '/admin':

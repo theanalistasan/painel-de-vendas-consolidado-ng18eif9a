@@ -8,6 +8,7 @@ import GuardedRoute from '@/components/GuardedRoute'
 import DashboardGeral from './pages/DashboardGeral'
 import DashboardCanais from './pages/DashboardCanais'
 import Vendas from './pages/Vendas'
+import Canais from './pages/Canais'
 import Importar from './pages/Importar'
 import Admin from './pages/Admin'
 import Usuarios from './pages/Usuarios'
@@ -31,6 +32,8 @@ const App = () => (
             <Route path="/dashboard/geral" element={<DashboardGeral />} />
             <Route path="/dashboard/canais" element={<DashboardCanais />} />
             <Route path="/vendas" element={<Vendas />} />
+            {/* Módulo de Manutenção de Canais aberto a todos os perfis autenticados */}
+            <Route path="/canais" element={<Canais />} />
             {/* Rotas protegidas por senha de administrador (AdminGuard) */}
             <Route
               path="/importar"
