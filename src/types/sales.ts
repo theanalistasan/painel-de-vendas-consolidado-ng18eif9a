@@ -90,6 +90,9 @@ export interface CanalCliente extends RecordModel {
   inside?: string
   cargo?: string
   telefone?: string
+  municipio?: string
+  estado?: string
+  meta_valor?: number
   origem?: string
   data_carga?: string
 }

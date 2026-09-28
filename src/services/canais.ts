@@ -60,6 +60,9 @@ export interface CanalClientePayload {
   telefone?: string
   segmento?: string
   inside?: string
+  municipio?: string
+  estado?: string
+  meta_valor?: number
 }
 
 /**
@@ -77,7 +80,7 @@ export async function fetchCanaisClientes(
     const term = params.search.trim().replace(/['"\\]/g, '')
     if (term) {
       filterParts.push(
-        `(nome_canal ~ '${term}' || nome_cliente ~ '${term}' || codigo_cliente ~ '${term}' || contato ~ '${term}' || email ~ '${term}')`,
+        `(nome_canal ~ '${term}' || nome_cliente ~ '${term}' || codigo_cliente ~ '${term}' || contato ~ '${term}' || email ~ '${term}' || municipio ~ '${term}' || estado ~ '${term}')`,
       )
     }
   }
@@ -391,6 +394,9 @@ export async function createCanalCliente(payload: CanalClientePayload): Promise<
     telefone: (payload.telefone || '').trim(),
     segmento: (payload.segmento || '').trim(),
     inside: (payload.inside || '').trim().toUpperCase(),
+    municipio: (payload.municipio || '').trim(),
+    estado: (payload.estado || '').trim().toUpperCase(),
+    meta_valor: typeof payload.meta_valor === 'number' ? payload.meta_valor : undefined,
     origem: 'Cadastro Manual',
     data_carga: new Date().toISOString(),
   }
@@ -445,6 +451,9 @@ export async function updateCanalCliente(
   if (payload.telefone !== undefined) recordData.telefone = payload.telefone.trim()
   if (payload.segmento !== undefined) recordData.segmento = payload.segmento.trim()
   if (payload.inside !== undefined) recordData.inside = payload.inside.trim().toUpperCase()
+  if (payload.municipio !== undefined) recordData.municipio = payload.municipio.trim()
+  if (payload.estado !== undefined) recordData.estado = payload.estado.trim().toUpperCase()
+  if (payload.meta_valor !== undefined) recordData.meta_valor = payload.meta_valor
 
   const run = () => pb.collection<CanalCliente>('canais_clientes').update(id, recordData)
 

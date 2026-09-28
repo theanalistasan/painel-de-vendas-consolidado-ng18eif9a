@@ -78,6 +78,9 @@ interface FormState {
   telefone: string
   segmento: string
   inside: string
+  municipio: string
+  estado: string
+  meta_valor: string
 }
 
 const emptyForm: FormState = {
@@ -94,6 +97,9 @@ const emptyForm: FormState = {
   telefone: '',
   segmento: 'DIGITAL PRINTING (DP)',
   inside: '',
+  municipio: '',
+  estado: '',
+  meta_valor: '',
 }
 
 export default function Canais() {
@@ -118,6 +124,7 @@ export default function Canais() {
   const [deployFilter, setDeployFilter] = useState('__all')
   const [insideFilter, setInsideFilter] = useState('__all')
   const [ehCanalFilter, setEhCanalFilter] = useState<'all' | 'true' | 'false'>('true')
+  const [showLocationCols, setShowLocationCols] = useState(true)
 
   // Estado de Agrupamento / Colapso do Relatório (Nível e nós expandidos)
   // Níveis possíveis: 'none' (tabela detalhada clássica), 'eh_canal' (É Canal), 'canal' (Canal), 'inside' (Inside), 'cliente' (Cliente)
@@ -581,6 +588,10 @@ export default function Canais() {
       telefone: item.telefone || '',
       segmento: item.segmento || 'DIGITAL PRINTING (DP)',
       inside: item.inside || '',
+      municipio: item.municipio || '',
+      estado: item.estado || '',
+      meta_valor:
+        typeof item.meta_valor === 'number' && item.meta_valor > 0 ? String(item.meta_valor) : '',
     })
     setSaveError(null)
     setModalOpen(true)
@@ -615,6 +626,10 @@ export default function Canais() {
     setSaving(true)
     setSaveError(null)
 
+    const cleanMeta = form.meta_valor
+      ? parseFloat(form.meta_valor.replace(/[^\d.,]/g, '').replace(',', '.'))
+      : undefined
+
     const payload: CanalClientePayload = {
       eh_canal: form.eh_canal,
       deploy: form.deploy,
@@ -629,6 +644,9 @@ export default function Canais() {
       telefone: form.telefone.trim(),
       segmento: form.segmento.trim(),
       inside: form.inside.trim().toUpperCase(),
+      municipio: form.municipio.trim(),
+      estado: form.estado.trim().toUpperCase(),
+      meta_valor: cleanMeta && !isNaN(cleanMeta) && cleanMeta > 0 ? cleanMeta : undefined,
     }
 
     try {
@@ -1466,6 +1484,23 @@ export default function Canais() {
               </Button>
             </div>
           )}
+
+          {/* Toggle de exibição das novas colunas de Município/UF e Meta */}
+          <div className="flex items-center gap-2 self-end sm:self-auto border-l pl-3 border-slate-200">
+            <button
+              type="button"
+              onClick={() => setShowLocationCols((prev) => !prev)}
+              className={cn(
+                'text-[11px] font-semibold px-2 py-1 rounded transition-colors border',
+                showLocationCols
+                  ? 'bg-cyan-50 text-[#0B6E99] border-cyan-200 hover:bg-cyan-100'
+                  : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50',
+              )}
+              title="Exibir/Ocultar colunas Município / UF e Meta (R$)"
+            >
+              {showLocationCols ? '✓ Município & Meta' : '+ Município & Meta'}
+            </button>
+          </div>
         </div>
 
         {/* Tabela de Registros com Colapso / Agrupamento */}
@@ -1510,6 +1545,8 @@ export default function Canais() {
                     <th className="py-2.5 px-3">Cliente / Razão Social</th>
                     <th className="py-2.5 px-3">Contato / Cargo</th>
                     <th className="py-2.5 px-3">E-mail / Telefone</th>
+                    {showLocationCols && <th className="py-2.5 px-3">Município / UF</th>}
+                    {showLocationCols && <th className="py-2.5 px-3 text-right">Meta (R$)</th>}
                     <th className="py-2.5 px-3">Inside</th>
                     <th className="py-2.5 px-3 text-center">É Canal</th>
                     <th className="py-2.5 px-3 text-right">Ações</th>
@@ -1553,7 +1590,7 @@ export default function Canais() {
                           </td>
 
                           {/* Título do Grupo e Totais Agregados */}
-                          <td colSpan={7} className="py-2.5 px-3">
+                          <td colSpan={showLocationCols ? 9 : 7} className="py-2.5 px-3">
                             <div className="flex items-center gap-2 flex-wrap">
                               {groupByLevel === 'canal' ? (
                                 <button
@@ -1763,6 +1800,32 @@ export default function Canais() {
                                   )}
                                 </td>
 
+                                {/* Município / UF (Nova Estrutura) */}
+                                {showLocationCols && (
+                                  <td className="py-2.5 px-3 whitespace-nowrap">
+                                    {row.municipio || row.estado ? (
+                                      <span className="text-slate-700 font-medium">
+                                        {[row.municipio, row.estado].filter(Boolean).join(' - ')}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-300">-</span>
+                                    )}
+                                  </td>
+                                )}
+
+                                {/* Meta R$ (Nova Estrutura) */}
+                                {showLocationCols && (
+                                  <td className="py-2.5 px-3 whitespace-nowrap text-right font-medium">
+                                    {typeof row.meta_valor === 'number' && row.meta_valor > 0 ? (
+                                      <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                        {formatCurrency(row.meta_valor)}
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-300">-</span>
+                                    )}
+                                  </td>
+                                )}
+
                                 {/* Inside */}
                                 <td className="py-2.5 px-3 whitespace-nowrap">
                                   {row.inside ? (
@@ -1949,6 +2012,32 @@ export default function Canais() {
                           ) : null}
                           {!row.email && !row.telefone && <span className="text-slate-300">-</span>}
                         </td>
+
+                        {/* Município / UF (Nova Estrutura) */}
+                        {showLocationCols && (
+                          <td className="py-2.5 px-3 whitespace-nowrap">
+                            {row.municipio || row.estado ? (
+                              <span className="text-slate-700 font-medium">
+                                {[row.municipio, row.estado].filter(Boolean).join(' - ')}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300">-</span>
+                            )}
+                          </td>
+                        )}
+
+                        {/* Meta R$ (Nova Estrutura) */}
+                        {showLocationCols && (
+                          <td className="py-2.5 px-3 whitespace-nowrap text-right font-medium">
+                            {typeof row.meta_valor === 'number' && row.meta_valor > 0 ? (
+                              <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                {formatCurrency(row.meta_valor)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300">-</span>
+                            )}
+                          </td>
+                        )}
 
                         {/* Inside */}
                         <td className="py-2.5 px-3 whitespace-nowrap">
@@ -2144,6 +2233,45 @@ export default function Canais() {
                 placeholder="Ex.: SPAK IND E COM..."
                 className="h-9 text-xs focus-visible:ring-[#0B6E99]"
               />
+            </div>
+
+            {/* Município - NOVO */}
+            <div>
+              <Label className="text-xs font-bold text-slate-700 mb-1 block">Município</Label>
+              <Input
+                value={form.municipio}
+                onChange={(e) => setForm((prev) => ({ ...prev, municipio: e.target.value }))}
+                placeholder="Ex.: São Paulo, Campinas, Curitiba"
+                className="h-9 text-xs focus-visible:ring-[#0B6E99]"
+              />
+            </div>
+
+            {/* Estado (UF) - NOVO */}
+            <div>
+              <Label className="text-xs font-bold text-slate-700 mb-1 block">Estado (UF)</Label>
+              <Input
+                value={form.estado}
+                maxLength={2}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, estado: e.target.value.toUpperCase() }))
+                }
+                placeholder="Ex.: SP, PR, RJ"
+                className="h-9 text-xs uppercase font-mono font-bold focus-visible:ring-[#0B6E99]"
+              />
+            </div>
+
+            {/* Meta R$ - NOVO */}
+            <div>
+              <Label className="text-xs font-bold text-slate-700 mb-1 block">Meta (R$)</Label>
+              <Input
+                value={form.meta_valor}
+                onChange={(e) => setForm((prev) => ({ ...prev, meta_valor: e.target.value }))}
+                placeholder="Ex.: 150000"
+                className="h-9 text-xs font-semibold focus-visible:ring-[#0B6E99]"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Valor monetário de meta registrado na base de canais
+              </p>
             </div>
 
             {/* Inside Sales */}

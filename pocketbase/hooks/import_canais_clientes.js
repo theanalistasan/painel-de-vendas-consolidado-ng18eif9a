@@ -1,25 +1,23 @@
 // Endpoint: POST /backend/v1/import/canais-clientes
 // Importação ou substituição da planilha "Base Única de Canais" na coleção `canais_clientes`.
 //
-// Regras de blindagem contra duplicatas e semelhantes (Silvio Mattos / Roland DG):
-// 1. Normalização estrita das chaves de comparação:
-//    trim, colapsar espaços internos múltiplos em um só espaço, uppercase e remoção completa de acentos (NFD).
-// 2. Deduplicação intra-arquivo:
-//    Dentro da própria planilha importada, linhas que normalizadas resultem na mesma chave
-//    (codigo_cliente + nome_canal) são mescladas na memória antes do banco. A linha subsequente preenche
-//    campos vazios das anteriores e atualiza contatos/telefones, sem gerar múltiplos registros.
-// 3. Deduplicação contra a base existente (upsert ampliado):
-//    Antes de criar um novo registro, verifica:
-//      a) Chave exata normalizada (codigo_cliente_norm + nome_canal_norm)
-//      b) Mesma razão social normalizada dentro do mesmo canal normalizado (nome_cliente_norm + nome_canal_norm)
-//      c) Mesmo código normalizado dentro do mesmo canal normalizado (codigo_cliente_norm + nome_canal_norm)
-//    Nessas situações, atualiza o registro existente em vez de criar um duplicado.
-// 4. Contadores transparentes no retorno:
-//    - importados (novos)
-//    - atualizados (já existentes na base)
-//    - mesclados (linhas do próprio arquivo agregadas/deduplicadas por semelhança)
-//    - ignorados (linhas sem identificação ou com erro)
-// 5. Avisos gerados para o usuário quando houver linhas mescladas/deduplicadas.
+// Nova estrutura de 16 colunas:
+// 1. Status (ex.: Ativo)
+// 2. Série (ex.: Manual)
+// 3. CANAIS (ex.: SIM — marcador de é canal)
+// 4. CANAL FATURAMENTO (ex.: AGIS — valores: AGIS, "AGIS - CONFIRMAR", ROLAND; "AGIS - CONFIRMAR" conta como AGIS)
+// 5. SEGMENTO (ex.: DIGITAL PRINTING (DP))
+// 6. INSIDE (ex.: CARINE)
+// 7. Município (ex.: São Paulo) — NOVO
+// 8. Estado (ex.: SP) — NOVO
+// 9. META (ex.: valor monetário R$, opcional) — NOVO
+// 10. COD (ex.: C06755)
+// 11. CANAL (ex.: ADENILL)
+// 12. REVENDA (ex.: ADENILL SUPRIMENTOS PARA COMUNICAÇÃO VISUAL LTDA)
+// 13. NOME DO CONTATO (pode vir vazio)
+// 14. CARGO (pode vir vazio)
+// 15. E-MAIL (ex.: nfe@adenil.com.br)
+// 16. TELEFONE (ex.: 2969-4333)
 
 routerAdd(
   'POST',
@@ -49,7 +47,16 @@ routerAdd(
     }
 
     const canaisCol = $app.findCollectionByNameOrId('canais_clientes')
-    const nowIso = new Date().toISOString()
+    let canaisMetasCol = null
+    try {
+      canaisMetasCol = $app.findCollectionByNameOrId('canais_metas')
+    } catch (_) {}
+
+    const now = new Date()
+    const nowIso = now.toISOString()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth() + 1
+    const currentPeriodo = currentYear + '-' + String(currentMonth).padStart(2, '0')
 
     let importados = 0
     let atualizados = 0
@@ -101,6 +108,27 @@ routerAdd(
       return upper
     }
 
+    // Parse de valor monetário flexível (R$ 1.234,56 / 1234.56 / etc)
+    const parseCurrency = (val) => {
+      if (val === undefined || val === null) return null
+      if (typeof val === 'number') {
+        return isNaN(val) ? null : val
+      }
+      let s = String(val).trim()
+      if (!s) return null
+      // Remove R$, espaços
+      s = s.replace(/R\$/gi, '').replace(/\s+/g, '')
+      // Se tem vírgula e ponto (ex: 1.234,56)
+      if (s.indexOf('.') >= 0 && s.indexOf(',') >= 0) {
+        s = s.replace(/\./g, '').replace(',', '.')
+      } else if (s.indexOf(',') >= 0) {
+        // Ex: 1234,56
+        s = s.replace(',', '.')
+      }
+      const num = parseFloat(s)
+      return isNaN(num) ? null : num
+    }
+
     const getRowVal = (normalizedRow, candidateKeys) => {
       for (let i = 0; i < candidateKeys.length; i++) {
         const ck = normalizeKey(candidateKeys[i])
@@ -115,7 +143,7 @@ routerAdd(
       return ''
     }
 
-    // Mapeamento semântico de chaves candidatas (cabeçalhos novos + antigos)
+    // Mapeamento semântico de chaves candidatas (16 colunas nova estrutura + variações)
     const STATUS_KEYS = ['status', 'situacao', 'estado cliente']
     const SERIE_KEYS = ['serie', 'serial', 'n serie', 'numero serie', 'tipo serie']
     const EH_CANAL_KEYS = [
@@ -149,6 +177,31 @@ routerAdd(
       'vendedor interno',
       'vendedora interna',
       'comercial interno',
+    ]
+    const MUNICIPIO_KEYS = [
+      'municipio',
+      'cidade',
+      'nome municipio',
+      'nome cidade',
+      'municipio cliente',
+      'cidade cliente',
+    ]
+    const ESTADO_KEYS = [
+      'estado',
+      'uf',
+      'sigla uf',
+      'estado uf',
+      'unidade federativa',
+      'uf cliente',
+    ]
+    const META_KEYS = [
+      'meta',
+      'meta valor',
+      'valor meta',
+      'meta faturamento',
+      'meta r$',
+      'meta mes',
+      'meta mensal',
     ]
     const CLIENTE_COD_KEYS = [
       'cod',
@@ -205,6 +258,9 @@ routerAdd(
       (nh) =>
         ['canal', 'nome do canal', 'nome canal', 'canais'].includes(nh) || nh.includes('canal'),
     )
+    const hasMunicipioHeader = normalizedHeaders.some((nh) => ['municipio', 'cidade'].includes(nh))
+    const hasEstadoHeader = normalizedHeaders.some((nh) => ['estado', 'uf'].includes(nh))
+    const hasMetaHeader = normalizedHeaders.some((nh) => nh.includes('meta'))
 
     // Forward-fill para células mescladas na planilha (efeito Excel)
     let lastKnownCanal = ''
@@ -212,10 +268,13 @@ routerAdd(
     let lastKnownCod = ''
     let lastKnownSegmento = ''
     let lastKnownInside = ''
+    let lastKnownMunicipio = ''
+    let lastKnownEstado = ''
     let lastKnownDeploy = ''
     let lastKnownStatus = ''
     let lastKnownSerie = ''
     let lastKnownEhCanal = false
+    let lastKnownMeta = null
 
     // PASSO 1: Leitura, forward-fill e normalização inicial das linhas
     const parsedRows = []
@@ -238,6 +297,11 @@ routerAdd(
       let deploy = deployRaw ? normalizeDeploy(deployRaw) : ''
       let segmento = getRowVal(normRow, SEGMENTO_KEYS)
       let inside = getRowVal(normRow, INSIDE_KEYS)
+      let municipio = getRowVal(normRow, MUNICIPIO_KEYS)
+      let estado = getRowVal(normRow, ESTADO_KEYS)
+      const metaRaw = getRowVal(normRow, META_KEYS)
+      let metaValor = parseCurrency(metaRaw)
+
       let codigoCliente = getRowVal(normRow, CLIENTE_COD_KEYS)
       let nomeCanal = getRowVal(normRow, CANAL_KEYS)
       let nomeCliente = getRowVal(normRow, CLIENTE_NOME_KEYS)
@@ -246,7 +310,7 @@ routerAdd(
       const email = getRowVal(normRow, EMAIL_KEYS)
       const telefone = getRowVal(normRow, TELEFONE_KEYS)
 
-      // Forward-fill caso seja linha de cabeçalho mesclado
+      // Forward-fill caso seja linha com bloco mesclado
       if (codigoCliente || nomeCanal || nomeCliente) {
         if (nomeCanal) lastKnownCanal = nomeCanal
         else if (lastKnownCanal && codigoCliente) nomeCanal = lastKnownCanal
@@ -262,6 +326,15 @@ routerAdd(
 
         if (inside) lastKnownInside = inside
         else inside = lastKnownInside
+
+        if (municipio) lastKnownMunicipio = municipio
+        else municipio = lastKnownMunicipio
+
+        if (estado) lastKnownEstado = estado
+        else estado = lastKnownEstado
+
+        if (metaValor !== null) lastKnownMeta = metaValor
+        else metaValor = lastKnownMeta
 
         if (deployRaw) lastKnownDeploy = deploy
         else deploy = lastKnownDeploy
@@ -281,6 +354,9 @@ routerAdd(
           nomeCliente = lastKnownRevenda
           segmento = lastKnownSegmento
           inside = lastKnownInside
+          municipio = lastKnownMunicipio
+          estado = lastKnownEstado
+          metaValor = lastKnownMeta
           deploy = lastKnownDeploy
           status = lastKnownStatus
           serie = lastKnownSerie
@@ -295,7 +371,7 @@ routerAdd(
       // Validação mínima da linha
       if (!codigoCliente && !nomeCanal && !nomeCliente && !contato && !email) {
         ignorados++
-        erros.push(`Linha ${lineNum}: linha vazia ou sem identificador.`)
+        erros.push('Linha ' + lineNum + ': linha vazia ou sem identificador.')
         continue
       }
 
@@ -310,6 +386,9 @@ routerAdd(
         deploy: deploy,
         segmento: (segmento || '').trim(),
         inside: (inside || '').trim(),
+        municipio: (municipio || '').trim(),
+        estado: (estado || '').trim().toUpperCase(),
+        meta_valor: metaValor,
         contato: (contato || '').trim(),
         cargo: (cargo || '').trim(),
         email: (email || '').trim(),
@@ -331,8 +410,6 @@ routerAdd(
 
     for (let i = 0; i < parsedRows.length; i++) {
       const row = parsedRows[i]
-      // Chave primária intra-arquivo: codNorm + '::' + canalNorm
-      // Se não tiver código, usa nomeNorm + '::' + canalNorm
       const keyPrimary =
         row.codNorm && row.canalNorm
           ? row.codNorm + '::' + row.canalNorm
@@ -352,17 +429,20 @@ routerAdd(
         if (!existing.deploy && row.deploy) existing.deploy = row.deploy
         if (!existing.segmento && row.segmento) existing.segmento = row.segmento
         if (!existing.inside && row.inside) existing.inside = row.inside
+        if (!existing.municipio && row.municipio) existing.municipio = row.municipio
+        if (!existing.estado && row.estado) existing.estado = row.estado
+        if (existing.meta_valor === null && row.meta_valor !== null)
+          existing.meta_valor = row.meta_valor
         if (!existing.status && row.status) existing.status = row.status
         if (!existing.serie && row.serie) existing.serie = row.serie
         if (!existing.eh_canal && row.eh_canal) existing.eh_canal = true
 
-        // Contatos: se existing não tem contato e row tem, preenche
+        // Contatos
         if (!existing.contato && row.contato) existing.contato = row.contato
         if (!existing.cargo && row.cargo) existing.cargo = row.cargo
         if (!existing.email && row.email) existing.email = row.email
         if (!existing.telefone && row.telefone) existing.telefone = row.telefone
 
-        // Se ambos têm contato mas são diferentes, concatena ou preserva o mais recente
         if (
           row.contato &&
           existing.contato &&
@@ -398,10 +478,6 @@ routerAdd(
     mesclados += mescladosNoArquivo
 
     // PASSO 3: Carrega índices em memória dos registros já existentes na coleção canais_clientes
-    // para viabilizar deduplicação rápida e precisa por:
-    // a) id por codNorm + '::' + canalNorm
-    // b) id por nomeNorm + '::' + canalNorm
-    // c) id por codNorm sozinho (quando canal não informado)
     const existingDbRows = arrayOf(
       new DynamicModel({
         id: '',
@@ -444,6 +520,44 @@ routerAdd(
       }
     }
 
+    // Carrega metas existentes para o período corrente (para não sobrescrever metas manuais)
+    const existingMetasMap = {}
+    if (canaisMetasCol) {
+      try {
+        const metasDbRows = arrayOf(
+          new DynamicModel({
+            id: '',
+            nome_canal: '',
+            periodo: '',
+            valor_meta: 0,
+          }),
+        )
+        $app
+          .db()
+          .newQuery(
+            'SELECT id, nome_canal, periodo, valor_meta FROM canais_metas WHERE periodo = {:periodo}',
+          )
+          .bind({ periodo: currentPeriodo })
+          .all(metasDbRows)
+        for (let m = 0; m < metasDbRows.length; m++) {
+          const mRec = metasDbRows[m]
+          const normCanal = normalizeStrict(mRec.nome_canal)
+          if (normCanal) {
+            existingMetasMap[normCanal] = {
+              id: mRec.id,
+              valor_meta: Number(mRec.valor_meta) || 0,
+            }
+          }
+        }
+      } catch (metasLoadErr) {
+        console.warn('Aviso ao consultar canais_metas existentes:', metasLoadErr)
+      }
+    }
+
+    let metasImportadasPeriodo = 0
+    let metasIgnoradasExistentes = 0
+    let canaisComMetaInformada = 0
+
     // PASSO 4: Upsert ampliado contra a base existente
     for (let j = 0; j < intraDeduplicated.length; j++) {
       const item = intraDeduplicated[j]
@@ -451,30 +565,26 @@ routerAdd(
 
       try {
         let matchedId = null
-        let matchReason = ''
 
         // 1. Procura por codigo_cliente normalizado + nome_canal normalizado
         if (item.codNorm && item.canalNorm) {
           const directKey = item.codNorm + '::' + item.canalNorm
           if (dbMapByCodCanal[directKey]) {
             matchedId = dbMapByCodCanal[directKey]
-            matchReason = 'mesmo código e canal'
           }
         }
 
-        // 2. Procura por nome_cliente normalizado + nome_canal normalizado (mesma razão social no canal)
+        // 2. Procura por nome_cliente normalizado + nome_canal normalizado
         if (!matchedId && item.nomeNorm && item.canalNorm) {
           const nameKey = item.nomeNorm + '::' + item.canalNorm
           if (dbMapByNomeCanal[nameKey]) {
             matchedId = dbMapByNomeCanal[nameKey]
-            matchReason = 'mesma razão social no canal'
           }
         }
 
         // 3. Procura por codigo_cliente normalizado único
         if (!matchedId && item.codNorm && dbMapByCod[item.codNorm]) {
           matchedId = dbMapByCod[item.codNorm]
-          matchReason = 'mesmo código de cliente'
         }
 
         let isUpdate = false
@@ -493,7 +603,6 @@ routerAdd(
           record = new Record(canaisCol)
         }
 
-        // Preenchimento de dados garantindo integridade
         record.set('eh_canal', !!item.eh_canal)
         if (item.deploy) record.set('deploy', item.deploy)
         if (item.nome_canal) record.set('nome_canal', item.nome_canal)
@@ -503,6 +612,11 @@ routerAdd(
         if (item.codigo_cliente) record.set('codigo_cliente', item.codigo_cliente)
         if (item.segmento) record.set('segmento', item.segmento)
         if (item.inside) record.set('inside', item.inside)
+        if (item.municipio) record.set('municipio', item.municipio)
+        if (item.estado) record.set('estado', item.estado)
+        if (item.meta_valor !== null && item.meta_valor !== undefined) {
+          record.set('meta_valor', item.meta_valor)
+        }
         if (item.contato) record.set('contato', item.contato)
         if (item.cargo) record.set('cargo', item.cargo)
         if (item.email) record.set('email', item.email)
@@ -511,6 +625,43 @@ routerAdd(
         record.set('data_carga', nowIso)
 
         $app.save(record)
+
+        // Se a linha tem META preenchida e é linha de Canal (ou canal identificado),
+        // trata o sincronismo seguro com canais_metas para o período corrente (YYYY-MM da importação)
+        // Regra de segurança: NÃO sobrescrever se já existir meta cadastrada manualmente para o canal no período.
+        if (
+          item.meta_valor !== null &&
+          item.meta_valor !== undefined &&
+          item.meta_valor > 0 &&
+          item.canalNorm &&
+          canaisMetasCol
+        ) {
+          canaisComMetaInformada++
+          const canalKey = item.canalNorm
+          const existingMeta = existingMetasMap[canalKey]
+          if (existingMeta) {
+            // Já existe meta manual ou anterior para este canal no período corrente: não sobrescreve
+            metasIgnoradasExistentes++
+          } else {
+            // Cria a meta no período da importação corrente
+            try {
+              const metaRecord = new Record(canaisMetasCol)
+              metaRecord.set('nome_canal', item.nome_canal)
+              metaRecord.set('ano', currentYear)
+              metaRecord.set('mes', currentMonth)
+              metaRecord.set('periodo', currentPeriodo)
+              metaRecord.set('valor_meta', item.meta_valor)
+              $app.save(metaRecord)
+              existingMetasMap[canalKey] = {
+                id: metaRecord.id,
+                valor_meta: item.meta_valor,
+              }
+              metasImportadasPeriodo++
+            } catch (metaErr) {
+              console.warn('Erro ao criar meta para o canal ' + item.nome_canal + ':', metaErr)
+            }
+          }
+        }
 
         // Atualiza índices em memória para próximas iterações
         const newId = record.id
@@ -532,21 +683,67 @@ routerAdd(
       } catch (err) {
         ignorados++
         erros.push(
-          `Linha ${lineNum} (${item.codigo_cliente || item.nome_canal || item.nome_cliente}): erro ao salvar: ${err.message || String(err)}`,
+          'Linha ' +
+            lineNum +
+            ' (' +
+            (item.codigo_cliente || item.nome_canal || item.nome_cliente) +
+            '): erro ao salvar: ' +
+            (err.message || String(err)),
         )
       }
     }
 
     if (!hasCanalHeader) {
       avisos.push(
-        `Nenhuma coluna de Canal reconhecida nos cabeçalhos recebidos: [${originalHeaders.join(', ')}]. Cabeçalhos esperados: CANAL, CANAIS, COD, REVENDA, etc.`,
+        'Nenhuma coluna de Canal reconhecida nos cabeçalhos recebidos: [' +
+          originalHeaders.join(', ') +
+          ']. Cabeçalhos esperados: CANAL, CANAIS, COD, REVENDA, etc.',
+      )
+    }
+
+    if (!hasMunicipioHeader || !hasEstadoHeader) {
+      avisos.push(
+        'Colunas Município/Estado: ' +
+          (hasMunicipioHeader ? 'Município detectado' : 'Município ausente') +
+          ' • ' +
+          (hasEstadoHeader ? 'Estado detectado' : 'Estado ausente') +
+          '.',
       )
     }
 
     if (mescladosNoArquivo > 0) {
       avisos.push(
-        `Blindagem de duplicatas: ${mescladosNoArquivo} linha(s) repetida(s) ou semelhantes na própria planilha foram mescladas automaticamente sem gerar registros duplicados.`,
+        'Blindagem de duplicatas: ' +
+          mescladosNoArquivo +
+          ' linha(s) repetida(s) ou semelhantes na própria planilha foram mescladas automaticamente sem gerar registros duplicados.',
       )
+    }
+
+    // Informação transparente sobre tratamento da coluna META
+    if (hasMetaHeader) {
+      if (canaisComMetaInformada > 0) {
+        avisos.push(
+          'Coluna META processada: ' +
+            canaisComMetaInformada +
+            ' linha(s) com valor de meta registrado no campo meta_valor. ' +
+            (metasImportadasPeriodo > 0
+              ? metasImportadasPeriodo +
+                ' nova(s) meta(s) mensal(is) alimentada(s) para o período corrente (' +
+                currentPeriodo +
+                '). '
+              : '') +
+            (metasIgnoradasExistentes > 0
+              ? metasIgnoradasExistentes +
+                ' canal(is) mantiveram a meta prévia existente para ' +
+                currentPeriodo +
+                ' (sem sobrescrever cadastro manual). '
+              : ''),
+        )
+      } else {
+        avisos.push(
+          'Coluna META identificada na planilha, porém sem valores numéricos preenchidos (valores em branco preservados).',
+        )
+      }
     }
 
     return e.json(200, {

@@ -105,8 +105,11 @@ export function CanalDetailModal({
     const insidesSet = new Set<string>()
     const segmentosSet = new Set<string>()
     const statusSet = new Set<string>()
+    const municipiosSet = new Set<string>()
+    const estadosSet = new Set<string>()
     let contatosCount = 0
     let hasEhCanal = false
+    let maxMetaValor: number | null = null
 
     // Agrupamento por cliente (COD + Razão Social)
     const clientesMap = new Map<
@@ -128,6 +131,17 @@ export function CanalDetailModal({
       }
       if (r.status && r.status.trim()) {
         statusSet.add(r.status.trim())
+      }
+      if (r.municipio && r.municipio.trim()) {
+        municipiosSet.add(r.municipio.trim())
+      }
+      if (r.estado && r.estado.trim()) {
+        estadosSet.add(r.estado.trim().toUpperCase())
+      }
+      if (typeof r.meta_valor === 'number' && !isNaN(r.meta_valor) && r.meta_valor > 0) {
+        if (maxMetaValor === null || r.meta_valor > maxMetaValor) {
+          maxMetaValor = r.meta_valor
+        }
       }
       if (r.contato && r.contato.trim()) {
         contatosCount++
@@ -158,6 +172,9 @@ export function CanalDetailModal({
       insidesSet: Array.from(insidesSet).sort(),
       segmentosSet: Array.from(segmentosSet).sort(),
       statusList: Array.from(statusSet).sort(),
+      municipiosSet: Array.from(municipiosSet).sort(),
+      estadosSet: Array.from(estadosSet).sort(),
+      metaValorConsolidado: maxMetaValor,
       ehCanal: hasEhCanal,
       clientesMap,
     }
@@ -419,6 +436,36 @@ export function CanalDetailModal({
               </div>
             )}
 
+            {(consolidated.municipiosSet.length > 0 || consolidated.estadosSet.length > 0) && (
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-slate-500 flex items-center gap-1">
+                  <Building2 className="w-3 h-3 text-indigo-600" />
+                  Localização:
+                </span>
+                <span className="text-slate-700 truncate max-w-xs">
+                  {consolidated.municipiosSet.slice(0, 2).join(', ')}
+                  {consolidated.estadosSet.length > 0 && ` (${consolidated.estadosSet.join(', ')})`}
+                  {consolidated.municipiosSet.length > 2 &&
+                    ` +${consolidated.municipiosSet.length - 2}`}
+                </span>
+              </div>
+            )}
+
+            {consolidated.metaValorConsolidado !== null && (
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-slate-500 flex items-center gap-1">
+                  <Target className="w-3 h-3 text-emerald-600" />
+                  Meta da Planilha:
+                </span>
+                <Badge
+                  variant="outline"
+                  className="bg-emerald-50 text-emerald-800 border-emerald-200 text-[10px] font-bold"
+                >
+                  {formatCurrency(consolidated.metaValorConsolidado)}
+                </Badge>
+              </div>
+            )}
+
             {consolidated.codigosSet.length > 0 && (
               <div className="flex items-center gap-1.5">
                 <span className="font-bold text-slate-500">COD(s):</span>
@@ -560,6 +607,21 @@ export function CanalDetailModal({
                             <span className="text-slate-400 text-[10px] truncate max-w-[200px]">
                               Seg: {reg.segmento}
                             </span>
+                          ) : null}
+
+                          {reg.municipio || reg.estado ? (
+                            <span className="text-slate-500 text-[10px] flex items-center gap-0.5 font-medium">
+                              • {[reg.municipio, reg.estado].filter(Boolean).join(' - ')}
+                            </span>
+                          ) : null}
+
+                          {typeof reg.meta_valor === 'number' && reg.meta_valor > 0 ? (
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] font-bold text-emerald-700 bg-emerald-50 border-emerald-200 px-1 py-0"
+                            >
+                              Meta: {formatCurrency(reg.meta_valor)}
+                            </Badge>
                           ) : null}
                         </div>
                       </div>

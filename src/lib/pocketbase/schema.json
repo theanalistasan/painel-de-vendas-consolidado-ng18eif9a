@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-28T19:02:45.780Z",
+  "generatedAt": "2026-09-28T19:24:11.523Z",
   "collections": [
     {
       "name": "users",
@@ -1077,6 +1077,24 @@
         {
           "name": "telefone",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "municipio",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "estado",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "meta_valor",
+          "type": "number",
           "required": false,
           "system": false
         }
