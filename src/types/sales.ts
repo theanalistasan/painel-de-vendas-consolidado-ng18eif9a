@@ -247,6 +247,7 @@ export interface ImportResult {
   success: boolean
   importados: number
   atualizados: number
+  mesclados?: number
   ignorados: number
   erros: string[]
   avisos?: string[]
@@ -259,4 +260,23 @@ export interface ConsolidarResult {
   success: boolean
   total_consolidado: number
   data_carga: string
+}
+
+export interface CanalMeta {
+  id: string
+  nome_canal: string
+  ano: number
+  mes: number
+  periodo: string // "YYYY-MM"
+  valor_meta: number
+  created?: string
+  updated?: string
+}
+
+export interface CanalMetaPayload {
+  nome_canal: string
+  ano: number
+  mes: number
+  periodo?: string
+  valor_meta: number
 }

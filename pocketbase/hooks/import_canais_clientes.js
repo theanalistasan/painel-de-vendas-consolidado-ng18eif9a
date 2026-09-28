@@ -1,39 +1,32 @@
 // Endpoint: POST /backend/v1/import/canais-clientes
 // Importação ou substituição da planilha "Base Única de Canais" na coleção `canais_clientes`.
 //
-// Cabeçalhos suportados (Base Única e legado):
-// - Status (valores: "Ativo", "Atvo", etc.)
-// - Série / Serie (valores: "Manual", "Clientes", etc.)
-// - CANAIS (valores: "SIM" / "Não", boolean)
-// - CANAL_FATURAMENTO / DEPLOY ("AGIS", "AGIS - CONFIRMAR" -> AGIS; "ROLAND" -> ROLAND; vazio -> "")
-// - SEGMENTO ("DIGITAL PRINTING (DP)", "3D", "DENTAL")
-// - INSIDE (nome do vendedor interno, ex: CARINE, FERNANDA, PALOMA)
-// - COD / Código do Cliente (código do cliente, ex: C00099, C08551, C11379)
-// - CANAL / Nome do Canal (nome curto do canal, ex: BLUE BIRD, KONICA, ELETRONICPRINT)
-// - REVENDA / Nome do Cliente (razão social do cliente)
-// - NOME DO CONTATO / Contato
-// - CARGO (DONO, VENDEDOR, GERENTE, etc.)
-// - E-MAIL / Email
-// - TELEFONE
-//
-// Múltiplos contatos por cliente:
-// Para manter os contatos detalhados sem duplicar desnecessariamente em reimportações,
-// a chave de identificação única no upsert é: (codigo_cliente + nome_canal + contato + email).
-// Quando a mesma linha for reimportada, ela é atualizada; se houver novo contato para o mesmo cliente,
-// um novo registro de contato é criado. Os hooks deduplicam clientes por código/nome para filtros.
-//
-// Regras de normalização de negócio:
-// - CANAIS: "SIM" (normalizado, tolerante a acentos/caixa) -> true
-// - CANAL_FATURAMENTO:
-//   "AGIS - CONFIRMAR", "AGIS", "AGIS-CONFIRMAR" -> "AGIS"
-//   "ROLAND" -> "ROLAND"
-//   Vazio ou outros -> ""
+// Regras de blindagem contra duplicatas e semelhantes (Silvio Mattos / Roland DG):
+// 1. Normalização estrita das chaves de comparação:
+//    trim, colapsar espaços internos múltiplos em um só espaço, uppercase e remoção completa de acentos (NFD).
+// 2. Deduplicação intra-arquivo:
+//    Dentro da própria planilha importada, linhas que normalizadas resultem na mesma chave
+//    (codigo_cliente + nome_canal) são mescladas na memória antes do banco. A linha subsequente preenche
+//    campos vazios das anteriores e atualiza contatos/telefones, sem gerar múltiplos registros.
+// 3. Deduplicação contra a base existente (upsert ampliado):
+//    Antes de criar um novo registro, verifica:
+//      a) Chave exata normalizada (codigo_cliente_norm + nome_canal_norm)
+//      b) Mesma razão social normalizada dentro do mesmo canal normalizado (nome_cliente_norm + nome_canal_norm)
+//      c) Mesmo código normalizado dentro do mesmo canal normalizado (codigo_cliente_norm + nome_canal_norm)
+//    Nessas situações, atualiza o registro existente em vez de criar um duplicado.
+// 4. Contadores transparentes no retorno:
+//    - importados (novos)
+//    - atualizados (já existentes na base)
+//    - mesclados (linhas do próprio arquivo agregadas/deduplicadas por semelhança)
+//    - ignorados (linhas sem identificação ou com erro)
+// 5. Avisos gerados para o usuário quando houver linhas mescladas/deduplicadas.
+
 routerAdd(
   'POST',
   '/backend/v1/import/canais-clientes',
   (e) => {
     const body = e.requestInfo().body || {}
-    const rows = Array.isArray(body.rows) ? body.rows : Array.isArray(body) ? body : []
+    const rawRows = Array.isArray(body.rows) ? body.rows : Array.isArray(body) ? body : []
 
     // Opção de limpeza prévia (truncate/delete)
     if (body.clearBefore === true || body.replace === true) {
@@ -44,11 +37,12 @@ routerAdd(
       }
     }
 
-    if (rows.length === 0) {
+    if (rawRows.length === 0) {
       return e.json(400, {
         message: 'Nenhum registro enviado',
         importados: 0,
         atualizados: 0,
+        mesclados: 0,
         ignorados: 0,
         erros: ['Nenhum dado encontrado no payload'],
       })
@@ -59,8 +53,10 @@ routerAdd(
 
     let importados = 0
     let atualizados = 0
+    let mesclados = 0
     let ignorados = 0
     const erros = []
+    const avisos = []
 
     const parseBool = (val) => {
       if (typeof val === 'boolean') return val
@@ -69,8 +65,19 @@ routerAdd(
       return s === 'SIM' || s === 'S' || s === 'TRUE' || s === '1' || s === 'YES' || s === 'Y'
     }
 
-    // Normalização de cabeçalhos / chaves:
-    // Remove BOM UTF-8, acentos, pontuação, múltiplos espaços e converte para minúsculas
+    // Normalização estrita de texto: trim, colapso de espaços, maiúsculas e sem acentos
+    const normalizeStrict = (val) => {
+      if (val === undefined || val === null) return ''
+      return String(val)
+        .replace(/^\uFEFF/, '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toUpperCase()
+    }
+
+    // Normalização de chaves de coluna para tolerar variações de cabeçalhos
     const normalizeKey = (k) => {
       if (!k) return ''
       return String(k)
@@ -86,11 +93,7 @@ routerAdd(
     // Normaliza Deploy: "AGIS - CONFIRMAR", "AGIS" -> "AGIS"; "ROLAND" -> "ROLAND"
     const normalizeDeploy = (val) => {
       if (!val) return ''
-      const upper = String(val)
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim()
-        .toUpperCase()
+      const upper = normalizeStrict(val)
       if (upper.indexOf('AGIS') >= 0) return 'AGIS'
       if (upper.indexOf('ROLAND') >= 0) return 'ROLAND'
       if (upper === 'NENHUM' || upper === 'SEM DEPLOY' || upper === 'VAZIO' || upper === '-')
@@ -114,7 +117,7 @@ routerAdd(
 
     // Mapeamento semântico de chaves candidatas (cabeçalhos novos + antigos)
     const STATUS_KEYS = ['status', 'situacao', 'estado cliente']
-    const SERIE_KEYS = ['serie', 'serie', 'serial', 'n serie', 'numero serie', 'tipo serie']
+    const SERIE_KEYS = ['serie', 'serial', 'n serie', 'numero serie', 'tipo serie']
     const EH_CANAL_KEYS = [
       'canais',
       'canais sim nao',
@@ -194,7 +197,7 @@ routerAdd(
     const TELEFONE_KEYS = ['telefone', 'tel', 'celular', 'fone', 'whatsapp', 'whats']
 
     // Identificação de cabeçalhos presentes para aviso / telemetria
-    const firstRow = rows[0] || {}
+    const firstRow = rawRows[0] || {}
     const originalHeaders = Object.keys(firstRow)
     const normalizedHeaders = originalHeaders.map(normalizeKey)
 
@@ -214,16 +217,17 @@ routerAdd(
     let lastKnownSerie = ''
     let lastKnownEhCanal = false
 
-    for (let i = 0; i < rows.length; i++) {
-      const rawRow = rows[i]
+    // PASSO 1: Leitura, forward-fill e normalização inicial das linhas
+    const parsedRows = []
+
+    for (let i = 0; i < rawRows.length; i++) {
+      const rawRow = rawRows[i]
       const lineNum = i + 1
 
-      // Cria dicionário com chaves normalizadas para esta linha
       const normRow = {}
       const keys = Object.keys(rawRow)
       for (let k = 0; k < keys.length; k++) {
-        const origK = keys[k]
-        normRow[normalizeKey(origK)] = rawRow[origK]
+        normRow[normalizeKey(keys[k])] = rawRow[keys[k]]
       }
 
       let status = getRowVal(normRow, STATUS_KEYS)
@@ -242,7 +246,7 @@ routerAdd(
       const email = getRowVal(normRow, EMAIL_KEYS)
       const telefone = getRowVal(normRow, TELEFONE_KEYS)
 
-      // Se temos um novo grupo (com código ou canal ou revenda definidos):
+      // Forward-fill caso seja linha de cabeçalho mesclado
       if (codigoCliente || nomeCanal || nomeCliente) {
         if (nomeCanal) lastKnownCanal = nomeCanal
         else if (lastKnownCanal && codigoCliente) nomeCanal = lastKnownCanal
@@ -271,7 +275,6 @@ routerAdd(
         if (ehCanal !== null) lastKnownEhCanal = ehCanal
         else ehCanal = lastKnownEhCanal
       } else {
-        // Linha secundária de contato pertencente ao cliente/canal anterior (célula mesclada)
         if (lastKnownCod || lastKnownCanal || lastKnownRevenda) {
           codigoCliente = lastKnownCod
           nomeCanal = lastKnownCanal
@@ -296,106 +299,231 @@ routerAdd(
         continue
       }
 
+      parsedRows.push({
+        lineNum: lineNum,
+        codigo_cliente: (codigoCliente || '').trim(),
+        nome_canal: (nomeCanal || '').trim(),
+        nome_cliente: (nomeCliente || '').trim(),
+        status: (status || '').trim(),
+        serie: (serie || '').trim(),
+        eh_canal: !!ehCanal,
+        deploy: deploy,
+        segmento: (segmento || '').trim(),
+        inside: (inside || '').trim(),
+        contato: (contato || '').trim(),
+        cargo: (cargo || '').trim(),
+        email: (email || '').trim(),
+        telefone: (telefone || '').trim(),
+        // Chaves normalizadas para matching estrito
+        codNorm: normalizeStrict(codigoCliente),
+        canalNorm: normalizeStrict(nomeCanal),
+        nomeNorm: normalizeStrict(nomeCliente),
+      })
+    }
+
+    // PASSO 2: Deduplicação intra-arquivo
+    // Mescla linhas do mesmo arquivo que resultem na mesma chave (codigo_cliente + nome_canal)
+    // ou mesmo cliente (nome_cliente_norm + nome_canal_norm).
+    // A linha mais recente completa campos vazios das anteriores.
+    const intraDeduplicated = []
+    const intraMapByKey = {}
+    let mescladosNoArquivo = 0
+
+    for (let i = 0; i < parsedRows.length; i++) {
+      const row = parsedRows[i]
+      // Chave primária intra-arquivo: codNorm + '::' + canalNorm
+      // Se não tiver código, usa nomeNorm + '::' + canalNorm
+      const keyPrimary =
+        row.codNorm && row.canalNorm
+          ? row.codNorm + '::' + row.canalNorm
+          : row.nomeNorm && row.canalNorm
+            ? 'NAME::' + row.nomeNorm + '::' + row.canalNorm
+            : ''
+
+      if (keyPrimary && intraMapByKey[keyPrimary] !== undefined) {
+        const existingIdx = intraMapByKey[keyPrimary]
+        const existing = intraDeduplicated[existingIdx]
+        mescladosNoArquivo++
+
+        // Mescla: preenche campos vazios do existing ou atualiza com dados mais ricos
+        if (!existing.nome_cliente && row.nome_cliente) existing.nome_cliente = row.nome_cliente
+        if (!existing.codigo_cliente && row.codigo_cliente)
+          existing.codigo_cliente = row.codigo_cliente
+        if (!existing.deploy && row.deploy) existing.deploy = row.deploy
+        if (!existing.segmento && row.segmento) existing.segmento = row.segmento
+        if (!existing.inside && row.inside) existing.inside = row.inside
+        if (!existing.status && row.status) existing.status = row.status
+        if (!existing.serie && row.serie) existing.serie = row.serie
+        if (!existing.eh_canal && row.eh_canal) existing.eh_canal = true
+
+        // Contatos: se existing não tem contato e row tem, preenche
+        if (!existing.contato && row.contato) existing.contato = row.contato
+        if (!existing.cargo && row.cargo) existing.cargo = row.cargo
+        if (!existing.email && row.email) existing.email = row.email
+        if (!existing.telefone && row.telefone) existing.telefone = row.telefone
+
+        // Se ambos têm contato mas são diferentes, concatena ou preserva o mais recente
+        if (
+          row.contato &&
+          existing.contato &&
+          row.contato.toUpperCase() !== existing.contato.toUpperCase()
+        ) {
+          if (!existing.contato.includes(row.contato)) {
+            existing.contato = existing.contato + ' / ' + row.contato
+          }
+        }
+        if (
+          row.email &&
+          existing.email &&
+          row.email.toLowerCase() !== existing.email.toLowerCase()
+        ) {
+          if (!existing.email.includes(row.email)) {
+            existing.email = existing.email + '; ' + row.email
+          }
+        }
+        if (row.telefone && existing.telefone && row.telefone !== existing.telefone) {
+          if (!existing.telefone.includes(row.telefone)) {
+            existing.telefone = existing.telefone + ' / ' + row.telefone
+          }
+        }
+      } else {
+        const newIdx = intraDeduplicated.length
+        if (keyPrimary) {
+          intraMapByKey[keyPrimary] = newIdx
+        }
+        intraDeduplicated.push(row)
+      }
+    }
+
+    mesclados += mescladosNoArquivo
+
+    // PASSO 3: Carrega índices em memória dos registros já existentes na coleção canais_clientes
+    // para viabilizar deduplicação rápida e precisa por:
+    // a) id por codNorm + '::' + canalNorm
+    // b) id por nomeNorm + '::' + canalNorm
+    // c) id por codNorm sozinho (quando canal não informado)
+    const existingDbRows = arrayOf(
+      new DynamicModel({
+        id: '',
+        codigo_cliente: '',
+        nome_cliente: '',
+        nome_canal: '',
+        contato: '',
+        email: '',
+      }),
+    )
+    try {
+      $app
+        .db()
+        .newQuery(
+          'SELECT id, codigo_cliente, nome_cliente, nome_canal, contato, email FROM canais_clientes',
+        )
+        .all(existingDbRows)
+    } catch (loadErr) {
+      console.warn('Aviso ao carregar registros existentes de canais_clientes:', loadErr)
+    }
+
+    const dbMapByCodCanal = {}
+    const dbMapByNomeCanal = {}
+    const dbMapByCod = {}
+
+    for (let k = 0; k < existingDbRows.length; k++) {
+      const rec = existingDbRows[k]
+      const cNorm = normalizeStrict(rec.codigo_cliente)
+      const chNorm = normalizeStrict(rec.nome_canal)
+      const nNorm = normalizeStrict(rec.nome_cliente)
+
+      if (cNorm && chNorm) {
+        dbMapByCodCanal[cNorm + '::' + chNorm] = rec.id
+      }
+      if (nNorm && chNorm) {
+        dbMapByNomeCanal[nNorm + '::' + chNorm] = rec.id
+      }
+      if (cNorm && !dbMapByCod[cNorm]) {
+        dbMapByCod[cNorm] = rec.id
+      }
+    }
+
+    // PASSO 4: Upsert ampliado contra a base existente
+    for (let j = 0; j < intraDeduplicated.length; j++) {
+      const item = intraDeduplicated[j]
+      const lineNum = item.lineNum
+
       try {
+        let matchedId = null
+        let matchReason = ''
+
+        // 1. Procura por codigo_cliente normalizado + nome_canal normalizado
+        if (item.codNorm && item.canalNorm) {
+          const directKey = item.codNorm + '::' + item.canalNorm
+          if (dbMapByCodCanal[directKey]) {
+            matchedId = dbMapByCodCanal[directKey]
+            matchReason = 'mesmo código e canal'
+          }
+        }
+
+        // 2. Procura por nome_cliente normalizado + nome_canal normalizado (mesma razão social no canal)
+        if (!matchedId && item.nomeNorm && item.canalNorm) {
+          const nameKey = item.nomeNorm + '::' + item.canalNorm
+          if (dbMapByNomeCanal[nameKey]) {
+            matchedId = dbMapByNomeCanal[nameKey]
+            matchReason = 'mesma razão social no canal'
+          }
+        }
+
+        // 3. Procura por codigo_cliente normalizado único
+        if (!matchedId && item.codNorm && dbMapByCod[item.codNorm]) {
+          matchedId = dbMapByCod[item.codNorm]
+          matchReason = 'mesmo código de cliente'
+        }
+
         let isUpdate = false
         let record = null
 
-        // Chave de busca para upsert:
-        // Prioridade 1: codigo_cliente + nome_canal + (contato ou email)
-        // Se a linha tem contato ou email específico:
-        if (codigoCliente && (contato || email)) {
+        if (matchedId) {
           try {
-            const checkRows = arrayOf(new DynamicModel({ id: '' }))
-            if (contato && email) {
-              $app
-                .db()
-                .newQuery(
-                  'SELECT id FROM canais_clientes WHERE codigo_cliente = {:cod} AND contato = {:contato} AND email = {:email} LIMIT 1',
-                )
-                .bind({ cod: codigoCliente, contato: contato, email: email })
-                .all(checkRows)
-            } else if (contato) {
-              $app
-                .db()
-                .newQuery(
-                  'SELECT id FROM canais_clientes WHERE codigo_cliente = {:cod} AND contato = {:contato} LIMIT 1',
-                )
-                .bind({ cod: codigoCliente, contato: contato })
-                .all(checkRows)
-            } else {
-              $app
-                .db()
-                .newQuery(
-                  'SELECT id FROM canais_clientes WHERE codigo_cliente = {:cod} AND email = {:email} LIMIT 1',
-                )
-                .bind({ cod: codigoCliente, email: email })
-                .all(checkRows)
-            }
-            if (checkRows.length > 0 && checkRows[0].id) {
-              record = $app.findRecordById('canais_clientes', checkRows[0].id)
-              isUpdate = true
-            }
-          } catch (_) {}
-        }
-
-        // Prioridade 2: Se não localizou por contato específico, busca por codigo_cliente + nome_canal
-        // (especialmente para clientes sem contato informado ou registros únicos)
-        if (!record && codigoCliente && nomeCanal) {
-          try {
-            const checkRows = arrayOf(new DynamicModel({ id: '' }))
-            $app
-              .db()
-              .newQuery(
-                "SELECT id FROM canais_clientes WHERE codigo_cliente = {:cod} AND nome_canal = {:canal} AND (contato IS NULL OR contato = '' OR contato = {:contato}) LIMIT 1",
-              )
-              .bind({ cod: codigoCliente, canal: nomeCanal, contato: contato || '' })
-              .all(checkRows)
-            if (checkRows.length > 0 && checkRows[0].id) {
-              record = $app.findRecordById('canais_clientes', checkRows[0].id)
-              isUpdate = true
-            }
-          } catch (_) {}
-        }
-
-        // Prioridade 3: Se não achou e só temos codigo_cliente sem contato na base
-        if (!record && codigoCliente) {
-          try {
-            const checkRows = arrayOf(new DynamicModel({ id: '' }))
-            $app
-              .db()
-              .newQuery(
-                "SELECT id FROM canais_clientes WHERE codigo_cliente = {:cod} AND (contato IS NULL OR contato = '') LIMIT 1",
-              )
-              .bind({ cod: codigoCliente })
-              .all(checkRows)
-            if (checkRows.length > 0 && checkRows[0].id) {
-              record = $app.findRecordById('canais_clientes', checkRows[0].id)
-              isUpdate = true
-            }
-          } catch (_) {}
+            record = $app.findRecordById('canais_clientes', matchedId)
+            isUpdate = true
+          } catch (_) {
+            record = null
+          }
         }
 
         if (!record) {
           record = new Record(canaisCol)
         }
 
-        record.set('eh_canal', !!ehCanal)
-        record.set('deploy', deploy)
-        record.set('nome_canal', nomeCanal)
-        record.set('nome_cliente', nomeCliente)
-        record.set('status', status)
-        record.set('serie', serie)
-        record.set('codigo_cliente', codigoCliente)
-        record.set('segmento', segmento)
-        record.set('inside', inside)
-        record.set('contato', contato)
-        record.set('cargo', cargo)
-        record.set('email', email)
-        record.set('telefone', telefone)
+        // Preenchimento de dados garantindo integridade
+        record.set('eh_canal', !!item.eh_canal)
+        if (item.deploy) record.set('deploy', item.deploy)
+        if (item.nome_canal) record.set('nome_canal', item.nome_canal)
+        if (item.nome_cliente) record.set('nome_cliente', item.nome_cliente)
+        if (item.status) record.set('status', item.status)
+        if (item.serie) record.set('serie', item.serie)
+        if (item.codigo_cliente) record.set('codigo_cliente', item.codigo_cliente)
+        if (item.segmento) record.set('segmento', item.segmento)
+        if (item.inside) record.set('inside', item.inside)
+        if (item.contato) record.set('contato', item.contato)
+        if (item.cargo) record.set('cargo', item.cargo)
+        if (item.email) record.set('email', item.email)
+        if (item.telefone) record.set('telefone', item.telefone)
         record.set('origem', 'Base Única de Canais')
         record.set('data_carga', nowIso)
 
         $app.save(record)
+
+        // Atualiza índices em memória para próximas iterações
+        const newId = record.id
+        if (item.codNorm && item.canalNorm) {
+          dbMapByCodCanal[item.codNorm + '::' + item.canalNorm] = newId
+        }
+        if (item.nomeNorm && item.canalNorm) {
+          dbMapByNomeCanal[item.nomeNorm + '::' + item.canalNorm] = newId
+        }
+        if (item.codNorm) {
+          dbMapByCod[item.codNorm] = newId
+        }
+
         if (isUpdate) {
           atualizados++
         } else {
@@ -404,15 +532,20 @@ routerAdd(
       } catch (err) {
         ignorados++
         erros.push(
-          `Linha ${lineNum} (${codigoCliente || nomeCanal || nomeCliente}): erro ao salvar: ${err.message || String(err)}`,
+          `Linha ${lineNum} (${item.codigo_cliente || item.nome_canal || item.nome_cliente}): erro ao salvar: ${err.message || String(err)}`,
         )
       }
     }
 
-    const avisos = []
     if (!hasCanalHeader) {
       avisos.push(
         `Nenhuma coluna de Canal reconhecida nos cabeçalhos recebidos: [${originalHeaders.join(', ')}]. Cabeçalhos esperados: CANAL, CANAIS, COD, REVENDA, etc.`,
+      )
+    }
+
+    if (mescladosNoArquivo > 0) {
+      avisos.push(
+        `Blindagem de duplicatas: ${mescladosNoArquivo} linha(s) repetida(s) ou semelhantes na própria planilha foram mescladas automaticamente sem gerar registros duplicados.`,
       )
     }
 
@@ -420,6 +553,7 @@ routerAdd(
       success: true,
       importados,
       atualizados,
+      mesclados,
       ignorados,
       erros,
       avisos,

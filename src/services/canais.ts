@@ -1,6 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import { safeAuthRefresh, ensureAuthToken } from '@/lib/pocketbase/auth-session'
-import type { CanalCliente } from '@/types/sales'
+import type { CanalCliente, CanalMeta, CanalMetaPayload } from '@/types/sales'
 
 export interface CanaisClientesListResult {
   items: CanalCliente[]
@@ -470,6 +470,161 @@ export async function deleteCanalCliente(id: string): Promise<void> {
   await ensureAuthToken()
 
   const run = () => pb.collection('canais_clientes').delete(id)
+
+  try {
+    await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 401 || status === 403) {
+      const refreshed = await safeAuthRefresh()
+      if (refreshed && pb.authStore.isValid) {
+        await run()
+        return
+      }
+      throw new Error('Sessão expirada. Faça login novamente.')
+    }
+    throw err
+  }
+}
+
+/**
+ * =========================================================================
+ * Gestão de Metas por Canal (canais_metas)
+ * =========================================================================
+ */
+
+export interface FetchCanaisMetasParams {
+  nomeCanal?: string
+  ano?: number
+  mes?: number
+  periodo?: string
+}
+
+/**
+ * Busca a lista de metas cadastradas, com filtros opcionais
+ */
+export async function fetchCanaisMetas(params?: FetchCanaisMetasParams): Promise<CanalMeta[]> {
+  await ensureAuthToken()
+
+  const filterParts: string[] = []
+  if (params?.nomeCanal) {
+    const safeCanal = params.nomeCanal.replace(/['"\\]/g, '')
+    filterParts.push(`nome_canal = '${safeCanal}'`)
+  }
+  if (params?.ano) {
+    filterParts.push(`ano = ${params.ano}`)
+  }
+  if (params?.mes) {
+    filterParts.push(`mes = ${params.mes}`)
+  }
+  if (params?.periodo) {
+    filterParts.push(`periodo = '${params.periodo}'`)
+  }
+
+  const filter = filterParts.length > 0 ? filterParts.join(' && ') : ''
+
+  const run = () =>
+    pb.collection<CanalMeta>('canais_metas').getFullList({
+      filter: filter || undefined,
+      sort: '-periodo,nome_canal',
+    })
+
+  try {
+    return await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 401 || status === 403) {
+      const refreshed = await safeAuthRefresh()
+      if (refreshed && pb.authStore.isValid) {
+        return await run()
+      }
+      throw new Error('Sessão expirada. Faça login novamente.')
+    }
+    throw err
+  }
+}
+
+/**
+ * Salva ou atualiza uma meta (upsert por canal + período)
+ */
+export async function saveCanalMeta(
+  payload: CanalMetaPayload & { id?: string },
+): Promise<CanalMeta> {
+  await ensureAuthToken()
+
+  const periodo = payload.periodo || `${payload.ano}-${String(payload.mes).padStart(2, '0')}`
+  const nomeCanal = payload.nome_canal.trim()
+  const valorMeta = Number(payload.valor_meta) || 0
+
+  const data = {
+    nome_canal: nomeCanal,
+    ano: payload.ano,
+    mes: payload.mes,
+    periodo,
+    valor_meta: valorMeta,
+  }
+
+  // Se já tiver ID passado explicitamente, atualiza direto
+  if (payload.id) {
+    const runUpdate = () => pb.collection<CanalMeta>('canais_metas').update(payload.id!, data)
+    try {
+      return await runUpdate()
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status
+      if (status === 401 || status === 403) {
+        const refreshed = await safeAuthRefresh()
+        if (refreshed && pb.authStore.isValid) {
+          return await runUpdate()
+        }
+        throw new Error('Sessão expirada. Faça login novamente.')
+      }
+      throw err
+    }
+  }
+
+  // Se não tem ID, verifica se já existe registro para canal + periodo para atualizar
+  let existingId: string | null = null
+  try {
+    const safeCanal = nomeCanal.replace(/['"\\]/g, '')
+    const existing = await pb
+      .collection<CanalMeta>('canais_metas')
+      .getFirstListItem(`nome_canal = '${safeCanal}' && periodo = '${periodo}'`)
+    if (existing?.id) {
+      existingId = existing.id
+    }
+  } catch {
+    /* intentionally ignored */
+  }
+
+  const run = () => {
+    if (existingId) {
+      return pb.collection<CanalMeta>('canais_metas').update(existingId, data)
+    }
+    return pb.collection<CanalMeta>('canais_metas').create(data)
+  }
+
+  try {
+    return await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 401 || status === 403) {
+      const refreshed = await safeAuthRefresh()
+      if (refreshed && pb.authStore.isValid) {
+        return await run()
+      }
+      throw new Error('Sessão expirada. Faça login novamente.')
+    }
+    throw err
+  }
+}
+
+/**
+ * Exclui uma meta cadastrada
+ */
+export async function deleteCanalMeta(id: string): Promise<void> {
+  await ensureAuthToken()
+
+  const run = () => pb.collection('canais_metas').delete(id)
 
   try {
     await run()

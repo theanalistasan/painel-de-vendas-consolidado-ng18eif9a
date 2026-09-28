@@ -28,10 +28,15 @@ import {
   createCanalCliente,
   updateCanalCliente,
   deleteCanalCliente,
+  fetchCanaisMetas,
+  saveCanalMeta,
+  deleteCanalMeta,
   type CanaisIndicadores,
   type CanalClientePayload,
 } from '@/services/canais'
-import type { CanalCliente } from '@/types/sales'
+import type { CanalCliente, CanalMeta } from '@/types/sales'
+import { formatCurrency, MESES_PT_BR } from '@/lib/formatters'
+import { Target } from 'lucide-react'
 import { CanalDetailModal } from '@/components/CanalDetailModal'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -135,6 +140,133 @@ export default function Canais() {
   // Estado do Card / Painel de Detalhe do Canal
   const [selectedCanalForCard, setSelectedCanalForCard] = useState<string | null>(null)
   const [cardModalOpen, setCardModalOpen] = useState(false)
+
+  // =========================================================================
+  // Estados e Funções de METAS POR CANAL
+  // =========================================================================
+  const [metas, setMetas] = useState<CanalMeta[]>([])
+  const [loadingMetas, setLoadingMetas] = useState(true)
+  const [metaModalOpen, setMetaModalOpen] = useState(false)
+  const [metaEditing, setMetaEditing] = useState<CanalMeta | null>(null)
+  const [metaFormCanal, setMetaFormCanal] = useState('')
+  const [metaFormAno, setMetaFormAno] = useState<number>(new Date().getFullYear())
+  const [metaFormMes, setMetaFormMes] = useState<number>(new Date().getMonth() + 1)
+  const [metaFormValorStr, setMetaFormValorStr] = useState('0')
+  const [metaSaving, setMetaSaving] = useState(false)
+  const [metaDeleting, setMetaDeleting] = useState(false)
+  const [metaDeleteTarget, setMetaDeleteTarget] = useState<CanalMeta | null>(null)
+
+  const loadMetas = useCallback(async () => {
+    try {
+      setLoadingMetas(true)
+      const data = await fetchCanaisMetas()
+      setMetas(data)
+    } catch (err) {
+      console.error('Erro ao carregar metas de canais:', err)
+    } finally {
+      setLoadingMetas(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadMetas()
+  }, [loadMetas])
+
+  const openMetaModal = (canalNome?: string, existing?: CanalMeta) => {
+    if (existing) {
+      setMetaEditing(existing)
+      setMetaFormCanal(existing.nome_canal)
+      setMetaFormAno(existing.ano)
+      setMetaFormMes(existing.mes)
+      setMetaFormValorStr(String(existing.valor_meta))
+    } else {
+      setMetaEditing(null)
+      setMetaFormCanal(canalNome || '')
+      setMetaFormAno(new Date().getFullYear())
+      setMetaFormMes(new Date().getMonth() + 1)
+      setMetaFormValorStr('0')
+    }
+    setMetaModalOpen(true)
+  }
+
+  const handleSaveMeta = async () => {
+    if (!metaFormCanal.trim()) {
+      toast({ variant: 'destructive', title: 'Validação', description: 'Selecione um canal.' })
+      return
+    }
+    // Parse do valor em moeda
+    const cleanStr = metaFormValorStr.replace(/[^\d.,]/g, '').replace(',', '.')
+    const parsedVal = parseFloat(cleanStr) || 0
+    if (parsedVal <= 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Validação',
+        description: 'Informe um valor de meta maior que zero.',
+      })
+      return
+    }
+
+    const periodo = `${metaFormAno}-${String(metaFormMes).padStart(2, '0')}`
+
+    // Checar duplicata se for novo registro
+    if (!metaEditing) {
+      const exists = metas.some(
+        (m) =>
+          m.nome_canal.trim().toLowerCase() === metaFormCanal.trim().toLowerCase() &&
+          m.periodo === periodo,
+      )
+      if (exists) {
+        toast({
+          variant: 'destructive',
+          title: 'Meta já cadastrada',
+          description: `O canal ${metaFormCanal} já possui uma meta cadastrada para ${periodo}. Edite-a na tabela.`,
+        })
+        return
+      }
+    }
+
+    try {
+      setMetaSaving(true)
+      await saveCanalMeta({
+        id: metaEditing?.id,
+        nome_canal: metaFormCanal.trim(),
+        ano: metaFormAno,
+        mes: metaFormMes,
+        periodo,
+        valor_meta: parsedVal,
+      })
+      toast({
+        title: metaEditing ? 'Meta atualizada' : 'Meta cadastrada com sucesso',
+        description: `Canal ${metaFormCanal} • ${MESES_PT_BR[metaFormMes - 1]}/${metaFormAno} = ${formatCurrency(parsedVal)}`,
+      })
+      setMetaModalOpen(false)
+      loadMetas()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao salvar meta'
+      toast({ variant: 'destructive', title: 'Erro ao salvar meta', description: msg })
+    } finally {
+      setMetaSaving(false)
+    }
+  }
+
+  const handleDeleteMeta = async () => {
+    if (!metaDeleteTarget) return
+    try {
+      setMetaDeleting(true)
+      await deleteCanalMeta(metaDeleteTarget.id)
+      toast({
+        title: 'Meta excluída',
+        description: `Meta de ${metaDeleteTarget.nome_canal} (${metaDeleteTarget.periodo}) foi removida.`,
+      })
+      setMetaDeleteTarget(null)
+      loadMetas()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Falha ao excluir meta'
+      toast({ variant: 'destructive', title: 'Erro ao excluir meta', description: msg })
+    } finally {
+      setMetaDeleting(false)
+    }
+  }
 
   // Handler para abrir o card do canal
   const handleOpenCanalCard = useCallback((nomeCanal: string) => {
@@ -922,6 +1054,123 @@ export default function Canais() {
           </Card>
         </div>
       </div>
+
+      {/* BLOCO: METAS POR CANAL */}
+      <Card className="rounded-xl border border-teal-200/90 bg-white shadow-xs overflow-hidden">
+        <CardHeader className="pb-3 border-b border-teal-100 bg-linear-to-r from-teal-50/50 via-white to-emerald-50/30">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <CardTitle className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+                <Target className="w-4 h-4 text-teal-700" />
+                Planejamento de Metas Mensais por Canal
+              </CardTitle>
+              <CardDescription className="text-xs text-slate-500 font-medium">
+                {metas.length} meta(s) cadastrada(s) • Base para os indicadores de metas nos
+                Dashboards Geral e Canais
+              </CardDescription>
+            </div>
+
+            <Button
+              onClick={() => openMetaModal()}
+              size="sm"
+              className="bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold shrink-0 shadow-xs h-8 gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Cadastrar Meta
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loadingMetas ? (
+            <div className="p-8 text-center text-xs text-slate-400">Carregando metas...</div>
+          ) : metas.length === 0 ? (
+            <div className="p-8 text-center">
+              <Target className="w-8 h-8 mx-auto mb-2 text-teal-300" />
+              <p className="text-xs font-semibold text-slate-600">Nenhuma meta cadastrada ainda</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Cadastre a primeira meta de faturamento mensal para os canais de revenda.
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => openMetaModal()}
+                className="mt-3 text-xs font-bold text-teal-700 border-teal-200 hover:bg-teal-50"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Cadastrar primeira meta
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="py-2.5 px-4">Canal</th>
+                    <th className="py-2.5 px-4">Período (Mês / Ano)</th>
+                    <th className="py-2.5 px-4 text-right">Valor da Meta (R$)</th>
+                    <th className="py-2.5 px-4 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {metas.map((m) => {
+                    const mesNome = MESES_PT_BR[m.mes - 1] || `Mês ${m.mes}`
+                    return (
+                      <tr key={m.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="py-2.5 px-4 font-bold text-slate-800">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCanalCard(m.nome_canal)}
+                            className="hover:text-teal-700 hover:underline inline-flex items-center gap-1 text-left"
+                            title={`Abrir card do canal ${m.nome_canal}`}
+                          >
+                            <span>{m.nome_canal}</span>
+                          </button>
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-600">
+                          <Badge
+                            variant="outline"
+                            className="text-[11px] font-semibold bg-white border-slate-200"
+                          >
+                            {mesNome} de {m.ano}
+                          </Badge>
+                          <span className="text-[10px] text-slate-400 ml-2 font-mono">
+                            ({m.periodo})
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-right font-black text-teal-800 text-sm tabular-nums">
+                          {formatCurrency(m.valor_meta)}
+                        </td>
+                        <td className="py-2.5 px-4 text-right">
+                          <div className="inline-flex items-center gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openMetaModal(m.nome_canal, m)}
+                              className="h-7 w-7 p-0 text-slate-500 hover:text-teal-700 hover:bg-teal-50"
+                              title="Editar meta"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setMetaDeleteTarget(m)}
+                              className="h-7 w-7 p-0 text-slate-500 hover:text-rose-600 hover:bg-rose-50"
+                              title="Excluir meta"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* BLOCO 2: CRUD / LISTA DE REGISTROS */}
       <Card className="rounded-xl border border-slate-200 bg-white shadow-xs overflow-hidden">
@@ -2062,6 +2311,177 @@ export default function Canais() {
         </DialogContent>
       </Dialog>
 
+      {/* MODAL DE CADASTRO / EDIÇÃO DE META POR CANAL */}
+      <Dialog open={metaModalOpen} onOpenChange={setMetaModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <Target className="w-4 h-4 text-teal-700" />
+              {metaEditing ? 'Editar Meta Mensal' : 'Cadastrar Meta de Canal'}
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Defina o valor da meta de faturamento mensal para este canal. O alcance consolidado de
+              deploy e inside será calculado automaticamente.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3.5 py-2">
+            {/* Canal */}
+            <div>
+              <Label className="text-xs font-bold text-slate-700 mb-1 block">
+                Canal <span className="text-rose-600">*</span>
+              </Label>
+              {metaEditing ? (
+                <div className="p-2.5 bg-slate-50 rounded-md border border-slate-200 text-xs font-bold text-slate-800">
+                  {metaEditing.nome_canal}
+                </div>
+              ) : (
+                <Select value={metaFormCanal} onValueChange={setMetaFormCanal}>
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Selecione um canal..." />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60 text-xs">
+                    {uniqueCanaisList.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+
+            {/* Mês e Ano */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs font-bold text-slate-700 mb-1 block">Mês</Label>
+                <Select
+                  value={String(metaFormMes)}
+                  onValueChange={(v) => setMetaFormMes(Number(v))}
+                  disabled={!!metaEditing}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Mês" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60 text-xs">
+                    {MESES_PT_BR.map((m, idx) => (
+                      <SelectItem key={m} value={String(idx + 1)}>
+                        {m}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-xs font-bold text-slate-700 mb-1 block">Ano</Label>
+                <Select
+                  value={String(metaFormAno)}
+                  onValueChange={(v) => setMetaFormAno(Number(v))}
+                  disabled={!!metaEditing}
+                >
+                  <SelectTrigger className="h-9 text-xs">
+                    <SelectValue placeholder="Ano" />
+                  </SelectTrigger>
+                  <SelectContent className="text-xs">
+                    {[2024, 2025, 2026, 2027].map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Valor da Meta (R$) */}
+            <div>
+              <Label className="text-xs font-bold text-slate-700 mb-1 block">
+                Valor da Meta (R$) <span className="text-rose-600">*</span>
+              </Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                  R$
+                </span>
+                <Input
+                  value={metaFormValorStr}
+                  onChange={(e) => setMetaFormValorStr(e.target.value)}
+                  placeholder="Ex.: 250000 ou 250.000,00"
+                  className="pl-9 h-9 text-xs font-bold text-teal-800 focus-visible:ring-teal-600"
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">
+                Digite o valor bruto planejado em Reais para o mês selecionado.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setMetaModalOpen(false)}
+              disabled={metaSaving}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSaveMeta}
+              disabled={metaSaving}
+              className="bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold"
+            >
+              {metaSaving ? 'Salvando...' : metaEditing ? 'Salvar Alterações' : 'Cadastrar Meta'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* MODAL DE CONFIRMAÇÃO DE EXCLUSÃO DE META */}
+      <Dialog open={!!metaDeleteTarget} onOpenChange={(open) => !open && setMetaDeleteTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-rose-700 flex items-center gap-2">
+              <Trash2 className="w-4 h-4" />
+              Excluir Meta?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-600">
+              Deseja remover a meta de{' '}
+              <strong className="text-slate-900">{metaDeleteTarget?.nome_canal}</strong> do período{' '}
+              <strong className="text-slate-900">{metaDeleteTarget?.periodo}</strong> no valor de{' '}
+              <strong className="text-teal-700">
+                {metaDeleteTarget ? formatCurrency(metaDeleteTarget.valor_meta) : ''}
+              </strong>
+              ?
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMetaDeleteTarget(null)}
+              disabled={metaDeleting}
+              className="text-xs"
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleDeleteMeta}
+              disabled={metaDeleting}
+              className="text-xs font-bold"
+            >
+              {metaDeleting ? 'Excluindo...' : 'Sim, Excluir Meta'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* CARD / PAINEL DE DETALHE DO CANAL */}
       <CanalDetailModal
         canalNome={selectedCanalForCard}
@@ -2075,6 +2495,8 @@ export default function Canais() {
           setDeleteTarget(item)
         }}
         onNewContactForCanal={handleNewContactForCanal}
+        metas={metas}
+        onOpenMetaModal={(canal, existing) => openMetaModal(canal, existing)}
       />
     </div>
   )

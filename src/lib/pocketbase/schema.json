@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-25T19:57:32.606Z",
+  "generatedAt": "2026-09-28T19:02:45.780Z",
   "collections": [
     {
       "name": "users",
@@ -1086,6 +1086,68 @@
         "CREATE INDEX idx_cc_nome_canal ON canais_clientes (nome_canal)",
         "CREATE INDEX idx_cc_eh_canal ON canais_clientes (eh_canal)",
         "CREATE INDEX idx_cc_deploy ON canais_clientes (deploy)"
+      ]
+    },
+    {
+      "name": "canais_metas",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "nome_canal",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "ano",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "mes",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "periodo",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "valor_meta",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_cm_canal_periodo ON canais_metas (nome_canal, periodo)",
+        "CREATE INDEX idx_cm_periodo ON canais_metas (periodo)",
+        "CREATE INDEX idx_cm_nome_canal ON canais_metas (nome_canal)"
       ]
     }
   ]

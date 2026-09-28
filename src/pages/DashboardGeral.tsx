@@ -49,6 +49,7 @@ import {
 } from '@/lib/filter-persistence'
 import FilterBar from '@/components/FilterBar'
 import ChartCard from '@/components/ChartCard'
+import { MetasIndicador } from '@/components/MetasIndicador'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -1491,6 +1492,12 @@ export default function DashboardGeral() {
               </ResponsiveContainer>
             </ChartCard>
           </div>
+
+          {/* Linha 4.5: Indicador de Metas Consolidadas (Canal, Deploy, Inside) */}
+          <MetasIndicador
+            filterMes={filters.mes?.[0] || null}
+            filterAno={filters.ano?.[0] || null}
+          />
 
           {/* Linha 5: Painel Vendas por Canal & Deploy */}
           <div className="rounded-xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/50 p-6 shadow-sm space-y-6">

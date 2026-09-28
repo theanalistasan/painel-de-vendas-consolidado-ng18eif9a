@@ -42,6 +42,7 @@ interface BatchProgress {
 interface BatchResult {
   importados: number
   atualizados: number
+  mesclados?: number
   ignorados: number
   erros: string[]
   avisos: string[]
@@ -188,6 +189,7 @@ function BaseImportCard({
     const acc: BatchResult = {
       importados: 0,
       atualizados: 0,
+      mesclados: 0,
       ignorados: 0,
       erros: [],
       avisos: [],
@@ -204,6 +206,7 @@ function BaseImportCard({
           const res = await onImport(chunks[i])
           acc.importados += res.importados || 0
           acc.atualizados += res.atualizados || 0
+          acc.mesclados = (acc.mesclados || 0) + (res.mesclados || 0)
           acc.ignorados += res.ignorados || 0
           if (res.erros && res.erros.length > 0) {
             acc.erros.push(...res.erros.slice(0, 20))
@@ -227,6 +230,7 @@ function BaseImportCard({
         success: acc.failedBatches.length === 0,
         importados: acc.importados,
         atualizados: acc.atualizados,
+        mesclados: acc.mesclados || 0,
         ignorados: acc.ignorados,
         erros: acc.erros,
         avisos: Array.from(new Set(acc.avisos)),
@@ -540,7 +544,12 @@ function BaseImportCard({
                 )}
               </div>
             )}
-            <div className="grid grid-cols-3 gap-2 text-center pt-1">
+            <div
+              className={cn(
+                'grid gap-2 text-center pt-1',
+                (result.mesclados ?? 0) > 0 ? 'grid-cols-4' : 'grid-cols-3',
+              )}
+            >
               <div className="bg-white p-2 rounded-lg border border-slate-100">
                 <span className="text-[10px] text-slate-400 uppercase font-semibold block">
                   Novos
@@ -553,6 +562,14 @@ function BaseImportCard({
                 </span>
                 <span className="text-sm font-bold text-indigo-600">{result.atualizados}</span>
               </div>
+              {(result.mesclados ?? 0) > 0 && (
+                <div className="bg-amber-50/70 p-2 rounded-lg border border-amber-200">
+                  <span className="text-[10px] text-amber-700 uppercase font-semibold block">
+                    Mesclados
+                  </span>
+                  <span className="text-sm font-bold text-amber-800">{result.mesclados}</span>
+                </div>
+              )}
               <div className="bg-white p-2 rounded-lg border border-slate-100">
                 <span className="text-[10px] text-slate-400 uppercase font-semibold block">
                   Ignorados
@@ -901,7 +918,12 @@ export default function Importar() {
                     </div>
                     {r ? (
                       <>
-                        <div className="grid grid-cols-3 gap-1.5 text-center">
+                        <div
+                          className={cn(
+                            'grid gap-1.5 text-center',
+                            (r.mesclados ?? 0) > 0 ? 'grid-cols-4' : 'grid-cols-3',
+                          )}
+                        >
                           <div className="bg-white p-1.5 rounded-md border border-slate-100">
                             <span className="text-[9px] text-slate-400 uppercase font-semibold block">
                               Novos
@@ -918,6 +940,16 @@ export default function Importar() {
                               {r.atualizados}
                             </span>
                           </div>
+                          {(r.mesclados ?? 0) > 0 && (
+                            <div className="bg-amber-50/70 p-1.5 rounded-md border border-amber-200">
+                              <span className="text-[9px] text-amber-700 uppercase font-semibold block">
+                                Mesclados
+                              </span>
+                              <span className="text-xs font-bold text-amber-800">
+                                {r.mesclados}
+                              </span>
+                            </div>
+                          )}
                           <div className="bg-white p-1.5 rounded-md border border-slate-100">
                             <span className="text-[9px] text-slate-400 uppercase font-semibold block">
                               Ignorados

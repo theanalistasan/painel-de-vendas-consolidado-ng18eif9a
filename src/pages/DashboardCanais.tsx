@@ -52,6 +52,7 @@ import {
 import FilterBar from '@/components/FilterBar'
 import KpiCard from '@/components/KpiCard'
 import ChartCard from '@/components/ChartCard'
+import { MetasIndicador } from '@/components/MetasIndicador'
 import { VendasPorEstadoIndicador } from '@/components/VendasPorEstadoIndicador'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
@@ -617,6 +618,12 @@ export default function DashboardCanais() {
               iconColor="text-rose-600"
             />
           </div>
+
+          {/* Indicador de Metas Consolidadas (Canal, Deploy, Inside) */}
+          <MetasIndicador
+            filterMes={filters.mes?.[0] || null}
+            filterAno={filters.ano?.[0] || null}
+          />
 
           {/* Charts Grid: Top Vendedores & Top Clientes */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

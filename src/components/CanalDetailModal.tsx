@@ -15,7 +15,9 @@ import {
   ChevronRight,
   Plus,
 } from 'lucide-react'
-import type { CanalCliente } from '@/types/sales'
+import type { CanalCliente, CanalMeta } from '@/types/sales'
+import { formatCurrency, MESES_PT_BR } from '@/lib/formatters'
+import { Target } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -37,6 +39,8 @@ export interface CanalDetailModalProps {
   onEditItem: (item: CanalCliente) => void
   onDeleteItem: (item: CanalCliente) => void
   onNewContactForCanal?: (canalNome: string, defaultItem?: CanalCliente) => void
+  metas?: CanalMeta[]
+  onOpenMetaModal?: (canalNome: string, existingMeta?: CanalMeta) => void
 }
 
 export function CanalDetailModal({
@@ -47,6 +51,8 @@ export function CanalDetailModal({
   onEditItem,
   onDeleteItem,
   onNewContactForCanal,
+  metas = [],
+  onOpenMetaModal,
 }: CanalDetailModalProps) {
   const [searchTerm, setSearchTerm] = useState('')
 
@@ -175,6 +181,15 @@ export function CanalDetailModal({
     })
   }, [consolidated.clientesMap, searchTerm])
 
+  // Metas cadastradas para este canal (calculadas incondicionalmente antes de qualquer return)
+  const canalMetas = useMemo(() => {
+    if (!canalNome) return []
+    const target = canalNome.trim().toLowerCase()
+    return metas
+      .filter((m) => (m.nome_canal || '').trim().toLowerCase() === target)
+      .sort((a, b) => b.periodo.localeCompare(a.periodo))
+  }, [canalNome, metas])
+
   if (!canalNome) return null
 
   const isAgis = consolidated.deployNormalized.includes('AGIS')
@@ -287,6 +302,86 @@ export function CanalDetailModal({
                 {consolidated.totalRegistros}
               </span>
               <span className="text-[10px] text-slate-400">linhas na base única</span>
+            </div>
+          </div>
+
+          {/* SEÇÃO DE METAS DO CANAL */}
+          <div className="pt-2.5 pb-1">
+            <div className="p-3 bg-linear-to-r from-teal-50/70 to-emerald-50/40 border border-teal-200/80 rounded-xl">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-teal-600 text-white shadow-2xs">
+                    <Target className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 block">
+                      Metas Mensais do Canal
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      Planejamento de faturamento para acompanhamento nos dashboards
+                    </span>
+                  </div>
+                </div>
+
+                {onOpenMetaModal && (
+                  <Button
+                    size="sm"
+                    onClick={() => onOpenMetaModal(consolidated.nomeCanal)}
+                    className="h-7 text-xs bg-teal-700 hover:bg-teal-800 text-white font-bold gap-1 shadow-2xs"
+                  >
+                    <Target className="w-3.5 h-3.5" />
+                    {canalMetas.length === 0 ? 'Definir meta' : 'Nova meta / Período'}
+                  </Button>
+                )}
+              </div>
+
+              {canalMetas.length === 0 ? (
+                <div className="mt-2 text-[11px] text-slate-500 bg-white/80 p-2.5 rounded-lg border border-teal-100 flex items-center justify-between">
+                  <span>Nenhuma meta cadastrada para este canal ainda.</span>
+                  {onOpenMetaModal && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => onOpenMetaModal(consolidated.nomeCanal)}
+                      className="h-6 text-[11px] text-teal-700 hover:text-teal-900 hover:bg-teal-100/50 font-bold p-0 px-2"
+                    >
+                      Cadastrar primeira meta →
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-2.5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {canalMetas.map((m) => {
+                    const mesNome = MESES_PT_BR[m.mes - 1] || `Mês ${m.mes}`
+                    return (
+                      <div
+                        key={m.id}
+                        className="bg-white p-2.5 rounded-lg border border-teal-100 flex items-center justify-between shadow-2xs hover:border-teal-300 transition-colors"
+                      >
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight block">
+                            {mesNome} / {m.ano}
+                          </span>
+                          <span className="text-sm font-extrabold text-teal-800 tabular-nums block">
+                            {formatCurrency(m.valor_meta)}
+                          </span>
+                        </div>
+                        {onOpenMetaModal && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onOpenMetaModal(consolidated.nomeCanal, m)}
+                            className="h-7 px-2 text-xs text-slate-500 hover:text-teal-700 hover:bg-teal-50"
+                            title="Editar esta meta"
+                          >
+                            <Pencil className="w-3 h-3 text-teal-700" />
+                          </Button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
