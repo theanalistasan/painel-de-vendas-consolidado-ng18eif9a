@@ -867,34 +867,53 @@ export default function Importar() {
           onImported={(r) => handleImported('netsales', r)}
         />
 
-        {/* Card 4: Canais x Clientes (Marketing) - Base Única de Canais */}
-        <BaseImportCard
-          title="Canais x Clientes"
-          subtitle="Base Única de Canais e vínculo com revendas"
-          badgeLabel="Canais"
-          badgeColor="bg-[#0B6E99]"
-          expectedColumns={[
-            'Status',
-            'Série',
-            'CANAIS',
-            'CANAL FATURAMENTO',
-            'SEGMENTO',
-            'INSIDE',
-            'Município',
-            'Estado',
-            'META',
-            'COD',
-            'CANAL',
-            'REVENDA',
-            'NOME DO CONTATO',
-            'CARGO',
-            'E-MAIL',
-            'TELEFONE',
-          ]}
-          onImport={(rows) => importCanaisClientesApi(rows)}
-          baseCount={counts.canais_clientes ?? 0}
-          onImported={(r) => handleImported('canais_clientes', r)}
-        />
+        {/* Card 4: Canais x Clientes (DESATIVADO - Origem via Sincronização com Gestão de Canais de Vendas) */}
+        <Card className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-5 shadow-xs relative overflow-hidden flex flex-col justify-between">
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-black text-slate-800 text-sm">Canais x Clientes</span>
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] bg-amber-50 text-amber-800 border-amber-300 font-bold"
+                  >
+                    Importação Desativada
+                  </Badge>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Base Única de Canais e vínculo com revendas
+                </p>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-200/60 text-slate-500">
+                <Database className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="p-3 rounded-lg bg-amber-50/80 border border-amber-200 text-amber-900 text-xs leading-relaxed space-y-1">
+              <p className="font-bold flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                Origem migrada para Gestão de Canais de Vendas
+              </p>
+              <p className="text-[11px] text-amber-800">
+                A importação por planilha foi desativada porque a aplicação{' '}
+                <strong>Gestão de Canais de Vendas</strong> é agora a fonte da verdade de revendas e
+                contatos. Os dados existentes foram preservados e são atualizados via sincronização
+                automática no módulo <strong>Canais</strong>.
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-slate-200/80 flex items-center justify-between text-xs text-slate-500 mt-4">
+            <span className="flex items-center gap-1">
+              <Database className="w-3.5 h-3.5 text-slate-400" />
+              Registros preservados na base:
+            </span>
+            <strong className="text-slate-800 font-bold tabular-nums">
+              {formatNumber(counts.canais_clientes ?? 0)}
+            </strong>
+          </div>
+        </Card>
 
         {/* Card 5: Pedidos em Aberto (SAP) */}
         <BaseImportCard

@@ -36,8 +36,8 @@ export interface CanalDetailModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   allItems: CanalCliente[]
-  onEditItem: (item: CanalCliente) => void
-  onDeleteItem: (item: CanalCliente) => void
+  onEditItem?: (item: CanalCliente) => void
+  onDeleteItem?: (item: CanalCliente) => void
   onNewContactForCanal?: (canalNome: string, defaultItem?: CanalCliente) => void
   metas?: CanalMeta[]
   onOpenMetaModal?: (canalNome: string, existingMeta?: CanalMeta) => void
@@ -257,26 +257,17 @@ export function CanalDetailModal({
                   )}
                 </div>
                 <DialogDescription className="text-xs text-slate-500 mt-1 font-medium">
-                  Card do Canal • Gestão consolidada de revendas vinculadas, contatos e alteração de
-                  dados
+                  Card do Canal • Visualização consolidada sincronizada da base Gestão de Canais de
+                  Vendas
                 </DialogDescription>
               </div>
             </div>
 
-            {/* Ação rápida para vincular novo cliente/contato ao canal */}
-            {onNewContactForCanal && (
-              <Button
-                size="sm"
-                onClick={() => {
-                  const sample = canalRecords[0]
-                  onNewContactForCanal(consolidated.nomeCanal, sample)
-                }}
-                className="bg-[#0B6E99] hover:bg-[#084F6E] text-white text-xs font-bold shrink-0 h-8 gap-1 shadow-xs"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Vincular Cliente/Contato
-              </Button>
-            )}
+            {/* Banner / indicador de somente leitura */}
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-50 text-[#0B6E99] border border-sky-200 text-xs font-semibold">
+              <span className="w-2 h-2 rounded-full bg-[#0B6E99] animate-pulse" />
+              Somente leitura (Sincronizado)
+            </div>
           </div>
 
           {/* 4 KPIs de resumo do Canal */}
@@ -626,27 +617,14 @@ export function CanalDetailModal({
                         </div>
                       </div>
 
-                      {/* Botões de Ação de Alteração / Exclusão de cada registro */}
+                      {/* Ações desativadas para modo somente leitura */}
                       <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
-                        <Button
+                        <Badge
                           variant="outline"
-                          size="sm"
-                          onClick={() => onEditItem(reg)}
-                          className="h-7 px-2.5 text-xs text-slate-700 border-slate-200 hover:text-[#0B6E99] hover:border-cyan-300 hover:bg-cyan-50 font-semibold gap-1"
-                          title="Alterar este registro no modal de edição"
+                          className="text-[10px] text-slate-400 border-slate-200 bg-slate-50 font-normal"
                         >
-                          <Pencil className="w-3 h-3 text-[#0B6E99]" />
-                          Editar
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => onDeleteItem(reg)}
-                          className="h-7 px-2 text-xs text-slate-500 border-slate-200 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50"
-                          title="Excluir este registro"
-                        >
-                          <Trash2 className="w-3 h-3 text-rose-500" />
-                        </Button>
+                          Sincronizado
+                        </Badge>
                       </div>
                     </div>
                   ))}

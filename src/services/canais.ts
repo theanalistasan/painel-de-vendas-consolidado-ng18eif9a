@@ -65,6 +65,86 @@ export interface CanalClientePayload {
   meta_valor?: number
 }
 
+export interface CanaisSyncStatus {
+  configured: boolean
+  ultimo_corte: string
+  ultimo_sucesso: string
+  status: string
+  detalhes: string
+  revendas_lidas: number
+  revendas_atualizadas: number
+  contatos_lidos: number
+  contatos_atualizados: number
+  updated?: string
+}
+
+export interface CanaisSyncResult {
+  success: boolean
+  isFullSync: boolean
+  mudancas?: boolean
+  revendasLidas: number
+  revendasAtualizadas: number
+  contatosLidos: number
+  contatosAtualizados: number
+  totalItemsOrigem: { revendas: number; contatos: number }
+  ultimoCorte: string
+  novoCorte: string
+  duracaoMs: number
+  data_carga?: string
+  message?: string
+}
+
+/**
+ * Obtém o status da sincronização de canais com a base Gestão de Canais de Vendas
+ */
+export async function fetchCanaisSyncStatus(): Promise<CanaisSyncStatus> {
+  await ensureAuthToken()
+  try {
+    return await pb.send<CanaisSyncStatus>('/backend/v1/canais/sync/status', {
+      method: 'GET',
+    })
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 401 || status === 403) {
+      const refreshed = await safeAuthRefresh()
+      if (refreshed && pb.authStore.isValid) {
+        return await pb.send<CanaisSyncStatus>('/backend/v1/canais/sync/status', {
+          method: 'GET',
+        })
+      }
+      throw new Error('Sessão expirada. Faça login novamente.')
+    }
+    throw err
+  }
+}
+
+/**
+ * Dispara sincronização com a base Gestão de Canais de Vendas
+ */
+export async function triggerCanaisSync(options?: { full?: boolean }): Promise<CanaisSyncResult> {
+  await ensureAuthToken()
+  const payload = { full: options?.full === true }
+  try {
+    return await pb.send<CanaisSyncResult>('/backend/v1/canais/sync', {
+      method: 'POST',
+      body: payload,
+    })
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 401 || status === 403) {
+      const refreshed = await safeAuthRefresh()
+      if (refreshed && pb.authStore.isValid) {
+        return await pb.send<CanaisSyncResult>('/backend/v1/canais/sync', {
+          method: 'POST',
+          body: payload,
+        })
+      }
+      throw new Error('Sessão expirada. Faça login novamente.')
+    }
+    throw err
+  }
+}
+
 /**
  * Busca registros da coleção canais_clientes com filtros e paginação
  */

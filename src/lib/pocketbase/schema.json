@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-01T23:07:29.000Z",
+  "generatedAt": "2026-10-01T23:22:24.883Z",
   "collections": [
     {
       "name": "users",
@@ -1097,6 +1097,54 @@
           "type": "number",
           "required": false,
           "system": false
+        },
+        {
+          "name": "responsavel",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "observacoes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_cor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contato_principal",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_contato",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origem_id_revenda",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origem_id_contato",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origem_updated",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -1355,6 +1403,88 @@
         "CREATE INDEX idx_pa_deploy ON pedidos_abertos (deploy)",
         "CREATE INDEX idx_pa_inside ON pedidos_abertos (inside)"
       ]
+    },
+    {
+      "name": "canais_sync_state",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "chave",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "ultimo_corte",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultimo_sucesso",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "detalhes",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "revendas_lidas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "revendas_atualizadas",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contatos_lidos",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "contatos_atualizados",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE UNIQUE INDEX idx_sync_state_chave ON canais_sync_state (chave)"]
     }
   ]
 }

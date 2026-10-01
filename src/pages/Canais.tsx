@@ -25,17 +25,20 @@ import {
 import {
   fetchCanaisClientes,
   fetchCanaisIndicadores,
+  fetchCanaisMetas,
   createCanalCliente,
   updateCanalCliente,
   deleteCanalCliente,
-  fetchCanaisMetas,
   saveCanalMeta,
   deleteCanalMeta,
+  fetchCanaisSyncStatus,
+  triggerCanaisSync,
   type CanaisIndicadores,
+  type CanaisSyncStatus,
   type CanalClientePayload,
 } from '@/services/canais'
 import type { CanalCliente, CanalMeta } from '@/types/sales'
-import { formatCurrency, MESES_PT_BR } from '@/lib/formatters'
+import { formatCurrency, formatDateTime, MESES_PT_BR } from '@/lib/formatters'
 import { Target } from 'lucide-react'
 import { CanalDetailModal } from '@/components/CanalDetailModal'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -134,7 +137,11 @@ export default function Canais() {
   // Por padrão, o relatório deve ser apresentado colapsado (todos os grupos fechados)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
-  // Modais de Criação/Edição e Exclusão
+  // Estado de Sincronização com "Gestão de Canais de Vendas"
+  const [syncStatus, setSyncStatus] = useState<CanaisSyncStatus | null>(null)
+  const [loadingSync, setLoadingSync] = useState(false)
+
+  // Modais de Criação/Edição e Exclusão (Desativados em modo somente leitura)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<CanalCliente | null>(null)
   const [form, setForm] = useState<FormState>(emptyForm)
@@ -534,13 +541,45 @@ export default function Canais() {
     }
   }, [search, canalFilter, deployFilter, insideFilter, ehCanalFilter, toast])
 
+  const loadSyncInfo = useCallback(async () => {
+    try {
+      const st = await fetchCanaisSyncStatus()
+      setSyncStatus(st)
+    } catch (err) {
+      console.warn('Não foi possível obter status de sincronização:', err)
+    }
+  }, [])
+
   useEffect(() => {
     loadIndicadores()
-  }, [loadIndicadores])
+    loadSyncInfo()
+  }, [loadIndicadores, loadSyncInfo])
 
   useEffect(() => {
     loadList()
   }, [loadList])
+
+  const handleSyncNow = async () => {
+    try {
+      setLoadingSync(true)
+      const res = await triggerCanaisSync()
+      toast({
+        title: 'Sincronização concluída!',
+        description: `${res.revendasAtualizadas} revendas e ${res.contatosAtualizados} contatos sincronizados (${res.mudancas === false ? 'Base já em dia' : 'Registros atualizados'}).`,
+      })
+      await Promise.all([loadIndicadores(), loadList(), loadSyncInfo()])
+    } catch (err: unknown) {
+      console.error('Erro na sincronização:', err)
+      const msg = err instanceof Error ? err.message : 'Falha ao sincronizar com a base de Canais.'
+      toast({
+        variant: 'destructive',
+        title: 'Erro na Sincronização',
+        description: msg,
+      })
+    } finally {
+      setLoadingSync(false)
+    }
+  }
 
   // Reset page when filters change
   const handleFilterChange = <T,>(setter: React.Dispatch<React.SetStateAction<T>>, val: T) => {
@@ -719,17 +758,18 @@ export default function Canais() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
                   loadIndicadores()
                   loadList()
+                  loadSyncInfo()
                 }}
-                disabled={loadingList || loadingIndicadores}
+                disabled={loadingList || loadingIndicadores || loadingSync}
                 className="h-9 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50"
-                title="Atualizar dados"
+                title="Atualizar tela"
               >
                 <RefreshCw
                   className={cn(
@@ -740,13 +780,39 @@ export default function Canais() {
                 Atualizar
               </Button>
               <Button
-                onClick={openCreate}
-                className="h-9 bg-[#0B6E99] hover:bg-[#084F6E] text-white text-xs font-bold shadow-xs"
+                onClick={handleSyncNow}
+                disabled={loadingSync}
+                className="h-9 bg-[#0B6E99] hover:bg-[#084F6E] text-white text-xs font-bold shadow-xs gap-1.5"
+                title="Sincronizar revendas e contatos da aplicação Gestão de Canais de Vendas"
               >
-                <Plus className="w-4 h-4 mr-1.5" />
-                Novo Registro
+                <RefreshCw className={cn('w-3.5 h-3.5', loadingSync && 'animate-spin')} />
+                {loadingSync ? 'Sincronizando...' : 'Sincronizar Agora'}
               </Button>
             </div>
+          </div>
+
+          {/* Banner informativo de SOMENTE LEITURA */}
+          <div className="mt-4 p-3.5 rounded-xl bg-cyan-50/70 border border-cyan-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-start gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#0B6E99] mt-1 shrink-0 animate-pulse" />
+              <div>
+                <p className="font-bold text-slate-800">
+                  Somente leitura — dados sincronizados da base Gestão de Canais de Vendas
+                </p>
+                <p className="text-slate-600 text-[11px] mt-0.5">
+                  A base de revendas e contatos é gerida centralmente na outra aplicação Skip. O
+                  cadastro local de metas mensais continua ativo abaixo.
+                </p>
+              </div>
+            </div>
+            {syncStatus?.ultimo_sucesso && (
+              <div className="text-[11px] text-slate-600 shrink-0 bg-white px-3 py-1.5 rounded-lg border border-cyan-100 font-medium">
+                Última sincronização:{' '}
+                <strong className="text-[#0B6E99]">
+                  {formatDateTime(syncStatus.ultimo_sucesso)}
+                </strong>
+              </div>
+            )}
           </div>
         </CardHeader>
       </Card>
@@ -1205,14 +1271,9 @@ export default function Canais() {
               </CardDescription>
             </div>
 
-            <Button
-              onClick={openCreate}
-              size="sm"
-              className="bg-[#0B6E99] hover:bg-[#084F6E] text-white text-xs font-bold shrink-0 shadow-xs h-8"
-            >
-              <Plus className="w-3.5 h-3.5 mr-1" />
-              Novo Canal / Cliente
-            </Button>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold">
+              Somente Visualização
+            </div>
           </div>
 
           {/* Barra de Busca e Filtros Rápidos */}
@@ -1864,24 +1925,12 @@ export default function Canais() {
                                 {/* Ações */}
                                 <td className="py-2.5 px-3 text-right whitespace-nowrap">
                                   <div className="flex items-center justify-end gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => openEdit(row)}
-                                      className="w-7 h-7 text-slate-500 hover:text-[#0B6E99] hover:bg-cyan-50"
-                                      title="Alterar registro"
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] text-slate-400 border-slate-200 bg-slate-50 font-normal"
                                     >
-                                      <Pencil className="w-3.5 h-3.5" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="icon"
-                                      onClick={() => setDeleteTarget(row)}
-                                      className="w-7 h-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                                      title="Excluir registro"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </Button>
+                                      Sincronizado
+                                    </Badge>
                                   </div>
                                 </td>
                               </tr>
@@ -2077,24 +2126,12 @@ export default function Canais() {
                         {/* Ações */}
                         <td className="py-2.5 px-3 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => openEdit(row)}
-                              className="w-7 h-7 text-slate-500 hover:text-[#0B6E99] hover:bg-cyan-50"
-                              title="Alterar registro"
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] text-slate-400 border-slate-200 bg-slate-50 font-normal"
                             >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setDeleteTarget(row)}
-                              className="w-7 h-7 text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-                              title="Excluir registro"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
+                              Sincronizado
+                            </Badge>
                           </div>
                         </td>
                       </tr>
@@ -2610,19 +2647,12 @@ export default function Canais() {
         </DialogContent>
       </Dialog>
 
-      {/* CARD / PAINEL DE DETALHE DO CANAL */}
+      {/* CARD / PAINEL DE DETALHE DO CANAL (Somente Visualização) */}
       <CanalDetailModal
         canalNome={selectedCanalForCard}
         open={cardModalOpen}
         onOpenChange={setCardModalOpen}
         allItems={items}
-        onEditItem={(item) => {
-          openEdit(item)
-        }}
-        onDeleteItem={(item) => {
-          setDeleteTarget(item)
-        }}
-        onNewContactForCanal={handleNewContactForCanal}
         metas={metas}
         onOpenMetaModal={(canal, existing) => openMetaModal(canal, existing)}
       />
