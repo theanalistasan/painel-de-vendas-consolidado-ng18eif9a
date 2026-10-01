@@ -346,4 +346,9 @@ export interface PedidosAbertosClienteRanking {
 export interface PedidosAbertosStatsResult {
   kpis: PedidosAbertosKpis
   rankingClientes: PedidosAbertosClienteRanking[]
+  filterOptions?: {
+    canais?: CanalOption[]
+    canaisClientes?: CanalClienteOption[]
+    inside?: string[]
+  }
 }

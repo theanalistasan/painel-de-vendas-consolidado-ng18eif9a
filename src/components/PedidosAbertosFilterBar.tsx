@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
-import { Check, ChevronDown, X, Filter, Loader2, Calendar } from 'lucide-react'
+import { Check, ChevronDown, X, Filter, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -12,8 +12,6 @@ export interface PedidosAbertosFilters {
   canalClientes: string[]
   deploy: string[]
   inside: string[]
-  dataDe?: string
-  dataAte?: string
 }
 
 export const EMPTY_PEDIDOS_ABERTOS_FILTERS: PedidosAbertosFilters = {
@@ -21,8 +19,6 @@ export const EMPTY_PEDIDOS_ABERTOS_FILTERS: PedidosAbertosFilters = {
   canalClientes: [],
   deploy: [],
   inside: [],
-  dataDe: '',
-  dataAte: '',
 }
 
 interface PedidosAbertosFilterBarProps {
@@ -231,9 +227,7 @@ export default function PedidosAbertosFilterBar({
       (filters.canal?.length || 0) +
       (filters.canalClientes?.length || 0) +
       (filters.deploy?.length || 0) +
-      (filters.inside?.length || 0) +
-      (filters.dataDe ? 1 : 0) +
-      (filters.dataAte ? 1 : 0)
+      (filters.inside?.length || 0)
     )
   }, [filters])
 
@@ -321,10 +315,9 @@ export default function PedidosAbertosFilterBar({
         </div>
       </div>
 
-      {/* Grid de Filtros: Quadro de Canais + Período por Data do Pedido */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 pt-3">
-        {/* Bloco de Filtros: Canais (Quadro com Canal, Clientes, Deploy, Inside) */}
-        <div className="lg:col-span-8 bg-gradient-to-r from-slate-50 to-cyan-50/40 p-3 rounded-xl border border-cyan-100">
+      {/* Quadro de Filtros por Canais (Nome do Canal, Clientes do Canal, Deploy, Inside) */}
+      <div className="pt-3">
+        <div className="bg-gradient-to-r from-slate-50 to-cyan-50/40 p-3 rounded-xl border border-cyan-100">
           <div className="flex items-center justify-between mb-2">
             <Label className="text-[11px] font-bold text-[#0B6E99] flex items-center gap-1.5 uppercase tracking-wide">
               <span className="w-2 h-2 rounded-full bg-[#0B6E99]" />
@@ -477,52 +470,6 @@ export default function PedidosAbertosFilterBar({
                 onChange={(values) => setLocalFilters((prev) => ({ ...prev, inside: values }))}
                 placeholder="Todos os inside"
                 highlight={(localFilters.inside || []).length > 0}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Período por Data do Pedido */}
-        <div className="lg:col-span-4 bg-slate-50/70 p-3 rounded-xl border border-slate-200">
-          <div className="flex items-center justify-between mb-2">
-            <Label className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
-              <Calendar className="w-3.5 h-3.5 text-slate-500" />
-              Período (Data do Pedido)
-            </Label>
-            {(localFilters.dataDe || localFilters.dataAte) && (
-              <button
-                type="button"
-                onClick={() =>
-                  setLocalFilters((prev) => ({
-                    ...prev,
-                    dataDe: '',
-                    dataAte: '',
-                  }))
-                }
-                className="text-[10px] text-rose-600 hover:underline font-bold"
-              >
-                Limpar datas
-              </button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label className="text-[10px] font-bold text-slate-500 mb-1 block">Data (De)</Label>
-              <Input
-                type="date"
-                value={localFilters.dataDe || ''}
-                onChange={(e) => setLocalFilters((prev) => ({ ...prev, dataDe: e.target.value }))}
-                className="h-10 text-xs rounded-lg border-gray-200 focus-visible:ring-[#0B6E99] bg-white"
-              />
-            </div>
-            <div>
-              <Label className="text-[10px] font-bold text-slate-500 mb-1 block">Data (Até)</Label>
-              <Input
-                type="date"
-                value={localFilters.dataAte || ''}
-                onChange={(e) => setLocalFilters((prev) => ({ ...prev, dataAte: e.target.value }))}
-                className="h-10 text-xs rounded-lg border-gray-200 focus-visible:ring-[#0B6E99] bg-white"
               />
             </div>
           </div>

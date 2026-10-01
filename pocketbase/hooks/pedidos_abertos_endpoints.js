@@ -172,7 +172,7 @@ routerAdd(
     let totalValor = 0
     let totalQtd = 0
     try {
-      const countRows = arrayOf(new DynamicModel({ c: 0, v: 0, q: 0 }))
+      const countRows = arrayOf(new DynamicModel({ c: '', v: '', q: '' }))
       $app
         .db()
         .newQuery(
@@ -183,7 +183,7 @@ routerAdd(
       if (countRows.length > 0) {
         totalItems = parseInt(countRows[0].c, 10) || 0
         totalValor = parseFloat(countRows[0].v) || 0
-        totalQtd = parseInt(countRows[0].q, 10) || 0
+        totalQtd = parseFloat(countRows[0].q) || 0
       }
     } catch (cErr) {
       console.warn('pedidos_abertos list: count err:', cErr)
@@ -213,21 +213,21 @@ routerAdd(
           codigo_cliente: '',
           nome_cliente: '',
           usuario_emitente: '',
-          linha: 0,
+          linha: '',
           codigo_item: '',
           descricao_item: '',
           grupo_item: '',
-          qtd_solicitada: 0,
+          qtd_solicitada: '',
           status_linha: '',
-          qtd_aberto: 0,
-          em_estoque: 0,
-          em_transito: 0,
+          qtd_aberto: '',
+          em_estoque: '',
+          em_transito: '',
           deposito: '',
-          preco_unitario: 0,
-          desconto_percentual: 0,
-          preco_apos_desconto: 0,
+          preco_unitario: '',
+          desconto_percentual: '',
+          preco_apos_desconto: '',
           status: '',
-          valor_em_aberto: 0,
+          valor_em_aberto: '',
           nome_canal: '',
           deploy: '',
           inside: '',
@@ -240,32 +240,32 @@ routerAdd(
       for (let i = 0; i < rows.length; i++) {
         const r = rows[i]
         items.push({
-          id: r.id,
-          numero_pedido: r.numero_pedido,
-          data_pedido: r.data_pedido,
-          codigo_cliente: r.codigo_cliente,
-          nome_cliente: r.nome_cliente,
-          usuario_emitente: r.usuario_emitente,
-          linha: Number(r.linha) || 1,
-          codigo_item: r.codigo_item,
-          descricao_item: r.descricao_item,
-          grupo_item: r.grupo_item,
-          qtd_solicitada: Number(r.qtd_solicitada) || 0,
-          status_linha: r.status_linha,
-          qtd_aberto: Number(r.qtd_aberto) || 0,
-          em_estoque: Number(r.em_estoque) || 0,
-          em_transito: Number(r.em_transito) || 0,
-          deposito: r.deposito,
-          preco_unitario: Number(r.preco_unitario) || 0,
-          desconto_percentual: Number(r.desconto_percentual) || 0,
-          preco_apos_desconto: Number(r.preco_apos_desconto) || 0,
-          status: r.status,
-          valor_em_aberto: Number(r.valor_em_aberto) || 0,
-          nome_canal: r.nome_canal,
-          deploy: r.deploy,
-          inside: r.inside,
-          origem: r.origem,
-          data_carga: r.data_carga,
+          id: r.id || '',
+          numero_pedido: r.numero_pedido || '',
+          data_pedido: r.data_pedido || '',
+          codigo_cliente: r.codigo_cliente || '',
+          nome_cliente: r.nome_cliente || '',
+          usuario_emitente: r.usuario_emitente || '',
+          linha: parseInt(r.linha, 10) || 1,
+          codigo_item: r.codigo_item || '',
+          descricao_item: r.descricao_item || '',
+          grupo_item: r.grupo_item || '',
+          qtd_solicitada: parseFloat(r.qtd_solicitada) || 0,
+          status_linha: r.status_linha || 'Aberta',
+          qtd_aberto: parseFloat(r.qtd_aberto) || 0,
+          em_estoque: parseFloat(r.em_estoque) || 0,
+          em_transito: parseFloat(r.em_transito) || 0,
+          deposito: r.deposito || '',
+          preco_unitario: parseFloat(r.preco_unitario) || 0,
+          desconto_percentual: parseFloat(r.desconto_percentual) || 0,
+          preco_apos_desconto: parseFloat(r.preco_apos_desconto) || 0,
+          status: r.status || '',
+          valor_em_aberto: parseFloat(r.valor_em_aberto) || 0,
+          nome_canal: r.nome_canal || '',
+          deploy: r.deploy || '',
+          inside: r.inside || '',
+          origem: r.origem || '',
+          data_carga: r.data_carga || '',
         })
       }
     } catch (qErr) {
@@ -450,10 +450,10 @@ routerAdd(
     try {
       const kpiRows = arrayOf(
         new DynamicModel({
-          v: 0,
-          p: 0,
-          i: 0,
-          c: 0,
+          v: '',
+          p: '',
+          i: '',
+          c: '',
         }),
       )
       $app
@@ -470,7 +470,7 @@ routerAdd(
       if (kpiRows.length > 0) {
         valorTotalAberto = parseFloat(kpiRows[0].v) || 0
         pedidosDistintos = parseInt(kpiRows[0].p, 10) || 0
-        itensPendentes = parseInt(kpiRows[0].i, 10) || 0
+        itensPendentes = parseFloat(kpiRows[0].i) || 0
         clientesDistintos = parseInt(kpiRows[0].c, 10) || 0
       }
     } catch (kErr) {
@@ -501,9 +501,9 @@ routerAdd(
           canal: '',
           deploy: '',
           inside: '',
-          val_aberto: 0,
-          qtd_pedidos: 0,
-          qtd_itens: 0,
+          val_aberto: '',
+          qtd_pedidos: '',
+          qtd_itens: '',
         }),
       )
       $app.db().newQuery(rankingSql).all(rRows)
@@ -519,7 +519,7 @@ routerAdd(
           inside: item.inside,
           valor_em_aberto: parseFloat(item.val_aberto) || 0,
           qtd_pedidos: parseInt(item.qtd_pedidos, 10) || 0,
-          qtd_itens: parseInt(item.qtd_itens, 10) || 0,
+          qtd_itens: parseFloat(item.qtd_itens) || 0,
           venda_realizada: 0,
           total_potencial: 0,
           taxa_em_aberto: 0,
@@ -543,7 +543,7 @@ routerAdd(
         new DynamicModel({
           cod: '',
           nom: '',
-          venda_realizada: 0,
+          venda_realizada: '',
         }),
       )
       $app.db().newQuery(vSql).all(vRows)
@@ -577,6 +577,85 @@ routerAdd(
     })
     rankingClientes.sort((a, b) => b.valor_em_aberto - a.valor_em_aberto)
 
+    // 4. Opções de filtro de canais para carregar instantaneamente sem depender do dashboard de vendas
+    let canaisOptions = []
+    let canaisClientesOptions = []
+    let insideOptions = []
+    try {
+      const canalRows = arrayOf(
+        new DynamicModel({
+          nome_canal: '',
+          deploy: '',
+        }),
+      )
+      $app
+        .db()
+        .newQuery(
+          "SELECT nome_canal, MAX(deploy) AS deploy FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND nome_canal IS NOT NULL AND nome_canal != '' GROUP BY nome_canal ORDER BY nome_canal ASC",
+        )
+        .all(canalRows)
+
+      for (let i = 0; i < canalRows.length; i++) {
+        const nc = (canalRows[i].nome_canal || '').trim()
+        if (nc) {
+          canaisOptions.push({
+            nome: nc,
+            deploy: (canalRows[i].deploy || '').trim().toUpperCase(),
+          })
+        }
+      }
+
+      const cliCanalRows = arrayOf(
+        new DynamicModel({
+          nome_canal: '',
+          nome_cliente: '',
+          codigo_cliente: '',
+          deploy: '',
+        }),
+      )
+      $app
+        .db()
+        .newQuery(
+          "SELECT DISTINCT nome_canal, nome_cliente, codigo_cliente, deploy FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND nome_cliente IS NOT NULL AND nome_cliente != '' ORDER BY nome_cliente ASC",
+        )
+        .all(cliCanalRows)
+
+      for (let i = 0; i < cliCanalRows.length; i++) {
+        const ncli = (cliCanalRows[i].nome_cliente || '').trim()
+        if (ncli) {
+          canaisClientesOptions.push({
+            nome_canal: (cliCanalRows[i].nome_canal || '').trim(),
+            nome_cliente: ncli,
+            codigo_cliente: (cliCanalRows[i].codigo_cliente || '').trim(),
+            deploy: (cliCanalRows[i].deploy || '').trim().toUpperCase(),
+          })
+        }
+      }
+
+      const insideRows = arrayOf(
+        new DynamicModel({
+          inside_val: '',
+        }),
+      )
+      $app
+        .db()
+        .newQuery(
+          "SELECT DISTINCT UPPER(TRIM(inside)) AS inside_val FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND inside IS NOT NULL AND TRIM(inside) != '' ORDER BY 1 ASC",
+        )
+        .all(insideRows)
+
+      const insideSet = new Set()
+      for (let i = 0; i < insideRows.length; i++) {
+        const ins = (insideRows[i].inside_val || '').trim()
+        if (ins && !insideSet.has(ins)) {
+          insideSet.add(ins)
+          insideOptions.push(ins)
+        }
+      }
+    } catch (canalErr) {
+      console.warn('pedidos_abertos stats: canais filter options err:', canalErr)
+    }
+
     return e.json(200, {
       kpis: {
         valorTotalAberto,
@@ -585,6 +664,11 @@ routerAdd(
         clientesDistintos,
       },
       rankingClientes: rankingClientes.slice(0, 30),
+      filterOptions: {
+        canais: canaisOptions,
+        canaisClientes: canaisClientesOptions,
+        inside: insideOptions,
+      },
     })
   },
   $apis.requireAuth(),

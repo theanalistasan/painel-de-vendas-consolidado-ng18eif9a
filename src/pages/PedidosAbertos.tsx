@@ -13,14 +13,10 @@ import {
   FileText,
   RotateCw,
   Building2,
-  Calendar,
   AlertCircle,
-  CheckCircle2,
-  Truck,
   Boxes,
 } from 'lucide-react'
 import { fetchPedidosAbertosList, fetchPedidosAbertosStats } from '@/services/pedidosAbertos'
-import { fetchDashboardStats } from '@/services/sales'
 import { logAudit } from '@/services/audit'
 import type {
   PedidoAberto,
@@ -84,20 +80,19 @@ export default function PedidosAbertos() {
   const loadStats = async (activeFilters = filters) => {
     try {
       setStatsLoading(true)
-      const [statsVendas, statsPedidos] = await Promise.all([
-        fetchDashboardStats({}),
-        fetchPedidosAbertosStats(activeFilters as unknown as Record<string, unknown>),
-      ])
+      const statsPedidos = await fetchPedidosAbertosStats(
+        activeFilters as unknown as Record<string, unknown>,
+      )
 
       if (statsPedidos?.kpis) {
         setKpis(statsPedidos.kpis)
       }
 
-      if (statsVendas?.filterOptions) {
+      if (statsPedidos?.filterOptions) {
         setFilterOptions({
-          canais: statsVendas.filterOptions.canais || [],
-          canaisClientes: statsVendas.filterOptions.canaisClientes || [],
-          inside: statsVendas.filterOptions.inside || [],
+          canais: statsPedidos.filterOptions.canais || [],
+          canaisClientes: statsPedidos.filterOptions.canaisClientes || [],
+          inside: statsPedidos.filterOptions.inside || [],
         })
       }
     } catch (err) {
