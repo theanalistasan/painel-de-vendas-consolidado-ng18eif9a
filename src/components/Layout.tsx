@@ -45,6 +45,14 @@ export default function Layout() {
   const location = useLocation()
   const navigate = useNavigate()
 
+  const isVendasGroupActive =
+    location.pathname === '/vendas' || location.pathname === '/pedidos-abertos'
+  const isVendasActive = location.pathname === '/vendas'
+  const isPedidosAbertosActive = location.pathname === '/pedidos-abertos'
+
+  // O grupo Vendas inicia aberto se a rota inicial for /vendas ou /pedidos-abertos (ou por padrão true)
+  const [vendasOpen, setVendasOpen] = useState<boolean>(() => isVendasGroupActive || true)
+
   const isDashboardActive =
     location.pathname === '/' ||
     location.pathname === '/dashboard/geral' ||
@@ -59,6 +67,13 @@ export default function Layout() {
       setDashboardOpen(true)
     }
   }, [isDashboardActive])
+
+  // Garantir que se a rota atual for vendas ou pedidos-abertos, o grupo Vendas fica expandido
+  useEffect(() => {
+    if (isVendasGroupActive) {
+      setVendasOpen(true)
+    }
+  }, [isVendasGroupActive])
 
   const toggleDesktopSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -130,11 +145,6 @@ export default function Layout() {
       title: 'Vendas',
       href: '/vendas',
       icon: TableIcon,
-    },
-    {
-      title: 'Pedidos em Aberto',
-      href: '/pedidos-abertos',
-      icon: ClipboardList,
     },
     {
       title: 'Canais',
@@ -344,9 +354,97 @@ export default function Layout() {
             )}
           </div>
 
-          {/* Demais Itens de Navegação (Vendas, Importar, Admin, etc.) */}
+          {/* Item Vendas com Submenu (Relatório / Pedidos em Aberto) */}
+          <div className="space-y-1">
+            {sidebarCollapsed ? (
+              // No modo colapsado: link direto para /vendas com tooltip
+              <NavLink
+                to="/vendas"
+                title="Vendas (Relatório & Pedidos em Aberto)"
+                className={cn(
+                  'flex items-center justify-center w-10 h-10 mx-auto rounded-full text-sm font-medium transition-all duration-200',
+                  isVendasGroupActive
+                    ? 'bg-[#0B6E99] text-white shadow-sm font-bold'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
+                )}
+              >
+                <TableIcon className="w-4 h-4 shrink-0" />
+              </NavLink>
+            ) : (
+              // No modo expandido: Item Vendas com Chevron e Submenu
+              <div>
+                <div
+                  className={cn(
+                    'group flex items-center justify-between rounded-full text-sm font-medium transition-all duration-200 pl-3.5 pr-2 py-1.5',
+                    isVendasActive
+                      ? 'bg-[#0B6E99] text-white font-bold shadow-sm'
+                      : isPedidosAbertosActive
+                        ? 'bg-slate-800/90 text-white font-semibold'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
+                  )}
+                >
+                  <NavLink to="/vendas" className="flex-1 flex items-center gap-3 min-w-0 py-1">
+                    <TableIcon
+                      className={cn(
+                        'w-4 h-4 shrink-0',
+                        isVendasActive
+                          ? 'text-white'
+                          : isPedidosAbertosActive
+                            ? 'text-[#0B6E99]'
+                            : 'text-slate-400 group-hover:text-white',
+                      )}
+                    />
+                    <span className="truncate">Vendas</span>
+                  </NavLink>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setVendasOpen((prev) => !prev)
+                    }}
+                    aria-label={vendasOpen ? 'Recolher menu Vendas' : 'Expandir menu Vendas'}
+                    title={vendasOpen ? 'Recolher menu Vendas' : 'Expandir menu Vendas'}
+                    className={cn(
+                      'p-1 rounded-full transition-colors shrink-0',
+                      isVendasActive
+                        ? 'hover:bg-white/20 text-white'
+                        : 'hover:bg-slate-700/60 text-slate-400 hover:text-white',
+                    )}
+                  >
+                    <ChevronDown
+                      className={cn(
+                        'w-4 h-4 transition-transform duration-200',
+                        vendasOpen ? 'rotate-180' : '',
+                      )}
+                    />
+                  </button>
+                </div>
+
+                {/* Submenu de Vendas */}
+                {vendasOpen && (
+                  <div className="mt-1 ml-4 pl-3 border-l border-slate-800 space-y-1">
+                    <NavLink
+                      to="/pedidos-abertos"
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
+                        isPedidosAbertosActive
+                          ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+                      )}
+                    >
+                      <ClipboardList className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Pedidos em Aberto</span>
+                    </NavLink>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Demais Itens de Navegação (Canais, Importar, Admin, etc.) */}
           {navItems
-            .filter((item) => item.href !== '/')
+            .filter((item) => item.href !== '/' && item.href !== '/vendas')
             .map((item) => {
               const Icon = item.icon
               const isActive = location.pathname === item.href
@@ -530,9 +628,82 @@ export default function Layout() {
                 )}
               </div>
 
-              {/* Demais itens mobile */}
+              {/* Vendas Mobile com Submenu */}
+              <div className="space-y-1">
+                <div
+                  className={cn(
+                    'flex items-center justify-between px-3.5 py-1.5 rounded-full text-sm font-medium transition-all',
+                    isVendasActive
+                      ? 'bg-[#0B6E99] text-white font-bold'
+                      : isPedidosAbertosActive
+                        ? 'bg-slate-800 text-white font-semibold'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                  )}
+                >
+                  <NavLink
+                    to="/vendas"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="flex-1 flex items-center gap-3 min-w-0 py-1"
+                  >
+                    <TableIcon
+                      className={cn(
+                        'w-4 h-4',
+                        isVendasActive
+                          ? 'text-white'
+                          : isPedidosAbertosActive
+                            ? 'text-[#0B6E99]'
+                            : 'text-slate-400',
+                      )}
+                    />
+                    <span>Vendas</span>
+                  </NavLink>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setVendasOpen((prev) => !prev)
+                    }}
+                    aria-label={vendasOpen ? 'Recolher menu Vendas' : 'Expandir menu Vendas'}
+                    title={vendasOpen ? 'Recolher menu Vendas' : 'Expandir menu Vendas'}
+                    className={cn(
+                      'p-1 rounded-full transition-colors shrink-0',
+                      isVendasActive
+                        ? 'hover:bg-white/20 text-white'
+                        : 'hover:bg-slate-700/60 text-slate-400 hover:text-white',
+                    )}
+                  >
+                    <ChevronDown
+                      className={cn(
+                        'w-4 h-4 transition-transform duration-200',
+                        vendasOpen ? 'rotate-180' : '',
+                      )}
+                    />
+                  </button>
+                </div>
+
+                {vendasOpen && (
+                  <div className="ml-4 pl-3 border-l border-slate-800 space-y-1">
+                    <NavLink
+                      to="/pedidos-abertos"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
+                        isPedidosAbertosActive
+                          ? 'bg-[#0B6E99] text-white font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                      )}
+                    >
+                      <ClipboardList className="w-3.5 h-3.5 shrink-0" />
+                      <span>Pedidos em Aberto</span>
+                    </NavLink>
+                  </div>
+                )}
+              </div>
+
+              {/* Demais itens mobile (Canais, Importar, Admin, etc.) */}
               {navItems
-                .filter((item) => item.href !== '/')
+                .filter((item) => item.href !== '/' && item.href !== '/vendas')
                 .map((item) => {
                   const Icon = item.icon
                   const isActive = location.pathname === item.href
