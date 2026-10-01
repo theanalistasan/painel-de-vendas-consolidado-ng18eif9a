@@ -76,7 +76,7 @@ routerAdd(
         const matchedCodigos = []
         const matchedNomes = []
         for (let k = 0; k < ccRows.length; k++) {
-          const cod = (ccRows[k].cc || '').trim()
+          const cod = (ccRows[k].cc || '').trim().toUpperCase()
           const nom = (ccRows[k].nc || '').trim()
           if (cod && cod !== '-') matchedCodigos.push(cod)
           if (nom) matchedNomes.push(nom)
@@ -85,8 +85,9 @@ routerAdd(
         if (matchedCodigos.length > 0 || matchedNomes.length > 0) {
           const sub = []
           if (matchedCodigos.length > 0) {
+            // Tolerante a maiúsculas e espaços no código do cliente
             sub.push(
-              'codigo_cliente IN (' +
+              'UPPER(TRIM(codigo_cliente)) IN (' +
                 matchedCodigos.map((c) => "'" + sqlEsc(c) + "'").join(',') +
                 ')',
             )
@@ -172,7 +173,13 @@ routerAdd(
     let totalValor = 0
     let totalQtd = 0
     try {
-      const countRows = arrayOf(new DynamicModel({ c: '', v: '', q: '' }))
+      const countRows = arrayOf(
+        new DynamicModel({
+          c: 0,
+          v: 0.0,
+          q: 0.0,
+        }),
+      )
       $app
         .db()
         .newQuery(
@@ -181,9 +188,9 @@ routerAdd(
         )
         .all(countRows)
       if (countRows.length > 0) {
-        totalItems = parseInt(countRows[0].c, 10) || 0
-        totalValor = parseFloat(countRows[0].v) || 0
-        totalQtd = parseFloat(countRows[0].q) || 0
+        totalItems = Number(countRows[0].c) || 0
+        totalValor = Number(countRows[0].v) || 0
+        totalQtd = Number(countRows[0].q) || 0
       }
     } catch (cErr) {
       console.warn('pedidos_abertos list: count err:', cErr)
@@ -213,21 +220,21 @@ routerAdd(
           codigo_cliente: '',
           nome_cliente: '',
           usuario_emitente: '',
-          linha: '',
+          linha: 0,
           codigo_item: '',
           descricao_item: '',
           grupo_item: '',
-          qtd_solicitada: '',
+          qtd_solicitada: 0.0,
           status_linha: '',
-          qtd_aberto: '',
-          em_estoque: '',
-          em_transito: '',
+          qtd_aberto: 0.0,
+          em_estoque: 0.0,
+          em_transito: 0.0,
           deposito: '',
-          preco_unitario: '',
-          desconto_percentual: '',
-          preco_apos_desconto: '',
+          preco_unitario: 0.0,
+          desconto_percentual: 0.0,
+          preco_apos_desconto: 0.0,
           status: '',
-          valor_em_aberto: '',
+          valor_em_aberto: 0.0,
           nome_canal: '',
           deploy: '',
           inside: '',
@@ -246,21 +253,21 @@ routerAdd(
           codigo_cliente: r.codigo_cliente || '',
           nome_cliente: r.nome_cliente || '',
           usuario_emitente: r.usuario_emitente || '',
-          linha: parseInt(r.linha, 10) || 1,
+          linha: Number(r.linha) || 1,
           codigo_item: r.codigo_item || '',
           descricao_item: r.descricao_item || '',
           grupo_item: r.grupo_item || '',
-          qtd_solicitada: parseFloat(r.qtd_solicitada) || 0,
+          qtd_solicitada: Number(r.qtd_solicitada) || 0,
           status_linha: r.status_linha || 'Aberta',
-          qtd_aberto: parseFloat(r.qtd_aberto) || 0,
-          em_estoque: parseFloat(r.em_estoque) || 0,
-          em_transito: parseFloat(r.em_transito) || 0,
+          qtd_aberto: Number(r.qtd_aberto) || 0,
+          em_estoque: Number(r.em_estoque) || 0,
+          em_transito: Number(r.em_transito) || 0,
           deposito: r.deposito || '',
-          preco_unitario: parseFloat(r.preco_unitario) || 0,
-          desconto_percentual: parseFloat(r.desconto_percentual) || 0,
-          preco_apos_desconto: parseFloat(r.preco_apos_desconto) || 0,
+          preco_unitario: Number(r.preco_unitario) || 0,
+          desconto_percentual: Number(r.desconto_percentual) || 0,
+          preco_apos_desconto: Number(r.preco_apos_desconto) || 0,
           status: r.status || '',
-          valor_em_aberto: parseFloat(r.valor_em_aberto) || 0,
+          valor_em_aberto: Number(r.valor_em_aberto) || 0,
           nome_canal: r.nome_canal || '',
           deploy: r.deploy || '',
           inside: r.inside || '',
@@ -359,7 +366,7 @@ routerAdd(
         const matchedCodigos = []
         const matchedNomes = []
         for (let k = 0; k < ccRows.length; k++) {
-          const cod = (ccRows[k].cc || '').trim()
+          const cod = (ccRows[k].cc || '').trim().toUpperCase()
           const nom = (ccRows[k].nc || '').trim()
           if (cod && cod !== '-') matchedCodigos.push(cod)
           if (nom) matchedNomes.push(nom)
@@ -369,7 +376,7 @@ routerAdd(
           const sub = []
           if (matchedCodigos.length > 0) {
             sub.push(
-              'codigo_cliente IN (' +
+              'UPPER(TRIM(codigo_cliente)) IN (' +
                 matchedCodigos.map((c) => "'" + sqlEsc(c) + "'").join(',') +
                 ')',
             )
@@ -450,10 +457,10 @@ routerAdd(
     try {
       const kpiRows = arrayOf(
         new DynamicModel({
-          v: '',
-          p: '',
-          i: '',
-          c: '',
+          v: 0.0,
+          p: 0,
+          i: 0.0,
+          c: 0,
         }),
       )
       $app
@@ -468,10 +475,10 @@ routerAdd(
         )
         .all(kpiRows)
       if (kpiRows.length > 0) {
-        valorTotalAberto = parseFloat(kpiRows[0].v) || 0
-        pedidosDistintos = parseInt(kpiRows[0].p, 10) || 0
-        itensPendentes = parseFloat(kpiRows[0].i) || 0
-        clientesDistintos = parseInt(kpiRows[0].c, 10) || 0
+        valorTotalAberto = Number(kpiRows[0].v) || 0
+        pedidosDistintos = Number(kpiRows[0].p) || 0
+        itensPendentes = Number(kpiRows[0].i) || 0
+        clientesDistintos = Number(kpiRows[0].c) || 0
       }
     } catch (kErr) {
       console.warn('pedidos_abertos stats: kpi err:', kErr)
@@ -501,9 +508,9 @@ routerAdd(
           canal: '',
           deploy: '',
           inside: '',
-          val_aberto: '',
-          qtd_pedidos: '',
-          qtd_itens: '',
+          val_aberto: 0.0,
+          qtd_pedidos: 0,
+          qtd_itens: 0.0,
         }),
       )
       $app.db().newQuery(rankingSql).all(rRows)
@@ -517,9 +524,9 @@ routerAdd(
           nome_canal: item.canal,
           deploy: item.deploy,
           inside: item.inside,
-          valor_em_aberto: parseFloat(item.val_aberto) || 0,
-          qtd_pedidos: parseInt(item.qtd_pedidos, 10) || 0,
-          qtd_itens: parseFloat(item.qtd_itens) || 0,
+          valor_em_aberto: Number(item.val_aberto) || 0,
+          qtd_pedidos: Number(item.qtd_pedidos) || 0,
+          qtd_itens: Number(item.qtd_itens) || 0,
           venda_realizada: 0,
           total_potencial: 0,
           taxa_em_aberto: 0,
@@ -543,7 +550,7 @@ routerAdd(
         new DynamicModel({
           cod: '',
           nom: '',
-          venda_realizada: '',
+          venda_realizada: 0.0,
         }),
       )
       $app.db().newQuery(vSql).all(vRows)
@@ -552,7 +559,7 @@ routerAdd(
         const row = vRows[i]
         const cod = (row.cod || '').trim()
         const nom = (row.nom || '').trim()
-        const venda = parseFloat(row.venda_realizada) || 0
+        const venda = Number(row.venda_realizada) || 0
 
         // Procura no clientMap por código ou nome
         if (cod && clientMap[cod]) {
@@ -565,12 +572,20 @@ routerAdd(
       console.warn('pedidos_abertos stats: vendas cruzadas err:', vErr)
     }
 
-    // Monta ranking final ordenado por valor_em_aberto DESC
+    // Monta ranking final ordenado por valor_em_aberto DESC (SEM object spread {...c})
     const rankingClientes = Object.values(clientMap).map((c) => {
       const totalPotencial = c.valor_em_aberto + c.venda_realizada
       const taxa = totalPotencial > 0 ? Math.round((c.valor_em_aberto / totalPotencial) * 100) : 0
       return {
-        ...c,
+        codigo_cliente: c.codigo_cliente,
+        nome_cliente: c.nome_cliente,
+        nome_canal: c.nome_canal,
+        deploy: c.deploy,
+        inside: c.inside,
+        valor_em_aberto: c.valor_em_aberto,
+        qtd_pedidos: c.qtd_pedidos,
+        qtd_itens: c.qtd_itens,
+        venda_realizada: c.venda_realizada,
         total_potencial: totalPotencial,
         taxa_em_aberto: taxa,
       }

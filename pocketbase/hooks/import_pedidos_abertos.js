@@ -93,6 +93,15 @@ routerAdd(
       return Math.round(n)
     }
 
+    // Helper: normalização tolerante para casamento de código de cliente
+    const normalizeCodCliente = (val) => {
+      if (!val) return ''
+      return String(val)
+        .replace(/^\uFEFF/, '')
+        .trim()
+        .toUpperCase()
+    }
+
     // Parse de data flexível: dd/mm/aaaa, aaaa-mm-dd, Excel date serial
     const parseDateIso = (val) => {
       if (!val) return ''
@@ -255,7 +264,9 @@ routerAdd(
         )
         .all(ccRows)
       for (let i = 0; i < ccRows.length; i++) {
-        const cod = normalizeStrict(ccRows[i].codigo_cliente)
+        const rawCod = ccRows[i].codigo_cliente
+        const cod = normalizeStrict(rawCod)
+        const codTol = normalizeCodCliente(rawCod)
         const nom = normalizeStrict(ccRows[i].nome_cliente)
         let dep = (ccRows[i].deploy || '').trim().toUpperCase()
         if (dep.indexOf('AGIS') >= 0) dep = 'AGIS'
@@ -268,6 +279,7 @@ routerAdd(
           inside: (ccRows[i].inside || '').trim().toUpperCase(),
         }
         if (cod) canaisMap[cod] = info
+        if (codTol) canaisMap[codTol] = info
         if (nom && !canaisMap['NAME::' + nom]) canaisMap['NAME::' + nom] = info
       }
     } catch (cErr) {
@@ -382,12 +394,15 @@ routerAdd(
       // Valor em aberto: preço após desconto * qtd em aberto
       const valorEmAberto = precoAposDesc * (qtdAberto > 0 ? qtdAberto : 0)
 
-      // Enriquecimento de canal
+      // Enriquecimento de canal (casamento tolerante via COD / codigo_cliente)
       let canalInfo = null
       const normCodCli = normalizeStrict(codCli)
+      const tolCodCli = normalizeCodCliente(codCli)
       const normNomeCli = normalizeStrict(nomeCli)
       if (normCodCli && canaisMap[normCodCli]) {
         canalInfo = canaisMap[normCodCli]
+      } else if (tolCodCli && canaisMap[tolCodCli]) {
+        canalInfo = canaisMap[tolCodCli]
       } else if (normNomeCli && canaisMap['NAME::' + normNomeCli]) {
         canalInfo = canaisMap['NAME::' + normNomeCli]
       }

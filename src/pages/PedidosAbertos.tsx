@@ -1,9 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Download,
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Search,
   Package,
   Clock,
@@ -35,13 +38,31 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { useTableSort } from '@/hooks/use-table-sort'
+import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 25
 
 type SortField = Extract<keyof PedidoAberto, string>
 
+interface ClientGroup {
+  key: string
+  codigo_cliente: string
+  nome_cliente: string
+  nome_canal: string
+  deploy: string
+  inside: string
+  totalPedidos: number
+  totalLinhas: number
+  totalQtdAberto: number
+  totalQtdSolicitada: number
+  totalValorEmAberto: number
+  totalValorLiquido: number
+  items: PedidoAberto[]
+}
+
 export default function PedidosAbertos() {
   const [paginatedPedidos, setPaginatedPedidos] = useState<PedidoAberto[]>([])
+  const [allFilteredPedidos, setAllFilteredPedidos] = useState<PedidoAberto[]>([])
   const [totalItems, setTotalItems] = useState(0)
   const [totalValor, setTotalValor] = useState(0)
   const [totalQtd, setTotalQtd] = useState(0)
@@ -50,6 +71,8 @@ export default function PedidosAbertos() {
   const [exporting, setExporting] = useState(false)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
+  const [groupByCliente, setGroupByCliente] = useState(false)
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
   const sort = useTableSort<SortField>()
   const { toast } = useToast()
 
@@ -102,30 +125,51 @@ export default function PedidosAbertos() {
     }
   }
 
-  // Carrega a lista paginada de pedidos em aberto
+  // Carrega a lista paginada ou completa para agrupamento de pedidos em aberto
   const loadData = async (
     activeFilters = filters,
     targetPage = page,
     sortField = sort.field,
     sortDir = sort.dir,
     search = searchTerm,
+    isGrouped = groupByCliente,
   ) => {
     setLoading(true)
     try {
-      const res = await fetchPedidosAbertosList({
-        page: targetPage,
-        perPage: PAGE_SIZE,
-        sortField: sortField || 'data_pedido',
-        sortDirection: sortDir || 'desc',
-        search: search.trim() || undefined,
-        filters: activeFilters as unknown as Record<string, unknown>,
-      })
+      if (isGrouped) {
+        // Carrega base completa (até 1000 registros do recorte) para consolidar por cliente com totais exatos
+        const res = await fetchPedidosAbertosList({
+          page: 1,
+          perPage: 1000,
+          sortField: sortField || 'data_pedido',
+          sortDirection: sortDir || 'desc',
+          search: search.trim() || undefined,
+          filters: activeFilters as unknown as Record<string, unknown>,
+        })
+        const items = res.items || []
+        setAllFilteredPedidos(items)
+        setPaginatedPedidos(items.slice((targetPage - 1) * PAGE_SIZE, targetPage * PAGE_SIZE))
+        setTotalItems(res.totalItems || items.length)
+        setTotalPages(Math.max(1, Math.ceil((res.totalItems || items.length) / PAGE_SIZE)))
+        setTotalValor(res.totalValor || 0)
+        setTotalQtd(res.totalQtd || 0)
+      } else {
+        const res = await fetchPedidosAbertosList({
+          page: targetPage,
+          perPage: PAGE_SIZE,
+          sortField: sortField || 'data_pedido',
+          sortDirection: sortDir || 'desc',
+          search: search.trim() || undefined,
+          filters: activeFilters as unknown as Record<string, unknown>,
+        })
 
-      setPaginatedPedidos(res.items || [])
-      setTotalItems(res.totalItems || 0)
-      setTotalPages(res.totalPages || 1)
-      setTotalValor(res.totalValor || 0)
-      setTotalQtd(res.totalQtd || 0)
+        setPaginatedPedidos(res.items || [])
+        setAllFilteredPedidos([])
+        setTotalItems(res.totalItems || 0)
+        setTotalPages(res.totalPages || 1)
+        setTotalValor(res.totalValor || 0)
+        setTotalQtd(res.totalQtd || 0)
+      }
     } catch (err: unknown) {
       console.error('Erro ao listar pedidos em aberto:', err)
       const msg =
@@ -149,24 +193,100 @@ export default function PedidosAbertos() {
   }, [filters])
 
   useEffect(() => {
-    loadData(filters, page, sort.field, sort.dir, searchTerm)
-  }, [page, filters, sort.field, sort.dir])
+    loadData(filters, page, sort.field, sort.dir, searchTerm, groupByCliente)
+  }, [page, filters, sort.field, sort.dir, groupByCliente])
 
   const handleApplyFilters = (applied: PedidosAbertosFilters) => {
     setPage(1)
     loadStats(applied)
-    loadData(applied, 1, sort.field, sort.dir, searchTerm)
+    loadData(applied, 1, sort.field, sort.dir, searchTerm, groupByCliente)
   }
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setPage(1)
-    loadData(filters, 1, sort.field, sort.dir, searchTerm)
+    loadData(filters, 1, sort.field, sort.dir, searchTerm, groupByCliente)
   }
 
   const handleSort = (field: SortField) => {
     sort.toggle(field)
     setPage(1)
+  }
+
+  // Agrupamento por cliente: consolidado com soma de todos os campos monetários, itens e pedidos
+  const clientGroups: ClientGroup[] = useMemo(() => {
+    if (!groupByCliente) return []
+    const sourceItems = allFilteredPedidos.length > 0 ? allFilteredPedidos : paginatedPedidos
+
+    const groupMap = new Map<string, ClientGroup>()
+
+    for (const item of sourceItems) {
+      const key = (item.codigo_cliente || item.nome_cliente || 'SEM_IDENTIFICACAO')
+        .trim()
+        .toUpperCase()
+      let group = groupMap.get(key)
+      if (!group) {
+        group = {
+          key,
+          codigo_cliente: item.codigo_cliente || '',
+          nome_cliente: item.nome_cliente || 'Cliente não identificado',
+          nome_canal: item.nome_canal || '',
+          deploy: item.deploy || '',
+          inside: item.inside || '',
+          totalPedidos: 0,
+          totalLinhas: 0,
+          totalQtdAberto: 0,
+          totalQtdSolicitada: 0,
+          totalValorEmAberto: 0,
+          totalValorLiquido: 0,
+          items: [],
+        }
+        groupMap.set(key, group)
+      }
+
+      group.items.push(item)
+      group.totalLinhas += 1
+      group.totalQtdAberto += Number(item.qtd_aberto) || 0
+      group.totalQtdSolicitada += Number(item.qtd_solicitada) || 0
+      group.totalValorEmAberto += Number(item.valor_em_aberto) || 0
+      const precoLiq = Number(item.preco_apos_desconto) || Number(item.preco_unitario) || 0
+      group.totalValorLiquido += precoLiq * (Number(item.qtd_aberto) || 1)
+      if (item.nome_canal && !group.nome_canal) group.nome_canal = item.nome_canal
+      if (item.deploy && !group.deploy) group.deploy = item.deploy
+      if (item.inside && !group.inside) group.inside = item.inside
+    }
+
+    // Calcula número de pedidos distintos por grupo
+    const list = Array.from(groupMap.values())
+    for (const g of list) {
+      const distinctOrders = new Set(g.items.map((i) => i.numero_pedido).filter(Boolean))
+      g.totalPedidos = distinctOrders.size || g.totalLinhas
+    }
+
+    // Ordena grupos pelo maior valor total em aberto por padrão
+    list.sort((a, b) => b.totalValorEmAberto - a.totalValorEmAberto)
+    return list
+  }, [groupByCliente, allFilteredPedidos, paginatedPedidos])
+
+  // Controles de expansão e colapso por cliente
+  const toggleClientGroup = (key: string) => {
+    setExpandedClients((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
+
+  const collapseAllClients = () => {
+    setExpandedClients(new Set())
+  }
+
+  const expandAllClients = () => {
+    setExpandedClients(new Set(clientGroups.map((g) => g.key)))
   }
 
   const handleExportCSV = async () => {
@@ -352,12 +472,16 @@ export default function PedidosAbertos() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
-                <span>Linhas de Pedidos Pendentes</span>
+                <span>
+                  {groupByCliente ? 'Pedidos em Aberto por Cliente' : 'Linhas de Pedidos Pendentes'}
+                </span>
                 <Badge
                   variant="secondary"
                   className="font-semibold text-xs bg-amber-100 text-amber-800"
                 >
-                  {formatNumber(totalItems)} registro(s)
+                  {groupByCliente
+                    ? `${formatNumber(clientGroups.length)} cliente(s) • ${formatNumber(totalItems)} linha(s)`
+                    : `${formatNumber(totalItems)} registro(s)`}
                 </Badge>
               </CardTitle>
               <CardDescription className="text-xs text-slate-500 mt-0.5">
@@ -366,22 +490,102 @@ export default function PedidosAbertos() {
               </CardDescription>
             </div>
 
-            {/* Busca Rápida na Tabela */}
-            <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Buscar pedido, cliente ou item..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B6E99]/30 focus:border-[#0B6E99] w-60 sm:w-72"
-                />
+            {/* Controles: Busca rápida e Agrupamento por Cliente */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+              <form onSubmit={handleSearchSubmit} className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Buscar pedido, cliente ou item..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#0B6E99]/30 focus:border-[#0B6E99] w-52 sm:w-64"
+                  />
+                </div>
+                <Button type="submit" size="sm" variant="secondary" className="text-xs h-8 px-2.5">
+                  Filtrar
+                </Button>
+              </form>
+            </div>
+          </div>
+
+          {/* Barra de Agrupamento / Colapso por Cliente (estilo e consistência com Canais) */}
+          <div className="mt-3 pt-3 border-t border-slate-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-slate-700 font-bold">
+                <Layers className="w-3.5 h-3.5 text-[#0B6E99]" />
+                <span className="text-[11px]">Visualização:</span>
               </div>
-              <Button type="submit" size="sm" variant="secondary" className="text-xs h-8 px-2.5">
-                Filtrar
-              </Button>
-            </form>
+              <div className="inline-flex rounded-lg bg-slate-200/70 p-0.5 gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGroupByCliente(false)
+                    setExpandedClients(new Set())
+                  }}
+                  className={cn(
+                    'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer',
+                    !groupByCliente
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                  title="Visualização direta por linha de pedido"
+                >
+                  Sem Agrupamento
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGroupByCliente(true)
+                    setExpandedClients(new Set())
+                  }}
+                  className={cn(
+                    'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer flex items-center gap-1',
+                    groupByCliente
+                      ? 'bg-white text-[#0B6E99] shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                  title="Agrupar e colapsar por Cliente somando todos os valores do cliente"
+                >
+                  <Building2 className="w-3 h-3" />
+                  Agrupado por Cliente
+                </button>
+              </div>
+            </div>
+
+            {/* Ações de Expandir/Colapsar todos quando agrupado */}
+            {groupByCliente && clientGroups.length > 0 && (
+              <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                <span className="text-[11px] text-slate-500 font-medium mr-1 hidden sm:inline">
+                  {clientGroups.length} cliente(s) •
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={collapseAllClients}
+                  disabled={expandedClients.size === 0}
+                  className="h-7 px-2.5 text-[11px] bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-bold gap-1 shadow-2xs"
+                  title="Colapsar todos os clientes (modo consolidado com somas)"
+                >
+                  <ChevronsDownUp className="w-3 h-3 text-[#0B6E99]" />
+                  Colapsar Todos
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={expandAllClients}
+                  disabled={expandedClients.size === clientGroups.length}
+                  className="h-7 px-2.5 text-[11px] bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-bold gap-1 shadow-2xs"
+                  title="Expandir todos os clientes para ver os pedidos e itens detalhados"
+                >
+                  <ChevronsUpDown className="w-3 h-3 text-[#0B6E99]" />
+                  Expandir Todos
+                </Button>
+              </div>
+            )}
           </div>
         </CardHeader>
 
@@ -390,6 +594,11 @@ export default function PedidosAbertos() {
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
+                  {groupByCliente && (
+                    <th className="py-3 px-2 w-10 text-center">
+                      <Layers className="w-3.5 h-3.5 mx-auto text-slate-400" />
+                    </th>
+                  )}
                   <th
                     className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors"
                     onClick={() => handleSort('numero_pedido')}
@@ -453,16 +662,22 @@ export default function PedidosAbertos() {
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={10} className="p-8 text-center text-slate-400">
+                    <td
+                      colSpan={groupByCliente ? 11 : 10}
+                      className="p-8 text-center text-slate-400"
+                    >
                       <div className="flex items-center justify-center gap-2">
                         <div className="w-4 h-4 border-2 border-[#0B6E99] border-t-transparent rounded-full animate-spin" />
                         <span>Carregando pedidos em aberto...</span>
                       </div>
                     </td>
                   </tr>
-                ) : paginatedPedidos.length === 0 ? (
+                ) : (groupByCliente ? clientGroups.length === 0 : paginatedPedidos.length === 0) ? (
                   <tr>
-                    <td colSpan={10} className="p-12 text-center text-slate-400">
+                    <td
+                      colSpan={groupByCliente ? 11 : 10}
+                      className="p-12 text-center text-slate-400"
+                    >
                       <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                       <p className="font-semibold text-slate-600">
                         Nenhum pedido em aberto encontrado
@@ -473,7 +688,294 @@ export default function PedidosAbertos() {
                       </p>
                     </td>
                   </tr>
+                ) : groupByCliente ? (
+                  /* MODO AGRUPADO / COLAPSÁVEL POR CLIENTE */
+                  clientGroups.map((group) => {
+                    const isExpanded = expandedClients.has(group.key)
+                    return (
+                      <React.Fragment key={group.key}>
+                        {/* Linha Consolidada do Cliente (Cabeçalho com soma de todos os valores) */}
+                        <tr
+                          onClick={() => toggleClientGroup(group.key)}
+                          className={cn(
+                            'cursor-pointer transition-colors border-y border-slate-200/80 font-semibold select-none',
+                            isExpanded
+                              ? 'bg-amber-50/70 hover:bg-amber-100/60 text-slate-900'
+                              : 'bg-slate-50/90 hover:bg-slate-100/80 text-slate-800',
+                          )}
+                          title={
+                            isExpanded
+                              ? 'Clique para recolher pedidos do cliente'
+                              : 'Clique para expandir pedidos do cliente'
+                          }
+                        >
+                          {/* Toggle */}
+                          <td className="py-2.5 px-2 text-center align-middle">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleClientGroup(group.key)
+                              }}
+                              className="p-1 rounded hover:bg-amber-200/60 text-amber-800 focus:outline-hidden transition-colors"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-amber-700" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-slate-500" />
+                              )}
+                            </button>
+                          </td>
+
+                          {/* Resumo de Pedidos do Cliente */}
+                          <td className="p-3 font-semibold text-slate-900 whitespace-nowrap">
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-white text-[#0B6E99] border-sky-200 font-bold"
+                            >
+                              {group.totalPedidos} pedido(s) • {group.totalLinhas} lin.
+                            </Badge>
+                          </td>
+
+                          {/* Data (indicação de consolidado) */}
+                          <td className="p-3 text-slate-500 whitespace-nowrap text-[11px]">
+                            {isExpanded ? 'Detalhamento ▼' : 'Consolidado ▲'}
+                          </td>
+
+                          {/* Cliente e Código */}
+                          <td className="p-3 min-w-[200px]">
+                            <div
+                              className="font-extrabold text-slate-900 truncate"
+                              title={group.nome_cliente}
+                            >
+                              {group.nome_cliente}
+                            </div>
+                            {group.codigo_cliente && (
+                              <div className="text-[11px] text-slate-500 font-mono font-bold">
+                                Cód: {group.codigo_cliente}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Canal / Deploy */}
+                          <td className="p-3 whitespace-nowrap">
+                            {group.nome_canal ? (
+                              <div className="space-y-0.5">
+                                <span className="inline-block text-[11px] font-bold text-[#0B6E99]">
+                                  {group.nome_canal}
+                                </span>
+                                {group.deploy && (
+                                  <div className="text-[10px] text-slate-500 font-medium">
+                                    Deploy: {group.deploy}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic">Sem canal</span>
+                            )}
+                          </td>
+
+                          {/* Itens do Cliente */}
+                          <td className="p-3 text-slate-600 text-[11px]">
+                            <span className="font-bold text-slate-800">
+                              {group.totalLinhas} item(ns)
+                            </span>
+                            <span className="text-slate-400 ml-1">pendente(s)</span>
+                          </td>
+
+                          {/* SOMA Qtd Aberto */}
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <div className="font-extrabold text-slate-900">
+                              {formatNumber(group.totalQtdAberto)}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              de {formatNumber(group.totalQtdSolicitada)} solicit.
+                            </div>
+                          </td>
+
+                          {/* Preço Líquido Médio */}
+                          <td className="p-3 text-right text-slate-600 whitespace-nowrap font-medium text-[11px]">
+                            {group.totalQtdAberto > 0
+                              ? formatCurrency(group.totalValorEmAberto / group.totalQtdAberto)
+                              : '-'}
+                            <span className="block text-[9px] text-slate-400">preço médio</span>
+                          </td>
+
+                          {/* SOMA de todos os valores em aberto do Cliente */}
+                          <td className="p-3 text-right whitespace-nowrap font-black text-amber-800 text-sm bg-amber-100/40">
+                            {formatCurrency(group.totalValorEmAberto)}
+                          </td>
+
+                          {/* Status consolidado */}
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200"
+                            >
+                              {isExpanded ? 'Expandido' : 'Colapsado'}
+                            </Badge>
+                          </td>
+
+                          {/* Ação rápida */}
+                          <td className="p-3 text-center whitespace-nowrap text-[10px] text-slate-400 font-medium">
+                            {isExpanded ? 'Recolher ▲' : 'Ver itens ▼'}
+                          </td>
+                        </tr>
+
+                        {/* Linhas detalhadas quando expandido */}
+                        {isExpanded &&
+                          group.items.map((item) => (
+                            <tr
+                              key={item.id}
+                              className="bg-white hover:bg-slate-50/80 transition-colors border-b border-slate-100/80"
+                            >
+                              <td className="py-2.5 px-2 text-center text-slate-300">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
+                              </td>
+
+                              {/* Pedido / Linha */}
+                              <td className="p-3 font-semibold text-slate-900 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono text-xs text-[#0B6E99] font-bold">
+                                    {item.numero_pedido}
+                                  </span>
+                                  <span className="text-[11px] text-slate-400">
+                                    / L{item.linha}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Data */}
+                              <td className="p-3 text-slate-600 whitespace-nowrap">
+                                {item.data_pedido ? formatDate(item.data_pedido) : '-'}
+                              </td>
+
+                              {/* Cliente */}
+                              <td className="p-3 min-w-[200px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_cliente}
+                                >
+                                  {item.nome_cliente || 'Cliente não identificado'}
+                                </div>
+                                {item.codigo_cliente && (
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {item.codigo_cliente}
+                                  </div>
+                                )}
+                              </td>
+
+                              {/* Canal / Deploy */}
+                              <td className="p-3 whitespace-nowrap">
+                                {item.nome_canal ? (
+                                  <div className="space-y-0.5">
+                                    <span className="inline-block text-[11px] font-bold text-[#0B6E99]">
+                                      {item.nome_canal}
+                                    </span>
+                                    {item.deploy && (
+                                      <div className="text-[10px] text-slate-500 font-medium">
+                                        Deploy: {item.deploy}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400 text-[11px] italic">
+                                    Sem canal
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Item / Descrição */}
+                              <td className="p-3 min-w-[220px]">
+                                <div className="font-mono text-xs font-semibold text-slate-800">
+                                  {item.codigo_item || '-'}
+                                </div>
+                                <div
+                                  className="text-[11px] text-slate-600 truncate"
+                                  title={item.descricao_item}
+                                >
+                                  {item.descricao_item || '-'}
+                                </div>
+                                {item.grupo_item && (
+                                  <span className="inline-block text-[10px] text-slate-400 uppercase tracking-tight mt-0.5">
+                                    Grupo: {item.grupo_item}
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Qtd Aberto */}
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <div className="font-bold text-slate-900">
+                                  {formatNumber(item.qtd_aberto)}
+                                </div>
+                                <div className="text-[10px] text-slate-400">
+                                  de {formatNumber(item.qtd_solicitada)} ped.
+                                </div>
+                              </td>
+
+                              {/* Preço Unitário Líquido */}
+                              <td className="p-3 text-right text-slate-700 whitespace-nowrap font-medium">
+                                {formatCurrency(item.preco_apos_desconto || item.preco_unitario)}
+                                {item.desconto_percentual > 0 && (
+                                  <span className="block text-[10px] text-rose-500">
+                                    -{Math.round(item.desconto_percentual)}%
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Valor em Aberto */}
+                              <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
+                                {formatCurrency(item.valor_em_aberto)}
+                              </td>
+
+                              {/* Status Linha */}
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    item.status_linha?.toLowerCase() === 'fechada'
+                                      ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
+                                  }
+                                >
+                                  {item.status_linha || 'Aberta'}
+                                </Badge>
+                              </td>
+
+                              {/* Estoque / Trânsito */}
+                              <td className="p-3 text-center whitespace-nowrap text-[11px]">
+                                <div className="flex items-center justify-center gap-2">
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Estoque"
+                                  >
+                                    Est: {formatNumber(item.em_estoque)}
+                                  </span>
+                                  <span className="text-slate-300">|</span>
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Trânsito"
+                                  >
+                                    Trân: {formatNumber(item.em_transito)}
+                                  </span>
+                                </div>
+                                {item.deposito && (
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    Depósito: {item.deposito}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                      </React.Fragment>
+                    )
+                  })
                 ) : (
+                  /* MODO DIRETO SEM AGRUPAMENTO */
                   paginatedPedidos.map((item) => (
                     <tr
                       key={item.id}
@@ -619,7 +1121,7 @@ export default function PedidosAbertos() {
           </div>
 
           {/* Paginação */}
-          {totalPages > 1 && (
+          {totalPages > 1 && !groupByCliente && (
             <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs bg-slate-50/50">
               <div className="text-slate-500">
                 Página <span className="font-bold text-slate-800">{page}</span> de{' '}
