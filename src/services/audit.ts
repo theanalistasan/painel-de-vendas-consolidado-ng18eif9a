@@ -1,7 +1,13 @@
 import pb from '@/lib/pocketbase/client'
 import { safeAuthRefresh, ensureAuthToken } from '@/lib/pocketbase/auth-session'
 
-export type AuditAction = 'login' | 'logout' | 'admin_access' | 'import_access'
+export type AuditAction =
+  | 'login'
+  | 'logout'
+  | 'admin_access'
+  | 'import_access'
+  | 'pedidos_abertos_view'
+  | 'pedidos_abertos_import'
 
 export interface AuditLog {
   id: string

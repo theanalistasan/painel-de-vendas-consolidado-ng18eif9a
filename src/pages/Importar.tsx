@@ -21,6 +21,8 @@ import {
   consolidarVendasApi,
   getCountsSummary,
 } from '@/services/sales'
+import { importPedidosAbertosApi } from '@/services/pedidosAbertos'
+import { logAudit } from '@/services/audit'
 import { parseCSV, parseXLSX, formatNumber, formatDateTime } from '@/lib/formatters'
 import type { ImportResult, ConsolidarResult } from '@/types/sales'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -50,7 +52,7 @@ interface BatchResult {
   totalBatches: number
 }
 
-type BaseKey = 'produtos' | 'racnew' | 'netsales' | 'canais_clientes'
+type BaseKey = 'produtos' | 'racnew' | 'netsales' | 'canais_clientes' | 'pedidos_abertos'
 
 interface CardImportProps {
   title: string
@@ -623,17 +625,18 @@ export default function Importar() {
     netsales: 0,
     vendas: 0,
     canais_clientes: 0,
+    pedidos_abertos: 0,
     ultimaCarga: null as string | null,
   })
   const [consolidating, setConsolidating] = useState(false)
   const [consolidationResult, setConsolidationResult] = useState<ConsolidarResult | null>(null)
-  // Resultado de cada importação armazenado separadamente por base, de forma
-  // que RacNew e NetSales (e Produtos) nunca se sobrescrevam.
+  // Resultado de cada importação armazenado separadamente por base
   const [importResults, setImportResults] = useState<{
     produtos?: ImportResult
     racnew?: ImportResult
     netsales?: ImportResult
     canais_clientes?: ImportResult
+    pedidos_abertos?: ImportResult
   }>({})
   const { toast } = useToast()
 
@@ -648,6 +651,8 @@ export default function Importar() {
 
   useEffect(() => {
     refreshCounts()
+    // Registrar acesso à tela de importação no audit_logs
+    logAudit('import_access', 'Acesso à tela de Importação e Consolidação de Bases')
   }, [])
 
   const handleConsolidar = async () => {
@@ -678,6 +683,12 @@ export default function Importar() {
   const handleImported = (base: BaseKey, result: ImportResult) => {
     setImportResults((prev) => ({ ...prev, [base]: result }))
     refreshCounts()
+    if (base === 'pedidos_abertos') {
+      logAudit(
+        'pedidos_abertos_import',
+        `Importação SAP: ${result.importados ?? 0} novos, ${result.atualizados ?? 0} atualizados, ${result.ignorados ?? 0} ignorados`,
+      )
+    }
   }
 
   const summaryEntries: { base: BaseKey; label: string; color: string }[] = [
@@ -685,6 +696,7 @@ export default function Importar() {
     { base: 'racnew', label: 'RacNew', color: 'text-indigo-700' },
     { base: 'netsales', label: 'NetSales', color: 'text-teal-700' },
     { base: 'canais_clientes', label: 'Canais x Clientes', color: 'text-sky-700' },
+    { base: 'pedidos_abertos', label: 'Pedidos em Aberto', color: 'text-amber-700' },
   ]
   const hasAnyImportResult = Object.values(importResults).some((r) => r)
 
@@ -733,7 +745,7 @@ export default function Importar() {
           </div>
 
           {/* Counts metrics bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-6 pt-6 border-t border-slate-800/80">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-6 border-t border-slate-800/80">
             <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/50">
               <span className="text-[11px] text-slate-400 block font-medium">
                 Produtos Cadastrados
@@ -764,6 +776,14 @@ export default function Importar() {
                 {formatNumber(counts.canais_clientes ?? 0)}
               </span>
             </div>
+            <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/50">
+              <span className="text-[11px] text-amber-300 block font-medium">
+                Pedidos em Aberto
+              </span>
+              <span className="text-lg font-bold text-amber-200 tabular-nums">
+                {formatNumber(counts.pedidos_abertos ?? 0)}
+              </span>
+            </div>
             <div className="bg-indigo-950/80 p-3 rounded-lg border border-indigo-700/50">
               <span className="text-[11px] text-indigo-300 block font-semibold">
                 Vendas Consolidadas
@@ -783,8 +803,8 @@ export default function Importar() {
         </CardContent>
       </Card>
 
-      {/* 4 Import Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* 5 Import Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
         {/* Card 1: Produtos */}
         <BaseImportCard
           title="Produtos"
@@ -875,6 +895,38 @@ export default function Importar() {
           baseCount={counts.canais_clientes ?? 0}
           onImported={(r) => handleImported('canais_clientes', r)}
         />
+
+        {/* Card 5: Pedidos em Aberto (SAP) */}
+        <BaseImportCard
+          title="Pedidos em Aberto (SAP)"
+          subtitle="Carteira de pedidos e itens pendentes de faturamento"
+          badgeLabel="Pedidos SAP"
+          badgeColor="bg-amber-600"
+          expectedColumns={[
+            'Nº Pedido',
+            'Data do Pedido',
+            'Código Cliente',
+            'Nome Cliente',
+            'Usuário Emitente',
+            'Linha',
+            'Código Item',
+            'Descrição Item',
+            'Grupo do Item',
+            'Qtd Solicitada',
+            'Status da Linha',
+            'Qtd Aberto',
+            'Em Estoque',
+            'Em Trânsito',
+            'Depósito',
+            'Preço Unitário',
+            '% Desconto',
+            'Preço após desconto',
+            'Status',
+          ]}
+          onImport={(rows) => importPedidosAbertosApi(rows)}
+          baseCount={counts.pedidos_abertos ?? 0}
+          onImported={(r) => handleImported('pedidos_abertos', r)}
+        />
       </div>
 
       {/* Resumo final por base — cada base mantém seu próprio resultado */}
@@ -900,7 +952,9 @@ export default function Importar() {
                       ? counts.racnew
                       : base === 'netsales'
                         ? counts.netsales
-                        : (counts.canais_clientes ?? 0)
+                        : base === 'canais_clientes'
+                          ? (counts.canais_clientes ?? 0)
+                          : (counts.pedidos_abertos ?? 0)
                 return (
                   <div
                     key={base}

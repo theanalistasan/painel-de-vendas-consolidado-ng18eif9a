@@ -50,6 +50,9 @@ import {
 import FilterBar from '@/components/FilterBar'
 import ChartCard from '@/components/ChartCard'
 import { MetasIndicador } from '@/components/MetasIndicador'
+import PedidosAbertosWidget from '@/components/PedidosAbertosWidget'
+import { fetchPedidosAbertosStats } from '@/services/pedidosAbertos'
+import type { PedidosAbertosStatsResult } from '@/types/sales'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -146,6 +149,10 @@ function MensalGrupoTooltip({ active, payload, label }: MensalGrupoTooltipProps)
 
 export default function DashboardGeral() {
   const [data, setData] = useState<DashboardStatsResult | null>(null)
+  const [pedidosAbertosStats, setPedidosAbertosStats] = useState<PedidosAbertosStatsResult | null>(
+    null,
+  )
+  const [pedidosLoading, setPedidosLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [exportingReport, setExportingReport] = useState(false)
@@ -176,12 +183,25 @@ export default function DashboardGeral() {
     setError(null)
 
     try {
-      const res = await fetchDashboardStats(activeFilters as unknown as Record<string, unknown>, {
-        signal: currentController.signal,
-      })
+      setPedidosLoading(true)
+      const [res, pedidos] = await Promise.all([
+        fetchDashboardStats(activeFilters as unknown as Record<string, unknown>, {
+          signal: currentController.signal,
+        }),
+        fetchPedidosAbertosStats(activeFilters as unknown as Record<string, unknown>, {
+          signal: currentController.signal,
+        }).catch((pErr) => {
+          console.warn('Erro ao carregar stats de pedidos abertos no Geral:', pErr)
+          return null
+        }),
+      ])
 
       if (seq !== requestSeqRef.current) {
         return
+      }
+
+      if (pedidos) {
+        setPedidosAbertosStats(pedidos)
       }
 
       // Se ainda não foi inicializado com as opções dinâmicas da base (primeiro acesso sem sessão),
@@ -199,6 +219,7 @@ export default function DashboardGeral() {
 
       setData(res)
       setLoading(false)
+      setPedidosLoading(false)
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
         return
@@ -1492,6 +1513,9 @@ export default function DashboardGeral() {
               </ResponsiveContainer>
             </ChartCard>
           </div>
+
+          {/* Bloco: Pedidos em Aberto (SAP) & Ritmo de Compra por Cliente */}
+          <PedidosAbertosWidget stats={pedidosAbertosStats} loading={loading || pedidosLoading} />
 
           {/* Linha 4.5: Indicador de Metas Consolidadas (Canal, Deploy, Inside) */}
           <MetasIndicador

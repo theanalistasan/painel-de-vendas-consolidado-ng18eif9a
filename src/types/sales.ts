@@ -283,3 +283,67 @@ export interface CanalMetaPayload {
   periodo?: string
   valor_meta: number
 }
+
+export interface PedidoAberto extends RecordModel {
+  numero_pedido: string
+  data_pedido: string
+  codigo_cliente: string
+  nome_cliente: string
+  usuario_emitente: string
+  linha: number
+  codigo_item: string
+  descricao_item: string
+  grupo_item: string
+  qtd_solicitada: number
+  status_linha: string
+  qtd_aberto: number
+  em_estoque: number
+  em_transito: number
+  deposito: string
+  preco_unitario: number
+  desconto_percentual: number
+  preco_apos_desconto: number
+  status: string
+  valor_em_aberto: number
+  nome_canal?: string
+  deploy?: string
+  inside?: string
+  origem: string
+  data_carga: string
+}
+
+export interface PedidosAbertosListResult {
+  items: PedidoAberto[]
+  page: number
+  perPage: number
+  totalItems: number
+  totalPages: number
+  totalValor: number
+  totalQtd: number
+}
+
+export interface PedidosAbertosKpis {
+  valorTotalAberto: number
+  pedidosDistintos: number
+  itensPendentes: number
+  clientesDistintos: number
+}
+
+export interface PedidosAbertosClienteRanking {
+  codigo_cliente: string
+  nome_cliente: string
+  nome_canal: string
+  deploy: string
+  inside: string
+  valor_em_aberto: number
+  qtd_pedidos: number
+  qtd_itens: number
+  venda_realizada: number
+  total_potencial: number
+  taxa_em_aberto: number
+}
+
+export interface PedidosAbertosStatsResult {
+  kpis: PedidosAbertosKpis
+  rankingClientes: PedidosAbertosClienteRanking[]
+}

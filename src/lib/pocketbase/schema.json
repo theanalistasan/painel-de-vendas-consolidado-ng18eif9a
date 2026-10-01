@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-01T17:27:57.498Z",
+  "generatedAt": "2026-10-01T18:05:47.072Z",
   "collections": [
     {
       "name": "users",
@@ -1166,6 +1166,194 @@
         "CREATE UNIQUE INDEX idx_cm_canal_periodo ON canais_metas (nome_canal, periodo)",
         "CREATE INDEX idx_cm_periodo ON canais_metas (periodo)",
         "CREATE INDEX idx_cm_nome_canal ON canais_metas (nome_canal)"
+      ]
+    },
+    {
+      "name": "pedidos_abertos",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "numero_pedido",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "data_pedido",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "usuario_emitente",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "linha",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_item",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "descricao_item",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "grupo_item",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qtd_solicitada",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_linha",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qtd_aberto",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "em_estoque",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "em_transito",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "deposito",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "preco_unitario",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "desconto_percentual",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "preco_apos_desconto",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_em_aberto",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_canal",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "deploy",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "inside",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_carga",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_pa_pedido_linha ON pedidos_abertos (numero_pedido, linha)",
+        "CREATE INDEX idx_pa_codigo_cliente ON pedidos_abertos (codigo_cliente)",
+        "CREATE INDEX idx_pa_nome_cliente ON pedidos_abertos (nome_cliente)",
+        "CREATE INDEX idx_pa_data_pedido ON pedidos_abertos (data_pedido)",
+        "CREATE INDEX idx_pa_codigo_item ON pedidos_abertos (codigo_item)",
+        "CREATE INDEX idx_pa_status_linha ON pedidos_abertos (status_linha)",
+        "CREATE INDEX idx_pa_nome_canal ON pedidos_abertos (nome_canal)",
+        "CREATE INDEX idx_pa_deploy ON pedidos_abertos (deploy)",
+        "CREATE INDEX idx_pa_inside ON pedidos_abertos (inside)"
       ]
     }
   ]

@@ -23,6 +23,8 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   logout: 'Logout',
   admin_access: 'Acesso Admin',
   import_access: 'Acesso Importar',
+  pedidos_abertos_view: 'Acesso Pedidos em Aberto',
+  pedidos_abertos_import: 'Importação Pedidos SAP',
 }
 
 const ACTION_BADGE: Record<AuditAction, string> = {
@@ -30,6 +32,8 @@ const ACTION_BADGE: Record<AuditAction, string> = {
   logout: 'bg-slate-200 text-slate-600 hover:bg-slate-200',
   admin_access: 'bg-purple-100 text-purple-700 hover:bg-purple-100',
   import_access: 'bg-blue-100 text-blue-700 hover:bg-blue-100',
+  pedidos_abertos_view: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
+  pedidos_abertos_import: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
 }
 
 export default function Auditoria() {
@@ -184,6 +188,8 @@ export default function Auditoria() {
                   <SelectItem value="logout">Logout</SelectItem>
                   <SelectItem value="admin_access">Acesso Admin</SelectItem>
                   <SelectItem value="import_access">Acesso Importar</SelectItem>
+                  <SelectItem value="pedidos_abertos_view">Acesso Pedidos em Aberto</SelectItem>
+                  <SelectItem value="pedidos_abertos_import">Importação Pedidos SAP</SelectItem>
                 </SelectContent>
               </Select>
             </div>

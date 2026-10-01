@@ -18,6 +18,7 @@ import {
   ChevronDown,
   LayoutGrid,
   Network,
+  ClipboardList,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -131,6 +132,11 @@ export default function Layout() {
       icon: TableIcon,
     },
     {
+      title: 'Pedidos em Aberto',
+      href: '/pedidos-abertos',
+      icon: ClipboardList,
+    },
+    {
       title: 'Canais',
       href: '/canais',
       icon: Network,
@@ -171,6 +177,8 @@ export default function Layout() {
         return 'Dashboard — Visão Canais'
       case '/vendas':
         return 'Relatório Consolidado de Vendas'
+      case '/pedidos-abertos':
+        return 'Relatório de Pedidos em Aberto (SAP)'
       case '/canais':
         return 'Manutenção de Canais'
       case '/importar':
