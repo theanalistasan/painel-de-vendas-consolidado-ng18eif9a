@@ -289,11 +289,15 @@ export default function PedidosAbertos() {
 
       group.items.push(item)
       group.totalLinhas += 1
-      group.totalQtdAberto += Number(item.qtd_aberto) || 0
-      group.totalQtdSolicitada += Number(item.qtd_solicitada) || 0
-      group.totalValorEmAberto += Number(item.valor_em_aberto) || 0
+      const qtdAbertoNum = Number(item.qtd_aberto) || 0
+      const qtdSolNum = Number(item.qtd_solicitada) || 0
+      const valorEmAbertoNum = Number(item.valor_em_aberto) || 0
       const precoLiq = Number(item.preco_apos_desconto) || Number(item.preco_unitario) || 0
-      group.totalValorLiquido += precoLiq * (Number(item.qtd_aberto) || 1)
+
+      group.totalQtdAberto += qtdAbertoNum
+      group.totalQtdSolicitada += qtdSolNum
+      group.totalValorEmAberto += valorEmAbertoNum
+      group.totalValorLiquido += precoLiq * (qtdAbertoNum || 1)
       if (item.nome_canal && !group.nome_canal) group.nome_canal = item.nome_canal
       if (item.deploy && !group.deploy) group.deploy = item.deploy
       if (item.inside && !group.inside) group.inside = item.inside
@@ -958,19 +962,22 @@ export default function PedidosAbertos() {
 
                               {/* Preço Unitário Líquido */}
                               <td className="p-3 text-right text-slate-700 whitespace-nowrap font-medium">
-                                {formatCurrency(item.preco_apos_desconto || item.preco_unitario)}
-                                {item.desconto_percentual > 0 && (
+                                {formatCurrency(
+                                  Number(item.preco_apos_desconto) ||
+                                    Number(item.preco_unitario) ||
+                                    0,
+                                )}
+                                {Number(item.desconto_percentual) > 0 && (
                                   <span className="block text-[10px] text-rose-500">
-                                    -{Math.round(item.desconto_percentual)}%
+                                    -{Math.round(Number(item.desconto_percentual))}%
                                   </span>
                                 )}
                               </td>
 
                               {/* Valor em Aberto */}
                               <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
-                                {formatCurrency(item.valor_em_aberto)}
+                                {formatCurrency(Number(item.valor_em_aberto) || 0)}
                               </td>
-
                               {/* Status Linha */}
                               <td className="p-3 text-center whitespace-nowrap">
                                 <Badge
@@ -1102,17 +1109,19 @@ export default function PedidosAbertos() {
 
                       {/* Preço Unitário Líquido */}
                       <td className="p-3 text-right text-slate-700 whitespace-nowrap font-medium">
-                        {formatCurrency(item.preco_apos_desconto || item.preco_unitario)}
-                        {item.desconto_percentual > 0 && (
+                        {formatCurrency(
+                          Number(item.preco_apos_desconto) || Number(item.preco_unitario) || 0,
+                        )}
+                        {Number(item.desconto_percentual) > 0 && (
                           <span className="block text-[10px] text-rose-500">
-                            -{Math.round(item.desconto_percentual)}%
+                            -{Math.round(Number(item.desconto_percentual))}%
                           </span>
                         )}
                       </td>
 
                       {/* Valor em Aberto */}
                       <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
-                        {formatCurrency(item.valor_em_aberto)}
+                        {formatCurrency(Number(item.valor_em_aberto) || 0)}
                       </td>
 
                       {/* Status Linha */}

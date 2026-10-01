@@ -168,29 +168,40 @@ routerAdd(
     const safeSortCol = allowedSortCols[sortField] || 'data_pedido'
     const orderSql = ' ORDER BY ' + safeSortCol + ' ' + sortDir + ', id ASC'
 
+    const toNum = (v) => {
+      const n = parseFloat(v)
+      return isNaN(n) ? 0 : n
+    }
+    const toInt = (v) => {
+      const n = parseInt(v, 10)
+      return isNaN(n) ? 0 : n
+    }
+
     // Totalizadores
     let totalItems = 0
     let totalValor = 0
     let totalQtd = 0
     try {
+      // Usamos string vazia para todos os campos numéricos no DynamicModel
+      // porque o Go PocketBase converte qualquer float64 para string de forma 100% segura sem tentar int64 scan!
       const countRows = arrayOf(
         new DynamicModel({
-          c: 0,
-          v: 0.0,
-          q: 0.0,
+          c: '',
+          v: '',
+          q: '',
         }),
       )
       $app
         .db()
         .newQuery(
-          'SELECT COUNT(*) AS c, CAST(COALESCE(SUM(valor_em_aberto),0.0) AS REAL) AS v, CAST(COALESCE(SUM(qtd_aberto),0.0) AS REAL) AS q FROM pedidos_abertos' +
+          'SELECT COUNT(*) AS c, COALESCE(SUM(valor_em_aberto), 0) AS v, COALESCE(SUM(qtd_aberto), 0) AS q FROM pedidos_abertos' +
             whereSql,
         )
         .all(countRows)
       if (countRows.length > 0) {
-        totalItems = Number(countRows[0].c) || 0
-        totalValor = Number(countRows[0].v) || 0
-        totalQtd = Number(countRows[0].q) || 0
+        totalItems = toInt(countRows[0].c)
+        totalValor = toNum(countRows[0].v)
+        totalQtd = toNum(countRows[0].q)
       }
     } catch (cErr) {
       console.warn('pedidos_abertos list: count err:', cErr)
@@ -202,16 +213,16 @@ routerAdd(
       const querySql =
         'SELECT id, numero_pedido, data_pedido, codigo_cliente, nome_cliente, usuario_emitente, ' +
         'linha, codigo_item, descricao_item, grupo_item, ' +
-        'CAST(COALESCE(qtd_solicitada, 0.0) AS REAL) AS qtd_solicitada, status_linha, ' +
-        'CAST(COALESCE(qtd_aberto, 0.0) AS REAL) AS qtd_aberto, ' +
-        'CAST(COALESCE(em_estoque, 0.0) AS REAL) AS em_estoque, ' +
-        'CAST(COALESCE(em_transito, 0.0) AS REAL) AS em_transito, ' +
+        'COALESCE(qtd_solicitada, 0) AS qtd_solicitada, status_linha, ' +
+        'COALESCE(qtd_aberto, 0) AS qtd_aberto, ' +
+        'COALESCE(em_estoque, 0) AS em_estoque, ' +
+        'COALESCE(em_transito, 0) AS em_transito, ' +
         'deposito, ' +
-        'CAST(COALESCE(preco_unitario, 0.0) AS REAL) AS preco_unitario, ' +
-        'CAST(COALESCE(desconto_percentual, 0.0) AS REAL) AS desconto_percentual, ' +
-        'CAST(COALESCE(preco_apos_desconto, 0.0) AS REAL) AS preco_apos_desconto, ' +
+        'COALESCE(preco_unitario, 0) AS preco_unitario, ' +
+        'COALESCE(desconto_percentual, 0) AS desconto_percentual, ' +
+        'COALESCE(preco_apos_desconto, 0) AS preco_apos_desconto, ' +
         'status, ' +
-        'CAST(COALESCE(valor_em_aberto, 0.0) AS REAL) AS valor_em_aberto, ' +
+        'COALESCE(valor_em_aberto, 0) AS valor_em_aberto, ' +
         'nome_canal, deploy, inside, origem, data_carga ' +
         'FROM pedidos_abertos' +
         whereSql +
@@ -229,21 +240,21 @@ routerAdd(
           codigo_cliente: '',
           nome_cliente: '',
           usuario_emitente: '',
-          linha: 0,
+          linha: '',
           codigo_item: '',
           descricao_item: '',
           grupo_item: '',
-          qtd_solicitada: 0.0,
+          qtd_solicitada: '',
           status_linha: '',
-          qtd_aberto: 0.0,
-          em_estoque: 0.0,
-          em_transito: 0.0,
+          qtd_aberto: '',
+          em_estoque: '',
+          em_transito: '',
           deposito: '',
-          preco_unitario: 0.0,
-          desconto_percentual: 0.0,
-          preco_apos_desconto: 0.0,
+          preco_unitario: '',
+          desconto_percentual: '',
+          preco_apos_desconto: '',
           status: '',
-          valor_em_aberto: 0.0,
+          valor_em_aberto: '',
           nome_canal: '',
           deploy: '',
           inside: '',
@@ -262,21 +273,21 @@ routerAdd(
           codigo_cliente: r.codigo_cliente || '',
           nome_cliente: r.nome_cliente || '',
           usuario_emitente: r.usuario_emitente || '',
-          linha: Number(r.linha) || 1,
+          linha: toInt(r.linha) || 1,
           codigo_item: r.codigo_item || '',
           descricao_item: r.descricao_item || '',
           grupo_item: r.grupo_item || '',
-          qtd_solicitada: Number(r.qtd_solicitada) || 0,
+          qtd_solicitada: toNum(r.qtd_solicitada),
           status_linha: r.status_linha || 'Aberta',
-          qtd_aberto: Number(r.qtd_aberto) || 0,
-          em_estoque: Number(r.em_estoque) || 0,
-          em_transito: Number(r.em_transito) || 0,
+          qtd_aberto: toNum(r.qtd_aberto),
+          em_estoque: toNum(r.em_estoque),
+          em_transito: toNum(r.em_transito),
           deposito: r.deposito || '',
-          preco_unitario: Number(r.preco_unitario) || 0,
-          desconto_percentual: Number(r.desconto_percentual) || 0,
-          preco_apos_desconto: Number(r.preco_apos_desconto) || 0,
+          preco_unitario: toNum(r.preco_unitario),
+          desconto_percentual: toNum(r.desconto_percentual),
+          preco_apos_desconto: toNum(r.preco_apos_desconto),
           status: r.status || '',
-          valor_em_aberto: Number(r.valor_em_aberto) || 0,
+          valor_em_aberto: toNum(r.valor_em_aberto),
           nome_canal: r.nome_canal || '',
           deploy: r.deploy || '',
           inside: r.inside || '',
@@ -457,6 +468,15 @@ routerAdd(
     const vendasWhereSql =
       vendasWhereClauses.length > 0 ? ' WHERE ' + vendasWhereClauses.join(' AND ') : ''
 
+    const toNum = (v) => {
+      const n = parseFloat(v)
+      return isNaN(n) ? 0 : n
+    }
+    const toInt = (v) => {
+      const n = parseInt(v, 10)
+      return isNaN(n) ? 0 : n
+    }
+
     // 1. KPIs de pedidos abertos
     let valorTotalAberto = 0
     let pedidosDistintos = 0
@@ -464,30 +484,31 @@ routerAdd(
     let clientesDistintos = 0
 
     try {
+      // Usamos string vazia em todos os campos numéricos do DynamicModel para scan 100% seguro em Go
       const kpiRows = arrayOf(
         new DynamicModel({
-          v: 0.0,
-          p: 0,
-          i: 0.0,
-          c: 0,
+          v: '',
+          p: '',
+          i: '',
+          c: '',
         }),
       )
       $app
         .db()
         .newQuery(
-          'SELECT CAST(COALESCE(SUM(valor_em_aberto), 0.0) AS REAL) AS v, ' +
+          'SELECT COALESCE(SUM(valor_em_aberto), 0) AS v, ' +
             'COUNT(DISTINCT numero_pedido) AS p, ' +
-            'CAST(COALESCE(SUM(qtd_aberto), 0.0) AS REAL) AS i, ' +
+            'COALESCE(SUM(qtd_aberto), 0) AS i, ' +
             "COUNT(DISTINCT COALESCE(NULLIF(codigo_cliente, ''), nome_cliente)) AS c " +
             'FROM pedidos_abertos' +
             paWhereSql,
         )
         .all(kpiRows)
       if (kpiRows.length > 0) {
-        valorTotalAberto = Number(kpiRows[0].v) || 0
-        pedidosDistintos = Number(kpiRows[0].p) || 0
-        itensPendentes = Number(kpiRows[0].i) || 0
-        clientesDistintos = Number(kpiRows[0].c) || 0
+        valorTotalAberto = toNum(kpiRows[0].v)
+        pedidosDistintos = toInt(kpiRows[0].p)
+        itensPendentes = toNum(kpiRows[0].i)
+        clientesDistintos = toInt(kpiRows[0].c)
       }
     } catch (kErr) {
       console.warn('pedidos_abertos stats: kpi err:', kErr)
@@ -502,13 +523,13 @@ routerAdd(
         "COALESCE(nome_canal, '') AS canal, " +
         "COALESCE(deploy, '') AS deploy, " +
         "COALESCE(inside, '') AS inside, " +
-        'CAST(COALESCE(SUM(valor_em_aberto), 0.0) AS REAL) AS val_aberto, ' +
+        'COALESCE(SUM(valor_em_aberto), 0) AS val_aberto, ' +
         'COUNT(DISTINCT numero_pedido) AS qtd_pedidos, ' +
-        'CAST(COALESCE(SUM(qtd_aberto), 0.0) AS REAL) AS qtd_itens ' +
+        'COALESCE(SUM(qtd_aberto), 0) AS qtd_itens ' +
         'FROM pedidos_abertos' +
         paWhereSql +
         " GROUP BY COALESCE(codigo_cliente, ''), COALESCE(nome_cliente, 'Sem identificação') " +
-        'ORDER BY val_aberto DESC LIMIT 50'
+        'ORDER BY COALESCE(SUM(valor_em_aberto), 0) DESC LIMIT 50'
 
       const rRows = arrayOf(
         new DynamicModel({
@@ -517,9 +538,9 @@ routerAdd(
           canal: '',
           deploy: '',
           inside: '',
-          val_aberto: 0.0,
-          qtd_pedidos: 0,
-          qtd_itens: 0.0,
+          val_aberto: '',
+          qtd_pedidos: '',
+          qtd_itens: '',
         }),
       )
       $app.db().newQuery(rankingSql).all(rRows)
@@ -533,9 +554,9 @@ routerAdd(
           nome_canal: item.canal,
           deploy: item.deploy,
           inside: item.inside,
-          valor_em_aberto: Number(item.val_aberto) || 0,
-          qtd_pedidos: Number(item.qtd_pedidos) || 0,
-          qtd_itens: Number(item.qtd_itens) || 0,
+          valor_em_aberto: toNum(item.val_aberto),
+          qtd_pedidos: toInt(item.qtd_pedidos),
+          qtd_itens: toNum(item.qtd_itens),
           venda_realizada: 0,
           total_potencial: 0,
           taxa_em_aberto: 0,
@@ -550,7 +571,7 @@ routerAdd(
       const vSql =
         "SELECT COALESCE(codigo_cliente, '') AS cod, " +
         "COALESCE(nome_cliente, '') AS nom, " +
-        'CAST(COALESCE(SUM(total_linha), 0.0) AS REAL) AS venda_realizada ' +
+        'COALESCE(SUM(total_linha), 0) AS venda_realizada ' +
         'FROM resumo_vendas_mensal' +
         vendasWhereSql +
         " GROUP BY COALESCE(codigo_cliente, ''), COALESCE(nome_cliente, '')"
@@ -559,7 +580,7 @@ routerAdd(
         new DynamicModel({
           cod: '',
           nom: '',
-          venda_realizada: 0.0,
+          venda_realizada: '',
         }),
       )
       $app.db().newQuery(vSql).all(vRows)
@@ -568,7 +589,7 @@ routerAdd(
         const row = vRows[i]
         const cod = (row.cod || '').trim()
         const nom = (row.nom || '').trim()
-        const venda = Number(row.venda_realizada) || 0
+        const venda = toNum(row.venda_realizada)
 
         // Procura no clientMap por código ou nome
         if (cod && clientMap[cod]) {
