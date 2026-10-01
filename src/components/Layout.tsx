@@ -159,7 +159,7 @@ export default function Layout() {
       icon: History,
       adminOnly: true,
     },
-  ].filter((item) => !item.adminOnly || adminUnlocked)
+  ].filter((item) => !item.adminOnly || user?.role === 'admin' || adminUnlocked)
 
   // Page title mapping
   const getPageTitle = () => {

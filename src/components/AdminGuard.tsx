@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { useToast } from '@/hooks/use-toast'
+import { useAuth } from '@/context/AuthContext'
 
 const ADMIN_PASSWORD = 'Reset@Painel2025'
 // Mantém admin_unlocked_v1 (chave padrão especificada) com suporte a retrocompatibilidade com adminUnlocked
@@ -78,19 +79,25 @@ export function setAdminUnlocked(unlocked: boolean) {
  * Mostra o modal enquanto o admin não estiver desbloqueado na sessão.
  */
 export default function AdminGuard({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth()
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { toast } = useToast()
 
-  const [unlocked, setUnlocked] = useState(() => isAdminUnlocked())
+  const isRoleAdmin = user?.role === 'admin'
+  const [unlocked, setUnlocked] = useState(() => isRoleAdmin || isAdminUnlocked())
 
-  // Sincroniza se o status for alterado
+  // Sincroniza se a role do usuário ou o status da sessão for alterado
   useEffect(() => {
-    setUnlocked(isAdminUnlocked())
-  }, [])
+    if (isRoleAdmin) {
+      setUnlocked(true)
+    } else {
+      setUnlocked(isAdminUnlocked())
+    }
+  }, [isRoleAdmin])
 
-  if (unlocked) {
+  if (isRoleAdmin || unlocked) {
     return <>{children}</>
   }
 
