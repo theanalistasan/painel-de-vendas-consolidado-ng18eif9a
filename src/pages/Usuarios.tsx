@@ -11,6 +11,8 @@ import {
   Copy,
   ShieldCheck,
   UserCircle2,
+  KeyRound,
+  Info,
 } from 'lucide-react'
 import {
   fetchUsers,
@@ -21,6 +23,7 @@ import {
   type UserRecord,
   type UserRole,
 } from '@/services/users'
+import { useAuth } from '@/context/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -52,6 +55,7 @@ const PER_PAGE = 10
 interface FormState {
   name: string
   email: string
+  oldPassword: string
   password: string
   confirmPassword: string
   role: UserRole
@@ -61,6 +65,7 @@ interface FormState {
 const emptyForm: FormState = {
   name: '',
   email: '',
+  oldPassword: '',
   password: '',
   confirmPassword: '',
   role: 'user',
@@ -68,6 +73,7 @@ const emptyForm: FormState = {
 }
 
 export default function Usuarios() {
+  const { user: currentUser } = useAuth()
   const [items, setItems] = useState<UserRecord[]>([])
   const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
@@ -133,11 +139,14 @@ export default function Usuarios() {
     setModalOpen(true)
   }
 
+  const isSelf = Boolean(editing && currentUser && editing.id === currentUser.id)
+
   const openEdit = (u: UserRecord) => {
     setEditing(u)
     setForm({
       name: u.name || '',
       email: u.email || '',
+      oldPassword: '',
       password: '',
       confirmPassword: '',
       role: (u.role as UserRole) || 'user',
@@ -156,7 +165,10 @@ export default function Usuarios() {
       if (form.password.length < 8) return 'A senha deve ter no mínimo 8 caracteres.'
       if (form.password !== form.confirmPassword) return 'As senhas não conferem.'
     } else if (form.password) {
-      if (form.password.length < 8) return 'A senha deve ter no mínimo 8 caracteres.'
+      if (isSelf && !form.oldPassword) {
+        return 'Informe sua senha atual para confirmar a alteração.'
+      }
+      if (form.password.length < 8) return 'A nova senha deve ter no mínimo 8 caracteres.'
       if (form.password !== form.confirmPassword) return 'As senhas não conferem.'
     }
     return null
@@ -175,12 +187,16 @@ export default function Usuarios() {
     // Timeout de salvamento na UI para nunca travar em "Salvando..."
     const savePromise = (async () => {
       if (editing) {
+        // Se for o próprio usuário, envia oldPassword quando informou nova senha;
+        // Se for admin alterando outro usuário, NUNCA envia oldPassword
+        const oldPass = isSelf && form.password ? form.oldPassword.trim() || undefined : undefined
         return await updateUser(editing.id, {
           name: form.name.trim(),
           email: form.email.trim(),
           role: form.role,
           active: form.active,
           password: form.password || undefined,
+          oldPassword: oldPass,
         })
       } else {
         return await createUser({
@@ -219,22 +235,44 @@ export default function Usuarios() {
       console.error('Erro ao salvar usuário:', e)
       let msg = 'Falha ao salvar usuário.'
 
-      // Extrai mensagens específicas do PocketBase
+      // Extrai mensagens amigáveis dos erros do PocketBase
       const fieldErrors = extractFieldErrors(e)
       const fieldErrorKeys = Object.keys(fieldErrors)
+
       if (fieldErrorKeys.length > 0) {
-        msg = fieldErrorKeys.map((k) => `${k}: ${fieldErrors[k]}`).join(' | ')
+        const friendlyFieldMap: Record<string, string> = {
+          oldPassword: 'Senha atual incorreta ou em branco.',
+          password: 'Senha inválida (deve ter no mínimo 8 caracteres).',
+          passwordConfirm: 'A confirmação de senha não confere.',
+          email: 'E-mail inválido ou já em uso.',
+          name: 'Nome inválido ou obrigatório.',
+        }
+
+        const messages = fieldErrorKeys.map((k) => {
+          if (friendlyFieldMap[k]) return friendlyFieldMap[k]
+          const fieldName = k === 'role' ? 'Perfil' : k === 'active' ? 'Status' : k
+          return `${fieldName}: ${fieldErrors[k]}`
+        })
+        msg = messages.join(' ')
       } else if (e instanceof Error && e.message) {
         msg = e.message
       }
 
-      // Tratamento de conflito de email duplicado
+      // Tratamentos específicos em português
+      const lower = msg.toLowerCase()
       if (
-        msg.toLowerCase().includes('already exists') ||
-        msg.toLowerCase().includes('unique') ||
-        msg.toLowerCase().includes('email já cadastrado')
+        lower.includes('already exists') ||
+        lower.includes('unique') ||
+        lower.includes('email já cadastrado')
       ) {
         msg = 'Este e-mail já está em uso por outro usuário.'
+      } else if (lower.includes('oldpassword') || lower.includes('old password')) {
+        msg = 'A senha atual informada está incorreta.'
+      } else if (
+        lower.includes('failed to update record') ||
+        lower.includes('failed to create record')
+      ) {
+        msg = 'Não foi possível atualizar o usuário. Verifique os dados informados.'
       }
 
       setSaveError(msg)
@@ -597,34 +635,76 @@ export default function Usuarios() {
                 className="rounded-lg border-slate-200 focus-visible:ring-indigo-500 text-xs"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">
-                  {editing ? 'Nova senha (opcional)' : 'Senha'}
-                </Label>
-                <Input
-                  type="password"
-                  value={form.password}
-                  onChange={(e) => {
-                    setSaveError(null)
-                    setForm((f) => ({ ...f, password: e.target.value }))
-                  }}
-                  placeholder="••••••••"
-                  className="rounded-lg border-slate-200 focus-visible:ring-indigo-500 text-xs"
-                />
+            {/* Bloco de senha */}
+            <div className="space-y-3 pt-1 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+                  <span className="text-xs font-semibold text-slate-800">
+                    {editing ? 'Definir / Redefinir Senha' : 'Senha de Acesso'}
+                  </span>
+                </div>
+                {editing && !isSelf && (
+                  <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">
+                    Admin: senha antiga dispensada
+                  </span>
+                )}
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Confirmar senha</Label>
-                <Input
-                  type="password"
-                  value={form.confirmPassword}
-                  onChange={(e) => {
-                    setSaveError(null)
-                    setForm((f) => ({ ...f, confirmPassword: e.target.value }))
-                  }}
-                  placeholder="••••••••"
-                  className="rounded-lg border-slate-200 focus-visible:ring-indigo-500 text-xs"
-                />
+
+              {/* Se o próprio usuário estiver alterando a própria senha, exige senha atual */}
+              {editing && isSelf && (
+                <div className="space-y-1.5 bg-amber-50/70 p-2.5 rounded-lg border border-amber-200/80">
+                  <div className="flex items-center gap-1.5 text-amber-800">
+                    <Info className="w-3.5 h-3.5 shrink-0" />
+                    <Label className="text-xs font-semibold text-amber-900">
+                      Senha atual (obrigatória para sua própria conta)
+                    </Label>
+                  </div>
+                  <Input
+                    type="password"
+                    value={form.oldPassword}
+                    onChange={(e) => {
+                      setSaveError(null)
+                      setForm((f) => ({ ...f, oldPassword: e.target.value }))
+                    }}
+                    placeholder="Sua senha atual"
+                    className="rounded-lg border-amber-300 focus-visible:ring-amber-500 text-xs bg-white"
+                  />
+                  <p className="text-[10px] text-amber-700">
+                    Por segurança, ao alterar sua própria senha informe sua senha atual.
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">
+                    {editing ? 'Nova senha (opcional)' : 'Senha'}
+                  </Label>
+                  <Input
+                    type="password"
+                    value={form.password}
+                    onChange={(e) => {
+                      setSaveError(null)
+                      setForm((f) => ({ ...f, password: e.target.value }))
+                    }}
+                    placeholder="Mínimo 8 caracteres"
+                    className="rounded-lg border-slate-200 focus-visible:ring-indigo-500 text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Confirmar senha</Label>
+                  <Input
+                    type="password"
+                    value={form.confirmPassword}
+                    onChange={(e) => {
+                      setSaveError(null)
+                      setForm((f) => ({ ...f, confirmPassword: e.target.value }))
+                    }}
+                    placeholder="Repita a senha"
+                    className="rounded-lg border-slate-200 focus-visible:ring-indigo-500 text-xs"
+                  />
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

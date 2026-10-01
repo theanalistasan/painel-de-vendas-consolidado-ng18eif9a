@@ -160,10 +160,12 @@ export interface UpdateUserPayload {
   role?: UserRole
   active?: boolean
   password?: string
+  oldPassword?: string
 }
 
 /**
  * Atualiza um usuário existente. Se `password` for informado, troca a senha.
+ * Se `oldPassword` for informado, envia como verificação de segurança.
  */
 export async function updateUser(id: string, payload: UpdateUserPayload): Promise<UserRecord> {
   await ensureAuthToken()
@@ -175,6 +177,9 @@ export async function updateUser(id: string, payload: UpdateUserPayload): Promis
   if (payload.password) {
     data.password = payload.password
     data.passwordConfirm = payload.password
+    if (payload.oldPassword) {
+      data.oldPassword = payload.oldPassword
+    }
   }
   // Garante que o email continue visível nas listagens (corrige registros
   // criados anteriormente com emailVisibility=false, ex: Nicolas Brito).
