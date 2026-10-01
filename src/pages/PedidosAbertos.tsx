@@ -24,19 +24,15 @@ import { fetchDashboardStats } from '@/services/sales'
 import { logAudit } from '@/services/audit'
 import type {
   PedidoAberto,
-  FilterState,
   CanalOption,
   CanalClienteOption,
   PedidosAbertosKpis,
 } from '@/types/sales'
 import { formatCurrency, formatNumber, formatDate, exportToCSV } from '@/lib/formatters'
-import {
-  saveFiltersToSession,
-  loadFiltersFromSession,
-  buildDynamicInitialFilters,
-  hasSavedFiltersInSession,
-} from '@/lib/filter-persistence'
-import FilterBar from '@/components/FilterBar'
+import PedidosAbertosFilterBar, {
+  PedidosAbertosFilters,
+  EMPTY_PEDIDOS_ABERTOS_FILTERS,
+} from '@/components/PedidosAbertosFilterBar'
 import KpiCard from '@/components/KpiCard'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -61,15 +57,9 @@ export default function PedidosAbertos() {
   const sort = useTableSort<SortField>()
   const { toast } = useToast()
 
-  const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
-  const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
-  const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
-
-  useEffect(() => {
-    if (hadSavedFiltersAtMount.current || initializedFromBase) {
-      saveFiltersToSession(filters)
-    }
-  }, [filters, initializedFromBase])
+  const [filters, setFilters] = useState<PedidosAbertosFilters>(() => ({
+    ...EMPTY_PEDIDOS_ABERTOS_FILTERS,
+  }))
 
   const [kpis, setKpis] = useState<PedidosAbertosKpis>({
     valorTotalAberto: 0,
@@ -79,41 +69,23 @@ export default function PedidosAbertos() {
   })
 
   const [filterOptions, setFilterOptions] = useState<{
-    vendedorCliente: string[]
-    vendedor: string[]
-    grupoItem: string[]
-    estado: string[]
-    utilizacao: string[]
-    tipoDocumento: string[]
     canais?: CanalOption[]
     canaisClientes?: CanalClienteOption[]
     inside?: string[]
-    anos: number[]
-    meses: number[]
-    dias: number[]
   }>({
-    vendedorCliente: [],
-    vendedor: [],
-    grupoItem: [],
-    estado: [],
-    utilizacao: [],
-    tipoDocumento: [],
     canais: [],
     canaisClientes: [],
     inside: [],
-    anos: [],
-    meses: [],
-    dias: [],
   })
 
   const [statsLoading, setStatsLoading] = useState(false)
 
-  // Carrega opções de filtro e KPIs
+  // Carrega opções de canais e KPIs de pedidos abertos
   const loadStats = async (activeFilters = filters) => {
     try {
       setStatsLoading(true)
       const [statsVendas, statsPedidos] = await Promise.all([
-        fetchDashboardStats(activeFilters as unknown as Record<string, unknown>),
+        fetchDashboardStats({}),
         fetchPedidosAbertosStats(activeFilters as unknown as Record<string, unknown>),
       ])
 
@@ -122,17 +94,11 @@ export default function PedidosAbertos() {
       }
 
       if (statsVendas?.filterOptions) {
-        setFilterOptions(statsVendas.filterOptions)
-
-        if (!initializedFromBase && !hasSavedFiltersInSession()) {
-          const dynamicFilters = buildDynamicInitialFilters(statsVendas.filterOptions)
-          setInitializedFromBase(true)
-          saveFiltersToSession(dynamicFilters)
-          setFilters(dynamicFilters)
-          return
-        } else if (!initializedFromBase) {
-          setInitializedFromBase(true)
-        }
+        setFilterOptions({
+          canais: statsVendas.filterOptions.canais || [],
+          canaisClientes: statsVendas.filterOptions.canaisClientes || [],
+          inside: statsVendas.filterOptions.inside || [],
+        })
       }
     } catch (err) {
       console.error('Erro ao carregar estatísticas de pedidos abertos:', err)
@@ -191,7 +157,7 @@ export default function PedidosAbertos() {
     loadData(filters, page, sort.field, sort.dir, searchTerm)
   }, [page, filters, sort.field, sort.dir])
 
-  const handleApplyFilters = (applied: FilterState) => {
+  const handleApplyFilters = (applied: PedidosAbertosFilters) => {
     setPage(1)
     loadStats(applied)
     loadData(applied, 1, sort.field, sort.dir, searchTerm)
@@ -339,8 +305,8 @@ export default function PedidosAbertos() {
         </div>
       </div>
 
-      {/* FilterBar integrada */}
-      <FilterBar
+      {/* Filtros específicos de Pedidos em Aberto (Canais, Clientes, Deploy, Inside e Período) */}
+      <PedidosAbertosFilterBar
         filters={filters}
         setFilters={setFilters}
         options={filterOptions}
