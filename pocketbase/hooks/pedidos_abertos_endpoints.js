@@ -20,7 +20,7 @@ routerAdd(
     // Cláusulas WHERE
     const whereClauses = []
 
-    // 1. Filtros de Canal (Canal, Clientes do Canal, Deploy, Inside)
+    // 1. Filtros de Canal (Canal, Clientes do Canal, Deploy, Inside, É Canal)
     const canaisFilter = Array.isArray(f.canal) ? f.canal : f.canal ? [f.canal] : []
     const canalClientesFilter = Array.isArray(f.canalClientes)
       ? f.canalClientes
@@ -29,11 +29,96 @@ routerAdd(
         : []
     const deployFilter = Array.isArray(f.deploy) ? f.deploy : f.deploy ? [f.deploy] : []
     const insideFilter = Array.isArray(f.inside) ? f.inside : f.inside ? [f.inside] : []
+    const ehCanalFilter =
+      f.ehCanal !== undefined && f.ehCanal !== null ? String(f.ehCanal).trim() : ''
 
     const hasCanalFilter = canaisFilter.length > 0
     const hasCanalClientesFilter = canalClientesFilter.length > 0
     const hasDeployFilter = deployFilter.length > 0 && !deployFilter.includes('TODOS')
     const hasInsideFilter = insideFilter.length > 0
+
+    // Filtro "É Canal": 'sim' | 'nao' | '' (ou 'todos')
+    if (ehCanalFilter === 'sim' || ehCanalFilter === 'true' || ehCanalFilter === 'SIM') {
+      try {
+        const canaisCodRows = arrayOf(new DynamicModel({ cc: '', nc: '' }))
+        $app
+          .db()
+          .newQuery(
+            "SELECT DISTINCT codigo_cliente AS cc, nome_cliente AS nc FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's')",
+          )
+          .all(canaisCodRows)
+        const simCods = []
+        const simNomes = []
+        for (let sc = 0; sc < canaisCodRows.length; sc++) {
+          const cod = (canaisCodRows[sc].cc || '').trim().toUpperCase()
+          const nom = (canaisCodRows[sc].nc || '').trim()
+          if (cod && cod !== '-') simCods.push(cod)
+          if (nom) simNomes.push(nom)
+        }
+        if (simCods.length > 0 || simNomes.length > 0) {
+          const sub = []
+          if (simCods.length > 0) {
+            sub.push(
+              'UPPER(TRIM(codigo_cliente)) IN (' +
+                simCods.map((c) => "'" + sqlEsc(c) + "'").join(',') +
+                ')',
+            )
+          }
+          if (simNomes.length > 0) {
+            sub.push(
+              'nome_cliente IN (' + simNomes.map((n) => "'" + sqlEsc(n) + "'").join(',') + ')',
+            )
+          }
+          // Também aceita se nome_canal já estiver preenchido no pedido
+          sub.push("(nome_canal IS NOT NULL AND TRIM(nome_canal) != '')")
+          whereClauses.push('(' + sub.join(' OR ') + ')')
+        } else {
+          whereClauses.push("(nome_canal IS NOT NULL AND TRIM(nome_canal) != '')")
+        }
+      } catch (ecErr) {
+        console.warn('pedidos_abertos list: filtro ehCanal sim warning:', ecErr)
+      }
+    } else if (
+      ehCanalFilter === 'nao' ||
+      ehCanalFilter === 'false' ||
+      ehCanalFilter === 'NAO' ||
+      ehCanalFilter === 'Não'
+    ) {
+      try {
+        const canaisCodRows = arrayOf(new DynamicModel({ cc: '', nc: '' }))
+        $app
+          .db()
+          .newQuery(
+            "SELECT DISTINCT codigo_cliente AS cc, nome_cliente AS nc FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's')",
+          )
+          .all(canaisCodRows)
+        const simCods = []
+        const simNomes = []
+        for (let sc = 0; sc < canaisCodRows.length; sc++) {
+          const cod = (canaisCodRows[sc].cc || '').trim().toUpperCase()
+          const nom = (canaisCodRows[sc].nc || '').trim()
+          if (cod && cod !== '-') simCods.push(cod)
+          if (nom) simNomes.push(nom)
+        }
+        const notSub = []
+        if (simCods.length > 0) {
+          notSub.push(
+            'UPPER(TRIM(codigo_cliente)) NOT IN (' +
+              simCods.map((c) => "'" + sqlEsc(c) + "'").join(',') +
+              ')',
+          )
+        }
+        if (simNomes.length > 0) {
+          notSub.push(
+            'nome_cliente NOT IN (' + simNomes.map((n) => "'" + sqlEsc(n) + "'").join(',') + ')',
+          )
+        }
+        notSub.push("(nome_canal IS NULL OR TRIM(nome_canal) = '')")
+        whereClauses.push('(' + notSub.join(' AND ') + ')')
+      } catch (ecErr) {
+        console.warn('pedidos_abertos list: filtro ehCanal nao warning:', ecErr)
+      }
+    }
 
     if (hasCanalFilter || hasCanalClientesFilter || hasDeployFilter || hasInsideFilter) {
       try {
@@ -330,7 +415,7 @@ routerAdd(
     // Cláusulas para resumo_vendas_mensal (ou vendas) para o mesmo recorte
     const vendasWhereClauses = []
 
-    // 1. Filtros de Canal
+    // 1. Filtros de Canal (incluindo É Canal)
     const canaisFilter = Array.isArray(f.canal) ? f.canal : f.canal ? [f.canal] : []
     const canalClientesFilter = Array.isArray(f.canalClientes)
       ? f.canalClientes
@@ -339,11 +424,99 @@ routerAdd(
         : []
     const deployFilter = Array.isArray(f.deploy) ? f.deploy : f.deploy ? [f.deploy] : []
     const insideFilter = Array.isArray(f.inside) ? f.inside : f.inside ? [f.inside] : []
+    const ehCanalFilter =
+      f.ehCanal !== undefined && f.ehCanal !== null ? String(f.ehCanal).trim() : ''
 
     const hasCanalFilter = canaisFilter.length > 0
     const hasCanalClientesFilter = canalClientesFilter.length > 0
     const hasDeployFilter = deployFilter.length > 0 && !deployFilter.includes('TODOS')
     const hasInsideFilter = insideFilter.length > 0
+
+    // Filtro "É Canal": 'sim' | 'nao' | ''
+    if (ehCanalFilter === 'sim' || ehCanalFilter === 'true' || ehCanalFilter === 'SIM') {
+      try {
+        const canaisCodRows = arrayOf(new DynamicModel({ cc: '', nc: '' }))
+        $app
+          .db()
+          .newQuery(
+            "SELECT DISTINCT codigo_cliente AS cc, nome_cliente AS nc FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's')",
+          )
+          .all(canaisCodRows)
+        const simCods = []
+        const simNomes = []
+        for (let sc = 0; sc < canaisCodRows.length; sc++) {
+          const cod = (canaisCodRows[sc].cc || '').trim().toUpperCase()
+          const nom = (canaisCodRows[sc].nc || '').trim()
+          if (cod && cod !== '-') simCods.push(cod)
+          if (nom) simNomes.push(nom)
+        }
+        if (simCods.length > 0 || simNomes.length > 0) {
+          const sub = []
+          if (simCods.length > 0) {
+            sub.push(
+              'UPPER(TRIM(codigo_cliente)) IN (' +
+                simCods.map((c) => "'" + sqlEsc(c) + "'").join(',') +
+                ')',
+            )
+          }
+          if (simNomes.length > 0) {
+            sub.push(
+              'nome_cliente IN (' + simNomes.map((n) => "'" + sqlEsc(n) + "'").join(',') + ')',
+            )
+          }
+          const paSub = [...sub, "(nome_canal IS NOT NULL AND TRIM(nome_canal) != '')"]
+          paWhereClauses.push('(' + paSub.join(' OR ') + ')')
+          vendasWhereClauses.push('(' + sub.join(' OR ') + ')')
+        } else {
+          paWhereClauses.push("(nome_canal IS NOT NULL AND TRIM(nome_canal) != '')")
+        }
+      } catch (ecErr) {
+        console.warn('pedidos_abertos stats: filtro ehCanal sim warning:', ecErr)
+      }
+    } else if (
+      ehCanalFilter === 'nao' ||
+      ehCanalFilter === 'false' ||
+      ehCanalFilter === 'NAO' ||
+      ehCanalFilter === 'Não'
+    ) {
+      try {
+        const canaisCodRows = arrayOf(new DynamicModel({ cc: '', nc: '' }))
+        $app
+          .db()
+          .newQuery(
+            "SELECT DISTINCT codigo_cliente AS cc, nome_cliente AS nc FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's')",
+          )
+          .all(canaisCodRows)
+        const simCods = []
+        const simNomes = []
+        for (let sc = 0; sc < canaisCodRows.length; sc++) {
+          const cod = (canaisCodRows[sc].cc || '').trim().toUpperCase()
+          const nom = (canaisCodRows[sc].nc || '').trim()
+          if (cod && cod !== '-') simCods.push(cod)
+          if (nom) simNomes.push(nom)
+        }
+        const notSub = []
+        if (simCods.length > 0) {
+          notSub.push(
+            'UPPER(TRIM(codigo_cliente)) NOT IN (' +
+              simCods.map((c) => "'" + sqlEsc(c) + "'").join(',') +
+              ')',
+          )
+        }
+        if (simNomes.length > 0) {
+          notSub.push(
+            'nome_cliente NOT IN (' + simNomes.map((n) => "'" + sqlEsc(n) + "'").join(',') + ')',
+          )
+        }
+        const paNotSub = [...notSub, "(nome_canal IS NULL OR TRIM(nome_canal) = '')"]
+        paWhereClauses.push('(' + paNotSub.join(' AND ') + ')')
+        if (notSub.length > 0) {
+          vendasWhereClauses.push('(' + notSub.join(' AND ') + ')')
+        }
+      } catch (ecErr) {
+        console.warn('pedidos_abertos stats: filtro ehCanal nao warning:', ecErr)
+      }
+    }
 
     if (hasCanalFilter || hasCanalClientesFilter || hasDeployFilter || hasInsideFilter) {
       try {

@@ -44,6 +44,8 @@ const PAGE_SIZE = 25
 
 type SortField = Extract<keyof PedidoAberto, string>
 
+type ViewMode = 'detalhado' | 'cliente' | 'canal'
+
 interface ClientGroup {
   key: string
   codigo_cliente: string
@@ -53,6 +55,20 @@ interface ClientGroup {
   inside: string
   totalPedidos: number
   totalLinhas: number
+  totalQtdAberto: number
+  totalQtdSolicitada: number
+  totalValorEmAberto: number
+  totalValorLiquido: number
+  items: PedidoAberto[]
+}
+
+interface CanalGroup {
+  key: string
+  nome_canal: string
+  deploy: string
+  totalPedidos: number
+  totalLinhas: number
+  totalClientes: number
   totalQtdAberto: number
   totalQtdSolicitada: number
   totalValorEmAberto: number
@@ -71,8 +87,9 @@ export default function PedidosAbertos() {
   const [exporting, setExporting] = useState(false)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
-  const [groupByCliente, setGroupByCliente] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('detalhado')
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
+  const [expandedCanais, setExpandedCanais] = useState<Set<string>>(new Set())
   const sort = useTableSort<SortField>()
   const { toast } = useToast()
 
@@ -149,12 +166,13 @@ export default function PedidosAbertos() {
     sortField = sort.field,
     sortDir = sort.dir,
     search = searchTerm,
-    isGrouped = groupByCliente,
+    currentViewMode = viewMode,
   ) => {
     setLoading(true)
     try {
+      const isGrouped = currentViewMode !== 'detalhado'
       if (isGrouped) {
-        // Carrega base completa (até 1000 registros do recorte) para consolidar por cliente com totais exatos
+        // Carrega base completa (até 1000 registros do recorte) para consolidar por cliente ou canal com totais exatos
         const res = await fetchPedidosAbertosList({
           page: 1,
           perPage: 1000,
@@ -223,7 +241,7 @@ export default function PedidosAbertos() {
 
     const runStaggeredLoad = async () => {
       // 1. Carrega primeiro a listagem de pedidos
-      await loadData(filters, page, sort.field, sort.dir, searchTerm, groupByCliente)
+      await loadData(filters, page, sort.field, sort.dir, searchTerm, viewMode)
       if (isCancelled) return
 
       // 2. Carrega depois os KPIs e estatísticas agregadas
@@ -235,12 +253,12 @@ export default function PedidosAbertos() {
     return () => {
       isCancelled = true
     }
-  }, [page, filters, sort.field, sort.dir, groupByCliente])
+  }, [page, filters, sort.field, sort.dir, viewMode])
 
   const handleApplyFilters = (applied: PedidosAbertosFilters) => {
     setPage(1)
     // Carrega primeiro a listagem e depois as estatísticas
-    loadData(applied, 1, sort.field, sort.dir, searchTerm, groupByCliente).then(() => {
+    loadData(applied, 1, sort.field, sort.dir, searchTerm, viewMode).then(() => {
       loadStats(applied)
     })
   }
@@ -248,7 +266,7 @@ export default function PedidosAbertos() {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setPage(1)
-    loadData(filters, 1, sort.field, sort.dir, searchTerm, groupByCliente)
+    loadData(filters, 1, sort.field, sort.dir, searchTerm, viewMode)
   }
 
   const handleSort = (field: SortField) => {
@@ -258,7 +276,7 @@ export default function PedidosAbertos() {
 
   // Agrupamento por cliente: consolidado com soma de todos os campos monetários, itens e pedidos
   const clientGroups: ClientGroup[] = useMemo(() => {
-    if (!groupByCliente) return []
+    if (viewMode !== 'cliente') return []
     const sourceItems = allFilteredPedidos.length > 0 ? allFilteredPedidos : paginatedPedidos
 
     const groupMap = new Map<string, ClientGroup>()
@@ -313,7 +331,69 @@ export default function PedidosAbertos() {
     // Ordena grupos pelo maior valor total em aberto por padrão
     list.sort((a, b) => b.totalValorEmAberto - a.totalValorEmAberto)
     return list
-  }, [groupByCliente, allFilteredPedidos, paginatedPedidos])
+  }, [viewMode, allFilteredPedidos, paginatedPedidos])
+
+  // Agrupamento por Canal: soma de TODOS os campos de valor, qtd aberta, qtd solicitada,
+  // nº pedidos distintos, nº itens e nº clientes distintos
+  const canalGroups: CanalGroup[] = useMemo(() => {
+    if (viewMode !== 'canal') return []
+    const sourceItems = allFilteredPedidos.length > 0 ? allFilteredPedidos : paginatedPedidos
+
+    const groupMap = new Map<string, CanalGroup>()
+
+    for (const item of sourceItems) {
+      const rawCanal = (item.nome_canal || '').trim()
+      const key = rawCanal ? rawCanal.toUpperCase() : 'SEM_CANAL'
+      let group = groupMap.get(key)
+      if (!group) {
+        group = {
+          key,
+          nome_canal: rawCanal || 'Sem Canal',
+          deploy: item.deploy || '',
+          totalPedidos: 0,
+          totalLinhas: 0,
+          totalClientes: 0,
+          totalQtdAberto: 0,
+          totalQtdSolicitada: 0,
+          totalValorEmAberto: 0,
+          totalValorLiquido: 0,
+          items: [],
+        }
+        groupMap.set(key, group)
+      }
+
+      group.items.push(item)
+      group.totalLinhas += 1
+      const qtdAbertoNum = Number(item.qtd_aberto) || 0
+      const qtdSolNum = Number(item.qtd_solicitada) || 0
+      const valorEmAbertoNum = Number(item.valor_em_aberto) || 0
+      const precoLiq = Number(item.preco_apos_desconto) || Number(item.preco_unitario) || 0
+
+      group.totalQtdAberto += qtdAbertoNum
+      group.totalQtdSolicitada += qtdSolNum
+      group.totalValorEmAberto += valorEmAbertoNum
+      group.totalValorLiquido += precoLiq * (qtdAbertoNum || 1)
+      if (item.deploy && !group.deploy) group.deploy = item.deploy
+    }
+
+    const list = Array.from(groupMap.values())
+    for (const g of list) {
+      const distinctOrders = new Set(g.items.map((i) => i.numero_pedido).filter(Boolean))
+      g.totalPedidos = distinctOrders.size || g.totalLinhas
+      const distinctClients = new Set(
+        g.items.map((i) => (i.codigo_cliente || i.nome_cliente || '').trim()).filter(Boolean),
+      )
+      g.totalClientes = distinctClients.size || 1
+    }
+
+    // Ordena: canais identificados por maior valor, "Sem Canal" por último ou por valor
+    list.sort((a, b) => {
+      if (a.key === 'SEM_CANAL') return 1
+      if (b.key === 'SEM_CANAL') return -1
+      return b.totalValorEmAberto - a.totalValorEmAberto
+    })
+    return list
+  }, [viewMode, allFilteredPedidos, paginatedPedidos])
 
   // Controles de expansão e colapso por cliente
   const toggleClientGroup = (key: string) => {
@@ -334,6 +414,27 @@ export default function PedidosAbertos() {
 
   const expandAllClients = () => {
     setExpandedClients(new Set(clientGroups.map((g) => g.key)))
+  }
+
+  // Controles de expansão e colapso por canal
+  const toggleCanalGroup = (key: string) => {
+    setExpandedCanais((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
+
+  const collapseAllCanais = () => {
+    setExpandedCanais(new Set())
+  }
+
+  const expandAllCanais = () => {
+    setExpandedCanais(new Set(canalGroups.map((g) => g.key)))
   }
 
   const handleExportCSV = async () => {
@@ -365,14 +466,14 @@ export default function PedidosAbertos() {
 
       const rows = res.items || []
       const exportCols = [
+        { key: 'nome_canal', label: 'Canal' },
+        { key: 'deploy', label: 'Deploy' },
+        { key: 'inside', label: 'Inside' },
         { key: 'numero_pedido', label: 'Nº Pedido' },
         { key: 'linha', label: 'Linha' },
         { key: 'data_pedido', label: 'Data do Pedido' },
         { key: 'codigo_cliente', label: 'Código Cliente' },
         { key: 'nome_cliente', label: 'Nome Cliente' },
-        { key: 'nome_canal', label: 'Canal' },
-        { key: 'deploy', label: 'Deploy' },
-        { key: 'inside', label: 'Inside' },
         { key: 'codigo_item', label: 'Código Item' },
         { key: 'descricao_item', label: 'Descrição Item' },
         { key: 'grupo_item', label: 'Grupo do Item' },
@@ -520,15 +621,21 @@ export default function PedidosAbertos() {
             <div>
               <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
                 <span>
-                  {groupByCliente ? 'Pedidos em Aberto por Cliente' : 'Linhas de Pedidos Pendentes'}
+                  {viewMode === 'canal'
+                    ? 'Pedidos em Aberto por Canal'
+                    : viewMode === 'cliente'
+                      ? 'Pedidos em Aberto por Cliente'
+                      : 'Linhas de Pedidos Pendentes'}
                 </span>
                 <Badge
                   variant="secondary"
                   className="font-semibold text-xs bg-amber-100 text-amber-800"
                 >
-                  {groupByCliente
-                    ? `${formatNumber(clientGroups.length)} cliente(s) • ${formatNumber(totalItems)} linha(s)`
-                    : `${formatNumber(totalItems)} registro(s)`}
+                  {viewMode === 'canal'
+                    ? `${formatNumber(canalGroups.length)} canal(is) • ${formatNumber(totalItems)} linha(s)`
+                    : viewMode === 'cliente'
+                      ? `${formatNumber(clientGroups.length)} cliente(s) • ${formatNumber(totalItems)} linha(s)`
+                      : `${formatNumber(totalItems)} registro(s)`}
                 </Badge>
               </CardTitle>
               <CardDescription className="text-xs text-slate-500 mt-0.5">
@@ -557,7 +664,7 @@ export default function PedidosAbertos() {
             </div>
           </div>
 
-          {/* Barra de Agrupamento / Colapso por Cliente (estilo e consistência com Canais) */}
+          {/* Barra de Visualização / Agrupamento (Detalhado / Por Cliente / Por Canal) */}
           <div className="mt-3 pt-3 border-t border-slate-200/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1.5 text-slate-700 font-bold">
@@ -568,12 +675,13 @@ export default function PedidosAbertos() {
                 <button
                   type="button"
                   onClick={() => {
-                    setGroupByCliente(false)
+                    setViewMode('detalhado')
                     setExpandedClients(new Set())
+                    setExpandedCanais(new Set())
                   }}
                   className={cn(
                     'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer',
-                    !groupByCliente
+                    viewMode === 'detalhado'
                       ? 'bg-white text-slate-900 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900',
                   )}
@@ -584,12 +692,13 @@ export default function PedidosAbertos() {
                 <button
                   type="button"
                   onClick={() => {
-                    setGroupByCliente(true)
+                    setViewMode('cliente')
                     setExpandedClients(new Set())
+                    setExpandedCanais(new Set())
                   }}
                   className={cn(
                     'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer flex items-center gap-1',
-                    groupByCliente
+                    viewMode === 'cliente'
                       ? 'bg-white text-[#0B6E99] shadow-xs'
                       : 'text-slate-600 hover:text-slate-900',
                   )}
@@ -598,11 +707,29 @@ export default function PedidosAbertos() {
                   <Building2 className="w-3 h-3" />
                   Agrupado por Cliente
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode('canal')
+                    setExpandedClients(new Set())
+                    setExpandedCanais(new Set())
+                  }}
+                  className={cn(
+                    'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer flex items-center gap-1',
+                    viewMode === 'canal'
+                      ? 'bg-white text-[#0B6E99] shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                  title="Agrupar e colapsar por Canal somando todos os valores do canal"
+                >
+                  <Layers className="w-3 h-3" />
+                  Agrupado por Canal
+                </button>
               </div>
             </div>
 
-            {/* Ações de Expandir/Colapsar todos quando agrupado */}
-            {groupByCliente && clientGroups.length > 0 && (
+            {/* Ações de Expandir/Colapsar todos quando agrupado por cliente */}
+            {viewMode === 'cliente' && clientGroups.length > 0 && (
               <div className="flex items-center gap-1.5 self-end sm:self-auto">
                 <span className="text-[11px] text-slate-500 font-medium mr-1 hidden sm:inline">
                   {clientGroups.length} cliente(s) •
@@ -633,21 +760,64 @@ export default function PedidosAbertos() {
                 </Button>
               </div>
             )}
+
+            {/* Ações de Expandir/Colapsar todos quando agrupado por canal */}
+            {viewMode === 'canal' && canalGroups.length > 0 && (
+              <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                <span className="text-[11px] text-slate-500 font-medium mr-1 hidden sm:inline">
+                  {canalGroups.length} canal(is) •
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={collapseAllCanais}
+                  disabled={expandedCanais.size === 0}
+                  className="h-7 px-2.5 text-[11px] bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-bold gap-1 shadow-2xs"
+                  title="Colapsar todos os canais (modo consolidado com somas)"
+                >
+                  <ChevronsDownUp className="w-3 h-3 text-[#0B6E99]" />
+                  Colapsar Todos
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={expandAllCanais}
+                  disabled={expandedCanais.size === canalGroups.length}
+                  className="h-7 px-2.5 text-[11px] bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-bold gap-1 shadow-2xs"
+                  title="Expandir todos os canais para ver os pedidos e itens detalhados"
+                >
+                  <ChevronsUpDown className="w-3 h-3 text-[#0B6E99]" />
+                  Expandir Todos
+                </Button>
+              </div>
+            )}
           </div>
         </CardHeader>
 
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-100/80 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
-                  {groupByCliente && (
-                    <th className="py-3 px-2 w-10 text-center">
+          <div className="max-h-[65vh] overflow-auto border-b border-gray-100">
+            <table className="w-full text-left border-collapse text-xs min-w-[1000px]">
+              <thead className="sticky top-0 z-20 bg-slate-100 shadow-2xs">
+                <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
+                  {viewMode !== 'detalhado' && (
+                    <th className="py-3 px-2 w-10 text-center sticky top-0 bg-slate-100">
                       <Layers className="w-3.5 h-3.5 mx-auto text-slate-400" />
                     </th>
                   )}
+                  {/* Coluna Canal como PRIMEIRA COLUNA */}
                   <th
-                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
+                    onClick={() => handleSort('nome_canal')}
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Canal / Deploy</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </th>
+                  <th
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
                     onClick={() => handleSort('numero_pedido')}
                   >
                     <div className="flex items-center gap-1">
@@ -656,7 +826,7 @@ export default function PedidosAbertos() {
                     </div>
                   </th>
                   <th
-                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
                     onClick={() => handleSort('data_pedido')}
                   >
                     <div className="flex items-center gap-1">
@@ -665,7 +835,7 @@ export default function PedidosAbertos() {
                     </div>
                   </th>
                   <th
-                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
                     onClick={() => handleSort('nome_cliente')}
                   >
                     <div className="flex items-center gap-1">
@@ -673,9 +843,8 @@ export default function PedidosAbertos() {
                       <ArrowUpDown className="w-3 h-3 text-slate-400" />
                     </div>
                   </th>
-                  <th className="p-3">Canal / Deploy</th>
                   <th
-                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
                     onClick={() => handleSort('codigo_item')}
                   >
                     <div className="flex items-center gap-1">
@@ -684,7 +853,7 @@ export default function PedidosAbertos() {
                     </div>
                   </th>
                   <th
-                    className="p-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors"
+                    className="p-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
                     onClick={() => handleSort('qtd_aberto')}
                   >
                     <div className="flex items-center justify-center gap-1">
@@ -692,9 +861,9 @@ export default function PedidosAbertos() {
                       <ArrowUpDown className="w-3 h-3 text-slate-400" />
                     </div>
                   </th>
-                  <th className="p-3 text-right">Preço Liq.</th>
+                  <th className="p-3 text-right sticky top-0 bg-slate-100">Preço Liq.</th>
                   <th
-                    className="p-3 text-right cursor-pointer hover:bg-slate-200/70 transition-colors"
+                    className="p-3 text-right cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
                     onClick={() => handleSort('valor_em_aberto')}
                   >
                     <div className="flex items-center justify-end gap-1">
@@ -702,15 +871,15 @@ export default function PedidosAbertos() {
                       <ArrowUpDown className="w-3 h-3 text-slate-400" />
                     </div>
                   </th>
-                  <th className="p-3 text-center">Status Linha</th>
-                  <th className="p-3 text-center">Estoque / Trânsito</th>
+                  <th className="p-3 text-center sticky top-0 bg-slate-100">Status Linha</th>
+                  <th className="p-3 text-center sticky top-0 bg-slate-100">Estoque / Trânsito</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={groupByCliente ? 11 : 10}
+                      colSpan={viewMode !== 'detalhado' ? 11 : 10}
                       className="p-8 text-center text-slate-400"
                     >
                       <div className="flex items-center justify-center gap-2">
@@ -719,10 +888,16 @@ export default function PedidosAbertos() {
                       </div>
                     </td>
                   </tr>
-                ) : (groupByCliente ? clientGroups.length === 0 : paginatedPedidos.length === 0) ? (
+                ) : (
+                    viewMode === 'canal'
+                      ? canalGroups.length === 0
+                      : viewMode === 'cliente'
+                        ? clientGroups.length === 0
+                        : paginatedPedidos.length === 0
+                  ) ? (
                   <tr>
                     <td
-                      colSpan={groupByCliente ? 11 : 10}
+                      colSpan={viewMode !== 'detalhado' ? 11 : 10}
                       className="p-12 text-center text-slate-400"
                     >
                       <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
@@ -735,7 +910,290 @@ export default function PedidosAbertos() {
                       </p>
                     </td>
                   </tr>
-                ) : groupByCliente ? (
+                ) : viewMode === 'canal' ? (
+                  /* MODO AGRUPADO / COLAPSÁVEL POR CANAL */
+                  canalGroups.map((group) => {
+                    const isExpanded = expandedCanais.has(group.key)
+                    return (
+                      <React.Fragment key={group.key}>
+                        {/* Linha Consolidada do Canal (Cabeçalho com soma de todos os valores) */}
+                        <tr
+                          onClick={() => toggleCanalGroup(group.key)}
+                          className={cn(
+                            'cursor-pointer transition-colors border-y border-slate-200/80 font-semibold select-none',
+                            isExpanded
+                              ? 'bg-cyan-50/70 hover:bg-cyan-100/60 text-slate-900'
+                              : 'bg-slate-50/90 hover:bg-slate-100/80 text-slate-800',
+                          )}
+                          title={
+                            isExpanded
+                              ? 'Clique para recolher pedidos do canal'
+                              : 'Clique para expandir pedidos do canal'
+                          }
+                        >
+                          {/* Toggle */}
+                          <td className="py-2.5 px-2 text-center align-middle">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleCanalGroup(group.key)
+                              }}
+                              className="p-1 rounded hover:bg-cyan-200/60 text-cyan-800 focus:outline-hidden transition-colors"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-[#0B6E99]" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-slate-500" />
+                              )}
+                            </button>
+                          </td>
+
+                          {/* 1. Canal / Deploy (PRIMEIRA COLUNA) */}
+                          <td className="p-3 whitespace-nowrap min-w-[180px]">
+                            {group.key === 'SEM_CANAL' ? (
+                              <span className="text-slate-500 font-bold italic">Sem Canal</span>
+                            ) : (
+                              <div className="space-y-0.5">
+                                <span className="inline-block text-xs font-black text-[#0B6E99]">
+                                  {group.nome_canal}
+                                </span>
+                                {group.deploy && (
+                                  <div className="text-[10px] text-slate-500 font-semibold">
+                                    Deploy: {group.deploy}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Resumo de Pedidos do Canal */}
+                          <td className="p-3 font-semibold text-slate-900 whitespace-nowrap">
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-white text-[#0B6E99] border-sky-200 font-bold"
+                            >
+                              {group.totalPedidos} pedido(s) • {group.totalLinhas} lin.
+                            </Badge>
+                          </td>
+
+                          {/* Data (indicação de consolidado) */}
+                          <td className="p-3 text-slate-500 whitespace-nowrap text-[11px]">
+                            {isExpanded ? 'Detalhamento ▼' : 'Consolidado ▲'}
+                          </td>
+
+                          {/* Clientes distintos do Canal */}
+                          <td className="p-3 min-w-[200px]">
+                            <div className="font-bold text-slate-800 text-xs">
+                              {group.totalClientes} cliente(s) distinto(s)
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              {group.items.length} itens no canal
+                            </div>
+                          </td>
+
+                          {/* Itens do Canal */}
+                          <td className="p-3 text-slate-600 text-[11px]">
+                            <span className="font-bold text-slate-800">
+                              {group.totalLinhas} item(ns)
+                            </span>
+                            <span className="text-slate-400 ml-1">pendente(s)</span>
+                          </td>
+
+                          {/* SOMA Qtd Aberto */}
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <div className="font-extrabold text-slate-900">
+                              {formatNumber(group.totalQtdAberto)}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              de {formatNumber(group.totalQtdSolicitada)} solicit.
+                            </div>
+                          </td>
+
+                          {/* Preço Líquido Médio */}
+                          <td className="p-3 text-right text-slate-600 whitespace-nowrap font-medium text-[11px]">
+                            {group.totalQtdAberto > 0
+                              ? formatCurrency(group.totalValorEmAberto / group.totalQtdAberto)
+                              : '-'}
+                            <span className="block text-[9px] text-slate-400">preço médio</span>
+                          </td>
+
+                          {/* SOMA de todos os valores em aberto do Canal */}
+                          <td className="p-3 text-right whitespace-nowrap font-black text-cyan-900 text-sm bg-cyan-100/40">
+                            {formatCurrency(group.totalValorEmAberto)}
+                          </td>
+
+                          {/* Status consolidado */}
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] font-bold bg-cyan-100 text-cyan-950 border border-cyan-200"
+                            >
+                              {isExpanded ? 'Expandido' : 'Colapsado'}
+                            </Badge>
+                          </td>
+
+                          {/* Ação rápida */}
+                          <td className="p-3 text-center whitespace-nowrap text-[10px] text-slate-400 font-medium">
+                            {isExpanded ? 'Recolher ▲' : 'Ver pedidos ▼'}
+                          </td>
+                        </tr>
+
+                        {/* Linhas detalhadas quando canal expandido */}
+                        {isExpanded &&
+                          group.items.map((item) => (
+                            <tr
+                              key={item.id}
+                              className="bg-white hover:bg-slate-50/80 transition-colors border-b border-slate-100/80"
+                            >
+                              <td className="py-2.5 px-2 text-center text-slate-300">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
+                              </td>
+
+                              {/* 1. Canal / Deploy (PRIMEIRA COLUNA) */}
+                              <td className="p-3 whitespace-nowrap">
+                                {item.nome_canal ? (
+                                  <div className="space-y-0.5">
+                                    <span className="inline-block text-[11px] font-bold text-[#0B6E99]">
+                                      {item.nome_canal}
+                                    </span>
+                                    {item.deploy && (
+                                      <div className="text-[10px] text-slate-500 font-medium">
+                                        Deploy: {item.deploy}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400 text-[11px] italic">—</span>
+                                )}
+                              </td>
+
+                              {/* Pedido / Linha */}
+                              <td className="p-3 font-semibold text-slate-900 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono text-xs text-[#0B6E99] font-bold">
+                                    {item.numero_pedido}
+                                  </span>
+                                  <span className="text-[11px] text-slate-400">
+                                    / L{item.linha}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Data */}
+                              <td className="p-3 text-slate-600 whitespace-nowrap">
+                                {item.data_pedido ? formatDate(item.data_pedido) : '-'}
+                              </td>
+
+                              {/* Cliente */}
+                              <td className="p-3 min-w-[200px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_cliente}
+                                >
+                                  {item.nome_cliente || 'Cliente não identificado'}
+                                </div>
+                                {item.codigo_cliente && (
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {item.codigo_cliente}
+                                  </div>
+                                )}
+                              </td>
+
+                              {/* Item / Descrição */}
+                              <td className="p-3 min-w-[220px]">
+                                <div className="font-mono text-xs font-semibold text-slate-800">
+                                  {item.codigo_item || '-'}
+                                </div>
+                                <div
+                                  className="text-[11px] text-slate-600 truncate"
+                                  title={item.descricao_item}
+                                >
+                                  {item.descricao_item || '-'}
+                                </div>
+                                {item.grupo_item && (
+                                  <span className="inline-block text-[10px] text-slate-400 uppercase tracking-tight mt-0.5">
+                                    Grupo: {item.grupo_item}
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Qtd Aberto */}
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <div className="font-bold text-slate-900">
+                                  {formatNumber(item.qtd_aberto)}
+                                </div>
+                                <div className="text-[10px] text-slate-400">
+                                  de {formatNumber(item.qtd_solicitada)} ped.
+                                </div>
+                              </td>
+
+                              {/* Preço Unitário Líquido */}
+                              <td className="p-3 text-right text-slate-700 whitespace-nowrap font-medium">
+                                {formatCurrency(
+                                  Number(item.preco_apos_desconto) ||
+                                    Number(item.preco_unitario) ||
+                                    0,
+                                )}
+                                {Number(item.desconto_percentual) > 0 && (
+                                  <span className="block text-[10px] text-rose-500">
+                                    -{Math.round(Number(item.desconto_percentual))}%
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Valor em Aberto */}
+                              <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
+                                {formatCurrency(Number(item.valor_em_aberto) || 0)}
+                              </td>
+
+                              {/* Status Linha */}
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    item.status_linha?.toLowerCase() === 'fechada'
+                                      ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
+                                  }
+                                >
+                                  {item.status_linha || 'Aberta'}
+                                </Badge>
+                              </td>
+
+                              {/* Estoque / Trânsito */}
+                              <td className="p-3 text-center whitespace-nowrap text-[11px]">
+                                <div className="flex items-center justify-center gap-2">
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Estoque"
+                                  >
+                                    Est: {formatNumber(item.em_estoque)}
+                                  </span>
+                                  <span className="text-slate-300">|</span>
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Trânsito"
+                                  >
+                                    Trân: {formatNumber(item.em_transito)}
+                                  </span>
+                                </div>
+                                {item.deposito && (
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    Depósito: {item.deposito}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                      </React.Fragment>
+                    )
+                  })
+                ) : viewMode === 'cliente' ? (
                   /* MODO AGRUPADO / COLAPSÁVEL POR CLIENTE */
                   clientGroups.map((group) => {
                     const isExpanded = expandedClients.has(group.key)
@@ -774,6 +1232,24 @@ export default function PedidosAbertos() {
                             </button>
                           </td>
 
+                          {/* 1. Canal / Deploy (PRIMEIRA COLUNA) */}
+                          <td className="p-3 whitespace-nowrap min-w-[180px]">
+                            {group.nome_canal ? (
+                              <div className="space-y-0.5">
+                                <span className="inline-block text-[11px] font-bold text-[#0B6E99]">
+                                  {group.nome_canal}
+                                </span>
+                                {group.deploy && (
+                                  <div className="text-[10px] text-slate-500 font-medium">
+                                    Deploy: {group.deploy}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 text-[11px] italic">—</span>
+                            )}
+                          </td>
+
                           {/* Resumo de Pedidos do Cliente */}
                           <td className="p-3 font-semibold text-slate-900 whitespace-nowrap">
                             <Badge
@@ -801,24 +1277,6 @@ export default function PedidosAbertos() {
                               <div className="text-[11px] text-slate-500 font-mono font-bold">
                                 Cód: {group.codigo_cliente}
                               </div>
-                            )}
-                          </td>
-
-                          {/* Canal / Deploy */}
-                          <td className="p-3 whitespace-nowrap">
-                            {group.nome_canal ? (
-                              <div className="space-y-0.5">
-                                <span className="inline-block text-[11px] font-bold text-[#0B6E99]">
-                                  {group.nome_canal}
-                                </span>
-                                {group.deploy && (
-                                  <div className="text-[10px] text-slate-500 font-medium">
-                                    Deploy: {group.deploy}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-slate-400 text-[11px] italic">Sem canal</span>
                             )}
                           </td>
 
@@ -880,6 +1338,24 @@ export default function PedidosAbertos() {
                                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
                               </td>
 
+                              {/* 1. Canal / Deploy (PRIMEIRA COLUNA) */}
+                              <td className="p-3 whitespace-nowrap">
+                                {item.nome_canal ? (
+                                  <div className="space-y-0.5">
+                                    <span className="inline-block text-[11px] font-bold text-[#0B6E99]">
+                                      {item.nome_canal}
+                                    </span>
+                                    {item.deploy && (
+                                      <div className="text-[10px] text-slate-500 font-medium">
+                                        Deploy: {item.deploy}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400 text-[11px] italic">—</span>
+                                )}
+                              </td>
+
                               {/* Pedido / Linha */}
                               <td className="p-3 font-semibold text-slate-900 whitespace-nowrap">
                                 <div className="flex items-center gap-1.5">
@@ -909,26 +1385,6 @@ export default function PedidosAbertos() {
                                   <div className="text-[11px] text-slate-400 font-mono">
                                     {item.codigo_cliente}
                                   </div>
-                                )}
-                              </td>
-
-                              {/* Canal / Deploy */}
-                              <td className="p-3 whitespace-nowrap">
-                                {item.nome_canal ? (
-                                  <div className="space-y-0.5">
-                                    <span className="inline-block text-[11px] font-bold text-[#0B6E99]">
-                                      {item.nome_canal}
-                                    </span>
-                                    {item.deploy && (
-                                      <div className="text-[10px] text-slate-500 font-medium">
-                                        Deploy: {item.deploy}
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className="text-slate-400 text-[11px] italic">
-                                    Sem canal
-                                  </span>
                                 )}
                               </td>
 
@@ -1031,6 +1487,24 @@ export default function PedidosAbertos() {
                       key={item.id}
                       className="hover:bg-slate-50/80 transition-colors border-b border-slate-100/80"
                     >
+                      {/* 1. Canal / Deploy (PRIMEIRA COLUNA) */}
+                      <td className="p-3 whitespace-nowrap">
+                        {item.nome_canal ? (
+                          <div className="space-y-0.5">
+                            <span className="inline-block text-[11px] font-bold text-[#0B6E99]">
+                              {item.nome_canal}
+                            </span>
+                            {item.deploy && (
+                              <div className="text-[10px] text-slate-500 font-medium">
+                                Deploy: {item.deploy}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-[11px] italic">—</span>
+                        )}
+                      </td>
+
                       {/* Pedido / Linha */}
                       <td className="p-3 font-semibold text-slate-900 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
@@ -1058,24 +1532,6 @@ export default function PedidosAbertos() {
                           <div className="text-[11px] text-slate-400 font-mono">
                             {item.codigo_cliente}
                           </div>
-                        )}
-                      </td>
-
-                      {/* Canal / Deploy */}
-                      <td className="p-3 whitespace-nowrap">
-                        {item.nome_canal ? (
-                          <div className="space-y-0.5">
-                            <span className="inline-block text-[11px] font-bold text-[#0B6E99]">
-                              {item.nome_canal}
-                            </span>
-                            {item.deploy && (
-                              <div className="text-[10px] text-slate-500 font-medium">
-                                Deploy: {item.deploy}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 text-[11px] italic">Sem canal</span>
                         )}
                       </td>
 
@@ -1173,7 +1629,7 @@ export default function PedidosAbertos() {
           </div>
 
           {/* Paginação */}
-          {totalPages > 1 && !groupByCliente && (
+          {totalPages > 1 && viewMode === 'detalhado' && (
             <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs bg-slate-50/50">
               <div className="text-slate-500">
                 Página <span className="font-bold text-slate-800">{page}</span> de{' '}

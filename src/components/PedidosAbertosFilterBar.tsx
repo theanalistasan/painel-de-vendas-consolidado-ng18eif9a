@@ -12,6 +12,7 @@ export interface PedidosAbertosFilters {
   canalClientes: string[]
   deploy: string[]
   inside: string[]
+  ehCanal?: 'todos' | 'sim' | 'nao' | ''
 }
 
 export const EMPTY_PEDIDOS_ABERTOS_FILTERS: PedidosAbertosFilters = {
@@ -19,6 +20,7 @@ export const EMPTY_PEDIDOS_ABERTOS_FILTERS: PedidosAbertosFilters = {
   canalClientes: [],
   deploy: [],
   inside: [],
+  ehCanal: 'todos',
 }
 
 interface PedidosAbertosFilterBarProps {
@@ -227,7 +229,8 @@ export default function PedidosAbertosFilterBar({
       (filters.canal?.length || 0) +
       (filters.canalClientes?.length || 0) +
       (filters.deploy?.length || 0) +
-      (filters.inside?.length || 0)
+      (filters.inside?.length || 0) +
+      (filters.ehCanal && filters.ehCanal !== 'todos' ? 1 : 0)
     )
   }, [filters])
 
@@ -337,7 +340,8 @@ export default function PedidosAbertosFilterBar({
               {((localFilters.canal && localFilters.canal.length > 0) ||
                 (localFilters.canalClientes && localFilters.canalClientes.length > 0) ||
                 (localFilters.deploy && localFilters.deploy.length > 0) ||
-                (localFilters.inside && localFilters.inside.length > 0)) && (
+                (localFilters.inside && localFilters.inside.length > 0) ||
+                (localFilters.ehCanal && localFilters.ehCanal !== 'todos')) && (
                 <button
                   type="button"
                   onClick={() =>
@@ -347,6 +351,7 @@ export default function PedidosAbertosFilterBar({
                       canalClientes: [],
                       deploy: [],
                       inside: [],
+                      ehCanal: 'todos',
                     }))
                   }
                   className="text-[10px] text-rose-600 hover:underline font-bold"
@@ -355,6 +360,57 @@ export default function PedidosAbertosFilterBar({
                 </button>
               )}
             </div>
+          </div>
+
+          {/* Seletor "É Canal": Todos / Sim / Não */}
+          <div className="mb-3 p-2 bg-white/80 rounded-lg border border-cyan-100 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-700">É Canal:</span>
+              <div className="inline-flex rounded-lg bg-slate-100 p-0.5 gap-0.5 border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setLocalFilters((prev) => ({ ...prev, ehCanal: 'todos' }))}
+                  className={cn(
+                    'px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer',
+                    !localFilters.ehCanal || localFilters.ehCanal === 'todos'
+                      ? 'bg-[#0B6E99] text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLocalFilters((prev) => ({ ...prev, ehCanal: 'sim' }))}
+                  className={cn(
+                    'px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer',
+                    localFilters.ehCanal === 'sim'
+                      ? 'bg-emerald-600 text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                >
+                  Sim (Canal)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLocalFilters((prev) => ({ ...prev, ehCanal: 'nao' }))}
+                  className={cn(
+                    'px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer',
+                    localFilters.ehCanal === 'nao'
+                      ? 'bg-slate-700 text-white shadow-xs font-bold'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                >
+                  Não (Direto / Outros)
+                </button>
+              </div>
+            </div>
+            {localFilters.ehCanal && localFilters.ehCanal !== 'todos' && (
+              <span className="text-[11px] font-semibold text-[#0B6E99]">
+                Filtrando apenas clientes{' '}
+                {localFilters.ehCanal === 'sim' ? 'com canal ativo' : 'sem canal'}
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
