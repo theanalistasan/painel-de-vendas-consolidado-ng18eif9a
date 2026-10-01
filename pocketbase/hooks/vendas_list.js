@@ -311,12 +311,12 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
           vendedor_cliente: '',
           nome_vendedor: '',
           grupo_item: '',
-          itens_qtd: '',
-          quantidade: '',
-          total_linha: '',
-          total_nf_sem_frete: '',
-          valor_liquido: '',
-          custo_total: '',
+          itens_qtd: 0,
+          quantidade: 0.0,
+          total_linha: 0.0,
+          total_nf_sem_frete: 0.0,
+          valor_liquido: 0.0,
+          custo_total: 0.0,
           utilizacao: '',
           estado: '',
           cidade: '',
@@ -325,8 +325,8 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
           mercado: '',
           usuario_emissor_pedido: '',
           origem: '',
-          tem_netsales: '',
-          tem_racnew: '',
+          tem_netsales: 0,
+          tem_racnew: 0,
         }),
       )
 
@@ -348,11 +348,11 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
             "COALESCE(MAX(nome_vendedor),'') AS nome_vendedor, " +
             "COALESCE(MAX(grupo_item),'') AS grupo_item, " +
             'COUNT(*) AS itens_qtd, ' +
-            'COALESCE(SUM(quantidade),0) AS quantidade, ' +
-            'COALESCE(SUM(total_linha),0) AS total_linha, ' +
-            'COALESCE(MAX(total_nf_sem_frete), SUM(total_linha), 0) AS total_nf_sem_frete, ' +
-            'COALESCE(SUM(valor_liquido),0) AS valor_liquido, ' +
-            'COALESCE(SUM(custo_total),0) AS custo_total, ' +
+            'CAST(COALESCE(SUM(quantidade),0.0) AS REAL) AS quantidade, ' +
+            'CAST(COALESCE(SUM(total_linha),0.0) AS REAL) AS total_linha, ' +
+            'CAST(COALESCE(MAX(total_nf_sem_frete), SUM(total_linha), 0.0) AS REAL) AS total_nf_sem_frete, ' +
+            'CAST(COALESCE(SUM(valor_liquido),0.0) AS REAL) AS valor_liquido, ' +
+            'CAST(COALESCE(SUM(custo_total),0.0) AS REAL) AS custo_total, ' +
             "COALESCE(MAX(utilizacao),'') AS utilizacao, " +
             "COALESCE(MAX(estado),'') AS estado, " +
             "COALESCE(MAX(cidade),'') AS cidade, " +
@@ -379,13 +379,14 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
       }
 
       // Contagem de NFs distintas e origens
-      // OTIMIZAÇÃO: Não roda COUNT(DISTINCT numero_nfe) em toda a base sem filtros (1=1) ou quando groupedRows já traz a última página
+      // OTIMIZAÇÃO: Não roda COUNT(DISTINCT numero_nfe) em toda a base sem filtros (1=1).
+      // Se não há filtros (sqlWhere === '1=1'), utiliza contagem rápida a partir de resumo ou countRecords estimado,
+      // evitando o COUNT DISTINCT pesado que bloqueia a consulta.
       let totalItems = 0
       let totalNetsales = 0
       let totalRacnew = 0
       const hasMoreGrouped = groupedRows.length === perPage
 
-      // Se a primeira página retornou menos itens do que perPage, já temos o total exato sem COUNT
       // Se a página retornou menos itens do que perPage, já sabemos que é a última página
       if (groupedRows.length < perPage) {
         totalItems = (page - 1) * perPage + groupedRows.length
@@ -400,15 +401,44 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
             totalRacnew++
           }
         }
-      } else {
+      } else if (sqlWhere === '1=1') {
+        // Consulta sem filtros: obtém a contagem de documentos das tabelas de resumo instantâneas
         try {
-          // Apenas tenta COUNT pesado se ainda restarem mais de 25 segundos do orçamento
+          const docRows = arrayOf(
+            new DynamicModel({
+              total_docs: 0,
+              total_netsales: 0,
+              total_racnew: 0,
+            }),
+          )
+          $app
+            .db()
+            .newQuery(
+              'SELECT CAST(COALESCE(SUM(qtd_documentos), 0) AS INTEGER) AS total_docs, ' +
+                'CAST(COALESCE(SUM(CASE WHEN tem_netsales = 1 THEN qtd_documentos ELSE 0 END), 0) AS INTEGER) AS total_netsales, ' +
+                'CAST(COALESCE(SUM(CASE WHEN tem_netsales = 0 THEN qtd_documentos ELSE 0 END), 0) AS INTEGER) AS total_racnew ' +
+                'FROM resumo_vendas_mensal',
+            )
+            .all(docRows)
+          if (docRows.length > 0 && docRows[0].total_docs > 0) {
+            totalItems = Number(docRows[0].total_docs) || 0
+            totalNetsales = Number(docRows[0].total_netsales) || 0
+            totalRacnew = Number(docRows[0].total_racnew) || 0
+          } else {
+            totalItems = $app.countRecords('vendas')
+          }
+        } catch (_) {
+          totalItems = (page - 1) * perPage + groupedRows.length + 1
+        }
+      } else {
+        // Com filtros ativos: executa o COUNT DISTINCT apenas se houver filtros específicos e tempo suficiente
+        try {
           if (Date.now() - startTime < 10000) {
             const countRows = arrayOf(
               new DynamicModel({
-                total_nfe: '',
-                total_netsales: '',
-                total_racnew: '',
+                total_nfe: 0,
+                total_netsales: 0,
+                total_racnew: 0,
               }),
             )
             $app
@@ -515,22 +545,22 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
         condicao_pagamento: '',
         codigo_cliente: '',
         nome_cliente: '',
-        numero_linha: '',
+        numero_linha: 0,
         codigo_item: '',
         descricao_item: '',
-        quantidade: '',
-        qty_kg_lt: '',
-        preco_item: '',
-        desconto_linha: '',
-        icms: '',
-        pis: '',
-        cofins: '',
-        ipi: '',
-        icms_partilha: '',
-        total_linha: '',
+        quantidade: 0.0,
+        qty_kg_lt: 0.0,
+        preco_item: 0.0,
+        desconto_linha: 0.0,
+        icms: 0.0,
+        pis: 0.0,
+        cofins: 0.0,
+        ipi: 0.0,
+        icms_partilha: 0.0,
+        total_linha: 0.0,
         utilizacao: '',
         nome_vendedor: '',
-        custo_item: '',
+        custo_item: 0.0,
         nome_filial: '',
         conta: '',
         estado: '',
@@ -540,18 +570,18 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
         usuario_emissor_pedido: '',
         itms_grp_nam: '',
         numero_documento_netsales: '',
-        preco_unitario: '',
-        total_nf_sem_frete: '',
-        total_nf_novo: '',
-        valor_liquido: '',
-        custo_total: '',
+        preco_unitario: 0.0,
+        total_nf_sem_frete: 0.0,
+        total_nf_novo: 0.0,
+        valor_liquido: 0.0,
+        custo_total: 0.0,
         classificacao: '',
         vendedor_revenda: '',
         grupo_item: '',
         vendedor_cliente: '',
         origem: '',
-        tem_racnew: '',
-        tem_netsales: '',
+        tem_racnew: 0,
+        tem_netsales: 0,
         data_carga: '',
         created: '',
         updated: '',
@@ -565,7 +595,30 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
     $app
       .db()
       .newQuery(
-        'SELECT id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe, data_lancamento, ultima_data_vencimento, docto_origem_destino, data_origem_destino, condicao_pagamento, codigo_cliente, nome_cliente, numero_linha, codigo_item, descricao_item, quantidade, qty_kg_lt, preco_item, desconto_linha, icms, pis, cofins, ipi, icms_partilha, total_linha, utilizacao, nome_vendedor, custo_item, nome_filial, conta, estado, cidade, grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam, numero_documento_netsales, preco_unitario, total_nf_sem_frete, total_nf_novo, valor_liquido, custo_total, classificacao, vendedor_revenda, grupo_item, vendedor_cliente, origem, tem_racnew, tem_netsales, data_carga, created, updated ' +
+        'SELECT id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe, data_lancamento, ultima_data_vencimento, docto_origem_destino, data_origem_destino, condicao_pagamento, codigo_cliente, nome_cliente, ' +
+          'CAST(COALESCE(numero_linha, 0) AS INTEGER) AS numero_linha, codigo_item, descricao_item, ' +
+          'CAST(COALESCE(quantidade, 0.0) AS REAL) AS quantidade, ' +
+          'CAST(COALESCE(qty_kg_lt, 0.0) AS REAL) AS qty_kg_lt, ' +
+          'CAST(COALESCE(preco_item, 0.0) AS REAL) AS preco_item, ' +
+          'CAST(COALESCE(desconto_linha, 0.0) AS REAL) AS desconto_linha, ' +
+          'CAST(COALESCE(icms, 0.0) AS REAL) AS icms, ' +
+          'CAST(COALESCE(pis, 0.0) AS REAL) AS pis, ' +
+          'CAST(COALESCE(cofins, 0.0) AS REAL) AS cofins, ' +
+          'CAST(COALESCE(ipi, 0.0) AS REAL) AS ipi, ' +
+          'CAST(COALESCE(icms_partilha, 0.0) AS REAL) AS icms_partilha, ' +
+          'CAST(COALESCE(total_linha, 0.0) AS REAL) AS total_linha, ' +
+          'utilizacao, nome_vendedor, ' +
+          'CAST(COALESCE(custo_item, 0.0) AS REAL) AS custo_item, ' +
+          'nome_filial, conta, estado, cidade, grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam, numero_documento_netsales, ' +
+          'CAST(COALESCE(preco_unitario, 0.0) AS REAL) AS preco_unitario, ' +
+          'CAST(COALESCE(total_nf_sem_frete, 0.0) AS REAL) AS total_nf_sem_frete, ' +
+          'CAST(COALESCE(total_nf_novo, 0.0) AS REAL) AS total_nf_novo, ' +
+          'CAST(COALESCE(valor_liquido, 0.0) AS REAL) AS valor_liquido, ' +
+          'CAST(COALESCE(custo_total, 0.0) AS REAL) AS custo_total, ' +
+          'classificacao, vendedor_revenda, grupo_item, vendedor_cliente, origem, ' +
+          'CAST(COALESCE(tem_racnew, 0) AS INTEGER) AS tem_racnew, ' +
+          'CAST(COALESCE(tem_netsales, 0) AS INTEGER) AS tem_netsales, ' +
+          'data_carga, created, updated ' +
           'FROM vendas WHERE ' +
           sqlWhere +
           ' ORDER BY ' +
@@ -606,15 +659,34 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
         if (sqlWhere === '1=1') {
           try {
             totalItems = $app.countRecords('vendas')
+            // Busca contagem de netsales/racnew do resumo
+            const resRows = arrayOf(
+              new DynamicModel({
+                tot_ns: 0,
+                tot_rn: 0,
+              }),
+            )
+            $app
+              .db()
+              .newQuery(
+                'SELECT CAST(COALESCE(SUM(CASE WHEN tem_netsales = 1 THEN qtd_itens ELSE 0 END), 0) AS INTEGER) AS tot_ns, ' +
+                  'CAST(COALESCE(SUM(CASE WHEN tem_netsales = 0 THEN qtd_itens ELSE 0 END), 0) AS INTEGER) AS tot_rn ' +
+                  'FROM resumo_vendas_mensal',
+              )
+              .all(resRows)
+            if (resRows.length > 0) {
+              totalNetsales = Number(resRows[0].tot_ns) || 0
+              totalRacnew = Number(resRows[0].tot_rn) || 0
+            }
           } catch (_) {
             totalItems = (page - 1) * perPage + dataRows.length + 1
           }
         } else if (Date.now() - startTime < 12000) {
           const countRows = arrayOf(
             new DynamicModel({
-              total: '',
-              total_netsales: '',
-              total_racnew: '',
+              total: 0,
+              total_netsales: 0,
+              total_racnew: 0,
             }),
           )
           $app

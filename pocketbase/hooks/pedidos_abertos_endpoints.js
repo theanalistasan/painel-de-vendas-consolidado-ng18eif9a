@@ -183,7 +183,7 @@ routerAdd(
       $app
         .db()
         .newQuery(
-          'SELECT COUNT(*) AS c, COALESCE(SUM(valor_em_aberto),0) AS v, COALESCE(SUM(qtd_aberto),0) AS q FROM pedidos_abertos' +
+          'SELECT COUNT(*) AS c, CAST(COALESCE(SUM(valor_em_aberto),0.0) AS REAL) AS v, CAST(COALESCE(SUM(qtd_aberto),0.0) AS REAL) AS q FROM pedidos_abertos' +
             whereSql,
         )
         .all(countRows)
@@ -201,9 +201,18 @@ routerAdd(
     try {
       const querySql =
         'SELECT id, numero_pedido, data_pedido, codigo_cliente, nome_cliente, usuario_emitente, ' +
-        'linha, codigo_item, descricao_item, grupo_item, qtd_solicitada, status_linha, qtd_aberto, ' +
-        'em_estoque, em_transito, deposito, preco_unitario, desconto_percentual, preco_apos_desconto, ' +
-        'status, valor_em_aberto, nome_canal, deploy, inside, origem, data_carga ' +
+        'linha, codigo_item, descricao_item, grupo_item, ' +
+        'CAST(COALESCE(qtd_solicitada, 0.0) AS REAL) AS qtd_solicitada, status_linha, ' +
+        'CAST(COALESCE(qtd_aberto, 0.0) AS REAL) AS qtd_aberto, ' +
+        'CAST(COALESCE(em_estoque, 0.0) AS REAL) AS em_estoque, ' +
+        'CAST(COALESCE(em_transito, 0.0) AS REAL) AS em_transito, ' +
+        'deposito, ' +
+        'CAST(COALESCE(preco_unitario, 0.0) AS REAL) AS preco_unitario, ' +
+        'CAST(COALESCE(desconto_percentual, 0.0) AS REAL) AS desconto_percentual, ' +
+        'CAST(COALESCE(preco_apos_desconto, 0.0) AS REAL) AS preco_apos_desconto, ' +
+        'status, ' +
+        'CAST(COALESCE(valor_em_aberto, 0.0) AS REAL) AS valor_em_aberto, ' +
+        'nome_canal, deploy, inside, origem, data_carga ' +
         'FROM pedidos_abertos' +
         whereSql +
         orderSql +
@@ -466,9 +475,9 @@ routerAdd(
       $app
         .db()
         .newQuery(
-          'SELECT COALESCE(SUM(valor_em_aberto),0) AS v, ' +
+          'SELECT CAST(COALESCE(SUM(valor_em_aberto), 0.0) AS REAL) AS v, ' +
             'COUNT(DISTINCT numero_pedido) AS p, ' +
-            'COALESCE(SUM(qtd_aberto),0) AS i, ' +
+            'CAST(COALESCE(SUM(qtd_aberto), 0.0) AS REAL) AS i, ' +
             "COUNT(DISTINCT COALESCE(NULLIF(codigo_cliente, ''), nome_cliente)) AS c " +
             'FROM pedidos_abertos' +
             paWhereSql,
@@ -493,9 +502,9 @@ routerAdd(
         "COALESCE(nome_canal, '') AS canal, " +
         "COALESCE(deploy, '') AS deploy, " +
         "COALESCE(inside, '') AS inside, " +
-        'COALESCE(SUM(valor_em_aberto), 0) AS val_aberto, ' +
+        'CAST(COALESCE(SUM(valor_em_aberto), 0.0) AS REAL) AS val_aberto, ' +
         'COUNT(DISTINCT numero_pedido) AS qtd_pedidos, ' +
-        'COALESCE(SUM(qtd_aberto), 0) AS qtd_itens ' +
+        'CAST(COALESCE(SUM(qtd_aberto), 0.0) AS REAL) AS qtd_itens ' +
         'FROM pedidos_abertos' +
         paWhereSql +
         " GROUP BY COALESCE(codigo_cliente, ''), COALESCE(nome_cliente, 'Sem identificação') " +
@@ -541,7 +550,7 @@ routerAdd(
       const vSql =
         "SELECT COALESCE(codigo_cliente, '') AS cod, " +
         "COALESCE(nome_cliente, '') AS nom, " +
-        'COALESCE(SUM(total_linha), 0) AS venda_realizada ' +
+        'CAST(COALESCE(SUM(total_linha), 0.0) AS REAL) AS venda_realizada ' +
         'FROM resumo_vendas_mensal' +
         vendasWhereSql +
         " GROUP BY COALESCE(codigo_cliente, ''), COALESCE(nome_cliente, '')"

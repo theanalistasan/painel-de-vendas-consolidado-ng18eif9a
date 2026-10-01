@@ -118,8 +118,25 @@ export default function PedidosAbertos() {
           inside: statsPedidos.filterOptions.inside || [],
         })
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Erro ao carregar estatísticas de pedidos abertos:', err)
+      const msg =
+        err instanceof Error
+          ? err.message
+          : 'Não foi possível carregar as estatísticas dos pedidos.'
+      const isTimeout =
+        msg.toLowerCase().includes('tempo limite') ||
+        msg.toLowerCase().includes('demorou') ||
+        msg.toLowerCase().includes('timeout') ||
+        msg.includes('504')
+      if (isTimeout) {
+        toast({
+          variant: 'destructive',
+          title: 'A consulta demorou mais que o esperado',
+          description:
+            'A consulta demorou mais que o esperado devido ao volume de registros. Tente filtrar por um ano específico ou refinar os filtros selecionados.',
+        })
+      }
     } finally {
       setStatsLoading(false)
     }
@@ -170,15 +187,26 @@ export default function PedidosAbertos() {
         setTotalValor(res.totalValor || 0)
         setTotalQtd(res.totalQtd || 0)
       }
+      return true
     } catch (err: unknown) {
       console.error('Erro ao listar pedidos em aberto:', err)
       const msg =
         err instanceof Error ? err.message : 'Não foi possível carregar os pedidos em aberto.'
+      const isTimeout =
+        msg.toLowerCase().includes('tempo limite') ||
+        msg.toLowerCase().includes('demorou') ||
+        msg.toLowerCase().includes('timeout') ||
+        msg.includes('504')
       toast({
         variant: 'destructive',
-        title: 'Erro ao carregar pedidos em aberto',
-        description: msg,
+        title: isTimeout
+          ? 'A consulta demorou mais que o esperado'
+          : 'Erro ao carregar pedidos em aberto',
+        description: isTimeout
+          ? 'A consulta demorou mais que o esperado devido ao volume de registros. Tente filtrar por um ano específico ou refinar os filtros selecionados.'
+          : msg,
       })
+      return false
     } finally {
       setLoading(false)
     }
@@ -188,18 +216,33 @@ export default function PedidosAbertos() {
     logAudit('pedidos_abertos_view', 'Acesso ao módulo Pedidos em Aberto (SAP)')
   }, [])
 
+  // Escalonamento do carregamento: primeiro a listagem paginada (feedback imediato),
+  // e em seguida os KPIs e dados agregados/estatísticas.
   useEffect(() => {
-    loadStats(filters)
-  }, [filters])
+    let isCancelled = false
 
-  useEffect(() => {
-    loadData(filters, page, sort.field, sort.dir, searchTerm, groupByCliente)
+    const runStaggeredLoad = async () => {
+      // 1. Carrega primeiro a listagem de pedidos
+      await loadData(filters, page, sort.field, sort.dir, searchTerm, groupByCliente)
+      if (isCancelled) return
+
+      // 2. Carrega depois os KPIs e estatísticas agregadas
+      loadStats(filters)
+    }
+
+    runStaggeredLoad()
+
+    return () => {
+      isCancelled = true
+    }
   }, [page, filters, sort.field, sort.dir, groupByCliente])
 
   const handleApplyFilters = (applied: PedidosAbertosFilters) => {
     setPage(1)
-    loadStats(applied)
-    loadData(applied, 1, sort.field, sort.dir, searchTerm, groupByCliente)
+    // Carrega primeiro a listagem e depois as estatísticas
+    loadData(applied, 1, sort.field, sort.dir, searchTerm, groupByCliente).then(() => {
+      loadStats(applied)
+    })
   }
 
   const handleSearchSubmit = (e: React.FormEvent) => {

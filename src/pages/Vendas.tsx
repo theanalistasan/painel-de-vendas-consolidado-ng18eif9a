@@ -186,35 +186,51 @@ export default function Vendas() {
           : (res.items || []).filter((i) => !i.tem_netsales).length,
       )
       setTotalPages(res.totalPages || 1)
+      return true
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
-        return
+        return false
       }
       console.error('Erro ao carregar vendas:', err)
       const msg =
         err instanceof Error ? err.message : 'Não foi possível buscar as vendas consolidadas.'
+      const isTimeout =
+        msg.toLowerCase().includes('tempo limite') ||
+        msg.toLowerCase().includes('demorou') ||
+        msg.toLowerCase().includes('timeout') ||
+        msg.includes('504')
       toast({
         variant: 'destructive',
-        title:
-          msg.toLowerCase().includes('tempo limite') || msg.toLowerCase().includes('demorou')
-            ? 'A consulta demorou demais'
-            : 'Erro ao carregar vendas',
-        description:
-          msg.toLowerCase().includes('tempo limite') || msg.toLowerCase().includes('demorou')
-            ? 'A base de dados é muito volumosa para essa combinação. Tente selecionar um ano ou refinar os filtros.'
-            : msg,
+        title: isTimeout ? 'A consulta demorou mais que o esperado' : 'Erro ao carregar vendas',
+        description: isTimeout
+          ? 'A consulta demorou mais que o esperado devido ao volume de registros. Tente filtrar por um ano específico ou refinar os filtros selecionados.'
+          : msg,
       })
+      return false
     } finally {
       setLoading(false)
     }
   }
 
+  // Escalonamento do carregamento: carrega primeiro a listagem paginada (feedback imediato)
+  // e apenas depois dispara as agregações / KPIs do dashboard em background
   useEffect(() => {
-    loadStats(filters)
-  }, [filters])
+    let isCancelled = false
 
-  useEffect(() => {
-    loadData(filters, page, sort.field, sort.dir, isAllGroupedNfe)
+    const runStaggeredLoad = async () => {
+      // 1. Prioridade: listagem paginada (resposta mais rápida ao usuário)
+      await loadData(filters, page, sort.field, sort.dir, isAllGroupedNfe)
+      if (isCancelled) return
+
+      // 2. Escalonado: KPIs e estatísticas agregadas em seguida
+      loadStats(filters)
+    }
+
+    runStaggeredLoad()
+
+    return () => {
+      isCancelled = true
+    }
   }, [page, filters, sort.field, sort.dir, isAllGroupedNfe])
 
   // Reset pagination on filter change
