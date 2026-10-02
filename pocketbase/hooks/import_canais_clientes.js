@@ -529,7 +529,7 @@ routerAdd(
             id: '',
             nome_canal: '',
             periodo: '',
-            valor_meta: 0,
+            valor_meta: '',
           }),
         )
         $app

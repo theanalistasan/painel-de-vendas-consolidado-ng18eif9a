@@ -131,10 +131,9 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         .execute()
 
       // Verifica se a tabela resumo_vendas_mensal está preenchida
-      const chkRows = arrayOf(new DynamicModel({ c: 0 }))
+      const chkRows = arrayOf(new DynamicModel({ c: '' }))
       $app.db().newQuery('SELECT COUNT(*) as c FROM resumo_vendas_mensal LIMIT 1').all(chkRows)
-      const rvmCount = chkRows.length > 0 ? chkRows[0].c : 0
-
+      const rvmCount = chkRows.length > 0 ? parseInt(chkRows[0].c, 10) || 0 : 0
       if (rvmCount === 0) {
         // Preenchimento inicial rápido
         const nowIso = new Date().toISOString()

@@ -311,12 +311,12 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
           vendedor_cliente: '',
           nome_vendedor: '',
           grupo_item: '',
-          itens_qtd: 0,
-          quantidade: 0.0,
-          total_linha: 0.0,
-          total_nf_sem_frete: 0.0,
-          valor_liquido: 0.0,
-          custo_total: 0.0,
+          itens_qtd: '',
+          quantidade: '',
+          total_linha: '',
+          total_nf_sem_frete: '',
+          valor_liquido: '',
+          custo_total: '',
           utilizacao: '',
           estado: '',
           cidade: '',
@@ -325,8 +325,8 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
           mercado: '',
           usuario_emissor_pedido: '',
           origem: '',
-          tem_netsales: 0,
-          tem_racnew: 0,
+          tem_netsales: '',
+          tem_racnew: '',
         }),
       )
 
@@ -406,9 +406,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
         try {
           const docRows = arrayOf(
             new DynamicModel({
-              total_docs: 0,
-              total_netsales: 0,
-              total_racnew: 0,
+              total_docs: '',
+              total_netsales: '',
+              total_racnew: '',
             }),
           )
           $app
@@ -436,9 +436,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
           if (Date.now() - startTime < 10000) {
             const countRows = arrayOf(
               new DynamicModel({
-                total_nfe: 0,
-                total_netsales: 0,
-                total_racnew: 0,
+                total_nfe: '',
+                total_netsales: '',
+                total_racnew: '',
               }),
             )
             $app
@@ -545,22 +545,22 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
         condicao_pagamento: '',
         codigo_cliente: '',
         nome_cliente: '',
-        numero_linha: 0,
+        numero_linha: '',
         codigo_item: '',
         descricao_item: '',
-        quantidade: 0.0,
-        qty_kg_lt: 0.0,
-        preco_item: 0.0,
-        desconto_linha: 0.0,
-        icms: 0.0,
-        pis: 0.0,
-        cofins: 0.0,
-        ipi: 0.0,
-        icms_partilha: 0.0,
-        total_linha: 0.0,
+        quantidade: '',
+        qty_kg_lt: '',
+        preco_item: '',
+        desconto_linha: '',
+        icms: '',
+        pis: '',
+        cofins: '',
+        ipi: '',
+        icms_partilha: '',
+        total_linha: '',
         utilizacao: '',
         nome_vendedor: '',
-        custo_item: 0.0,
+        custo_item: '',
         nome_filial: '',
         conta: '',
         estado: '',
@@ -570,18 +570,18 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
         usuario_emissor_pedido: '',
         itms_grp_nam: '',
         numero_documento_netsales: '',
-        preco_unitario: 0.0,
-        total_nf_sem_frete: 0.0,
-        total_nf_novo: 0.0,
-        valor_liquido: 0.0,
-        custo_total: 0.0,
+        preco_unitario: '',
+        total_nf_sem_frete: '',
+        total_nf_novo: '',
+        valor_liquido: '',
+        custo_total: '',
         classificacao: '',
         vendedor_revenda: '',
         grupo_item: '',
         vendedor_cliente: '',
         origem: '',
-        tem_racnew: 0,
-        tem_netsales: 0,
+        tem_racnew: '',
+        tem_netsales: '',
         data_carga: '',
         created: '',
         updated: '',
@@ -662,8 +662,8 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
             // Busca contagem de netsales/racnew do resumo
             const resRows = arrayOf(
               new DynamicModel({
-                tot_ns: 0,
-                tot_rn: 0,
+                tot_ns: '',
+                tot_rn: '',
               }),
             )
             $app
@@ -675,8 +675,8 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
               )
               .all(resRows)
             if (resRows.length > 0) {
-              totalNetsales = Number(resRows[0].tot_ns) || 0
-              totalRacnew = Number(resRows[0].tot_rn) || 0
+              totalNetsales = parseInt(resRows[0].tot_ns, 10) || 0
+              totalRacnew = parseInt(resRows[0].tot_rn, 10) || 0
             }
           } catch (_) {
             totalItems = (page - 1) * perPage + dataRows.length + 1
@@ -684,9 +684,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
         } else if (Date.now() - startTime < 12000) {
           const countRows = arrayOf(
             new DynamicModel({
-              total: 0,
-              total_netsales: 0,
-              total_racnew: 0,
+              total: '',
+              total_netsales: '',
+              total_racnew: '',
             }),
           )
           $app

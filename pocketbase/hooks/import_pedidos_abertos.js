@@ -316,7 +316,7 @@ routerAdd(
         new DynamicModel({
           id: '',
           numero_pedido: '',
-          linha: 0,
+          linha: '',
         }),
       )
       $app.db().newQuery('SELECT id, numero_pedido, linha FROM pedidos_abertos').all(dbRows)
