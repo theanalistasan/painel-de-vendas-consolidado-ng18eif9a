@@ -79,3 +79,25 @@ export async function fetchPedidosAbertosStats(
     throw err
   }
 }
+
+/**
+ * Busca a data_carga mais recente da coleção pedidos_abertos.
+ * Faz consulta direta na coleção ordenada por -data_carga.
+ * Retorna string ISO ou null caso a coleção esteja vazia.
+ */
+export async function fetchUltimaCargaPedidosAbertos(): Promise<string | null> {
+  try {
+    const records = await pb.collection('pedidos_abertos').getList(1, 1, {
+      sort: '-data_carga',
+      fields: 'data_carga',
+      requestKey: null,
+    })
+    if (records.items.length > 0 && records.items[0].data_carga) {
+      return records.items[0].data_carga as string
+    }
+    return null
+  } catch (err) {
+    console.warn('Erro ao buscar última data_carga de pedidos_abertos:', err)
+    return null
+  }
+}

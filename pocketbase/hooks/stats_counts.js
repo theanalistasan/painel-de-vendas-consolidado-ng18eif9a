@@ -46,6 +46,21 @@ routerAdd('GET', '/backend/v1/stats/counts', (e) => {
     }
   } catch (_) {}
 
+  // Última data_carga da coleção pedidos_abertos
+  let ultimaCargaPedidosAbertos = ''
+  try {
+    const paRows = arrayOf(new DynamicModel({ data_carga: '' }))
+    $app
+      .db()
+      .newQuery(
+        "SELECT data_carga FROM pedidos_abertos WHERE data_carga IS NOT NULL AND data_carga != '' ORDER BY data_carga DESC LIMIT 1",
+      )
+      .all(paRows)
+    if (paRows.length > 0 && paRows[0].data_carga) {
+      ultimaCargaPedidosAbertos = paRows[0].data_carga
+    }
+  } catch (_) {}
+
   const result = {
     produtos: counts.produtos || 0,
     racnew: counts.racnew || 0,
@@ -55,6 +70,7 @@ routerAdd('GET', '/backend/v1/stats/counts', (e) => {
     pedidos_abertos: counts.pedidos_abertos || 0,
     estoque_sap: counts.estoque_sap || 0,
     ultimaCarga: ultimaCarga,
+    ultimaCargaPedidosAbertos: ultimaCargaPedidosAbertos,
   }
 
   return e.json(200, result)

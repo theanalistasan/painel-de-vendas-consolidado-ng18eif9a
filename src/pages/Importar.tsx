@@ -22,7 +22,7 @@ import {
   reconstruirResumosApi,
   getCountsSummary,
 } from '@/services/sales'
-import { importPedidosAbertosApi } from '@/services/pedidosAbertos'
+import { importPedidosAbertosApi, fetchUltimaCargaPedidosAbertos } from '@/services/pedidosAbertos'
 import { importEstoqueSapApi } from '@/services/estoqueFaltante'
 import { logAudit } from '@/services/audit'
 import { parseCSV, parseXLSX, formatNumber, formatDateTime } from '@/lib/formatters'
@@ -72,6 +72,10 @@ interface CardImportProps {
   onConsolidationTrigger?: () => Promise<void>
   /** Total de registros atualmente na base (consultado do backend) */
   baseCount?: number
+  /** Data da última importação/carga desta base (ISO) */
+  lastImportDate?: string | null
+  /** Bloco adicional informativo personalizado (ex.: dica de caminho no ERP/SAP) */
+  customGuide?: React.ReactNode
   /** Callback disparado ao final da importação com o resultado consolidado */
   onImported?: (result: ImportResult) => void
 }
@@ -85,6 +89,8 @@ function BaseImportCard({
   badgeColor,
   onConsolidationTrigger,
   baseCount,
+  lastImportDate,
+  customGuide,
   onImported,
 }: CardImportProps) {
   const [file, setFile] = useState<File | null>(null)
@@ -302,17 +308,31 @@ function BaseImportCard({
   return (
     <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs flex flex-col justify-between">
       <CardHeader className="pb-3 border-b border-slate-100">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-start gap-2.5 min-w-0">
+            <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600 shrink-0 mt-0.5">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
-            <div>
-              <CardTitle className="text-base font-bold text-slate-900">{title}</CardTitle>
-              <CardDescription className="text-xs text-slate-500">{subtitle}</CardDescription>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <CardTitle className="text-base font-bold text-slate-900 leading-tight">
+                  {title}
+                </CardTitle>
+                {lastImportDate !== undefined && (
+                  <span className="inline-flex items-center text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                    Última importação:{' '}
+                    <strong className="ml-1 text-slate-700">
+                      {lastImportDate ? formatDateTime(lastImportDate) : 'nunca'}
+                    </strong>
+                  </span>
+                )}
+              </div>
+              <CardDescription className="text-xs text-slate-500 mt-0.5">
+                {subtitle}
+              </CardDescription>
             </div>
           </div>
-          <Badge className={cn('text-[11px] font-semibold text-white', badgeColor)}>
+          <Badge className={cn('text-[11px] font-semibold text-white shrink-0', badgeColor)}>
             {badgeLabel}
           </Badge>
         </div>
@@ -354,6 +374,9 @@ function BaseImportCard({
             {expectedColumns.join(' • ')}
           </p>
         </div>
+
+        {/* Bloco de Guia/Caminho do Relatório (se fornecido) */}
+        {customGuide}
 
         {/* Dropzone */}
         {!file ? (
@@ -636,7 +659,9 @@ export default function Importar() {
     pedidos_abertos: 0,
     estoque_sap: 0,
     ultimaCarga: null as string | null,
+    ultimaCargaPedidosAbertos: null as string | null,
   })
+  const [ultimaCargaPedidosAbertos, setUltimaCargaPedidosAbertos] = useState<string | null>(null)
   const [consolidating, setConsolidating] = useState(false)
   const [rebuildingSummaries, setRebuildingSummaries] = useState(false)
   const [consolidationResult, setConsolidationResult] = useState<ConsolidarResult | null>(null)
@@ -656,8 +681,17 @@ export default function Importar() {
     try {
       const data = await getCountsSummary()
       setCounts(data)
+      if (data.ultimaCargaPedidosAbertos) {
+        setUltimaCargaPedidosAbertos(data.ultimaCargaPedidosAbertos)
+      } else {
+        // Fallback: consulta direta se a contagem não tiver
+        const directDate = await fetchUltimaCargaPedidosAbertos()
+        setUltimaCargaPedidosAbertos(directDate)
+      }
     } catch (err) {
       console.error('Erro ao buscar contagens:', err)
+      const directDate = await fetchUltimaCargaPedidosAbertos()
+      setUltimaCargaPedidosAbertos(directDate)
     }
   }
 
@@ -754,6 +788,13 @@ export default function Importar() {
     setImportResults((prev) => ({ ...prev, [base]: result }))
     refreshCounts()
     if (base === 'pedidos_abertos') {
+      if (result.data_carga) {
+        setUltimaCargaPedidosAbertos(result.data_carga)
+      } else {
+        fetchUltimaCargaPedidosAbertos().then((d) => {
+          if (d) setUltimaCargaPedidosAbertos(d)
+        })
+      }
       logAudit(
         'pedidos_abertos_import',
         `Importação SAP: ${result.importados ?? 0} novos, ${result.atualizados ?? 0} atualizados, ${result.ignorados ?? 0} ignorados`,
@@ -1043,6 +1084,50 @@ export default function Importar() {
           subtitle="Carteira de pedidos e itens pendentes de faturamento"
           badgeLabel="Pedidos SAP"
           badgeColor="bg-amber-600"
+          lastImportDate={ultimaCargaPedidosAbertos}
+          customGuide={
+            <div className="rounded-lg bg-slate-50 border border-slate-200/80 p-2.5 text-[11px] text-slate-600 space-y-1.5 shadow-2xs">
+              <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-[11px]">
+                <Info className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>Caminho do relatório no SAP:</span>
+              </div>
+              <ol className="text-[10px] leading-relaxed text-slate-600 space-y-0.5 list-none">
+                <li className="flex items-center gap-1">
+                  <span className="font-semibold text-slate-700">SAP</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Ferramentas</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Consultas</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Gerenciador de Consultas</span>
+                </li>
+                <li className="flex items-center gap-1">
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-medium text-slate-700">Pedidos de Venda em aberto</span>
+                </li>
+                <li className="flex items-center gap-1">
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span>Botão direito no # da tabela</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span>Copiar Tabela</span>
+                </li>
+                <li className="flex items-center gap-1">
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span>Colar no Excel</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span>
+                    Salve em um local e realize a importação do arquivo: Pedidos em Aberto (SAP)
+                  </span>
+                </li>
+              </ol>
+              <div className="pt-1 border-t border-slate-200/60 font-mono text-[9px] text-slate-500 break-words leading-tight select-all">
+                SAP &gt; Ferramentas &gt; Consultas &gt; Gerenciador de Consultas &gt; Pedidos de
+                Venda em aberto &gt; Botão direito no # da tabela &gt; Copiar Tabela &gt; Colar no
+                Excel &gt; Salve em um local e realize a importação do arquivo: Pedidos em Aberto
+                (SAP)
+              </div>
+            </div>
+          }
           expectedColumns={[
             'Nº Pedido',
             'Data do Pedido',

@@ -125,6 +125,7 @@ export interface CountsSummary {
   pedidos_abertos: number
   estoque_sap: number
   ultimaCarga: string | null
+  ultimaCargaPedidosAbertos: string | null
 }
 
 /**
@@ -143,6 +144,7 @@ export async function getCountsSummary(): Promise<CountsSummary> {
       pedidos_abertos?: number
       estoque_sap?: number
       ultimaCarga: string
+      ultimaCargaPedidosAbertos?: string
     }>('/backend/v1/stats/counts', {
       method: 'GET',
     })
@@ -177,6 +179,7 @@ export async function getCountsSummary(): Promise<CountsSummary> {
     pedidos_abertos: (data as unknown as Record<string, number>).pedidos_abertos ?? 0,
     estoque_sap: (data as unknown as Record<string, number>).estoque_sap ?? 0,
     ultimaCarga: data.ultimaCarga || null,
+    ultimaCargaPedidosAbertos: data.ultimaCargaPedidosAbertos || null,
   }
 }
 
