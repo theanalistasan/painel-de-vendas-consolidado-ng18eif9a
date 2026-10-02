@@ -78,6 +78,8 @@ export interface CanaisSyncStatus {
   updated?: string
 }
 
+export const CANAIS_BASE_OFICIAL_URL = 'https://canais.goskip.app/contatos'
+
 export interface CanaisSyncResult {
   success: boolean
   isFullSync: boolean

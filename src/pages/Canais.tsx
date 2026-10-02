@@ -21,6 +21,7 @@ import {
   Filter,
   ChevronsDownUp,
   ChevronsUpDown,
+  ExternalLink,
 } from 'lucide-react'
 import {
   fetchCanaisClientes,
@@ -33,6 +34,7 @@ import {
   deleteCanalMeta,
   fetchCanaisSyncStatus,
   triggerCanaisSync,
+  CANAIS_BASE_OFICIAL_URL,
   type CanaisIndicadores,
   type CanaisSyncStatus,
   type CanalClientePayload,
@@ -62,6 +64,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
@@ -759,6 +762,30 @@ export default function Canais() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="h-9 text-xs font-bold text-[#0B6E99] border-cyan-300 bg-cyan-50/60 hover:bg-cyan-100/70 hover:text-[#084F6E] shadow-2xs gap-1.5 transition-colors"
+                  >
+                    <a
+                      href={CANAIS_BASE_OFICIAL_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Abrir base oficial de canais (Gestão de Canais de Vendas)"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                      <span>Base Oficial</span>
+                    </a>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="text-xs max-w-xs">
+                  Abrir base oficial de canais (Gestão de Canais de Vendas)
+                </TooltipContent>
+              </Tooltip>
+
               <Button
                 variant="outline"
                 size="sm"
@@ -796,8 +823,20 @@ export default function Canais() {
             <div className="flex items-start gap-2.5">
               <span className="w-2.5 h-2.5 rounded-full bg-[#0B6E99] mt-1 shrink-0 animate-pulse" />
               <div>
-                <p className="font-bold text-slate-800">
-                  Somente leitura — dados sincronizados da base Gestão de Canais de Vendas
+                <p className="font-bold text-slate-800 flex items-center gap-1.5 flex-wrap">
+                  <span>
+                    Somente leitura — dados sincronizados da base Gestão de Canais de Vendas
+                  </span>
+                  <a
+                    href={CANAIS_BASE_OFICIAL_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 font-bold text-[#0B6E99] hover:text-[#084F6E] underline decoration-cyan-400 hover:decoration-[#0B6E99] ml-1"
+                    title="Abrir base oficial de canais (Gestão de Canais de Vendas) em nova aba"
+                  >
+                    <span>Acessar base oficial</span>
+                    <ExternalLink className="w-3 h-3 shrink-0" />
+                  </a>
                 </p>
                 <p className="text-slate-600 text-[11px] mt-0.5">
                   A base de revendas e contatos é gerida centralmente na outra aplicação Skip. O
