@@ -791,7 +791,7 @@ export default function EstoqueFaltante() {
             </CardHeader>
 
             <CardContent className="p-0">
-              <div className="max-h-[60vh] overflow-auto border-b border-gray-100">
+              <div className="max-h-[65vh] overflow-auto border-b border-gray-100">
                 <table className="w-full text-left border-collapse text-xs min-w-[1000px]">
                   <thead className="sticky top-0 z-20 bg-slate-100 shadow-2xs">
                     <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
@@ -1268,21 +1268,29 @@ export default function EstoqueFaltante() {
             </CardHeader>
 
             <CardContent className="p-0">
-              <div className="max-h-[60vh] overflow-auto">
+              <div className="max-h-[65vh] overflow-auto border-b border-gray-100">
                 <table className="w-full text-left border-collapse text-xs min-w-[900px]">
                   <thead className="sticky top-0 z-20 bg-slate-100 shadow-2xs">
                     <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
-                      <th className="p-3">#</th>
-                      <th className="p-3">Código Item</th>
-                      <th className="p-3">Descrição</th>
-                      <th className="p-3">Grupo</th>
-                      <th className="p-3 text-center">Qtd Vendida (6m)</th>
-                      <th className="p-3 text-center">Média Mensal</th>
-                      <th className="p-3 text-right">Valor Vendido (6m)</th>
-                      <th className="p-3 text-center">Estoque Atual</th>
-                      <th className="p-3 text-center">Em Trânsito</th>
-                      <th className="p-3 text-center">Cobertura (meses)</th>
-                      <th className="p-3 text-center">Alerta de Reposição</th>
+                      <th className="p-3 sticky top-0 bg-slate-100">#</th>
+                      <th className="p-3 sticky top-0 bg-slate-100">Código Item</th>
+                      <th className="p-3 sticky top-0 bg-slate-100">Descrição</th>
+                      <th className="p-3 sticky top-0 bg-slate-100">Grupo</th>
+                      <th className="p-3 text-center sticky top-0 bg-slate-100">
+                        Qtd Vendida (6m)
+                      </th>
+                      <th className="p-3 text-center sticky top-0 bg-slate-100">Média Mensal</th>
+                      <th className="p-3 text-right sticky top-0 bg-slate-100">
+                        Valor Vendido (6m)
+                      </th>
+                      <th className="p-3 text-center sticky top-0 bg-slate-100">Estoque Atual</th>
+                      <th className="p-3 text-center sticky top-0 bg-slate-100">Em Trânsito</th>
+                      <th className="p-3 text-center sticky top-0 bg-slate-100">
+                        Cobertura (meses)
+                      </th>
+                      <th className="p-3 text-center sticky top-0 bg-slate-100">
+                        Alerta de Reposição
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
