@@ -119,6 +119,17 @@ export default function EstoqueFaltante() {
   const [totalQtd, setTotalQtd] = useState(0)
   const [listLoading, setListLoading] = useState(true)
 
+  // Opções para a barra de filtros (canais, clientes, inside)
+  const [filterOptions, setFilterOptions] = useState<{
+    canais?: import('@/types/sales').CanalOption[]
+    canaisClientes?: import('@/types/sales').CanalClienteOption[]
+    inside?: string[]
+  }>({
+    canais: [],
+    canaisClientes: [],
+    inside: [],
+  })
+
   // KPIs e Top 20 da Visão 1 (carregamento escalonado para performance)
   const [statsData, setStatsData] = useState<EstoqueFaltanteStatsResult | null>(null)
   const [statsLoading, setStatsLoading] = useState(true)
@@ -187,21 +198,37 @@ export default function EstoqueFaltante() {
 
     setStatsLoading(true)
     try {
-      const res = await fetchEstoqueFaltanteStats(
-        {
-          canal: filters.canal,
-          canalClientes: filters.canalClientes,
-          deploy: filters.deploy,
-          inside: filters.inside,
-          ehCanal: filters.ehCanal,
-          search: appliedSearch,
-        },
-        { signal: controller.signal },
-      )
-      setStatsData(res)
-    } catch (err: unknown) {
-      if ((err as Error)?.name === 'AbortError') return
-      console.warn('Erro ao carregar estatísticas de estoque faltante:', err)
+      const [res, statsPedidos] = await Promise.allSettled([
+        fetchEstoqueFaltanteStats(
+          {
+            canal: filters.canal,
+            canalClientes: filters.canalClientes,
+            deploy: filters.deploy,
+            inside: filters.inside,
+            ehCanal: filters.ehCanal,
+            search: appliedSearch,
+          },
+          { signal: controller.signal },
+        ),
+        (async () => {
+          const { fetchPedidosAbertosStats } = await import('@/services/pedidosAbertos')
+          return fetchPedidosAbertosStats(filters as unknown as Record<string, unknown>)
+        })(),
+      ])
+
+      if (res.status === 'fulfilled') {
+        setStatsData(res.value)
+      } else if ((res.reason as Error)?.name !== 'AbortError') {
+        console.warn('Erro ao carregar estatísticas de estoque faltante:', res.reason)
+      }
+
+      if (statsPedidos.status === 'fulfilled' && statsPedidos.value?.filterOptions) {
+        setFilterOptions({
+          canais: statsPedidos.value.filterOptions.canais || [],
+          canaisClientes: statsPedidos.value.filterOptions.canaisClientes || [],
+          inside: statsPedidos.value.filterOptions.inside || [],
+        })
+      }
     } finally {
       setStatsLoading(false)
     }
@@ -394,7 +421,14 @@ export default function EstoqueFaltante() {
       </div>
 
       {/* Barra de Filtros de Canais (herdando os mesmos controles de Pedidos em Aberto) */}
-      <PedidosAbertosFilterBar filters={filters} onApplyFilters={handleApplyFilters} />
+      <PedidosAbertosFilterBar
+        filters={filters}
+        setFilters={setFilters}
+        options={filterOptions}
+        isLoading={listLoading || statsLoading}
+        loadingMessage="Atualizando itens faltantes..."
+        onApplyFilters={handleApplyFilters}
+      />
 
       {/* Tabs Principais: Itens Faltantes vs MRP */}
       <Tabs

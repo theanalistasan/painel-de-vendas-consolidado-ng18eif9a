@@ -1,4 +1,5 @@
 // Endpoints para Estoque Faltante & MRP:
+// Endpoints Estoque Faltante & MRP
 // 1. POST /backend/v1/estoque-faltante/list
 //    - Relatório dos itens com Em Estoque = 0 e Qtd Aberto > 0
 //    - Filtros de Canais (Canal, Clientes, Deploy, Inside, É Canal, busca, etc.)

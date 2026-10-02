@@ -23,10 +23,10 @@ export const EMPTY_PEDIDOS_ABERTOS_FILTERS: PedidosAbertosFilters = {
   ehCanal: 'todos',
 }
 
-interface PedidosAbertosFilterBarProps {
+export interface PedidosAbertosFilterBarProps {
   filters: PedidosAbertosFilters
-  setFilters: React.Dispatch<React.SetStateAction<PedidosAbertosFilters>>
-  options: {
+  setFilters?: React.Dispatch<React.SetStateAction<PedidosAbertosFilters>>
+  options?: {
     canais?: CanalOption[]
     canaisClientes?: CanalClienteOption[]
     inside?: string[]
@@ -209,7 +209,7 @@ function MultiSelectDropdown({
 export default function PedidosAbertosFilterBar({
   filters,
   setFilters,
-  options,
+  options = {},
   onApplyFilters,
   isLoading = false,
   loadingMessage = 'Atualizando...',
@@ -235,7 +235,9 @@ export default function PedidosAbertosFilterBar({
   }, [filters])
 
   const handleApply = () => {
-    setFilters(localFilters)
+    if (setFilters) {
+      setFilters(localFilters)
+    }
     if (onApplyFilters) {
       onApplyFilters(localFilters)
     }
@@ -243,7 +245,9 @@ export default function PedidosAbertosFilterBar({
 
   const clearAllFilters = () => {
     setLocalFilters(EMPTY_PEDIDOS_ABERTOS_FILTERS)
-    setFilters(EMPTY_PEDIDOS_ABERTOS_FILTERS)
+    if (setFilters) {
+      setFilters(EMPTY_PEDIDOS_ABERTOS_FILTERS)
+    }
     if (onApplyFilters) {
       onApplyFilters(EMPTY_PEDIDOS_ABERTOS_FILTERS)
     }
