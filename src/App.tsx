@@ -7,7 +7,6 @@ import { AuthProvider } from '@/context/AuthContext'
 import GuardedRoute from '@/components/GuardedRoute'
 import DashboardGeral from './pages/DashboardGeral'
 import DashboardCanais from './pages/DashboardCanais'
-import Vendas from './pages/Vendas'
 import PedidosAbertos from './pages/PedidosAbertos'
 import EstoqueFaltante from './pages/EstoqueFaltante'
 import Canais from './pages/Canais'
@@ -33,7 +32,8 @@ const App = () => (
             <Route path="/" element={<DashboardGeral />} />
             <Route path="/dashboard/geral" element={<DashboardGeral />} />
             <Route path="/dashboard/canais" element={<DashboardCanais />} />
-            <Route path="/vendas" element={<Vendas />} />
+            {/* O relatório de Vendas foi incorporado na Visão Geral; /vendas redireciona mantendo compatibilidade */}
+            <Route path="/vendas" element={<Navigate to="/dashboard/geral" replace />} />
             <Route path="/pedidos-abertos" element={<PedidosAbertos />} />
             <Route path="/estoque-faltante" element={<EstoqueFaltante />} />
             {/* Módulo de Manutenção de Canais aberto a todos os perfis autenticados */}

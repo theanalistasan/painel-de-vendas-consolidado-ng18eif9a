@@ -54,9 +54,6 @@ import KpiCard from '@/components/KpiCard'
 import ChartCard from '@/components/ChartCard'
 import { MetasIndicador } from '@/components/MetasIndicador'
 import { VendasPorEstadoIndicador } from '@/components/VendasPorEstadoIndicador'
-import PedidosAbertosWidget from '@/components/PedidosAbertosWidget'
-import { fetchPedidosAbertosStats } from '@/services/pedidosAbertos'
-import type { PedidosAbertosStatsResult } from '@/types/sales'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
@@ -85,10 +82,6 @@ const currencyFormatter =
 
 export default function DashboardCanais() {
   const [data, setData] = useState<DashboardStatsResult | null>(null)
-  const [pedidosAbertosStats, setPedidosAbertosStats] = useState<PedidosAbertosStatsResult | null>(
-    null,
-  )
-  const [pedidosLoading, setPedidosLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -137,25 +130,12 @@ export default function DashboardCanais() {
     setError(null)
 
     try {
-      setPedidosLoading(true)
-      const [res, pedidos] = await Promise.all([
-        fetchDashboardStats(activeFilters as unknown as Record<string, unknown>, {
-          signal: currentController.signal,
-        }),
-        fetchPedidosAbertosStats(activeFilters as unknown as Record<string, unknown>, {
-          signal: currentController.signal,
-        }).catch((pErr) => {
-          console.warn('Erro ao carregar stats de pedidos abertos no Canais:', pErr)
-          return null
-        }),
-      ])
+      const res = await fetchDashboardStats(activeFilters as unknown as Record<string, unknown>, {
+        signal: currentController.signal,
+      })
 
       if (seq !== requestSeqRef.current) {
         return
-      }
-
-      if (pedidos) {
-        setPedidosAbertosStats(pedidos)
       }
 
       // Se ainda não foi inicializado com as opções dinâmicas da base (primeiro acesso sem sessão),
@@ -173,7 +153,6 @@ export default function DashboardCanais() {
 
       setData(res)
       setLoading(false)
-      setPedidosLoading(false)
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
         return
@@ -640,13 +619,6 @@ export default function DashboardCanais() {
             />
           </div>
 
-          {/* Bloco: Pedidos em Aberto (SAP) & Ritmo de Compra por Cliente */}
-          <PedidosAbertosWidget
-            stats={pedidosAbertosStats}
-            loading={loading || pedidosLoading}
-            canalContext={true}
-          />
-
           {/* Indicador de Metas Consolidadas (Canal, Deploy, Inside) */}
           <MetasIndicador
             filterMes={filters.mes?.[0] || null}
@@ -797,8 +769,8 @@ export default function DashboardCanais() {
                   size="sm"
                   className="text-[#0B6E99] hover:text-[#084F6E] hover:bg-cyan-50 font-bold gap-1 text-xs h-8"
                 >
-                  <Link to="/vendas">
-                    Abrir em Vendas
+                  <Link to="/dashboard/geral">
+                    Abrir na Visão Geral
                     <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                 </Button>

@@ -50,9 +50,12 @@ import {
 import FilterBar from '@/components/FilterBar'
 import ChartCard from '@/components/ChartCard'
 import { MetasIndicador } from '@/components/MetasIndicador'
-import PedidosAbertosWidget from '@/components/PedidosAbertosWidget'
-import { fetchPedidosAbertosStats } from '@/services/pedidosAbertos'
-import type { PedidosAbertosStatsResult } from '@/types/sales'
+import type { VendaConsolidada } from '@/types/sales'
+import { fetchVendasList } from '@/services/sales'
+import { useTableSort } from '@/hooks/use-table-sort'
+import { VendasRelatorioTable, RELATORIO_COLUMNS } from '@/components/VendasRelatorioTable'
+import { FileSpreadsheet, Package, FileText, DollarSign } from 'lucide-react'
+import KpiCard from '@/components/KpiCard'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -147,15 +150,26 @@ function MensalGrupoTooltip({ active, payload, label }: MensalGrupoTooltipProps)
   )
 }
 
+const VENDAS_PAGE_SIZE = 20
+type SortField = Extract<keyof VendaConsolidada, string>
+
 export default function DashboardGeral() {
   const [data, setData] = useState<DashboardStatsResult | null>(null)
-  const [pedidosAbertosStats, setPedidosAbertosStats] = useState<PedidosAbertosStatsResult | null>(
-    null,
-  )
-  const [pedidosLoading, setPedidosLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [exportingReport, setExportingReport] = useState(false)
+
+  // Estado do Relatório Consolidado de Vendas (incorporado de /vendas)
+  const [paginatedVendas, setPaginatedVendas] = useState<VendaConsolidada[]>([])
+  const [totalVendasItems, setTotalVendasItems] = useState(0)
+  const [totalNetsales, setTotalNetsales] = useState(0)
+  const [totalRacnew, setTotalRacnew] = useState(0)
+  const [totalVendasPages, setTotalVendasPages] = useState(1)
+  const [vendasLoading, setVendasLoading] = useState(false)
+  const [vendasPage, setVendasPage] = useState(1)
+  const [isAllGroupedNfe, setIsAllGroupedNfe] = useState(false)
+  const [hasMoreVendas, setHasMoreVendas] = useState(false)
+  const sort = useTableSort<SortField>()
 
   const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
@@ -183,25 +197,12 @@ export default function DashboardGeral() {
     setError(null)
 
     try {
-      setPedidosLoading(true)
-      const [res, pedidos] = await Promise.all([
-        fetchDashboardStats(activeFilters as unknown as Record<string, unknown>, {
-          signal: currentController.signal,
-        }),
-        fetchPedidosAbertosStats(activeFilters as unknown as Record<string, unknown>, {
-          signal: currentController.signal,
-        }).catch((pErr) => {
-          console.warn('Erro ao carregar stats de pedidos abertos no Geral:', pErr)
-          return null
-        }),
-      ])
+      const res = await fetchDashboardStats(activeFilters as unknown as Record<string, unknown>, {
+        signal: currentController.signal,
+      })
 
       if (seq !== requestSeqRef.current) {
         return
-      }
-
-      if (pedidos) {
-        setPedidosAbertosStats(pedidos)
       }
 
       // Se ainda não foi inicializado com as opções dinâmicas da base (primeiro acesso sem sessão),
@@ -219,7 +220,6 @@ export default function DashboardGeral() {
 
       setData(res)
       setLoading(false)
-      setPedidosLoading(false)
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
         return
@@ -235,17 +235,64 @@ export default function DashboardGeral() {
     }
   }
 
+  // Carrega listagem de vendas consolidada paginada
+  const loadVendasData = async (
+    activeFilters = filters,
+    targetPage = vendasPage,
+    sortField = sort.field,
+    sortDir = sort.dir,
+    groupedNfe = isAllGroupedNfe,
+  ) => {
+    setVendasLoading(true)
+    try {
+      const res = await fetchVendasList({
+        page: targetPage,
+        perPage: VENDAS_PAGE_SIZE,
+        sortField: sortField || undefined,
+        sortDirection: sortField ? sortDir : undefined,
+        sort: sortField ? undefined : '-data_lancamento',
+        groupByNfe: groupedNfe,
+        filters: activeFilters as unknown as Record<string, unknown>,
+      })
+      setPaginatedVendas(res.items || [])
+      setTotalVendasItems(res.totalItems || 0)
+      setHasMoreVendas(!!res.hasMore)
+      setTotalNetsales(
+        res.totalNetsales !== undefined
+          ? res.totalNetsales
+          : (res.items || []).filter((i) => i.tem_netsales).length,
+      )
+      setTotalRacnew(
+        res.totalRacnew !== undefined
+          ? res.totalRacnew
+          : (res.items || []).filter((i) => !i.tem_netsales).length,
+      )
+      setTotalVendasPages(res.totalPages || 1)
+      return true
+    } catch (err: unknown) {
+      if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
+        return false
+      }
+      console.error('Erro ao carregar relatório de vendas na Visão Geral:', err)
+      return false
+    } finally {
+      setVendasLoading(false)
+    }
+  }
+
   useEffect(() => {
     loadData(filters)
+    loadVendasData(filters, vendasPage, sort.field, sort.dir, isAllGroupedNfe)
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
     }
-  }, [filters])
+  }, [filters, vendasPage, sort.field, sort.dir, isAllGroupedNfe])
 
   useRealtime('vendas', () => {
     loadData()
+    loadVendasData()
   })
 
   const filterOptions = useMemo(() => {
@@ -604,6 +651,29 @@ export default function DashboardGeral() {
     })
   }, [chartVendasPorGrupoItemMensal])
 
+  const handleSort = (field: SortField) => {
+    sort.toggle(field)
+    setVendasPage(1)
+  }
+
+  const handleCollapseAll = () => {
+    if (isAllGroupedNfe) {
+      setIsAllGroupedNfe(false)
+      setVendasPage(1)
+      toast({
+        title: 'Relatório expandido',
+        description: 'Exibindo todos os itens detalhados de cada Nota Fiscal.',
+      })
+    } else {
+      setIsAllGroupedNfe(true)
+      setVendasPage(1)
+      toast({
+        title: 'Relatório colapsado por NF',
+        description: 'Exibindo 1 linha consolidada por Nota Fiscal para todos os dados do filtro.',
+      })
+    }
+  }
+
   const handleClearFilters = () => {
     const cleared: FilterState = {
       base: 'ambos',
@@ -626,6 +696,7 @@ export default function DashboardGeral() {
       tipoDevolucao: '',
     }
     setFilters(cleared)
+    setVendasPage(1)
   }
 
   // Exportação de relatórios respeitando filtros ativos
@@ -1514,9 +1585,6 @@ export default function DashboardGeral() {
             </ChartCard>
           </div>
 
-          {/* Bloco: Pedidos em Aberto (SAP) & Ritmo de Compra por Cliente */}
-          <PedidosAbertosWidget stats={pedidosAbertosStats} loading={loading || pedidosLoading} />
-
           {/* Linha 4.5: Indicador de Metas Consolidadas (Canal, Deploy, Inside) */}
           <MetasIndicador
             filterMes={filters.mes?.[0] || null}
@@ -1790,6 +1858,94 @@ export default function DashboardGeral() {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Seção: Relatório Consolidado de Vendas (incorporado de Vendas) */}
+          <div className="space-y-4 pt-4 border-t border-slate-200">
+            {/* 5 KPIs do Relatório de Vendas */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+              <KpiCard
+                title="Faturamento Total"
+                value={data?.kpis?.faturamento || 0}
+                isCurrency
+                icon={DollarSign}
+                iconBgColor="bg-cyan-50"
+                iconColor="text-[#0B6E99]"
+              />
+              <KpiCard
+                title="Valor Líquido"
+                value={data?.kpis?.valorLiquido || 0}
+                isCurrency
+                icon={TrendingUp}
+                iconBgColor="bg-teal-50"
+                iconColor="text-teal-600"
+              />
+              <KpiCard
+                title="Itens Vendidos"
+                value={data?.kpis?.itensVendidos || 0}
+                decimals={0}
+                icon={Package}
+                iconBgColor="bg-cyan-50"
+                iconColor="text-cyan-600"
+              />
+              <KpiCard
+                title="Documentos (NFe)"
+                value={data?.kpis?.documentos || 0}
+                decimals={0}
+                icon={FileText}
+                iconBgColor="bg-slate-100"
+                iconColor="text-slate-700"
+              />
+              <KpiCard
+                title="Devoluções"
+                value={data?.kpis?.devolucoes || 0}
+                isCurrency
+                icon={RotateCcw}
+                iconBgColor="bg-rose-50"
+                iconColor="text-rose-600"
+              />
+            </div>
+
+            {/* Tabela do Relatório Consolidado de Vendas */}
+            <Card className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0 max-w-full">
+              <CardHeader className="border-b border-slate-100 pb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                      <FileSpreadsheet className="w-5 h-5 text-[#0B6E99]" />
+                      Relatório Consolidado de Vendas (RacNew + NetSales + Produtos)
+                    </CardTitle>
+                    <CardDescription className="text-xs text-slate-500 font-medium">
+                      {totalVendasItems} {hasMoreVendas ? '+' : ''} linhas encontradas • Base mestre
+                      RacNew com enriquecimento NetSales • Ordenação server-side ativa
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+
+              <VendasRelatorioTable
+                items={paginatedVendas}
+                loading={vendasLoading}
+                totalItems={totalVendasItems}
+                totalNetsales={totalNetsales}
+                totalRacnew={totalRacnew}
+                page={vendasPage}
+                pageSize={VENDAS_PAGE_SIZE}
+                totalPages={totalVendasPages}
+                onPageChange={setVendasPage}
+                sortField={sort.field}
+                sortDir={sort.dir}
+                onSort={(f) => handleSort(f as SortField)}
+                isGroupedByNfe={isAllGroupedNfe}
+                onToggleGroupByNfe={handleCollapseAll}
+                storageKeyPrefix="relatorio_vendas"
+                exporting={exportingReport}
+                onExport={(forceGrouped) =>
+                  handleExportReport(forceGrouped !== undefined ? forceGrouped : isAllGroupedNfe)
+                }
+                showOriginSummary={true}
+              />
+            </Card>
           </div>
         </div>
       )}
