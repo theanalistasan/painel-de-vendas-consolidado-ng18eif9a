@@ -1,13 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import PocketBase from 'pocketbase'
+import pb from '@/lib/pocketbase/client'
 
 describe('Consolidação e Endpoints de Vendas/Pedidos Abertos', () => {
   it('deve logar, consolidar vendas e consultar listas e stats sem Scan error', async () => {
-    const pb = new PocketBase(
-      process.env.VITE_POCKETBASE_URL ||
-        'https://painel-de-vendas-consolidado-41ef1.shrd00.internal.goskip.dev',
-    )
-
     // Login com usuário provisionado
     const authData = await pb
       .collection('users')
@@ -114,5 +109,14 @@ describe('Consolidação e Endpoints de Vendas/Pedidos Abertos', () => {
       expect(typeof resPaStats.rankingClientes[0].venda_realizada).toBe('number')
       expect(typeof resPaStats.rankingClientes[0].valor_em_aberto).toBe('number')
     }
-  }, 90000)
+
+    // 6. Testar dashboard/stats (visão geral e vendas)
+    const resDashStats = await pb.send<{
+      kpis?: Record<string, unknown>
+    }>('/backend/v1/dashboard/stats', {
+      method: 'POST',
+      body: { filters: { base: 'ambos' } },
+    })
+    console.log('dashboard/stats resposta ok:', !!resDashStats)
+  }, 120000)
 })
