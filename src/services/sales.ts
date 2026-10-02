@@ -77,6 +77,18 @@ export async function consolidarVendasApi(): Promise<ConsolidarResult> {
   })
 }
 
+export async function reconstruirResumosApi(): Promise<
+  import('../types/sales').ReconstruirResumosResult
+> {
+  return pb.send<import('../types/sales').ReconstruirResumosResult>(
+    '/backend/v1/vendas/reconstruir-resumos',
+    {
+      method: 'POST',
+      body: {},
+    },
+  )
+}
+
 export interface ResetBasesResult {
   success: boolean
   alreadyEmpty: boolean

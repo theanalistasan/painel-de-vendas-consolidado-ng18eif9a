@@ -263,6 +263,20 @@ export interface ConsolidarResult {
   success: boolean
   total_consolidado: number
   data_carga: string
+  durationMs?: number
+  resumos_pendentes?: boolean
+  message?: string
+  stage?: string
+  error?: string
+}
+
+export interface ReconstruirResumosResult {
+  success: boolean
+  message: string
+  durationMs: number
+  data_carga: string
+  error?: string
+  stage?: string
 }
 
 export interface CanalMeta {

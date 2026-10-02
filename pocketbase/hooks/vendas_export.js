@@ -482,7 +482,30 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
     $app
       .db()
       .newQuery(
-        'SELECT id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe, data_lancamento, ultima_data_vencimento, docto_origem_destino, data_origem_destino, condicao_pagamento, codigo_cliente, nome_cliente, numero_linha, codigo_item, descricao_item, quantidade, qty_kg_lt, preco_item, desconto_linha, icms, pis, cofins, ipi, icms_partilha, total_linha, utilizacao, nome_vendedor, custo_item, nome_filial, conta, estado, cidade, grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam, numero_documento_netsales, preco_unitario, total_nf_sem_frete, total_nf_novo, valor_liquido, custo_total, classificacao, vendedor_revenda, grupo_item, vendedor_cliente, origem, tem_racnew, tem_netsales, data_carga, created, updated ' +
+        'SELECT id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe, data_lancamento, ultima_data_vencimento, docto_origem_destino, data_origem_destino, condicao_pagamento, codigo_cliente, nome_cliente, ' +
+          'CAST(COALESCE(numero_linha, 0) AS INTEGER) AS numero_linha, codigo_item, descricao_item, ' +
+          'CAST(COALESCE(quantidade, 0.0) AS REAL) AS quantidade, ' +
+          'CAST(COALESCE(qty_kg_lt, 0.0) AS REAL) AS qty_kg_lt, ' +
+          'CAST(COALESCE(preco_item, 0.0) AS REAL) AS preco_item, ' +
+          'CAST(COALESCE(desconto_linha, 0.0) AS REAL) AS desconto_linha, ' +
+          'CAST(COALESCE(icms, 0.0) AS REAL) AS icms, ' +
+          'CAST(COALESCE(pis, 0.0) AS REAL) AS pis, ' +
+          'CAST(COALESCE(cofins, 0.0) AS REAL) AS cofins, ' +
+          'CAST(COALESCE(ipi, 0.0) AS REAL) AS ipi, ' +
+          'CAST(COALESCE(icms_partilha, 0.0) AS REAL) AS icms_partilha, ' +
+          'CAST(COALESCE(total_linha, 0.0) AS REAL) AS total_linha, ' +
+          'utilizacao, nome_vendedor, ' +
+          'CAST(COALESCE(custo_item, 0.0) AS REAL) AS custo_item, ' +
+          'nome_filial, conta, estado, cidade, grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam, numero_documento_netsales, ' +
+          'CAST(COALESCE(preco_unitario, 0.0) AS REAL) AS preco_unitario, ' +
+          'CAST(COALESCE(total_nf_sem_frete, 0.0) AS REAL) AS total_nf_sem_frete, ' +
+          'CAST(COALESCE(total_nf_novo, 0.0) AS REAL) AS total_nf_novo, ' +
+          'CAST(COALESCE(valor_liquido, 0.0) AS REAL) AS valor_liquido, ' +
+          'CAST(COALESCE(custo_total, 0.0) AS REAL) AS custo_total, ' +
+          'classificacao, vendedor_revenda, grupo_item, vendedor_cliente, origem, ' +
+          'CAST(COALESCE(tem_racnew, 0) AS INTEGER) AS tem_racnew, ' +
+          'CAST(COALESCE(tem_netsales, 0) AS INTEGER) AS tem_netsales, ' +
+          'data_carga, created, updated ' +
           'FROM vendas WHERE ' +
           sqlWhere +
           ' ORDER BY ' +

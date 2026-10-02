@@ -19,6 +19,7 @@ import {
   importNetSalesApi,
   importCanaisClientesApi,
   consolidarVendasApi,
+  reconstruirResumosApi,
   getCountsSummary,
 } from '@/services/sales'
 import { importPedidosAbertosApi } from '@/services/pedidosAbertos'
@@ -629,7 +630,9 @@ export default function Importar() {
     ultimaCarga: null as string | null,
   })
   const [consolidating, setConsolidating] = useState(false)
+  const [rebuildingSummaries, setRebuildingSummaries] = useState(false)
   const [consolidationResult, setConsolidationResult] = useState<ConsolidarResult | null>(null)
+  const [consolidationError, setConsolidationError] = useState<string | null>(null)
   // Resultado de cada importação armazenado separadamente por base
   const [importResults, setImportResults] = useState<{
     produtos?: ImportResult
@@ -657,17 +660,50 @@ export default function Importar() {
 
   const handleConsolidar = async () => {
     setConsolidating(true)
+    setConsolidationError(null)
     try {
+      // Etapa 1: Carga em massa na tabela vendas
       const res = await consolidarVendasApi()
       setConsolidationResult(res)
       await refreshCounts()
 
       toast({
-        title: 'Consolidação finalizada com sucesso!',
-        description: `${res.total_consolidado} vendas consolidadas na base mestre.`,
+        title: 'Carga de Vendas Concluída!',
+        description: `${res.total_consolidado} vendas consolidadas. Reconstruindo resumos analíticos...`,
       })
+
+      // Etapa 2: Reconstrução dos 3 resumos pré-calculados
+      setRebuildingSummaries(true)
+      try {
+        const resumoRes = await reconstruirResumosApi()
+        toast({
+          title: 'Consolidação e Resumos Finalizados!',
+          description: `${res.total_consolidado} vendas consolidadas e resumos mensais atualizados (${resumoRes.durationMs}ms).`,
+        })
+      } catch (resumoErr: unknown) {
+        const resumoMsg =
+          (resumoErr as { response?: { error?: string } })?.response?.error ||
+          (resumoErr as Error)?.message ||
+          'Falha na reconstrução de resumos'
+        console.error('Erro na etapa de reconstrução de resumos:', resumoErr)
+        setConsolidationError(
+          `Carga concluída (${res.total_consolidado} registros), porém a reconstrução de resumos falhou: ${resumoMsg}`,
+        )
+        toast({
+          variant: 'destructive',
+          title: 'Aviso: Resumos Pendentes',
+          description: `Vendas gravadas com sucesso, mas resumos falharam: ${resumoMsg}`,
+        })
+      } finally {
+        setRebuildingSummaries(false)
+      }
     } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : 'Falha na consolidação'
+      const errorMsg =
+        (err as { response?: { error?: string } })?.response?.error ||
+        (err as Error)?.message ||
+        'Falha na consolidação de vendas'
+      console.error('Erro na consolidação:', err)
+      setConsolidationError(errorMsg)
       toast({
         variant: 'destructive',
         title: 'Erro na consolidação',
@@ -675,6 +711,31 @@ export default function Importar() {
       })
     } finally {
       setConsolidating(false)
+    }
+  }
+
+  const handleReconstruirResumosApenas = async () => {
+    setRebuildingSummaries(true)
+    setConsolidationError(null)
+    try {
+      const resumoRes = await reconstruirResumosApi()
+      toast({
+        title: 'Resumos Reconstruídos!',
+        description: `Tabelas analíticas de resumo atualizadas com sucesso (${resumoRes.durationMs}ms).`,
+      })
+    } catch (err: unknown) {
+      const errorMsg =
+        (err as { response?: { error?: string } })?.response?.error ||
+        (err as Error)?.message ||
+        'Falha na reconstrução de resumos'
+      setConsolidationError(errorMsg)
+      toast({
+        variant: 'destructive',
+        title: 'Erro na reconstrução de resumos',
+        description: errorMsg,
+      })
+    } finally {
+      setRebuildingSummaries(false)
     }
   }
 
@@ -726,13 +787,18 @@ export default function Importar() {
               <Button
                 size="lg"
                 onClick={handleConsolidar}
-                disabled={consolidating}
+                disabled={consolidating || rebuildingSummaries}
                 className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold px-6 py-6 rounded-xl shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-2"
               >
                 {consolidating ? (
                   <>
                     <RotateCw className="w-5 h-5 animate-spin" />
-                    Consolidando bases...
+                    Consolidando Vendas...
+                  </>
+                ) : rebuildingSummaries ? (
+                  <>
+                    <RotateCw className="w-5 h-5 animate-spin" />
+                    Reconstruindo Resumos...
                   </>
                 ) : (
                   <>
@@ -741,8 +807,41 @@ export default function Importar() {
                   </>
                 )}
               </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleReconstruirResumosApenas}
+                disabled={consolidating || rebuildingSummaries}
+                className="border-indigo-400/40 text-indigo-200 hover:bg-indigo-800/40 hover:text-white text-xs h-12 px-4 rounded-xl"
+                title="Reconstrói apenas as tabelas analíticas pré-calculadas a partir da base consolidada existente"
+              >
+                {rebuildingSummaries ? (
+                  <>
+                    <RotateCw className="w-4 h-4 animate-spin mr-1.5" />
+                    Reconstruindo...
+                  </>
+                ) : (
+                  <>
+                    <RotateCw className="w-4 h-4 mr-1.5" />
+                    Reconstruir Resumos
+                  </>
+                )}
+              </Button>
             </div>
           </div>
+
+          {/* Mensagem de Erro Real do Backend */}
+          {consolidationError && (
+            <div className="mt-4 p-4 rounded-lg bg-red-950/80 border border-red-500/60 text-red-200 text-xs sm:text-sm flex items-start gap-3">
+              <span className="font-bold text-red-400 shrink-0 uppercase tracking-wide text-[11px] bg-red-900/80 px-2 py-0.5 rounded border border-red-700">
+                Erro Backend
+              </span>
+              <p className="flex-1 font-mono text-xs break-all leading-relaxed">
+                {consolidationError}
+              </p>
+            </div>
+          )}
 
           {/* Counts metrics bar */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-6 border-t border-slate-800/80">
