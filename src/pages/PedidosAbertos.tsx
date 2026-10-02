@@ -693,7 +693,11 @@ export default function PedidosAbertos() {
           - Pedidos com Itens em Estoque vs. Sem Estoque
           - Valor por Canal com destaque para Revendas sem canal
           - Pedidos Abertos por Mês cronológico */}
-      <PedidosAbertosDashboard pedidos={dashboardPedidos} isLoading={loading || statsLoading} />
+      <PedidosAbertosDashboard
+        pedidos={dashboardPedidos}
+        isLoading={loading || statsLoading}
+        filters={filters}
+      />
 
       {/* 4 KPIs de Pedidos em Aberto */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

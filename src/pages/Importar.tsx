@@ -23,6 +23,7 @@ import {
   getCountsSummary,
 } from '@/services/sales'
 import { importPedidosAbertosApi } from '@/services/pedidosAbertos'
+import { importEstoqueSapApi } from '@/services/estoqueFaltante'
 import { logAudit } from '@/services/audit'
 import { parseCSV, parseXLSX, formatNumber, formatDateTime } from '@/lib/formatters'
 import type { ImportResult, ConsolidarResult } from '@/types/sales'
@@ -53,7 +54,13 @@ interface BatchResult {
   totalBatches: number
 }
 
-type BaseKey = 'produtos' | 'racnew' | 'netsales' | 'canais_clientes' | 'pedidos_abertos'
+type BaseKey =
+  | 'produtos'
+  | 'racnew'
+  | 'netsales'
+  | 'canais_clientes'
+  | 'pedidos_abertos'
+  | 'estoque_sap'
 
 interface CardImportProps {
   title: string
@@ -627,6 +634,7 @@ export default function Importar() {
     vendas: 0,
     canais_clientes: 0,
     pedidos_abertos: 0,
+    estoque_sap: 0,
     ultimaCarga: null as string | null,
   })
   const [consolidating, setConsolidating] = useState(false)
@@ -640,6 +648,7 @@ export default function Importar() {
     netsales?: ImportResult
     canais_clientes?: ImportResult
     pedidos_abertos?: ImportResult
+    estoque_sap?: ImportResult
   }>({})
   const { toast } = useToast()
 
@@ -749,6 +758,11 @@ export default function Importar() {
         'pedidos_abertos_import',
         `Importação SAP: ${result.importados ?? 0} novos, ${result.atualizados ?? 0} atualizados, ${result.ignorados ?? 0} ignorados`,
       )
+    } else if (base === 'estoque_sap') {
+      logAudit(
+        'estoque_sap_import',
+        `Posição de Estoque (SAP): ${result.importados ?? 0} novos, ${result.atualizados ?? 0} atualizados, ${result.mesclados ?? 0} mesclados, ${result.ignorados ?? 0} ignorados`,
+      )
     }
   }
 
@@ -758,6 +772,7 @@ export default function Importar() {
     { base: 'netsales', label: 'NetSales', color: 'text-teal-700' },
     { base: 'canais_clientes', label: 'Canais x Clientes', color: 'text-sky-700' },
     { base: 'pedidos_abertos', label: 'Pedidos em Aberto', color: 'text-amber-700' },
+    { base: 'estoque_sap', label: 'Posição Estoque (SAP)', color: 'text-emerald-700' },
   ]
   const hasAnyImportResult = Object.values(importResults).some((r) => r)
 
@@ -844,7 +859,7 @@ export default function Importar() {
           )}
 
           {/* Counts metrics bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-6 pt-6 border-t border-slate-800/80">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mt-6 pt-6 border-t border-slate-800/80">
             <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/50">
               <span className="text-[11px] text-slate-400 block font-medium">
                 Produtos Cadastrados
@@ -883,6 +898,14 @@ export default function Importar() {
                 {formatNumber(counts.pedidos_abertos ?? 0)}
               </span>
             </div>
+            <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/50">
+              <span className="text-[11px] text-emerald-300 block font-medium">
+                Posição Estoque (SAP)
+              </span>
+              <span className="text-lg font-bold text-emerald-200 tabular-nums">
+                {formatNumber(counts.estoque_sap ?? 0)}
+              </span>
+            </div>
             <div className="bg-indigo-950/80 p-3 rounded-lg border border-indigo-700/50">
               <span className="text-[11px] text-indigo-300 block font-semibold">
                 Vendas Consolidadas
@@ -902,8 +925,8 @@ export default function Importar() {
         </CardContent>
       </Card>
 
-      {/* 5 Import Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+      {/* 6 Import Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
         {/* Card 1: Produtos */}
         <BaseImportCard
           title="Produtos"
@@ -1045,6 +1068,24 @@ export default function Importar() {
           baseCount={counts.pedidos_abertos ?? 0}
           onImported={(r) => handleImported('pedidos_abertos', r)}
         />
+
+        {/* Card 6: Posição de Estoque (SAP) */}
+        <BaseImportCard
+          title="Posição de Estoque (SAP)"
+          subtitle="Saldo físico atual e em trânsito por item (chave única: Código do Item)"
+          badgeLabel="Estoque SAP"
+          badgeColor="bg-emerald-600"
+          expectedColumns={[
+            'Código do Item',
+            'Quantidade em Estoque',
+            'Em Trânsito',
+            'Descrição do Item (opcional)',
+            'Grupo do Item (opcional)',
+          ]}
+          onImport={(rows) => importEstoqueSapApi(rows)}
+          baseCount={counts.estoque_sap ?? 0}
+          onImported={(r) => handleImported('estoque_sap', r)}
+        />
       </div>
 
       {/* Resumo final por base — cada base mantém seu próprio resultado */}
@@ -1072,7 +1113,9 @@ export default function Importar() {
                         ? counts.netsales
                         : base === 'canais_clientes'
                           ? (counts.canais_clientes ?? 0)
-                          : (counts.pedidos_abertos ?? 0)
+                          : base === 'pedidos_abertos'
+                            ? (counts.pedidos_abertos ?? 0)
+                            : (counts.estoque_sap ?? 0)
                 return (
                   <div
                     key={base}

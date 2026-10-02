@@ -123,6 +123,7 @@ export interface CountsSummary {
   vendas: number
   canais_clientes: number
   pedidos_abertos: number
+  estoque_sap: number
   ultimaCarga: string | null
 }
 
@@ -140,6 +141,7 @@ export async function getCountsSummary(): Promise<CountsSummary> {
       vendas: number
       canais_clientes?: number
       pedidos_abertos?: number
+      estoque_sap?: number
       ultimaCarga: string
     }>('/backend/v1/stats/counts', {
       method: 'GET',
@@ -173,6 +175,7 @@ export async function getCountsSummary(): Promise<CountsSummary> {
     vendas: data.vendas ?? 0,
     canais_clientes: (data as unknown as Record<string, number>).canais_clientes ?? 0,
     pedidos_abertos: (data as unknown as Record<string, number>).pedidos_abertos ?? 0,
+    estoque_sap: (data as unknown as Record<string, number>).estoque_sap ?? 0,
     ultimaCarga: data.ultimaCarga || null,
   }
 }

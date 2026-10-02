@@ -25,6 +25,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   import_access: 'Acesso Importar',
   pedidos_abertos_view: 'Acesso Pedidos em Aberto',
   pedidos_abertos_import: 'Importação Pedidos SAP',
+  estoque_sap_import: 'Importação Estoque SAP',
 }
 
 const ACTION_BADGE: Record<AuditAction, string> = {
@@ -34,6 +35,7 @@ const ACTION_BADGE: Record<AuditAction, string> = {
   import_access: 'bg-blue-100 text-blue-700 hover:bg-blue-100',
   pedidos_abertos_view: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
   pedidos_abertos_import: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
+  estoque_sap_import: 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100',
 }
 
 export default function Auditoria() {
@@ -190,6 +192,7 @@ export default function Auditoria() {
                   <SelectItem value="import_access">Acesso Importar</SelectItem>
                   <SelectItem value="pedidos_abertos_view">Acesso Pedidos em Aberto</SelectItem>
                   <SelectItem value="pedidos_abertos_import">Importação Pedidos SAP</SelectItem>
+                  <SelectItem value="estoque_sap_import">Importação Estoque SAP</SelectItem>
                 </SelectContent>
               </Select>
             </div>

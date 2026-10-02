@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-02T11:37:19.081Z",
+  "generatedAt": "2026-10-02T14:41:24.856Z",
   "collections": [
     {
       "name": "users",
@@ -1486,6 +1486,79 @@
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_sync_state_chave ON canais_sync_state (chave)"]
+    },
+    {
+      "name": "estoque_sap",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "codigo_item",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "descricao_item",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "grupo_item",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "quantidade_estoque",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "em_transito",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "deposito",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_carga",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_estoque_sap_codigo_item ON estoque_sap (codigo_item)",
+        "CREATE INDEX idx_estoque_sap_data_carga ON estoque_sap (data_carga)"
+      ]
     }
   ]
 }

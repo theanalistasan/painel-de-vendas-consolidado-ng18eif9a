@@ -22,9 +22,12 @@ import {
 } from 'recharts'
 import type { PedidoAberto } from '@/types/sales'
 import { formatCurrency, formatNumber } from '@/lib/formatters'
+import { useNavigate } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import ChartCard from '@/components/ChartCard'
+import type { PedidosAbertosFilters } from '@/components/PedidosAbertosFilterBar'
 
 const ROLAND_BLUE = '#0B6E99'
 const TEAL_ACCENT = '#0D9488'
@@ -34,6 +37,7 @@ const SLATE_MUTED = '#64748B'
 interface PedidosAbertosDashboardProps {
   pedidos: PedidoAberto[]
   isLoading?: boolean
+  filters?: PedidosAbertosFilters
 }
 
 interface CanalChartItem {
@@ -56,7 +60,30 @@ interface MesChartItem {
 export default function PedidosAbertosDashboard({
   pedidos,
   isLoading = false,
+  filters,
 }: PedidosAbertosDashboardProps) {
+  const navigate = useNavigate()
+
+  const handleConsultarEstoqueFaltante = () => {
+    const params = new URLSearchParams()
+    if (filters?.canal && filters.canal.length > 0) {
+      params.set('canal', filters.canal.join(','))
+    }
+    if (filters?.canalClientes && filters.canalClientes.length > 0) {
+      params.set('canalClientes', filters.canalClientes.join(','))
+    }
+    if (filters?.deploy && filters.deploy.length > 0) {
+      params.set('deploy', filters.deploy.join(','))
+    }
+    if (filters?.inside && filters.inside.length > 0) {
+      params.set('inside', filters.inside.join(','))
+    }
+    if (filters?.ehCanal !== undefined && filters.ehCanal !== null && filters.ehCanal !== '') {
+      params.set('ehCanal', String(filters.ehCanal))
+    }
+    const qs = params.toString()
+    navigate(qs ? `/estoque-faltante?${qs}` : '/estoque-faltante')
+  }
   // 1. Agrupamento por Nº Pedido e cálculo das visões de Estoque
   const estoqueStats = useMemo(() => {
     // Mapa: numero_pedido -> { valorTotal: number, hasEstoque: boolean, itemsCount: number }
@@ -480,6 +507,19 @@ export default function PedidosAbertosDashboard({
                   }}
                 />
               </div>
+            </div>
+
+            {/* Botão Consultar Estoque Faltante */}
+            <div className="mt-3 pt-2 border-t border-amber-100/60 flex items-center justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleConsultarEstoqueFaltante}
+                className="border-amber-300 text-amber-900 hover:bg-amber-100/80 hover:text-amber-950 font-bold text-xs h-8 px-3 gap-1.5 shadow-2xs"
+              >
+                <PackageX className="w-3.5 h-3.5 text-amber-700" />
+                Consultar Estoque Faltante
+              </Button>
             </div>
           </CardContent>
         </Card>

@@ -3,7 +3,15 @@
 // usando $app.countRecords (contagem autoritativa do banco, sem cache
 // nem dependência de paginação do cliente).
 routerAdd('GET', '/backend/v1/stats/counts', (e) => {
-  const names = ['produtos', 'racnew', 'netsales', 'vendas', 'canais_clientes', 'pedidos_abertos']
+  const names = [
+    'produtos',
+    'racnew',
+    'netsales',
+    'vendas',
+    'canais_clientes',
+    'pedidos_abertos',
+    'estoque_sap',
+  ]
   const counts = {}
 
   for (let i = 0; i < names.length; i++) {
@@ -45,6 +53,7 @@ routerAdd('GET', '/backend/v1/stats/counts', (e) => {
     vendas: counts.vendas || 0,
     canais_clientes: counts.canais_clientes || 0,
     pedidos_abertos: counts.pedidos_abertos || 0,
+    estoque_sap: counts.estoque_sap || 0,
     ultimaCarga: ultimaCarga,
   }
 

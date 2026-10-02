@@ -19,6 +19,7 @@ import {
   LayoutGrid,
   Network,
   ClipboardList,
+  AlertTriangle,
 } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { Button } from '@/components/ui/button'
@@ -46,11 +47,14 @@ export default function Layout() {
   const navigate = useNavigate()
 
   const isVendasGroupActive =
-    location.pathname === '/vendas' || location.pathname === '/pedidos-abertos'
+    location.pathname === '/vendas' ||
+    location.pathname === '/pedidos-abertos' ||
+    location.pathname === '/estoque-faltante'
   const isVendasActive = location.pathname === '/vendas'
   const isPedidosAbertosActive = location.pathname === '/pedidos-abertos'
+  const isEstoqueFaltanteActive = location.pathname === '/estoque-faltante'
 
-  // O grupo Vendas inicia aberto se a rota inicial for /vendas ou /pedidos-abertos (ou por padrão true)
+  // O grupo Vendas inicia aberto se a rota inicial for /vendas ou /pedidos-abertos ou /estoque-faltante (ou por padrão true)
   const [vendasOpen, setVendasOpen] = useState<boolean>(() => isVendasGroupActive || true)
 
   const isDashboardActive =
@@ -189,6 +193,8 @@ export default function Layout() {
         return 'Relatório Consolidado de Vendas'
       case '/pedidos-abertos':
         return 'Relatório de Pedidos em Aberto (SAP)'
+      case '/estoque-faltante':
+        return 'Estoque Faltante & MRP (SAP)'
       case '/canais':
         return 'Manutenção de Canais'
       case '/importar':
@@ -378,7 +384,7 @@ export default function Layout() {
                     'group flex items-center justify-between rounded-full text-sm font-medium transition-all duration-200 pl-3.5 pr-2 py-1.5',
                     isVendasActive
                       ? 'bg-[#0B6E99] text-white font-bold shadow-sm'
-                      : isPedidosAbertosActive
+                      : isPedidosAbertosActive || isEstoqueFaltanteActive
                         ? 'bg-slate-800/90 text-white font-semibold'
                         : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
                   )}
@@ -389,7 +395,7 @@ export default function Layout() {
                         'w-4 h-4 shrink-0',
                         isVendasActive
                           ? 'text-white'
-                          : isPedidosAbertosActive
+                          : isPedidosAbertosActive || isEstoqueFaltanteActive
                             ? 'text-[#0B6E99]'
                             : 'text-slate-400 group-hover:text-white',
                       )}
@@ -435,6 +441,19 @@ export default function Layout() {
                     >
                       <ClipboardList className="w-3.5 h-3.5 shrink-0" />
                       <span className="truncate">Pedidos em Aberto</span>
+                    </NavLink>
+
+                    <NavLink
+                      to="/estoque-faltante"
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
+                        isEstoqueFaltanteActive
+                          ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+                      )}
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Estoque Faltante</span>
                     </NavLink>
                   </div>
                 )}
@@ -635,7 +654,7 @@ export default function Layout() {
                     'flex items-center justify-between px-3.5 py-1.5 rounded-full text-sm font-medium transition-all',
                     isVendasActive
                       ? 'bg-[#0B6E99] text-white font-bold'
-                      : isPedidosAbertosActive
+                      : isPedidosAbertosActive || isEstoqueFaltanteActive
                         ? 'bg-slate-800 text-white font-semibold'
                         : 'text-slate-400 hover:text-white hover:bg-slate-800',
                   )}
@@ -650,7 +669,7 @@ export default function Layout() {
                         'w-4 h-4',
                         isVendasActive
                           ? 'text-white'
-                          : isPedidosAbertosActive
+                          : isPedidosAbertosActive || isEstoqueFaltanteActive
                             ? 'text-[#0B6E99]'
                             : 'text-slate-400',
                       )}
@@ -696,6 +715,20 @@ export default function Layout() {
                     >
                       <ClipboardList className="w-3.5 h-3.5 shrink-0" />
                       <span>Pedidos em Aberto</span>
+                    </NavLink>
+
+                    <NavLink
+                      to="/estoque-faltante"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
+                        isEstoqueFaltanteActive
+                          ? 'bg-[#0B6E99] text-white font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                      )}
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Estoque Faltante</span>
                     </NavLink>
                   </div>
                 )}
