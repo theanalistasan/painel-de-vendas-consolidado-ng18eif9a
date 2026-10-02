@@ -32,6 +32,7 @@ import PedidosAbertosFilterBar, {
   EMPTY_PEDIDOS_ABERTOS_FILTERS,
 } from '@/components/PedidosAbertosFilterBar'
 import KpiCard from '@/components/KpiCard'
+import PedidosAbertosDashboard from '@/components/PedidosAbertosDashboard'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -91,6 +92,7 @@ interface CanalGroup {
 export default function PedidosAbertos() {
   const [paginatedPedidos, setPaginatedPedidos] = useState<PedidoAberto[]>([])
   const [allFilteredPedidos, setAllFilteredPedidos] = useState<PedidoAberto[]>([])
+  const [dashboardPedidos, setDashboardPedidos] = useState<PedidoAberto[]>([])
   const [totalItems, setTotalItems] = useState(0)
   const [totalValor, setTotalValor] = useState(0)
   const [totalQtd, setTotalQtd] = useState(0)
@@ -183,40 +185,30 @@ export default function PedidosAbertos() {
   ) => {
     setLoading(true)
     try {
+      // Sempre carregamos a base completa do recorte (até 2000 registros) para alimentar
+      // com precisão o Dashboard e os agrupamentos por Canal / Cliente / Faturamento
+      const res = await fetchPedidosAbertosList({
+        page: 1,
+        perPage: 2000,
+        sortField: sortField || 'data_pedido',
+        sortDirection: sortDir || 'desc',
+        search: search.trim() || undefined,
+        filters: activeFilters as unknown as Record<string, unknown>,
+      })
+      const items = res.items || []
+      setDashboardPedidos(items)
+      setTotalItems(res.totalItems || items.length)
+      setTotalPages(Math.max(1, Math.ceil((res.totalItems || items.length) / PAGE_SIZE)))
+      setTotalValor(res.totalValor || 0)
+      setTotalQtd(res.totalQtd || 0)
+
       const isGrouped = currentViewMode !== 'detalhado'
       if (isGrouped) {
-        // Carrega base completa (até 1000 registros do recorte) para consolidar por cliente ou canal com totais exatos
-        const res = await fetchPedidosAbertosList({
-          page: 1,
-          perPage: 1000,
-          sortField: sortField || 'data_pedido',
-          sortDirection: sortDir || 'desc',
-          search: search.trim() || undefined,
-          filters: activeFilters as unknown as Record<string, unknown>,
-        })
-        const items = res.items || []
         setAllFilteredPedidos(items)
         setPaginatedPedidos(items.slice((targetPage - 1) * PAGE_SIZE, targetPage * PAGE_SIZE))
-        setTotalItems(res.totalItems || items.length)
-        setTotalPages(Math.max(1, Math.ceil((res.totalItems || items.length) / PAGE_SIZE)))
-        setTotalValor(res.totalValor || 0)
-        setTotalQtd(res.totalQtd || 0)
       } else {
-        const res = await fetchPedidosAbertosList({
-          page: targetPage,
-          perPage: PAGE_SIZE,
-          sortField: sortField || 'data_pedido',
-          sortDirection: sortDir || 'desc',
-          search: search.trim() || undefined,
-          filters: activeFilters as unknown as Record<string, unknown>,
-        })
-
-        setPaginatedPedidos(res.items || [])
         setAllFilteredPedidos([])
-        setTotalItems(res.totalItems || 0)
-        setTotalPages(res.totalPages || 1)
-        setTotalValor(res.totalValor || 0)
-        setTotalQtd(res.totalQtd || 0)
+        setPaginatedPedidos(items.slice((targetPage - 1) * PAGE_SIZE, targetPage * PAGE_SIZE))
       }
       return true
     } catch (err: unknown) {
@@ -696,6 +688,12 @@ export default function PedidosAbertos() {
         loadingMessage="Atualizando carteira de pedidos em aberto..."
         onApplyFilters={handleApplyFilters}
       />
+
+      {/* Dashboard de Pedidos em Aberto:
+          - Pedidos com Itens em Estoque vs. Sem Estoque
+          - Valor por Canal com destaque para Revendas sem canal
+          - Pedidos Abertos por Mês cronológico */}
+      <PedidosAbertosDashboard pedidos={dashboardPedidos} isLoading={loading || statsLoading} />
 
       {/* 4 KPIs de Pedidos em Aberto */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -8,7 +8,7 @@ routerAdd(
   (e) => {
     const body = e.requestInfo().body || {}
     const page = Math.max(1, parseInt(body.page, 10) || 1)
-    const perPage = Math.min(200, Math.max(1, parseInt(body.perPage, 10) || 20))
+    const perPage = Math.min(2000, Math.max(1, parseInt(body.perPage, 10) || 20))
     const offset = (page - 1) * perPage
 
     const sortField = body.sortField || 'data_pedido'
