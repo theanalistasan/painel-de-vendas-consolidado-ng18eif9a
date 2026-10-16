@@ -176,8 +176,21 @@ function MultiSelectDropdown({
           </div>
 
           <div className="max-h-56 overflow-y-auto space-y-0.5">
-            {filteredOptions.length === 0 ? (
-              <p className="p-2 text-center text-slate-400 text-xs">Nenhum resultado</p>
+            {isLoading ? (
+              <div className="p-3 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#0B6E99]" />
+                <span>Carregando opções...</span>
+              </div>
+            ) : filteredOptions.length === 0 ? (
+              <div className="p-2 text-center text-xs">
+                {emptyMessage ? (
+                  <p className="text-amber-700 bg-amber-50 p-2 rounded-md font-medium">
+                    {emptyMessage}
+                  </p>
+                ) : (
+                  <p className="text-slate-400">Nenhum resultado</p>
+                )}
+              </div>
             ) : (
               filteredOptions.map((option) => {
                 const isSelected = selected.includes(option)
@@ -786,6 +799,8 @@ export default function FilterBar({
             onChange={(values) => setLocalFilters((prev) => ({ ...prev, tipoCliente: values }))}
             placeholder="Todos (Atas, Revendas, ...)"
             highlight={(localFilters.tipoCliente || []).length > 0}
+            isLoading={options.isLoadingTipoCliente}
+            emptyMessage="Importe a base de Tipo de Cliente (SAP)"
           />
         </div>
       </div>
