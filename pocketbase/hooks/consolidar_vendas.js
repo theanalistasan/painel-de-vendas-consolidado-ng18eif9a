@@ -117,10 +117,10 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       '  AND n.codigo_cliente = r.codigo_cliente ' +
       '  AND n.codigo_item = r.codigo_item ' +
       'LEFT JOIN produtos p ' +
-      '  ON p.codigo_item = r.codigo_item'
+      '  ON p.codigo_item = r.codigo_item ' +
+      "WHERE UPPER(TRIM(COALESCE(r.codigo_item, ''))) != 'SERVICOS'"
 
     $app.db().newQuery(insertSql).bind({ now: nowIso }).execute()
-
     // 3. Recrear índices essenciais e secundários da tabela vendas
     stage = 'recriar_indices'
     const indexDefinitions = [
@@ -397,6 +397,7 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
           {:now} AS updated
         FROM vendas
         WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
+          AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
         GROUP BY
           substr(data_lancamento, 1, 7),
           CAST(substr(data_lancamento, 1, 4) AS INTEGER),
@@ -440,6 +441,7 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
         WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
           AND codigo_cliente IS NOT NULL AND codigo_cliente != ''
           AND UPPER(TRIM(grupo_item)) IN ('EQUIPAMENTOS', 'PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS')
+          AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
         GROUP BY
           substr(data_lancamento, 1, 7),
           CAST(substr(data_lancamento, 1, 4) AS INTEGER),
@@ -485,6 +487,7 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
           {:now} AS updated
         FROM vendas
         WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
+          AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
         GROUP BY
           CAST(substr(data_lancamento, 1, 4) AS INTEGER),
           CAST(substr(data_lancamento, 6, 2) AS INTEGER),

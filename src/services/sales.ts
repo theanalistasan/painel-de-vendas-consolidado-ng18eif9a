@@ -17,6 +17,7 @@ import type {
 
 export async function fetchProdutos(): Promise<Produto[]> {
   return pb.collection<Produto>('produtos').getFullList({
+    filter: "codigo_item != 'SERVICOS'",
     sort: 'codigo_item',
   })
 }

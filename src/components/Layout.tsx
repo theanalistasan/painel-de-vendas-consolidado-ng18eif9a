@@ -27,6 +27,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { cn } from '@/lib/utils'
 import { isAdminUnlocked } from '@/components/AdminGuard'
 import RolandLogo from '@/components/RolandLogo'
+import { FloatingAiWidget } from '@/components/FloatingAiWidget'
 import { getCountsSummary } from '@/services/sales'
 import { formatDateTime } from '@/lib/formatters'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -829,6 +830,9 @@ export default function Layout() {
         <main className="flex-1 p-4 sm:p-6 lg:p-8 min-w-0 max-w-full overflow-x-hidden">
           <Outlet />
         </main>
+
+        {/* Assistente Inteligente IA Flutuante */}
+        <FloatingAiWidget />
 
         {/* Footer Escuro inspirado na identidade Roland DG Brasil */}
         <footer className="bg-[#0F172A] text-slate-400 border-t border-slate-800 px-4 sm:px-6 lg:px-8 py-4 text-xs">

@@ -213,6 +213,9 @@ routerAdd(
       whereClauses.push('grupo_item IN (' + gruposSql + ')')
     }
 
+    // TAREFA 1: Desabilitar o produto "SERVICOS" em todas as visões
+    whereClauses.push("(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')")
+
     // 4. Busca textual (busca rápida em pedido, cliente, item)
     const search = (body.search || f.search || '').trim()
     if (search) {
@@ -617,6 +620,9 @@ routerAdd(
       paWhereClauses.push('grupo_item IN (' + gruposSql + ')')
       vendasWhereClauses.push('grupo_item IN (' + gruposSql + ')')
     }
+
+    // TAREFA 1: Desabilitar o produto "SERVICOS" em todas as visões
+    paWhereClauses.push("(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')")
 
     // Busca
     if (f.search && String(f.search).trim()) {

@@ -42,6 +42,7 @@ routerAdd(
     const whereClauses = [
       "(em_estoque = 0 OR em_estoque IS NULL OR em_estoque = '')",
       'qtd_aberto > 0',
+      "(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')",
     ]
 
     // Filtro por trânsito se especificado
@@ -454,6 +455,7 @@ routerAdd(
     const whereClauses = [
       "(em_estoque = 0 OR em_estoque IS NULL OR em_estoque = '')",
       'qtd_aberto > 0',
+      "(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')",
     ]
 
     // Filtros de Canais
@@ -890,6 +892,7 @@ routerAdd(
         "' " +
         "AND (tipo_documento != 'NF de Entrada' OR tipo_documento IS NULL) " +
         "AND codigo_item IS NOT NULL AND TRIM(codigo_item) != '' AND codigo_item != '1' " +
+        "AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS' " +
         'GROUP BY codigo_item ' +
         'ORDER BY COALESCE(SUM(quantidade), 0) DESC LIMIT 20'
 

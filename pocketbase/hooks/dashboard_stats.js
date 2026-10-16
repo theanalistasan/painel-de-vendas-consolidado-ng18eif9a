@@ -171,6 +171,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
               {:now} AS updated
             FROM vendas
             WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
+              AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
             GROUP BY
               substr(data_lancamento, 1, 7),
               CAST(substr(data_lancamento, 1, 4) AS INTEGER),
@@ -211,6 +212,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
             WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
               AND codigo_cliente IS NOT NULL AND codigo_cliente != ''
               AND UPPER(TRIM(grupo_item)) IN ('EQUIPAMENTOS', 'PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS')
+              AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
             GROUP BY
               substr(data_lancamento, 1, 7),
               CAST(substr(data_lancamento, 1, 4) AS INTEGER),
@@ -253,6 +255,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
               {:now} AS updated
             FROM vendas
             WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
+              AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
             GROUP BY
               CAST(substr(data_lancamento, 1, 4) AS INTEGER),
               CAST(substr(data_lancamento, 6, 2) AS INTEGER),
@@ -531,6 +534,9 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       )
     }
 
+    // TAREFA 1: Desabilitar o produto "SERVICOS" em todas as visões
+    sqlVendasParts.push("(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')")
+
     // Se o filtro incluir busca textual ('search') ou 'dia' específico, precisamos consultar a tabela `vendas` bruta para a busca pontual
     const hasSearchOrDay = !!f.search || diasFilter.length > 0
 
@@ -538,7 +544,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'
     const sqlWhereBase = sqlDimParts.length > 0 ? sqlDimParts.join(' AND ') : '1=1'
     const sqlWhereHistorical = sqlHistParts.length > 0 ? sqlHistParts.join(' AND ') : '1=1'
-    const sqlWhereVendas = sqlVendasParts.length > 0 ? sqlVendasParts.join(' AND ') : '1=1'
+    const sqlWhereVendas = sqlVendasParts.join(' AND ')
 
     // Helper de execução rápida
     const runAgg = (sql) => {

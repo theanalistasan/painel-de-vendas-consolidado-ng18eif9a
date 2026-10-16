@@ -287,7 +287,10 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
       )
     }
 
-    const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'
+    // TAREFA 1: Desabilitar o produto "SERVICOS" em todas as visões
+    sqlParts.push("(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')")
+
+    const sqlWhere = sqlParts.join(' AND ')
 
     const toNum = (v) => {
       const n = parseFloat(v)
