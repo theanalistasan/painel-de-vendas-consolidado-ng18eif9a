@@ -43,7 +43,7 @@ export interface PedidosAbertosFilterBarProps {
 // Reusable MultiSelect Dropdown
 function MultiSelectDropdown({
   label,
-  options,
+  options = [],
   selected,
   onChange,
   placeholder,
@@ -53,7 +53,7 @@ function MultiSelectDropdown({
   emptyMessage,
 }: {
   label: string
-  options: string[]
+  options?: string[]
   selected: string[]
   onChange: (values: string[]) => void
   placeholder: string
