@@ -533,7 +533,7 @@ export default function EstoqueFaltante() {
             {/* Top 20 por Quantidade Aberta */}
             <ChartCard
               title="Top 20 Faltantes por Quantidade Aberta"
-              description="Itens com Em Estoque = 0 mais solicitados em unidades"
+              description="Itens com Em Estoque = 0 mais solicitados (soma de Qtd Aberta em pedidos abertos)"
               icon={Boxes}
               iconColor="text-amber-600"
             >
