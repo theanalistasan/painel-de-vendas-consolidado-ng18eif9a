@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T13:29:31.793Z",
+  "generatedAt": "2026-10-16T14:09:33.831Z",
   "collections": [
     {
       "name": "users",
@@ -1553,6 +1553,66 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "descricao_ingles",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_grupo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_grupo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_subgrupo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_subgrupo",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "item_code",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pedido_venda",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "estoque_liquido",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "custo_item",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultima_venda",
+          "type": "date",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [

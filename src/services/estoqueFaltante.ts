@@ -6,10 +6,20 @@ export interface EstoqueSapItem {
   id: string
   codigo_item: string
   descricao_item?: string
+  descricao_ingles?: string
+  codigo_grupo?: string
+  nome_grupo?: string
   grupo_item?: string
+  codigo_subgrupo?: string
+  nome_subgrupo?: string
+  item_code?: string
+  deposito?: string
   quantidade_estoque: number
   em_transito: number
-  deposito?: string
+  pedido_venda?: number
+  estoque_liquido?: number
+  custo_item?: number
+  ultima_venda?: string
   data_carga?: string
 }
 
@@ -109,14 +119,31 @@ export interface MrpResult {
   }
 }
 
+export interface ImportEstoqueSapOptions {
+  clearBefore?: boolean
+  replace?: boolean
+  batchIndex?: number
+  totalBatches?: number
+  isSubsequentBatch?: boolean
+}
+
 export async function importEstoqueSapApi(
   rows: Record<string, unknown>[],
-  replace = false,
+  options?: ImportEstoqueSapOptions,
 ): Promise<ImportResult> {
+  const isSubsequent =
+    options?.isSubsequentBatch ?? (options?.batchIndex ? options.batchIndex > 0 : false)
   const run = () =>
     pb.send<ImportResult>('/backend/v1/import/estoque-sap', {
       method: 'POST',
-      body: { rows, replace },
+      body: {
+        rows,
+        clearBefore: !isSubsequent,
+        replace: true,
+        batchIndex: options?.batchIndex ?? 0,
+        totalBatches: options?.totalBatches ?? 1,
+        isSubsequentBatch: isSubsequent,
+      },
     })
 
   try {
@@ -198,6 +225,28 @@ export async function fetchEstoqueFaltanteStats(
       }
     }
     throw err
+  }
+}
+
+/**
+ * Busca a data_carga mais recente da coleção estoque_sap.
+ * Faz consulta direta na coleção ordenada por -data_carga.
+ * Retorna string ISO ou null caso a coleção esteja vazia.
+ */
+export async function fetchUltimaCargaEstoqueSap(): Promise<string | null> {
+  try {
+    const records = await pb.collection('estoque_sap').getList(1, 1, {
+      sort: '-data_carga',
+      fields: 'data_carga',
+      requestKey: null,
+    })
+    if (records.items.length > 0 && records.items[0].data_carga) {
+      return records.items[0].data_carga as string
+    }
+    return null
+  } catch (err) {
+    console.warn('Erro ao buscar última data_carga de estoque_sap:', err)
+    return null
   }
 }
 

@@ -125,9 +125,9 @@ export interface CountsSummary {
   pedidos_abertos: number
   estoque_sap: number
   ultimaCarga: string | null
-  ultimaCargaPedidosAbertos: string | null
+  ultimaCargaPedidosAbertos?: string | null
+  ultimaCargaEstoqueSap?: string | null
 }
-
 /**
  * Contagem autoritativa de registros de cada base.
  * Delega para o endpoint backend `/backend/v1/stats/counts`, que usa
@@ -180,6 +180,7 @@ export async function getCountsSummary(): Promise<CountsSummary> {
     estoque_sap: (data as unknown as Record<string, number>).estoque_sap ?? 0,
     ultimaCarga: data.ultimaCarga || null,
     ultimaCargaPedidosAbertos: data.ultimaCargaPedidosAbertos || null,
+    ultimaCargaEstoqueSap: data.ultimaCargaEstoqueSap || null,
   }
 }
 

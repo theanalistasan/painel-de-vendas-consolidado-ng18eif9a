@@ -24,7 +24,7 @@ import {
   getCountsSummary,
 } from '@/services/sales'
 import { importPedidosAbertosApi, fetchUltimaCargaPedidosAbertos } from '@/services/pedidosAbertos'
-import { importEstoqueSapApi } from '@/services/estoqueFaltante'
+import { importEstoqueSapApi, fetchUltimaCargaEstoqueSap } from '@/services/estoqueFaltante'
 import { logAudit } from '@/services/audit'
 import { parseCSV, parseXLSX, formatNumber, formatDateTime } from '@/lib/formatters'
 import type { ImportResult, ConsolidarResult } from '@/types/sales'
@@ -746,7 +746,18 @@ function BaseImportCard({
 }
 
 export default function Importar() {
-  const [counts, setCounts] = useState({
+  const [counts, setCounts] = useState<{
+    produtos: number
+    racnew: number
+    netsales: number
+    vendas: number
+    canais_clientes: number
+    pedidos_abertos: number
+    estoque_sap: number
+    ultimaCarga: string | null
+    ultimaCargaPedidosAbertos?: string | null
+    ultimaCargaEstoqueSap?: string | null
+  }>({
     produtos: 0,
     racnew: 0,
     netsales: 0,
@@ -754,10 +765,12 @@ export default function Importar() {
     canais_clientes: 0,
     pedidos_abertos: 0,
     estoque_sap: 0,
-    ultimaCarga: null as string | null,
-    ultimaCargaPedidosAbertos: null as string | null,
+    ultimaCarga: null,
+    ultimaCargaPedidosAbertos: null,
+    ultimaCargaEstoqueSap: null,
   })
   const [ultimaCargaPedidosAbertos, setUltimaCargaPedidosAbertos] = useState<string | null>(null)
+  const [ultimaCargaEstoqueSap, setUltimaCargaEstoqueSap] = useState<string | null>(null)
   const [consolidating, setConsolidating] = useState(false)
   const [rebuildingSummaries, setRebuildingSummaries] = useState(false)
   const [consolidationResult, setConsolidationResult] = useState<ConsolidarResult | null>(null)
@@ -784,10 +797,18 @@ export default function Importar() {
         const directDate = await fetchUltimaCargaPedidosAbertos()
         setUltimaCargaPedidosAbertos(directDate)
       }
+      if (data.ultimaCargaEstoqueSap) {
+        setUltimaCargaEstoqueSap(data.ultimaCargaEstoqueSap)
+      } else {
+        const directEstoqueDate = await fetchUltimaCargaEstoqueSap()
+        setUltimaCargaEstoqueSap(directEstoqueDate)
+      }
     } catch (err) {
       console.error('Erro ao buscar contagens:', err)
       const directDate = await fetchUltimaCargaPedidosAbertos()
       setUltimaCargaPedidosAbertos(directDate)
+      const directEstoqueDate = await fetchUltimaCargaEstoqueSap()
+      setUltimaCargaEstoqueSap(directEstoqueDate)
     }
   }
 
@@ -896,9 +917,16 @@ export default function Importar() {
         `Importação SAP: ${result.importados ?? 0} novos, ${result.atualizados ?? 0} atualizados, ${result.ignorados ?? 0} ignorados`,
       )
     } else if (base === 'estoque_sap') {
+      if (result.data_carga) {
+        setUltimaCargaEstoqueSap(result.data_carga)
+      } else {
+        fetchUltimaCargaEstoqueSap().then((d) => {
+          if (d) setUltimaCargaEstoqueSap(d)
+        })
+      }
       logAudit(
         'estoque_sap_import',
-        `Posição de Estoque (SAP): ${result.importados ?? 0} novos, ${result.atualizados ?? 0} atualizados, ${result.mesclados ?? 0} mesclados, ${result.ignorados ?? 0} ignorados`,
+        `Estoque Real (SAP): ${result.importados ?? 0} novos, ${result.atualizados ?? 0} atualizados, ${result.mesclados ?? 0} mesclados, ${result.ignorados ?? 0} ignorados`,
       )
     }
   }
@@ -1264,20 +1292,92 @@ export default function Importar() {
           onImported={(r) => handleImported('pedidos_abertos', r)}
         />
 
-        {/* Card 6: Posição de Estoque (SAP) */}
+        {/* Card 6: Posição de Estoque / Estoque Real (SAP) */}
         <BaseImportCard
-          title="Posição de Estoque (SAP)"
-          subtitle="Saldo físico atual e em trânsito por item (chave única: Código do Item)"
-          badgeLabel="Estoque SAP"
+          title="Posição de Estoque (SAP) — Estoque Real"
+          subtitle="Saldo físico atual, em trânsito e pedidos por item (substituição completa da base)"
+          badgeLabel="Substituição Total"
           badgeColor="bg-emerald-600"
+          lastImportDate={ultimaCargaEstoqueSap}
+          confirmDialog={{
+            title: 'Substituir base de Posição de Estoque (SAP)?',
+            description:
+              'A importação de Posição de Estoque (Estoque Real) apaga todos os registros atualmente cadastrados na base antes de inserir a nova posição do SAP.\n\nEssa ação garante que itens que deixaram de ter saldo ou foram descontinuados não permaneçam no cálculo de reposição do MRP.',
+            confirmLabel: 'Sim, substituir base',
+            cancelLabel: 'Cancelar',
+          }}
+          customGuide={
+            <div className="rounded-lg bg-slate-50 border border-slate-200/80 p-2.5 text-[11px] text-slate-600 space-y-1.5 shadow-2xs">
+              <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-[11px]">
+                <Info className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Caminho do relatório no SAP:</span>
+              </div>
+              <ol className="text-[10px] leading-relaxed text-slate-600 space-y-0.5 list-none">
+                <li className="flex items-center gap-1 flex-wrap">
+                  <span className="font-semibold text-slate-700">SAP</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Ferramentas</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Consultas</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Gerenciador de Consultas</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Comercial</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-bold text-emerald-700">Estoque Real</span>
+                </li>
+                <li className="flex items-center gap-1">
+                  <span>Botão direito no # da tabela</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Copiar Tabela</span>
+                </li>
+                <li className="flex items-center gap-1">
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Colar no Excel</span>
+                </li>
+                <li className="flex items-center gap-1">
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span>
+                    Salve em um local e realize a importação do arquivo:{' '}
+                    <strong className="text-slate-700">Estoque Real (SAP)</strong>
+                  </span>
+                </li>
+              </ol>
+              <div className="pt-1 border-t border-slate-200/60 font-mono text-[9px] text-slate-500 break-words leading-tight select-all">
+                SAP &gt; Ferramentas &gt; Consultas &gt; Gerenciador de Consultas &gt; Comercial
+                &gt; Estoque Real
+                <br />
+                Botão direito no # da tabela &gt; Copiar Tabela &gt; Colar no Excel &gt; Salve em um
+                local e realize a importação do arquivo: Estoque Real (SAP)
+              </div>
+            </div>
+          }
           expectedColumns={[
             'Código do Item',
-            'Quantidade em Estoque',
+            'Descrição Português',
+            'Descrição Inglês',
+            'Código do Grupo',
+            'Nome do Grupo',
+            'Código do Subgrupo',
+            'Nome do Subgrupo',
+            'Item Code',
+            'Depósito',
+            'Em Estoque',
             'Em Trânsito',
-            'Descrição do Item (opcional)',
-            'Grupo do Item (opcional)',
+            'Pedido Venda',
+            'Estoque Líquido',
+            'Custo do Item',
+            'Última Venda',
           ]}
-          onImport={(rows) => importEstoqueSapApi(rows)}
+          onImport={(rows, batchMeta) =>
+            importEstoqueSapApi(rows, {
+              clearBefore: !batchMeta?.isSubsequentBatch,
+              replace: true,
+              batchIndex: batchMeta?.batchIndex ?? 0,
+              totalBatches: batchMeta?.totalBatches ?? 1,
+              isSubsequentBatch: batchMeta?.isSubsequentBatch ?? false,
+            })
+          }
           baseCount={counts.estoque_sap ?? 0}
           onImported={(r) => handleImported('estoque_sap', r)}
         />
