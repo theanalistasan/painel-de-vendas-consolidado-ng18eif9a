@@ -22,7 +22,7 @@
 //     canal[]                 (string[])
 //     canalClientes[]         (string[])
 //     deploy[]                (string[])
-//
+//     tipoCliente[]           (string[])//
 // Retorna: { items, page, perPage, totalItems, totalPages }
 routerAdd('POST', '/backend/v1/vendas/list', (e) => {
   const startTime = Date.now()
@@ -51,6 +51,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
       codigo_item: 'codigo_item',
       descricao_item: 'descricao_item',
       grupo_item: 'grupo_item',
+      status_cadastro: 'status_cadastro',
+      tipo_pn: 'tipo_pn',
+      tipo_cliente: 'tipo_cliente',
       quantidade: 'quantidade',
       preco_item: 'preco_item',
       preco_unitario: 'preco_unitario',
@@ -258,6 +261,33 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
       const sqlArr = f.tipoDocumento.map((v) => "'" + sqlEsc(v) + "'").join(',')
       sqlParts.push('tipo_documento IN (' + sqlArr + ')')
     }
+    const tipoClienteFilter = Array.isArray(f.tipoCliente)
+      ? f.tipoCliente
+      : f.tipoCliente
+        ? [f.tipoCliente]
+        : []
+    if (tipoClienteFilter.length > 0 && !tipoClienteFilter.includes('TODOS')) {
+      const tcConds = []
+      const tcValues = []
+      for (let tcIdx = 0; tcIdx < tipoClienteFilter.length; tcIdx++) {
+        const val = String(tipoClienteFilter[tcIdx]).trim()
+        if (
+          val.toUpperCase() === 'SEM INFORMACAO' ||
+          val.toUpperCase() === 'VAZIO' ||
+          val.toUpperCase() === 'SEM TIPO'
+        ) {
+          tcConds.push("(tipo_cliente IS NULL OR tipo_cliente = '')")
+        } else if (val) {
+          tcValues.push("'" + sqlEsc(val) + "'")
+        }
+      }
+      if (tcValues.length > 0) {
+        tcConds.push('tipo_cliente IN (' + tcValues.join(',') + ')')
+      }
+      if (tcConds.length > 0) {
+        sqlParts.push('(' + tcConds.join(' OR ') + ')')
+      }
+    }
     if (f.tipoDevolucao) {
       sqlParts.push("tipo_documento = '" + sqlEsc(f.tipoDevolucao) + "'")
     }
@@ -327,6 +357,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
           grupo_cliente: '',
           mercado: '',
           usuario_emissor_pedido: '',
+          status_cadastro: '',
+          tipo_pn: '',
+          tipo_cliente: '',
           origem: '',
           tem_netsales: '',
           tem_racnew: '',
@@ -363,6 +396,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
             "COALESCE(MAX(grupo_cliente),'') AS grupo_cliente, " +
             "COALESCE(MAX(mercado),'') AS mercado, " +
             "COALESCE(MAX(usuario_emissor_pedido),'') AS usuario_emissor_pedido, " +
+            "COALESCE(MAX(status_cadastro),'') AS status_cadastro, " +
+            "COALESCE(MAX(tipo_pn),'') AS tipo_pn, " +
+            "COALESCE(MAX(tipo_cliente),'') AS tipo_cliente, " +
             'MAX(CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END) AS tem_netsales, ' +
             'MAX(CASE WHEN tem_racnew = 1 THEN 1 ELSE 0 END) AS tem_racnew ' +
             'FROM vendas WHERE ' +
@@ -514,6 +550,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
           grupo_cliente: r.grupo_cliente,
           mercado: r.mercado,
           usuario_emissor_pedido: r.usuario_emissor_pedido,
+          status_cadastro: r.status_cadastro,
+          tipo_pn: r.tipo_pn,
+          tipo_cliente: r.tipo_cliente,
           itens_qtd: qtdItens,
           tem_netsales: hasNetsales,
           tem_racnew: hasRacnew,
@@ -582,6 +621,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
         vendedor_revenda: '',
         grupo_item: '',
         vendedor_cliente: '',
+        status_cadastro: '',
+        tipo_pn: '',
+        tipo_cliente: '',
         origem: '',
         tem_racnew: '',
         tem_netsales: '',
@@ -621,6 +663,7 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
           'classificacao, vendedor_revenda, grupo_item, vendedor_cliente, origem, ' +
           'CAST(COALESCE(tem_racnew, 0) AS INTEGER) AS tem_racnew, ' +
           'CAST(COALESCE(tem_netsales, 0) AS INTEGER) AS tem_netsales, ' +
+          'status_cadastro, tipo_pn, tipo_cliente, ' +
           'data_carga, created, updated ' +
           'FROM vendas WHERE ' +
           sqlWhere +
@@ -775,6 +818,9 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
         vendedor_revenda: r.vendedor_revenda,
         grupo_item: r.grupo_item,
         vendedor_cliente: r.vendedor_cliente,
+        status_cadastro: r.status_cadastro,
+        tipo_pn: r.tipo_pn,
+        tipo_cliente: r.tipo_cliente,
         origem: r.origem,
         tem_racnew:
           r.tem_racnew === '1' ||

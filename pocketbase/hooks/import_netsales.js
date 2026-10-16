@@ -18,6 +18,37 @@ routerAdd(
     const netsalesCol = $app.findCollectionByNameOrId('netsales')
     const nowIso = new Date().toISOString()
 
+    // Enriquecimento Tipos de Cliente (cruzamento com Código do PN)
+    const tiposClienteMap = {}
+    try {
+      const tcRows = arrayOf(
+        new DynamicModel({
+          codigo_pn: '',
+          status_cadastro: '',
+          tipo_pn: '',
+          tipo_cliente: '',
+        }),
+      )
+      $app
+        .db()
+        .newQuery(
+          'SELECT codigo_pn, status_cadastro, tipo_pn, tipo_cliente FROM tipos_cliente WHERE codigo_pn IS NOT NULL AND codigo_pn != ""',
+        )
+        .all(tcRows)
+      for (let k = 0; k < tcRows.length; k++) {
+        const cPn = (tcRows[k].codigo_pn || '').trim().toUpperCase()
+        if (cPn) {
+          tiposClienteMap[cPn] = {
+            status_cadastro: (tcRows[k].status_cadastro || '').trim(),
+            tipo_pn: (tcRows[k].tipo_pn || '').trim(),
+            tipo_cliente: (tcRows[k].tipo_cliente || '').trim(),
+          }
+        }
+      }
+    } catch (tcErr) {
+      console.warn('netsales: aviso ao carregar tipos_cliente:', tcErr)
+    }
+
     let importados = 0
     let atualizados = 0
     let ignorados = 0
@@ -255,6 +286,13 @@ routerAdd(
         record.set('estado', (row.estado || row['Estado'] || row['UF'] || '').toString().trim())
         record.set('origem', 'NetSales')
         record.set('data_carga', nowIso)
+
+        // Enriquecimento de Tipo de Cliente por codigoCliente
+        const normCodCli = (codigoCliente || '').trim().toUpperCase()
+        const tcInfo = normCodCli ? tiposClienteMap[normCodCli] : null
+        record.set('status_cadastro', tcInfo ? tcInfo.status_cadastro : '')
+        record.set('tipo_pn', tcInfo ? tcInfo.tipo_pn : '')
+        record.set('tipo_cliente', tcInfo ? tcInfo.tipo_cliente : '')
 
         $app.save(record)
         if (isUpdate) {

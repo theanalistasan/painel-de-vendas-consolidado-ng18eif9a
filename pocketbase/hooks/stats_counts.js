@@ -11,6 +11,7 @@ routerAdd('GET', '/backend/v1/stats/counts', (e) => {
     'canais_clientes',
     'pedidos_abertos',
     'estoque_sap',
+    'tipos_cliente',
   ]
   const counts = {}
 
@@ -76,6 +77,21 @@ routerAdd('GET', '/backend/v1/stats/counts', (e) => {
     }
   } catch (_) {}
 
+  // Última data_carga da coleção tipos_cliente
+  let ultimaCargaTiposCliente = ''
+  try {
+    const tcRows = arrayOf(new DynamicModel({ data_carga: '' }))
+    $app
+      .db()
+      .newQuery(
+        "SELECT data_carga FROM tipos_cliente WHERE data_carga IS NOT NULL AND data_carga != '' ORDER BY data_carga DESC LIMIT 1",
+      )
+      .all(tcRows)
+    if (tcRows.length > 0 && tcRows[0].data_carga) {
+      ultimaCargaTiposCliente = tcRows[0].data_carga
+    }
+  } catch (_) {}
+
   const result = {
     produtos: counts.produtos || 0,
     racnew: counts.racnew || 0,
@@ -84,9 +100,11 @@ routerAdd('GET', '/backend/v1/stats/counts', (e) => {
     canais_clientes: counts.canais_clientes || 0,
     pedidos_abertos: counts.pedidos_abertos || 0,
     estoque_sap: counts.estoque_sap || 0,
+    tipos_cliente: counts.tipos_cliente || 0,
     ultimaCarga: ultimaCarga,
     ultimaCargaPedidosAbertos: ultimaCargaPedidosAbertos,
     ultimaCargaEstoqueSap: ultimaCargaEstoqueSap,
+    ultimaCargaTiposCliente: ultimaCargaTiposCliente,
   }
 
   return e.json(200, result)

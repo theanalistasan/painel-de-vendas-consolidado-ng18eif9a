@@ -52,6 +52,35 @@ routerAdd(
       whereClauses.push('(em_transito = 0 OR em_transito IS NULL OR em_transito <= 0)')
     }
 
+    // Filtro Tipo de Cliente
+    const tipoClienteFilter = Array.isArray(f.tipoCliente)
+      ? f.tipoCliente
+      : f.tipoCliente
+        ? [f.tipoCliente]
+        : []
+    if (tipoClienteFilter.length > 0 && !tipoClienteFilter.includes('TODOS')) {
+      const tcConds = []
+      const tcValues = []
+      for (let tcIdx = 0; tcIdx < tipoClienteFilter.length; tcIdx++) {
+        const val = String(tipoClienteFilter[tcIdx]).trim()
+        if (
+          val.toUpperCase() === 'SEM INFORMACAO' ||
+          val.toUpperCase() === 'VAZIO' ||
+          val.toUpperCase() === 'SEM TIPO'
+        ) {
+          tcConds.push("(tipo_cliente IS NULL OR tipo_cliente = '')")
+        } else if (val) {
+          tcValues.push("'" + sqlEsc(val) + "'")
+        }
+      }
+      if (tcValues.length > 0) {
+        tcConds.push('tipo_cliente IN (' + tcValues.join(',') + ')')
+      }
+      if (tcConds.length > 0) {
+        whereClauses.push('(' + tcConds.join(' OR ') + ')')
+      }
+    }
+
     // Filtros de Canais (Canal, Clientes do Canal, Deploy, Inside, É Canal)
     const canaisFilter = Array.isArray(f.canal) ? f.canal : f.canal ? [f.canal] : []
     const canalClientesFilter = Array.isArray(f.canalClientes)
@@ -457,6 +486,35 @@ routerAdd(
       'qtd_aberto > 0',
       "(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')",
     ]
+
+    // Filtro Tipo de Cliente
+    const tipoClienteFilter = Array.isArray(f.tipoCliente)
+      ? f.tipoCliente
+      : f.tipoCliente
+        ? [f.tipoCliente]
+        : []
+    if (tipoClienteFilter.length > 0 && !tipoClienteFilter.includes('TODOS')) {
+      const tcConds = []
+      const tcValues = []
+      for (let tcIdx = 0; tcIdx < tipoClienteFilter.length; tcIdx++) {
+        const val = String(tipoClienteFilter[tcIdx]).trim()
+        if (
+          val.toUpperCase() === 'SEM INFORMACAO' ||
+          val.toUpperCase() === 'VAZIO' ||
+          val.toUpperCase() === 'SEM TIPO'
+        ) {
+          tcConds.push("(tipo_cliente IS NULL OR tipo_cliente = '')")
+        } else if (val) {
+          tcValues.push("'" + sqlEsc(val) + "'")
+        }
+      }
+      if (tcValues.length > 0) {
+        tcConds.push('tipo_cliente IN (' + tcValues.join(',') + ')')
+      }
+      if (tcConds.length > 0) {
+        whereClauses.push('(' + tcConds.join(' OR ') + ')')
+      }
+    }
 
     // Filtros de Canais
     const canaisFilter = Array.isArray(f.canal) ? f.canal : f.canal ? [f.canal] : []

@@ -79,6 +79,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       '  total_nf_novo, valor_liquido, custo_total, classificacao, ' +
       '  vendedor_revenda, grupo_item, vendedor_cliente, origem, ' +
       '  tem_racnew, tem_netsales, ' +
+      '  status_cadastro, tipo_pn, tipo_cliente, ' +
       '  data_carga, created, updated' +
       ') ' +
       'SELECT ' +
@@ -107,6 +108,10 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       "  'Consolidado', " +
       // tem_racnew / tem_netsales
       "  1, (CASE WHEN n.chave_documento IS NOT NULL AND n.chave_documento != '' THEN 1 ELSE 0 END), " +
+      // status_cadastro, tipo_pn, tipo_cliente (cruzamento com tipos_cliente por codigo_cliente / codigo_pn, fallback para r/n)
+      "  COALESCE(NULLIF(tc.status_cadastro, ''), NULLIF(r.status_cadastro, ''), NULLIF(n.status_cadastro, ''), ''), " +
+      "  COALESCE(NULLIF(tc.tipo_pn, ''), NULLIF(r.tipo_pn, ''), NULLIF(n.tipo_pn, ''), ''), " +
+      "  COALESCE(NULLIF(tc.tipo_cliente, ''), NULLIF(r.tipo_cliente, ''), NULLIF(n.tipo_cliente, ''), ''), " +
       // data_carga / created / updated — timestamp desta consolidação
       '  {:now}, {:now}, {:now} ' +
       'FROM racnew r ' +
@@ -118,6 +123,8 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       '  AND n.codigo_item = r.codigo_item ' +
       'LEFT JOIN produtos p ' +
       '  ON p.codigo_item = r.codigo_item ' +
+      'LEFT JOIN tipos_cliente tc ' +
+      '  ON UPPER(TRIM(tc.codigo_pn)) = UPPER(TRIM(r.codigo_cliente)) ' +
       "WHERE UPPER(TRIM(COALESCE(r.codigo_item, ''))) != 'SERVICOS'"
 
     $app.db().newQuery(insertSql).bind({ now: nowIso }).execute()

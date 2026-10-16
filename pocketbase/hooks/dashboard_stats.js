@@ -516,6 +516,38 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       sqlVendasParts.push(clause)
     }
 
+    // Filtro Tipo de Cliente
+    const tipoClienteFilter = Array.isArray(f.tipoCliente)
+      ? f.tipoCliente
+      : f.tipoCliente
+        ? [f.tipoCliente]
+        : []
+    let hasTipoCliente = false
+    if (tipoClienteFilter.length > 0 && !tipoClienteFilter.includes('TODOS')) {
+      hasTipoCliente = true
+      const tcConds = []
+      const tcValues = []
+      for (let tcIdx = 0; tcIdx < tipoClienteFilter.length; tcIdx++) {
+        const val = String(tipoClienteFilter[tcIdx]).trim()
+        if (
+          val.toUpperCase() === 'SEM INFORMACAO' ||
+          val.toUpperCase() === 'VAZIO' ||
+          val.toUpperCase() === 'SEM TIPO'
+        ) {
+          tcConds.push("(tipo_cliente IS NULL OR tipo_cliente = '')")
+        } else if (val) {
+          tcValues.push("'" + sqlEsc(val) + "'")
+        }
+      }
+      if (tcValues.length > 0) {
+        tcConds.push('tipo_cliente IN (' + tcValues.join(',') + ')')
+      }
+      if (tcConds.length > 0) {
+        const tcClause = '(' + tcConds.join(' OR ') + ')'
+        sqlVendasParts.push(tcClause)
+      }
+    }
+
     if (f.search) {
       const q = sqlEsc(f.search)
       const like = " LIKE '%" + q + "%'"
@@ -537,8 +569,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     // TAREFA 1: Desabilitar o produto "SERVICOS" em todas as visões
     sqlVendasParts.push("(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')")
 
-    // Se o filtro incluir busca textual ('search') ou 'dia' específico, precisamos consultar a tabela `vendas` bruta para a busca pontual
-    const hasSearchOrDay = !!f.search || diasFilter.length > 0
+    // Se o filtro incluir busca textual ('search'), 'dia' específico ou tipoCliente, precisamos consultar a tabela `vendas` bruta para a busca pontual
+    const hasSearchOrDay = !!f.search || diasFilter.length > 0 || hasTipoCliente
 
     // Onde aplicar na tabela de resumo
     const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'

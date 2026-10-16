@@ -292,6 +292,38 @@ routerAdd(
       console.warn('pedidos_abertos: aviso ao carregar canais_clientes:', cErr)
     }
 
+    // 1.1 Mapa de tipos_cliente por codigo_pn (chave: Código do PN)
+    const tiposClienteMap = {}
+    try {
+      const tcRows = arrayOf(
+        new DynamicModel({
+          codigo_pn: '',
+          status_cadastro: '',
+          tipo_pn: '',
+          tipo_cliente: '',
+        }),
+      )
+      $app
+        .db()
+        .newQuery(
+          'SELECT codigo_pn, status_cadastro, tipo_pn, tipo_cliente FROM tipos_cliente WHERE codigo_pn IS NOT NULL AND codigo_pn != ""',
+        )
+        .all(tcRows)
+      for (let i = 0; i < tcRows.length; i++) {
+        const cod = normalizeStrict(tcRows[i].codigo_pn)
+        const codTol = normalizeCodCliente(tcRows[i].codigo_pn)
+        const info = {
+          status_cadastro: (tcRows[i].status_cadastro || '').trim(),
+          tipo_pn: (tcRows[i].tipo_pn || '').trim(),
+          tipo_cliente: (tcRows[i].tipo_cliente || '').trim(),
+        }
+        if (cod) tiposClienteMap[cod] = info
+        if (codTol) tiposClienteMap[codTol] = info
+      }
+    } catch (tcErr) {
+      console.warn('pedidos_abertos: aviso ao carregar tipos_cliente:', tcErr)
+    }
+
     // 2. Mapa de catálogo de produtos por codigo_item para enriquecer grupo_item se vier vazio
     const produtosGrupoMap = {}
     try {
@@ -415,6 +447,14 @@ routerAdd(
         canalInfo = canaisMap['NAME::' + normNomeCli]
       }
 
+      // Enriquecimento de tipos_cliente por codigo_cliente
+      let tcInfo = null
+      if (normCodCli && tiposClienteMap[normCodCli]) {
+        tcInfo = tiposClienteMap[normCodCli]
+      } else if (tolCodCli && tiposClienteMap[tolCodCli]) {
+        tcInfo = tiposClienteMap[tolCodCli]
+      }
+
       const parsedItem = {
         lineNum,
         numero_pedido: numPedido,
@@ -440,6 +480,9 @@ routerAdd(
         nome_canal: canalInfo ? canalInfo.nome_canal : '',
         deploy: canalInfo ? canalInfo.deploy : '',
         inside: canalInfo ? canalInfo.inside : '',
+        status_cadastro: tcInfo ? tcInfo.status_cadastro : '',
+        tipo_pn: tcInfo ? tcInfo.tipo_pn : '',
+        tipo_cliente: tcInfo ? tcInfo.tipo_cliente : '',
         origem: 'PedidosAbertos',
         data_carga: nowIso,
       }
@@ -504,6 +547,9 @@ routerAdd(
         record.set('nome_canal', item.nome_canal)
         record.set('deploy', item.deploy)
         record.set('inside', item.inside)
+        record.set('status_cadastro', item.status_cadastro || '')
+        record.set('tipo_pn', item.tipo_pn || '')
+        record.set('tipo_cliente', item.tipo_cliente || '')
         record.set('origem', 'PedidosAbertos')
         record.set('data_carga', nowIso)
 

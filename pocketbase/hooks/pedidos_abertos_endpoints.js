@@ -213,6 +213,35 @@ routerAdd(
       whereClauses.push('grupo_item IN (' + gruposSql + ')')
     }
 
+    // Filtro por Tipo de Cliente
+    const tipoClienteFilter = Array.isArray(f.tipoCliente)
+      ? f.tipoCliente
+      : f.tipoCliente
+        ? [f.tipoCliente]
+        : []
+    if (tipoClienteFilter.length > 0 && !tipoClienteFilter.includes('TODOS')) {
+      const tcConds = []
+      const tcValues = []
+      for (let tcIdx = 0; tcIdx < tipoClienteFilter.length; tcIdx++) {
+        const val = String(tipoClienteFilter[tcIdx]).trim()
+        if (
+          val.toUpperCase() === 'SEM INFORMACAO' ||
+          val.toUpperCase() === 'VAZIO' ||
+          val.toUpperCase() === 'SEM TIPO'
+        ) {
+          tcConds.push("(tipo_cliente IS NULL OR tipo_cliente = '')")
+        } else if (val) {
+          tcValues.push("'" + sqlEsc(val) + "'")
+        }
+      }
+      if (tcValues.length > 0) {
+        tcConds.push('tipo_cliente IN (' + tcValues.join(',') + ')')
+      }
+      if (tcConds.length > 0) {
+        whereClauses.push('(' + tcConds.join(' OR ') + ')')
+      }
+    }
+
     // TAREFA 1: Desabilitar o produto "SERVICOS" em todas as visões
     whereClauses.push("(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')")
 
@@ -311,7 +340,7 @@ routerAdd(
         'CAST(COALESCE(preco_apos_desconto, 0.0) AS REAL) AS preco_apos_desconto, ' +
         'status, ' +
         'CAST(COALESCE(valor_em_aberto, 0.0) AS REAL) AS valor_em_aberto, ' +
-        'nome_canal, deploy, inside, origem, data_carga ' +
+        'nome_canal, deploy, inside, status_cadastro, tipo_pn, tipo_cliente, origem, data_carga ' +
         'FROM pedidos_abertos' +
         whereSql +
         orderSql +
@@ -346,6 +375,9 @@ routerAdd(
           nome_canal: '',
           deploy: '',
           inside: '',
+          status_cadastro: '',
+          tipo_pn: '',
+          tipo_cliente: '',
           origem: '',
           data_carga: '',
         }),
@@ -379,6 +411,9 @@ routerAdd(
           nome_canal: r.nome_canal || '',
           deploy: r.deploy || '',
           inside: r.inside || '',
+          status_cadastro: r.status_cadastro || '',
+          tipo_pn: r.tipo_pn || '',
+          tipo_cliente: r.tipo_cliente || '',
           origem: r.origem || '',
           data_carga: r.data_carga || '',
         })
@@ -619,6 +654,35 @@ routerAdd(
       const gruposSql = f.grupoItem.map((g) => "'" + sqlEsc(g) + "'").join(',')
       paWhereClauses.push('grupo_item IN (' + gruposSql + ')')
       vendasWhereClauses.push('grupo_item IN (' + gruposSql + ')')
+    }
+
+    // Filtro por Tipo de Cliente
+    const tipoClienteFilter = Array.isArray(f.tipoCliente)
+      ? f.tipoCliente
+      : f.tipoCliente
+        ? [f.tipoCliente]
+        : []
+    if (tipoClienteFilter.length > 0 && !tipoClienteFilter.includes('TODOS')) {
+      const tcConds = []
+      const tcValues = []
+      for (let tcIdx = 0; tcIdx < tipoClienteFilter.length; tcIdx++) {
+        const val = String(tipoClienteFilter[tcIdx]).trim()
+        if (
+          val.toUpperCase() === 'SEM INFORMACAO' ||
+          val.toUpperCase() === 'VAZIO' ||
+          val.toUpperCase() === 'SEM TIPO'
+        ) {
+          tcConds.push("(tipo_cliente IS NULL OR tipo_cliente = '')")
+        } else if (val) {
+          tcValues.push("'" + sqlEsc(val) + "'")
+        }
+      }
+      if (tcValues.length > 0) {
+        tcConds.push('tipo_cliente IN (' + tcValues.join(',') + ')')
+      }
+      if (tcConds.length > 0) {
+        paWhereClauses.push('(' + tcConds.join(' OR ') + ')')
+      }
     }
 
     // TAREFA 1: Desabilitar o produto "SERVICOS" em todas as visões
