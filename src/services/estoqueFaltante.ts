@@ -103,6 +103,7 @@ export interface MrpItem {
   cobertura_meses: number | null
   status_reposicao: 'repor' | 'atencao' | 'normal' | 'sem_posicao'
   data_carga_estoque: string | null
+  pedidos_abertos_qtd?: number
 }
 
 export interface MrpResult {

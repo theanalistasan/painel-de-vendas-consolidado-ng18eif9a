@@ -11,18 +11,15 @@ import {
   RotateCw,
   RefreshCw,
   AlertCircle,
-  FileSpreadsheet,
   ArrowUpDown,
-  Filter,
-  CheckCircle2,
-  Clock,
+  ArrowUp,
+  ArrowDown,
   Boxes,
-  HelpCircle,
-  BarChart2,
   Calendar,
-  Building2,
   ChevronRight,
-  Info,
+  ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -138,6 +135,11 @@ export default function EstoqueFaltante() {
   const [mrpData, setMrpData] = useState<MrpResult | null>(null)
   const [mrpLoading, setMrpLoading] = useState(false)
   const [mrpLoadedOnce, setMrpLoadedOnce] = useState(false)
+
+  // Ordenação e agrupamento por grupo da Visão 2 (MRP)
+  const [mrpSortField, setMrpSortField] = useState<string>('qtd_total_6m')
+  const [mrpSortDirection, setMrpSortDirection] = useState<'asc' | 'desc'>('desc')
+  const [expandedMrpGroups, setExpandedMrpGroups] = useState<Set<string>>(new Set())
 
   // AbortControllers para evitar condições de corrida
   const listAbortRef = useRef<AbortController | null>(null)
@@ -276,7 +278,7 @@ export default function EstoqueFaltante() {
     }
   }, [activeTab, mrpLoadedOnce, loadMrp])
 
-  // Handler de ordenação da tabela
+  // Handler de ordenação da tabela Itens Faltantes
   const handleSort = (field: string) => {
     if (sortField === field) {
       setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
@@ -285,6 +287,230 @@ export default function EstoqueFaltante() {
       setSortDirection('desc')
     }
     setPage(1)
+  }
+
+  // Handler de ordenação da tabela MRP
+  const handleMrpSort = (field: string) => {
+    if (mrpSortField === field) {
+      setMrpSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setMrpSortField(field)
+      // Para texto padrão asc, para números padrão desc
+      const isTextField = [
+        'codigo_item',
+        'descricao_item',
+        'grupo_item',
+        'status_reposicao',
+      ].includes(field)
+      setMrpSortDirection(isTextField ? 'asc' : 'desc')
+    }
+  }
+
+  // Agrupamento e ordenação dos dados do MRP por Grupo
+  const mrpGroups = useMemo(() => {
+    const rawItems = mrpData?.top20Vendidos || []
+    if (rawItems.length === 0) return []
+
+    // Agrupa por grupo_item (ou 'Sem Grupo' se vazio)
+    const map = new Map<
+      string,
+      {
+        grupo: string
+        items: MrpItem[]
+        totalQtdVendida6m: number
+        totalValorVendido6m: number
+        totalEstoqueAtual: number
+        totalEmTransito: number
+        totalPedidosAbertos: number
+        itensComPosicao: number
+      }
+    >()
+
+    for (const item of rawItems) {
+      const gName = (item.grupo_item || '').trim() || 'Sem Grupo'
+      let grp = map.get(gName)
+      if (!grp) {
+        grp = {
+          grupo: gName,
+          items: [],
+          totalQtdVendida6m: 0,
+          totalValorVendido6m: 0,
+          totalEstoqueAtual: 0,
+          totalEmTransito: 0,
+          totalPedidosAbertos: 0,
+          itensComPosicao: 0,
+        }
+        map.set(gName, grp)
+      }
+      grp.items.push(item)
+      grp.totalQtdVendida6m += item.qtd_total_6m || 0
+      grp.totalValorVendido6m += item.valor_total_6m || 0
+      if (item.tem_posicao_estoque) {
+        grp.itensComPosicao += 1
+        grp.totalEstoqueAtual += item.estoque_atual || 0
+        grp.totalEmTransito += item.em_transito || 0
+      }
+      grp.totalPedidosAbertos += item.pedidos_abertos_qtd || 0
+    }
+
+    // Ordenação interna dos itens de cada grupo conforme mrpSortField e mrpSortDirection
+    const sortedGroups = Array.from(map.values()).map((grp) => {
+      const sortedItems = [...grp.items].sort((a, b) => {
+        let valA: string | number = 0
+        let valB: string | number = 0
+
+        switch (mrpSortField) {
+          case 'codigo_item':
+            valA = (a.codigo_item || '').toLowerCase()
+            valB = (b.codigo_item || '').toLowerCase()
+            break
+          case 'descricao_item':
+            valA = (a.descricao_item || '').toLowerCase()
+            valB = (b.descricao_item || '').toLowerCase()
+            break
+          case 'grupo_item':
+            valA = (a.grupo_item || '').toLowerCase()
+            valB = (b.grupo_item || '').toLowerCase()
+            break
+          case 'qtd_total_6m':
+            valA = a.qtd_total_6m || 0
+            valB = b.qtd_total_6m || 0
+            break
+          case 'media_mensal':
+            valA = a.media_mensal || 0
+            valB = b.media_mensal || 0
+            break
+          case 'valor_total_6m':
+            valA = a.valor_total_6m || 0
+            valB = b.valor_total_6m || 0
+            break
+          case 'estoque_atual':
+            valA = a.tem_posicao_estoque ? (a.estoque_atual ?? 0) : -1
+            valB = b.tem_posicao_estoque ? (b.estoque_atual ?? 0) : -1
+            break
+          case 'em_transito':
+            valA = a.tem_posicao_estoque ? (a.em_transito ?? 0) : -1
+            valB = b.tem_posicao_estoque ? (b.em_transito ?? 0) : -1
+            break
+          case 'pedidos_abertos_qtd':
+            valA = a.pedidos_abertos_qtd || 0
+            valB = b.pedidos_abertos_qtd || 0
+            break
+          case 'cobertura_meses':
+            valA = a.tem_posicao_estoque && a.cobertura_meses !== null ? a.cobertura_meses : -1
+            valB = b.tem_posicao_estoque && b.cobertura_meses !== null ? b.cobertura_meses : -1
+            break
+          case 'status_reposicao': {
+            // Ordem de criticidade para status
+            const statusWeight: Record<string, number> = {
+              repor: 3,
+              atencao: 2,
+              normal: 1,
+              sem_posicao: 0,
+            }
+            valA = statusWeight[a.status_reposicao] ?? 0
+            valB = statusWeight[b.status_reposicao] ?? 0
+            break
+          }
+          default:
+            valA = a.qtd_total_6m || 0
+            valB = b.qtd_total_6m || 0
+            break
+        }
+
+        if (typeof valA === 'string' && typeof valB === 'string') {
+          return mrpSortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA)
+        }
+        return mrpSortDirection === 'asc'
+          ? Number(valA) - Number(valB)
+          : Number(valB) - Number(valA)
+      })
+
+      return {
+        ...grp,
+        items: sortedItems,
+      }
+    })
+
+    // Ordena os grupos pela chave de ordenação selecionada (ou pelo nome do grupo quando classificado por texto/grupo)
+    sortedGroups.sort((gA, gB) => {
+      let gValA: string | number = 0
+      let gValB: string | number = 0
+
+      switch (mrpSortField) {
+        case 'grupo_item':
+          gValA = gA.grupo.toLowerCase()
+          gValB = gB.grupo.toLowerCase()
+          break
+        case 'qtd_total_6m':
+        case 'media_mensal':
+          gValA = gA.totalQtdVendida6m
+          gValB = gB.totalQtdVendida6m
+          break
+        case 'valor_total_6m':
+          gValA = gA.totalValorVendido6m
+          gValB = gB.totalValorVendido6m
+          break
+        case 'estoque_atual':
+          gValA = gA.totalEstoqueAtual
+          gValB = gB.totalEstoqueAtual
+          break
+        case 'em_transito':
+          gValA = gA.totalEmTransito
+          gValB = gB.totalEmTransito
+          break
+        case 'pedidos_abertos_qtd':
+          gValA = gA.totalPedidosAbertos
+          gValB = gB.totalPedidosAbertos
+          break
+        default:
+          // Usa o melhor valor do item dentro de cada grupo para refletir a ordenação
+          if (gA.items.length > 0 && gB.items.length > 0) {
+            gValA = gA.items[0].qtd_total_6m || 0
+            gValB = gB.items[0].qtd_total_6m || 0
+          } else {
+            gValA = gA.grupo.toLowerCase()
+            gValB = gB.grupo.toLowerCase()
+          }
+          break
+      }
+
+      if (typeof gValA === 'string' && typeof gValB === 'string') {
+        return mrpSortDirection === 'asc' ? gValA.localeCompare(gValB) : gValB.localeCompare(gValA)
+      }
+      return mrpSortDirection === 'asc'
+        ? Number(gValA) - Number(gValB)
+        : Number(gValB) - Number(gValA)
+    })
+
+    return sortedGroups
+  }, [mrpData, mrpSortField, mrpSortDirection])
+
+  // Inicializa todos os grupos do MRP como expandidos quando os dados são carregados pela primeira vez
+  useEffect(() => {
+    if (mrpGroups.length > 0 && expandedMrpGroups.size === 0) {
+      setExpandedMrpGroups(new Set(mrpGroups.map((g) => g.grupo)))
+    }
+  }, [mrpGroups])
+
+  const toggleMrpGroup = (grupoName: string) => {
+    setExpandedMrpGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(grupoName)) {
+        next.delete(grupoName)
+      } else {
+        next.add(grupoName)
+      }
+      return next
+    })
+  }
+
+  const expandAllMrpGroups = () => {
+    setExpandedMrpGroups(new Set(mrpGroups.map((g) => g.grupo)))
+  }
+
+  const collapseAllMrpGroups = () => {
+    setExpandedMrpGroups(new Set())
   }
 
   // Busca rápida
@@ -300,57 +526,112 @@ export default function EstoqueFaltante() {
     setPage(1)
   }
 
-  // Exportação Excel
+  // Exportação Excel (Itens Faltantes ou MRP dependendo da aba ativa)
   const handleExportExcel = async () => {
     try {
-      toast({
-        title: 'Gerando arquivo Excel...',
-        description: 'Aguarde o processamento de todos os registros faltantes.',
-      })
+      if (activeTab === 'mrp') {
+        const mrpItemsToExport = mrpData?.top20Vendidos || []
+        if (mrpItemsToExport.length === 0) {
+          toast({
+            variant: 'destructive',
+            title: 'Nenhum dado para exportar',
+            description: 'Não há registros do MRP para exportação.',
+          })
+          return
+        }
 
-      // Busca completa sem paginação
-      const res = await fetchEstoqueFaltanteList({
-        page: 1,
-        perPage: 2000,
-        sortField,
-        sortDirection,
-        statusTransito: statusTransitoFilter,
-        search: appliedSearch,
-        filters: {
-          canal: filters.canal,
-          canalClientes: filters.canalClientes,
-          deploy: filters.deploy,
-          inside: filters.inside,
-          ehCanal: filters.ehCanal,
-        },
-      })
+        toast({
+          title: 'Gerando arquivo Excel do MRP...',
+          description: 'Aguarde a exportação do relatório Top 20 e reposição.',
+        })
 
-      const exportRows = (res.items || []).map((item) => ({
-        Canal: item.canal,
-        'Código Item': item.codigo_item,
-        Descrição: item.descricao_item,
-        Grupo: item.grupo_item,
-        'Qtd Aberta': item.qtd_aberto,
-        'Valor em Aberto (R$)': item.valor_em_aberto,
-        'Nº de Pedidos': item.pedidos_qtd,
-        'Nº de Clientes': item.clientes_qtd,
-        Clientes: item.clientes_nomes,
-        'Em Trânsito': item.em_transito,
-        'Status Trânsito': item.em_transito > 0 ? 'Com Trânsito' : 'Sem Trânsito (Faltante Total)',
-        'Média Mensal Vendas (6m)': item.media_mensal_vendas,
-        'Total Vendido (6m)': item.qtd_vendida_6m,
-      }))
+        const exportRows = mrpItemsToExport.map((item, idx) => ({
+          '#': idx + 1,
+          'Código Item': item.codigo_item,
+          Descrição: item.descricao_item || '',
+          Grupo: item.grupo_item || '',
+          'Qtd Vendida (6m)': item.qtd_total_6m,
+          'Média Mensal': item.media_mensal,
+          'Valor Vendido (6m) (R$)': item.valor_total_6m,
+          'Estoque Atual': item.tem_posicao_estoque ? (item.estoque_atual ?? 0) : 'Sem posição',
+          'Em Trânsito': item.tem_posicao_estoque ? (item.em_transito ?? 0) : 'Sem posição',
+          'Pedidos em Aberto': item.pedidos_abertos_qtd ?? 0,
+          'Cobertura (meses)':
+            item.tem_posicao_estoque && item.cobertura_meses !== null
+              ? item.cobertura_meses > 99
+                ? '> 99'
+                : item.cobertura_meses
+              : 'Sem posição',
+          'Alerta de Reposição': !item.tem_posicao_estoque
+            ? 'Sem posição'
+            : item.status_reposicao === 'repor'
+              ? 'Repor (< 1m)'
+              : item.status_reposicao === 'atencao'
+                ? 'Atenção (1–2m)'
+                : 'Normal (> 2m)',
+        }))
 
-      const ws = XLSX.utils.json_to_sheet(exportRows)
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Itens Faltantes')
-      const fileName = `Itens_Faltantes_${new Date().toISOString().slice(0, 10)}.xlsx`
-      XLSX.writeFile(wb, fileName)
+        const ws = XLSX.utils.json_to_sheet(exportRows)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'MRP Top 20')
+        const fileName = `MRP_Top20_Reposicao_${new Date().toISOString().slice(0, 10)}.xlsx`
+        XLSX.writeFile(wb, fileName)
 
-      toast({
-        title: 'Download iniciado',
-        description: `Exportados ${exportRows.length} registros com sucesso.`,
-      })
+        toast({
+          title: 'Download concluído',
+          description: `Exportados ${exportRows.length} registros do MRP.`,
+        })
+      } else {
+        toast({
+          title: 'Gerando arquivo Excel...',
+          description: 'Aguarde o processamento de todos os registros faltantes.',
+        })
+
+        // Busca completa sem paginação
+        const res = await fetchEstoqueFaltanteList({
+          page: 1,
+          perPage: 2000,
+          sortField,
+          sortDirection,
+          statusTransito: statusTransitoFilter,
+          search: appliedSearch,
+          filters: {
+            canal: filters.canal,
+            canalClientes: filters.canalClientes,
+            deploy: filters.deploy,
+            inside: filters.inside,
+            ehCanal: filters.ehCanal,
+          },
+        })
+
+        const exportRows = (res.items || []).map((item) => ({
+          Canal: item.canal,
+          'Código Item': item.codigo_item,
+          Descrição: item.descricao_item,
+          Grupo: item.grupo_item,
+          'Qtd Aberta': item.qtd_aberto,
+          'Valor em Aberto (R$)': item.valor_em_aberto,
+          'Nº de Pedidos': item.pedidos_qtd,
+          'Nº de Clientes': item.clientes_qtd,
+          Clientes: item.clientes_nomes,
+          'Em Trânsito': item.em_transito,
+          'Status Trânsito':
+            item.em_transito > 0 ? 'Com Trânsito' : 'Sem Trânsito (Faltante Total)',
+          'Média Mensal Vendas (6m)': item.media_mensal_vendas,
+          'Total Vendido (6m)': item.qtd_vendida_6m,
+        }))
+
+        const ws = XLSX.utils.json_to_sheet(exportRows)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Itens Faltantes')
+        const fileName = `Itens_Faltantes_${new Date().toISOString().slice(0, 10)}.xlsx`
+        XLSX.writeFile(wb, fileName)
+
+        toast({
+          title: 'Download iniciado',
+          description: `Exportados ${exportRows.length} registros com sucesso.`,
+        })
+      }
     } catch (err) {
       console.error('Erro na exportação:', err)
       toast({
@@ -1243,165 +1524,464 @@ export default function EstoqueFaltante() {
           {/* Tabela MRP */}
           <Card className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs">
             <CardHeader className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
                     <TrendingUp className="w-5 h-5 text-teal-600" />
                     Top 20 Itens Mais Vendidos &amp; Cobertura de Estoque (MRP)
                   </CardTitle>
                   <CardDescription className="text-xs text-slate-500 mt-0.5">
-                    Cobertura em meses calculada sobre a média mensal dos últimos 6 meses
+                    Cobertura em meses calculada sobre a média mensal dos últimos 6 meses.
+                    Classificação por coluna e agrupamento colapsável por Grupo.
                   </CardDescription>
                 </div>
 
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={loadMrp}
-                  disabled={mrpLoading}
-                  className="text-xs h-8 px-2.5 gap-1.5 self-end sm:self-auto"
-                >
-                  <RefreshCw className={cn('w-3.5 h-3.5', mrpLoading && 'animate-spin')} />
-                  Recalcular MRP
-                </Button>
+                <div className="flex items-center gap-2 flex-wrap self-end sm:self-auto">
+                  {/* Botões Expandir / Colapsar Todos */}
+                  <div className="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-2xs">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={expandAllMrpGroups}
+                      disabled={mrpLoading || mrpGroups.length === 0}
+                      className="text-xs h-7 px-2.5 text-slate-700 hover:text-slate-900 hover:bg-slate-100 gap-1"
+                      title="Expandir todos os grupos"
+                    >
+                      <ChevronsUpDown className="w-3.5 h-3.5 text-slate-500" />
+                      Expandir Todos
+                    </Button>
+                    <div className="w-px bg-slate-200 my-1" />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={collapseAllMrpGroups}
+                      disabled={mrpLoading || mrpGroups.length === 0}
+                      className="text-xs h-7 px-2.5 text-slate-700 hover:text-slate-900 hover:bg-slate-100 gap-1"
+                      title="Colapsar todos os grupos"
+                    >
+                      <ChevronsDownUp className="w-3.5 h-3.5 text-slate-500" />
+                      Colapsar Todos
+                    </Button>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={loadMrp}
+                    disabled={mrpLoading}
+                    className="text-xs h-8 px-2.5 gap-1.5 border-slate-200"
+                  >
+                    <RefreshCw className={cn('w-3.5 h-3.5', mrpLoading && 'animate-spin')} />
+                    Recalcular MRP
+                  </Button>
+                </div>
               </div>
             </CardHeader>
 
             <CardContent className="p-0">
               <div className="max-h-[65vh] overflow-auto border-b border-gray-100">
-                <table className="w-full text-left border-collapse text-xs min-w-[900px]">
+                <table className="w-full text-left border-collapse text-xs min-w-[1050px]">
                   <thead className="sticky top-0 z-20 bg-slate-100 shadow-2xs">
-                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
-                      <th className="p-3 sticky top-0 bg-slate-100">#</th>
-                      <th className="p-3 sticky top-0 bg-slate-100">Código Item</th>
-                      <th className="p-3 sticky top-0 bg-slate-100">Descrição</th>
-                      <th className="p-3 sticky top-0 bg-slate-100">Grupo</th>
-                      <th className="p-3 text-center sticky top-0 bg-slate-100">
-                        Qtd Vendida (6m)
+                    <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px] select-none">
+                      <th className="p-3 sticky top-0 bg-slate-100 w-12 text-center">#</th>
+                      <th
+                        className="p-3 sticky top-0 bg-slate-100 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                        onClick={() => handleMrpSort('codigo_item')}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Código Item</span>
+                          {mrpSortField === 'codigo_item' ? (
+                            mrpSortDirection === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
                       </th>
-                      <th className="p-3 text-center sticky top-0 bg-slate-100">Média Mensal</th>
-                      <th className="p-3 text-right sticky top-0 bg-slate-100">
-                        Valor Vendido (6m)
+                      <th
+                        className="p-3 sticky top-0 bg-slate-100 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                        onClick={() => handleMrpSort('descricao_item')}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Descrição</span>
+                          {mrpSortField === 'descricao_item' ? (
+                            mrpSortDirection === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
                       </th>
-                      <th className="p-3 text-center sticky top-0 bg-slate-100">Estoque Atual</th>
-                      <th className="p-3 text-center sticky top-0 bg-slate-100">Em Trânsito</th>
-                      <th className="p-3 text-center sticky top-0 bg-slate-100">
-                        Cobertura (meses)
+                      <th
+                        className="p-3 sticky top-0 bg-slate-100 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                        onClick={() => handleMrpSort('grupo_item')}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Grupo</span>
+                          {mrpSortField === 'grupo_item' ? (
+                            mrpSortDirection === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
                       </th>
-                      <th className="p-3 text-center sticky top-0 bg-slate-100">
-                        Alerta de Reposição
+                      <th
+                        className="p-3 text-center sticky top-0 bg-slate-100 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                        onClick={() => handleMrpSort('qtd_total_6m')}
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Qtd Vendida (6m)</span>
+                          {mrpSortField === 'qtd_total_6m' ? (
+                            mrpSortDirection === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="p-3 text-center sticky top-0 bg-slate-100 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                        onClick={() => handleMrpSort('media_mensal')}
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Média Mensal</span>
+                          {mrpSortField === 'media_mensal' ? (
+                            mrpSortDirection === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="p-3 text-right sticky top-0 bg-slate-100 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                        onClick={() => handleMrpSort('valor_total_6m')}
+                      >
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span>Valor Vendido (6m)</span>
+                          {mrpSortField === 'valor_total_6m' ? (
+                            mrpSortDirection === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="p-3 text-center sticky top-0 bg-slate-100 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                        onClick={() => handleMrpSort('estoque_atual')}
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Estoque Atual</span>
+                          {mrpSortField === 'estoque_atual' ? (
+                            mrpSortDirection === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="p-3 text-center sticky top-0 bg-slate-100 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                        onClick={() => handleMrpSort('em_transito')}
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Em Trânsito</span>
+                          {mrpSortField === 'em_transito' ? (
+                            mrpSortDirection === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="p-3 text-center sticky top-0 bg-slate-100 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                        onClick={() => handleMrpSort('pedidos_abertos_qtd')}
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Pedidos em Aberto</span>
+                          {mrpSortField === 'pedidos_abertos_qtd' ? (
+                            mrpSortDirection === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="p-3 text-center sticky top-0 bg-slate-100 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                        onClick={() => handleMrpSort('cobertura_meses')}
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Cobertura (meses)</span>
+                          {mrpSortField === 'cobertura_meses' ? (
+                            mrpSortDirection === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
+                      </th>
+                      <th
+                        className="p-3 text-center sticky top-0 bg-slate-100 cursor-pointer hover:bg-slate-200/70 transition-colors"
+                        onClick={() => handleMrpSort('status_reposicao')}
+                      >
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>Alerta de Reposição</span>
+                          {mrpSortField === 'status_reposicao' ? (
+                            mrpSortDirection === 'asc' ? (
+                              <ArrowUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3.5 h-3.5 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {mrpLoading ? (
                       <tr>
-                        <td colSpan={11} className="p-8 text-center text-slate-400">
+                        <td colSpan={12} className="p-8 text-center text-slate-400">
                           <div className="flex items-center justify-center gap-2">
                             <div className="w-4 h-4 border-2 border-[#0B6E99] border-t-transparent rounded-full animate-spin" />
                             <span>Calculando MRP...</span>
                           </div>
                         </td>
                       </tr>
-                    ) : !mrpData?.top20Vendidos || mrpData.top20Vendidos.length === 0 ? (
+                    ) : mrpGroups.length === 0 ? (
                       <tr>
-                        <td colSpan={11} className="p-8 text-center text-slate-400">
+                        <td colSpan={12} className="p-8 text-center text-slate-400">
                           Nenhum dado encontrado para o MRP.
                         </td>
                       </tr>
                     ) : (
-                      mrpData.top20Vendidos.map((row, idx) => {
+                      mrpGroups.map((group) => {
+                        const isExpanded = expandedMrpGroups.has(group.grupo)
                         return (
-                          <tr
-                            key={row.codigo_item}
-                            className="hover:bg-slate-50/80 transition-colors"
-                          >
-                            <td className="p-3 font-bold text-slate-400">{idx + 1}</td>
-                            <td className="p-3 font-mono font-bold text-slate-900">
-                              {row.codigo_item}
-                            </td>
-                            <td
-                              className="p-3 text-slate-700 max-w-[240px] truncate"
-                              title={row.descricao_item}
+                          <React.Fragment key={group.grupo}>
+                            {/* Linha de Cabeçalho do Grupo (Colapsável/Expandível) */}
+                            <tr
+                              onClick={() => toggleMrpGroup(group.grupo)}
+                              className="bg-slate-50/95 hover:bg-slate-100 cursor-pointer font-bold text-slate-800 transition-colors border-y border-slate-200"
                             >
-                              {row.descricao_item || '—'}
-                            </td>
-                            <td className="p-3 text-slate-600">{row.grupo_item || '—'}</td>
-                            <td className="p-3 text-center font-bold text-slate-900">
-                              {formatNumber(row.qtd_total_6m)}
-                            </td>
-                            <td className="p-3 text-center font-semibold text-[#0B6E99]">
-                              {formatNumber(row.media_mensal)} un
-                            </td>
-                            <td className="p-3 text-right font-medium text-slate-900">
-                              {formatCurrency(row.valor_total_6m)}
-                            </td>
-                            <td className="p-3 text-center">
-                              {row.tem_posicao_estoque ? (
-                                <span className="font-bold text-slate-900">
-                                  {formatNumber(row.estoque_atual || 0)}
-                                </span>
-                              ) : (
-                                <span className="text-slate-400 font-mono text-[11px]">
-                                  Sem posição
-                                </span>
-                              )}
-                            </td>
-                            <td className="p-3 text-center">
-                              {row.tem_posicao_estoque ? (
-                                row.em_transito && row.em_transito > 0 ? (
+                              <td className="p-3 text-center">
+                                <button
+                                  type="button"
+                                  className="p-1 rounded hover:bg-slate-200 text-slate-600 transition-colors inline-flex items-center justify-center"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    toggleMrpGroup(group.grupo)
+                                  }}
+                                  aria-label={isExpanded ? 'Colapsar grupo' : 'Expandir grupo'}
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="w-4 h-4 text-slate-700" />
+                                  ) : (
+                                    <ChevronRight className="w-4 h-4 text-slate-700" />
+                                  )}
+                                </button>
+                              </td>
+                              <td colSpan={3} className="p-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-slate-900 font-bold text-xs uppercase tracking-wide">
+                                    {group.grupo}
+                                  </span>
+                                  <Badge
+                                    variant="outline"
+                                    className="bg-white text-slate-600 border-slate-300 font-medium text-[10px] px-1.5 py-0"
+                                  >
+                                    {group.items.length}{' '}
+                                    {group.items.length === 1 ? 'item' : 'itens'}
+                                  </Badge>
+                                </div>
+                              </td>
+                              {/* Subtotais do Grupo */}
+                              <td className="p-3 text-center font-bold text-slate-900">
+                                {formatNumber(group.totalQtdVendida6m)}
+                              </td>
+                              <td className="p-3 text-center font-semibold text-slate-500 text-[11px]">
+                                —
+                              </td>
+                              <td className="p-3 text-right font-bold text-slate-900">
+                                {formatCurrency(group.totalValorVendido6m)}
+                              </td>
+                              <td className="p-3 text-center font-bold text-slate-900">
+                                {group.itensComPosicao > 0 ? (
+                                  formatNumber(group.totalEstoqueAtual)
+                                ) : (
+                                  <span className="text-slate-400 text-[10px]">Sem posição</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-center font-bold text-sky-800">
+                                {group.totalEmTransito > 0 ? (
                                   <Badge className="bg-sky-100 text-sky-800 border-sky-300 font-bold text-[10px]">
-                                    {formatNumber(row.em_transito)}
+                                    {formatNumber(group.totalEmTransito)}
                                   </Badge>
                                 ) : (
-                                  <span className="text-slate-400">0</span>
+                                  <span className="text-slate-400 font-normal">0</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-center font-bold">
+                                {group.totalPedidosAbertos > 0 ? (
+                                  <Badge className="bg-amber-100 text-amber-900 border-amber-300 font-bold text-[10px]">
+                                    {formatNumber(group.totalPedidosAbertos)}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-slate-400 font-normal">0</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-center text-slate-400 text-[10px]">—</td>
+                              <td className="p-3 text-center text-slate-400 text-[10px]">—</td>
+                            </tr>
+
+                            {/* Linhas de Itens do Grupo */}
+                            {isExpanded &&
+                              group.items.map((row, idx) => {
+                                const paQtd = row.pedidos_abertos_qtd ?? 0
+                                return (
+                                  <tr
+                                    key={row.codigo_item}
+                                    className="hover:bg-slate-50/80 transition-colors bg-white"
+                                  >
+                                    <td className="p-3 text-center font-medium text-slate-400">
+                                      {idx + 1}
+                                    </td>
+                                    <td className="p-3 font-mono font-bold text-slate-900 pl-4">
+                                      {row.codigo_item}
+                                    </td>
+                                    <td
+                                      className="p-3 text-slate-700 max-w-[240px] truncate"
+                                      title={row.descricao_item}
+                                    >
+                                      {row.descricao_item || '—'}
+                                    </td>
+                                    <td className="p-3 text-slate-600">{row.grupo_item || '—'}</td>
+                                    <td className="p-3 text-center font-bold text-slate-900">
+                                      {formatNumber(row.qtd_total_6m)}
+                                    </td>
+                                    <td className="p-3 text-center font-semibold text-[#0B6E99]">
+                                      {formatNumber(row.media_mensal)} un
+                                    </td>
+                                    <td className="p-3 text-right font-medium text-slate-900">
+                                      {formatCurrency(row.valor_total_6m)}
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      {row.tem_posicao_estoque ? (
+                                        <span className="font-bold text-slate-900">
+                                          {formatNumber(row.estoque_atual || 0)}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400 font-mono text-[11px]">
+                                          Sem posição
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      {row.tem_posicao_estoque ? (
+                                        row.em_transito && row.em_transito > 0 ? (
+                                          <Badge className="bg-sky-100 text-sky-800 border-sky-300 font-bold text-[10px]">
+                                            {formatNumber(row.em_transito)}
+                                          </Badge>
+                                        ) : (
+                                          <span className="text-slate-400">0</span>
+                                        )
+                                      ) : (
+                                        <span className="text-slate-400 font-mono text-[11px]">
+                                          —
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      {paQtd > 0 ? (
+                                        <Badge className="bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300 font-bold text-[10px]">
+                                          {formatNumber(paQtd)}
+                                        </Badge>
+                                      ) : (
+                                        <span className="text-slate-400">0</span>
+                                      )}
+                                    </td>
+                                    <td className="p-3 text-center font-bold">
+                                      {row.tem_posicao_estoque && row.cobertura_meses !== null ? (
+                                        <span
+                                          className={cn(
+                                            row.cobertura_meses < 1
+                                              ? 'text-rose-600 font-black'
+                                              : row.cobertura_meses <= 2
+                                                ? 'text-amber-600 font-black'
+                                                : 'text-emerald-700',
+                                          )}
+                                        >
+                                          {row.cobertura_meses > 99
+                                            ? '> 99 m'
+                                            : `${row.cobertura_meses.toFixed(1)} m`}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400 font-mono text-[11px]">
+                                          —
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      {!row.tem_posicao_estoque ? (
+                                        <Badge
+                                          variant="outline"
+                                          className="bg-slate-100 text-slate-500 border-slate-300 text-[10px]"
+                                        >
+                                          Sem posição
+                                        </Badge>
+                                      ) : row.status_reposicao === 'repor' ? (
+                                        <Badge className="bg-rose-500 text-white font-bold text-[10px] animate-pulse">
+                                          Repor (&lt; 1m)
+                                        </Badge>
+                                      ) : row.status_reposicao === 'atencao' ? (
+                                        <Badge className="bg-amber-500 text-white font-bold text-[10px]">
+                                          Atenção (1–2m)
+                                        </Badge>
+                                      ) : (
+                                        <Badge className="bg-emerald-600 text-white font-bold text-[10px]">
+                                          Normal (&gt; 2m)
+                                        </Badge>
+                                      )}
+                                    </td>
+                                  </tr>
                                 )
-                              ) : (
-                                <span className="text-slate-400 font-mono text-[11px]">—</span>
-                              )}
-                            </td>
-                            <td className="p-3 text-center font-bold">
-                              {row.tem_posicao_estoque && row.cobertura_meses !== null ? (
-                                <span
-                                  className={cn(
-                                    row.cobertura_meses < 1
-                                      ? 'text-rose-600 font-black'
-                                      : row.cobertura_meses <= 2
-                                        ? 'text-amber-600 font-black'
-                                        : 'text-emerald-700',
-                                  )}
-                                >
-                                  {row.cobertura_meses > 99
-                                    ? '> 99 m'
-                                    : `${row.cobertura_meses.toFixed(1)} m`}
-                                </span>
-                              ) : (
-                                <span className="text-slate-400 font-mono text-[11px]">—</span>
-                              )}
-                            </td>
-                            <td className="p-3 text-center">
-                              {!row.tem_posicao_estoque ? (
-                                <Badge
-                                  variant="outline"
-                                  className="bg-slate-100 text-slate-500 border-slate-300 text-[10px]"
-                                >
-                                  Sem posição
-                                </Badge>
-                              ) : row.status_reposicao === 'repor' ? (
-                                <Badge className="bg-rose-500 text-white font-bold text-[10px] animate-pulse">
-                                  Repor (&lt; 1m)
-                                </Badge>
-                              ) : row.status_reposicao === 'atencao' ? (
-                                <Badge className="bg-amber-500 text-white font-bold text-[10px]">
-                                  Atenção (1–2m)
-                                </Badge>
-                              ) : (
-                                <Badge className="bg-emerald-600 text-white font-bold text-[10px]">
-                                  Normal (&gt; 2m)
-                                </Badge>
-                              )}
-                            </td>
-                          </tr>
+                              })}
+                          </React.Fragment>
                         )
                       })
                     )}

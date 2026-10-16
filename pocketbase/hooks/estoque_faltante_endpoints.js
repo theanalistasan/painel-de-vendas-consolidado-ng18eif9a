@@ -924,11 +924,50 @@ routerAdd(
           cobertura_meses: null,
           status_reposicao: 'sem_posicao', // 'repor' | 'atencao' | 'normal' | 'sem_posicao'
           data_carga_estoque: null,
+          pedidos_abertos_qtd: 0,
         })
       }
     } catch (vErr) {
       console.error('estoque_faltante mrp vendas err:', vErr)
       return e.json(500, { error: 'Erro ao calcular Top 20 vendas para MRP: ' + String(vErr) })
+    }
+
+    // 1.1 Consulta a coleção pedidos_abertos para cruzar a quantidade em aberto por item aguardando reposição
+    if (top20Vendidos.length > 0) {
+      try {
+        const codsPa = top20Vendidos.map(
+          (t) => "'" + String(t.codigo_item).replace(/'/g, "''") + "'",
+        )
+        const paSql =
+          'SELECT codigo_item, ' +
+          'CAST(COALESCE(SUM(qtd_aberto), 0.0) AS REAL) AS tot_pa ' +
+          'FROM pedidos_abertos ' +
+          'WHERE codigo_item IN (' +
+          codsPa.join(',') +
+          ') AND qtd_aberto > 0 ' +
+          'GROUP BY codigo_item'
+
+        const paRows = arrayOf(
+          new DynamicModel({
+            codigo_item: '',
+            tot_pa: '',
+          }),
+        )
+        $app.db().newQuery(paSql).all(paRows)
+
+        const paMap = {}
+        for (let p = 0; p < paRows.length; p++) {
+          const c = (paRows[p].codigo_item || '').trim()
+          paMap[c] = toNum(paRows[p].tot_pa)
+        }
+
+        for (let i = 0; i < top20Vendidos.length; i++) {
+          const item = top20Vendidos[i]
+          item.pedidos_abertos_qtd = paMap[item.codigo_item] || 0
+        }
+      } catch (paErr) {
+        console.warn('estoque_faltante mrp pedidos_abertos err:', paErr)
+      }
     }
 
     // 2. Consulta a coleção estoque_sap para cruzar a posição atual
