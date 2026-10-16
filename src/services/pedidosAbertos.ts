@@ -9,11 +9,22 @@ import type {
 
 export async function importPedidosAbertosApi(
   rows: Record<string, unknown>[],
-  options?: { clearBefore?: boolean; replace?: boolean },
+  options?: {
+    clearBefore?: boolean
+    replace?: boolean
+    batchIndex?: number
+    isSubsequentBatch?: boolean
+  },
 ): Promise<ImportResult> {
   return pb.send<ImportResult>('/backend/v1/import/pedidos-abertos', {
     method: 'POST',
-    body: { rows, ...options },
+    // clearBefore sempre forçado como true no lote inicial
+    body: {
+      rows,
+      clearBefore: true,
+      replace: true,
+      ...options,
+    },
   })
 }
 

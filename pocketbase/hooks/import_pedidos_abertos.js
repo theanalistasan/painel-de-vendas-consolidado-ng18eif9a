@@ -16,7 +16,13 @@ routerAdd(
     const body = e.requestInfo().body || {}
     const rawRows = Array.isArray(body.rows) ? body.rows : Array.isArray(body) ? body : []
 
-    if (body.clearBefore === true || body.replace === true) {
+    // Requisito: A importação de Pedidos em Aberto sempre substitui a base completa.
+    // O clearBefore fica sempre ativo na primeira chamada / lote inicial ou por padrão.
+    // Suportamos body.isSubsequentBatch para cargas divididas em vários lotes via frontend:
+    // o lote 1 (ou requisições únicas sem flag) SEMPRE apaga a base anterior.
+    // Lotes subsequentes (isSubsequentBatch === true) inserem os dados sem apagar novamente.
+    const isSubsequentBatch = body.isSubsequentBatch === true || body.batchIndex > 0
+    if (!isSubsequentBatch) {
       try {
         $app.db().newQuery('DELETE FROM pedidos_abertos').execute()
       } catch (delErr) {
@@ -309,26 +315,28 @@ routerAdd(
       console.warn('pedidos_abertos: aviso ao carregar produtos:', pErr)
     }
 
-    // 3. Índice em memória de registros já existentes em pedidos_abertos
+    // 3. Índice em memória de registros já gravados em pedidos_abertos (necessário para lotes subsequentes)
     const existingDbMap = {}
-    try {
-      const dbRows = arrayOf(
-        new DynamicModel({
-          id: '',
-          numero_pedido: '',
-          linha: '',
-        }),
-      )
-      $app.db().newQuery('SELECT id, numero_pedido, linha FROM pedidos_abertos').all(dbRows)
-      for (let i = 0; i < dbRows.length; i++) {
-        const p = normalizeStrict(dbRows[i].numero_pedido)
-        const l = Number(dbRows[i].linha) || 0
-        if (p) {
-          existingDbMap[p + '::' + l] = dbRows[i].id
+    if (isSubsequentBatch) {
+      try {
+        const dbRows = arrayOf(
+          new DynamicModel({
+            id: '',
+            numero_pedido: '',
+            linha: '',
+          }),
+        )
+        $app.db().newQuery('SELECT id, numero_pedido, linha FROM pedidos_abertos').all(dbRows)
+        for (let i = 0; i < dbRows.length; i++) {
+          const p = normalizeStrict(dbRows[i].numero_pedido)
+          const l = Number(dbRows[i].linha) || 0
+          if (p) {
+            existingDbMap[p + '::' + l] = dbRows[i].id
+          }
         }
+      } catch (dbErr) {
+        console.warn('pedidos_abertos: aviso ao carregar pedidos existentes:', dbErr)
       }
-    } catch (dbErr) {
-      console.warn('pedidos_abertos: aviso ao carregar pedidos existentes:', dbErr)
     }
 
     // Deduplicação intra-arquivo (Nº Pedido + Linha)

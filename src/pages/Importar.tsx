@@ -4,6 +4,7 @@ import {
   FileSpreadsheet,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Play,
   RotateCw,
   Database,
@@ -32,6 +33,14 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
@@ -66,7 +75,10 @@ interface CardImportProps {
   title: string
   subtitle: string
   expectedColumns: string[]
-  onImport: (rows: Record<string, unknown>[]) => Promise<ImportResult>
+  onImport: (
+    rows: Record<string, unknown>[],
+    batchMeta?: { batchIndex: number; totalBatches: number; isSubsequentBatch: boolean },
+  ) => Promise<ImportResult>
   badgeLabel: string
   badgeColor: string
   onConsolidationTrigger?: () => Promise<void>
@@ -78,6 +90,16 @@ interface CardImportProps {
   customGuide?: React.ReactNode
   /** Callback disparado ao final da importação com o resultado consolidado */
   onImported?: (result: ImportResult) => void
+  /**
+   * Configuração para exibição de diálogo de confirmação antes de disparar a carga.
+   * Usado para garantir aviso prévio de substituição total da base (ex.: Pedidos em Aberto).
+   */
+  confirmDialog?: {
+    title: string
+    description: string
+    confirmLabel?: string
+    cancelLabel?: string
+  }
 }
 
 function BaseImportCard({
@@ -92,6 +114,7 @@ function BaseImportCard({
   lastImportDate,
   customGuide,
   onImported,
+  confirmDialog,
 }: CardImportProps) {
   const [file, setFile] = useState<File | null>(null)
   const [parsedRows, setParsedRows] = useState<Record<string, string>[]>([])
@@ -100,6 +123,7 @@ function BaseImportCard({
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null)
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
@@ -219,7 +243,11 @@ function BaseImportCard({
         setBatchProgress({ current: batchNum, total: totalBatches, sent: i * CHUNK_SIZE })
 
         try {
-          const res = await onImport(chunks[i])
+          const res = await onImport(chunks[i], {
+            batchIndex: i,
+            totalBatches,
+            isSubsequentBatch: i > 0,
+          })
           acc.importados += res.importados || 0
           acc.atualizados += res.atualizados || 0
           acc.mesclados = (acc.mesclados || 0) + (res.mesclados || 0)
@@ -501,7 +529,13 @@ function BaseImportCard({
 
             {/* Action button */}
             <Button
-              onClick={handleExecuteImport}
+              onClick={() => {
+                if (confirmDialog) {
+                  setConfirmOpen(true)
+                } else {
+                  handleExecuteImport()
+                }
+              }}
               disabled={loading || parsedRows.length === 0}
               className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs py-2 shadow-xs"
             >
@@ -521,6 +555,68 @@ function BaseImportCard({
                 </>
               )}
             </Button>
+
+            {/* Diálogo de Confirmação de Substituição Completa da Base */}
+            {confirmDialog && (
+              <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mb-2">
+                      <AlertTriangle className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <DialogTitle className="text-base font-bold text-slate-900">
+                      {confirmDialog.title}
+                    </DialogTitle>
+                    <DialogDescription className="text-xs text-slate-600 leading-relaxed pt-1 whitespace-pre-line">
+                      {confirmDialog.description}
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="rounded-lg bg-amber-50/80 border border-amber-200/80 p-3 text-xs text-amber-900 space-y-1.5">
+                    <div className="flex items-center justify-between font-semibold">
+                      <span>Registros atuais na base:</span>
+                      <span className="tabular-nums font-bold text-slate-900">
+                        {formatNumber(baseCount ?? 0)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between font-semibold">
+                      <span>Linhas no novo arquivo:</span>
+                      <span className="tabular-nums font-bold text-indigo-700">
+                        {formatNumber(parsedRows.length)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 pt-1 border-t border-amber-200">
+                      A base final refletirá exatamente o extrato mais recente do SAP. Pedidos que
+                      saíram do relatório não permanecerão na base.
+                    </p>
+                  </div>
+
+                  <DialogFooter className="gap-2 sm:gap-0 mt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setConfirmOpen(false)}
+                      disabled={loading}
+                      className="text-xs"
+                    >
+                      {confirmDialog.cancelLabel || 'Cancelar'}
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => {
+                        setConfirmOpen(false)
+                        handleExecuteImport()
+                      }}
+                      disabled={loading}
+                      className="bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs ml-2"
+                    >
+                      <RotateCw className="w-3.5 h-3.5 mr-1.5" />
+                      {confirmDialog.confirmLabel || 'Sim, substituir base'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            )}
           </div>
         )}
 
@@ -1081,10 +1177,17 @@ export default function Importar() {
         {/* Card 5: Pedidos em Aberto (SAP) */}
         <BaseImportCard
           title="Pedidos em Aberto (SAP)"
-          subtitle="Carteira de pedidos e itens pendentes de faturamento"
-          badgeLabel="Pedidos SAP"
+          subtitle="Carteira de pedidos e itens pendentes de faturamento (substituição completa da base)"
+          badgeLabel="Substituição Total"
           badgeColor="bg-amber-600"
           lastImportDate={ultimaCargaPedidosAbertos}
+          confirmDialog={{
+            title: 'Substituir base de Pedidos em Aberto?',
+            description:
+              'A importação de Pedidos em Aberto apaga todos os registros atualmente cadastrados na base antes de inserir o novo extrato do SAP.\n\nEssa ação garante que pedidos já faturados ou cancelados no SAP não continuem inflando a carteira e os KPIs do painel.',
+            confirmLabel: 'Sim, substituir base',
+            cancelLabel: 'Cancelar',
+          }}
           customGuide={
             <div className="rounded-lg bg-slate-50 border border-slate-200/80 p-2.5 text-[11px] text-slate-600 space-y-1.5 shadow-2xs">
               <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-[11px]">
@@ -1149,7 +1252,14 @@ export default function Importar() {
             'Preço após desconto',
             'Status',
           ]}
-          onImport={(rows) => importPedidosAbertosApi(rows)}
+          onImport={(rows, batchMeta) =>
+            importPedidosAbertosApi(rows, {
+              clearBefore: !batchMeta?.isSubsequentBatch,
+              replace: true,
+              batchIndex: batchMeta?.batchIndex ?? 0,
+              isSubsequentBatch: batchMeta?.isSubsequentBatch ?? false,
+            })
+          }
           baseCount={counts.pedidos_abertos ?? 0}
           onImported={(r) => handleImported('pedidos_abertos', r)}
         />
