@@ -31,32 +31,41 @@ routerAdd(
       return e.json(400, { error: 'Mensagem não informada.' })
     }
 
-    const response = e.response
-    response.header().set('Content-Type', 'text/event-stream')
-    response.header().set('Cache-Control', 'no-cache')
-    response.header().set('Connection', 'keep-alive')
-    response.header().set('X-Accel-Buffering', 'no')
-    response.flush()
-
     try {
-      const agentStream = $ai.agent('assistente-vendas', {
-        conversationId: conversationId,
-        user: authRecord.id,
-        messages: [{ role: 'user', content: message }],
+      const conv = $ai.agent('assistente-vendas').getOrCreateConversation({
+        user_id: authRecord.id,
+        id: conversationId || null,
       })
-
-      for (const event of agentStream) {
-        response.write('data: ' + JSON.stringify(event) + '\n\n')
-        response.flush()
-      }
+      const iter = $ai.agent('assistente-vendas').chat({
+        user_id: authRecord.id,
+        conversation_id: conv.id,
+        message: message,
+        stream: true,
+      })
+      e.response.header().set('Content-Type', 'text/event-stream')
+      e.response.header().set('Cache-Control', 'no-cache')
+      e.response.header().set('X-Conversation-Id', conv.id)
+      $response.stream(e, iter)
     } catch (err) {
       console.error('Erro na execução do agente assistente-vendas:', err)
-      const errPayload = {
-        type: 'error',
-        error: 'Desculpe, ocorreu um erro ao processar sua pergunta. Por favor, tente novamente.',
+      if (err instanceof SkipAiConfigError) {
+        return e.json(503, { error: 'Serviço de IA temporariamente indisponível.' })
       }
-      response.write('data: ' + JSON.stringify(errPayload) + '\n\n')
-      response.flush()
+      if (err instanceof SkipAiAgentsError) {
+        const status = err.status || 500
+        return e.json(status, {
+          error: status >= 500 ? 'Falha na comunicação com o assistente.' : err.message,
+        })
+      }
+      if (err instanceof SkipAiError) {
+        const status = err.status || 502
+        return e.json(status, {
+          error: status >= 500 ? 'Serviço de IA temporariamente indisponível.' : err.message,
+        })
+      }
+      return e.json(500, {
+        error: 'Erro interno ao consultar o assistente: ' + (err.message || String(err)),
+      })
     }
   },
   $apis.requireAuth(),

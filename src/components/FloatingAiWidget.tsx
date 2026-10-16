@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useAuth } from '@/context/AuthContext'
-import { pb } from '@/lib/pocketbase/client'
+import pb from '@/lib/pocketbase/client'
 import { streamAgentChat, AgentCitation } from '@/lib/skipAi'
 import { cn } from '@/lib/utils'
 
@@ -152,9 +152,7 @@ export const FloatingAiWidget: React.FC = () => {
         onChunk: (_delta, accumulated) => {
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === assistantMsgId
-                ? { ...msg, content: accumulated, toolRunning: null }
-                : msg,
+              msg.id === assistantMsgId ? { ...msg, content: accumulated, toolRunning: null } : msg,
             ),
           )
         },
@@ -163,14 +161,14 @@ export const FloatingAiWidget: React.FC = () => {
             info.name === 'vendas'
               ? 'Consultando vendas...'
               : info.name === 'pedidos_abertos'
-              ? 'Consultando pedidos em aberto...'
-              : info.name === 'estoque_sap'
-              ? 'Consultando posição de estoque...'
-              : info.name === 'canais_metas'
-              ? 'Consultando metas...'
-              : info.name === 'canais_clientes'
-              ? 'Consultando revendas e canais...'
-              : `Consultando dados (${info.name})...`
+                ? 'Consultando pedidos em aberto...'
+                : info.name === 'estoque_sap'
+                  ? 'Consultando posição de estoque...'
+                  : info.name === 'canais_metas'
+                    ? 'Consultando metas...'
+                    : info.name === 'canais_clientes'
+                      ? 'Consultando revendas e canais...'
+                      : `Consultando dados (${info.name})...`
 
           setMessages((prev) =>
             prev.map((msg) =>
@@ -180,17 +178,13 @@ export const FloatingAiWidget: React.FC = () => {
         },
         onToolCallDone: () => {
           setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMsgId ? { ...msg, toolRunning: null } : msg,
-            ),
+            prev.map((msg) => (msg.id === assistantMsgId ? { ...msg, toolRunning: null } : msg)),
           )
         },
         onCitations: (citations) => {
           currentCitations = citations
           setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMsgId ? { ...msg, citations } : msg,
-            ),
+            prev.map((msg) => (msg.id === assistantMsgId ? { ...msg, citations } : msg)),
           )
         },
         onError: (errMsg) => {
@@ -199,9 +193,7 @@ export const FloatingAiWidget: React.FC = () => {
               msg.id === assistantMsgId
                 ? {
                     ...msg,
-                    content:
-                      msg.content ||
-                      `Ocorreu um erro ao processar sua pergunta: ${errMsg}`,
+                    content: msg.content || `Ocorreu um erro ao processar sua pergunta: ${errMsg}`,
                     toolRunning: null,
                   }
                 : msg,
@@ -228,8 +220,7 @@ export const FloatingAiWidget: React.FC = () => {
       )
     } catch (err: unknown) {
       if ((err as Error)?.name !== 'AbortError') {
-        const errorText =
-          (err as Error)?.message || 'Erro ao conectar com o assistente.'
+        const errorText = (err as Error)?.message || 'Erro ao conectar com o assistente.'
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === assistantMsgId
@@ -326,11 +317,7 @@ export const FloatingAiWidget: React.FC = () => {
                 onClick={() => setIsExpanded(!isExpanded)}
                 title={isExpanded ? 'Diminuir' : 'Expandir'}
               >
-                {isExpanded ? (
-                  <Minimize2 className="h-4 w-4" />
-                ) : (
-                  <Maximize2 className="h-4 w-4" />
-                )}
+                {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </Button>
               <Button
                 variant="ghost"
@@ -357,10 +344,7 @@ export const FloatingAiWidget: React.FC = () => {
             {messages.map((m) => (
               <div
                 key={m.id}
-                className={cn(
-                  'flex flex-col',
-                  m.role === 'user' ? 'items-end' : 'items-start',
-                )}
+                className={cn('flex flex-col', m.role === 'user' ? 'items-end' : 'items-start')}
               >
                 <div
                   className={cn(
@@ -392,24 +376,23 @@ export const FloatingAiWidget: React.FC = () => {
                   {/* Citações/Fontes */}
                   {m.citations && m.citations.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-slate-700/60 text-[10px] text-slate-400 space-y-1">
-                      <span className="font-semibold text-slate-300">Coleções consultadas:</span>
+                      <span className="font-semibold text-slate-300">Fontes consultadas:</span>
                       <div className="flex flex-wrap gap-1">
                         {m.citations.map((c, i) => (
                           <Badge
                             key={i}
                             variant="secondary"
-                            className="text-[9px] px-1.5 py-0 bg-slate-900 border border-slate-700 text-slate-300"
+                            className="text-[9px] px-1.5 py-0 bg-slate-900 border border-slate-700 text-slate-300 max-w-[200px] truncate"
+                            title={c.excerpt || c.source_id}
                           >
-                            {c.collection}
+                            {c.source_id || `Fonte #${c.n}`}
                           </Badge>
                         ))}
                       </div>
                     </div>
                   )}
                 </div>
-                <span className="text-[10px] text-slate-500 mt-1 px-1">
-                  {m.timestamp}
-                </span>
+                <span className="text-[10px] text-slate-500 mt-1 px-1">{m.timestamp}</span>
               </div>
             ))}
             <div ref={messagesEndRef} />

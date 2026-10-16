@@ -42,6 +42,7 @@ routerAdd('POST', '/backend/v1/trigger/reconciliar-resumos', (e) => {
       {:now} AS updated
     FROM vendas
     WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
+      AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
     GROUP BY
       substr(data_lancamento, 1, 7),
       CAST(substr(data_lancamento, 1, 4) AS INTEGER),
@@ -83,6 +84,7 @@ routerAdd('POST', '/backend/v1/trigger/reconciliar-resumos', (e) => {
     WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
       AND codigo_cliente IS NOT NULL AND codigo_cliente != ''
       AND UPPER(TRIM(grupo_item)) IN ('EQUIPAMENTOS', 'PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS')
+      AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
     GROUP BY
       substr(data_lancamento, 1, 7),
       CAST(substr(data_lancamento, 1, 4) AS INTEGER),
@@ -126,6 +128,7 @@ routerAdd('POST', '/backend/v1/trigger/reconciliar-resumos', (e) => {
       {:now} AS updated
     FROM vendas
     WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
+      AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
     GROUP BY
       CAST(substr(data_lancamento, 1, 4) AS INTEGER),
       CAST(substr(data_lancamento, 6, 2) AS INTEGER),
@@ -342,6 +345,7 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
           {:now} AS updated
         FROM vendas
         WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
+          AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
         GROUP BY
           substr(data_lancamento, 1, 7),
           CAST(substr(data_lancamento, 1, 4) AS INTEGER),
@@ -384,6 +388,7 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
         WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
           AND codigo_cliente IS NOT NULL AND codigo_cliente != ''
           AND UPPER(TRIM(grupo_item)) IN ('EQUIPAMENTOS', 'PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS')
+          AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
         GROUP BY
           substr(data_lancamento, 1, 7),
           CAST(substr(data_lancamento, 1, 4) AS INTEGER),
@@ -428,6 +433,7 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
           {:now} AS updated
         FROM vendas
         WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
+          AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
         GROUP BY
           CAST(substr(data_lancamento, 1, 4) AS INTEGER),
           CAST(substr(data_lancamento, 6, 2) AS INTEGER),

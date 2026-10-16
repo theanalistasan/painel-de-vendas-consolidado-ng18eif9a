@@ -24,18 +24,21 @@ export async function fetchProdutos(): Promise<Produto[]> {
 
 export async function fetchRacNew(): Promise<RacNew[]> {
   return pb.collection<RacNew>('racnew').getFullList({
+    filter: "codigo_item != 'SERVICOS'",
     sort: '-data_lancamento',
   })
 }
 
 export async function fetchNetSales(): Promise<NetSales[]> {
   return pb.collection<NetSales>('netsales').getFullList({
+    filter: "itemcode != 'SERVICOS'",
     sort: '-docdate',
   })
 }
 
 export async function fetchVendas(): Promise<VendaConsolidada[]> {
   return pb.collection<VendaConsolidada>('vendas').getFullList({
+    filter: "codigo_item != 'SERVICOS'",
     sort: '-data_lancamento',
   })
 }
