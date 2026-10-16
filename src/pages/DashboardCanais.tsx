@@ -60,6 +60,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTableSort } from '@/hooks/use-table-sort'
+import { fetchTiposClienteOptions } from '@/services/tiposCliente'
 import { VendasRelatorioTable, RELATORIO_COLUMNS } from '@/components/VendasRelatorioTable'
 
 const COLOR_BLUE = '#0B6E99'
@@ -84,6 +85,7 @@ export default function DashboardCanais() {
   const [data, setData] = useState<DashboardStatsResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
 
   // Relatório de Lançamentos/Vendas no modelo de Vendas.tsx
   const [reportVendas, setReportVendas] = useState<(VendaConsolidada & { itens_qtd?: number })[]>(
@@ -201,6 +203,20 @@ export default function DashboardCanais() {
   }
 
   useEffect(() => {
+    let mounted = true
+    fetchTiposClienteOptions()
+      .then((res) => {
+        if (mounted && Array.isArray(res.options) && res.options.length > 0) {
+          setTipoClienteOptions(res.options)
+        }
+      })
+      .catch((err) => console.warn('[DashboardCanais] Erro ao carregar tipos de cliente:', err))
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
     loadData(filters)
     loadReportData(filters, 1, sort.field, sort.dir, isGroupedByNfe)
     setReportPage(1)
@@ -241,24 +257,28 @@ export default function DashboardCanais() {
   })
 
   const filterOptions = useMemo(() => {
-    if (!data?.filterOptions) {
-      return {
-        vendedorCliente: [],
-        vendedor: [],
-        grupoItem: [],
-        estado: [],
-        utilizacao: [],
-        tipoDocumento: [],
-        canais: [],
-        canaisClientes: [],
-        inside: [],
-        anos: [],
-        meses: [],
-        dias: [],
-      }
+    const baseOpts = data?.filterOptions || {
+      vendedorCliente: [],
+      vendedor: [],
+      grupoItem: [],
+      estado: [],
+      utilizacao: [],
+      tipoDocumento: [],
+      canais: [],
+      canaisClientes: [],
+      inside: [],
+      anos: [],
+      meses: [],
+      dias: [],
     }
-    return data.filterOptions
-  }, [data])
+    return {
+      ...baseOpts,
+      tipoCliente:
+        baseOpts.tipoCliente && baseOpts.tipoCliente.length > 0
+          ? baseOpts.tipoCliente
+          : tipoClienteOptions,
+    }
+  }, [data, tipoClienteOptions])
 
   const kpis = useMemo(() => {
     return {
@@ -299,6 +319,7 @@ export default function DashboardCanais() {
       canalClientes: [],
       deploy: [],
       inside: [],
+      tipoCliente: [],
       search: '',
       ano: [],
       mes: [],

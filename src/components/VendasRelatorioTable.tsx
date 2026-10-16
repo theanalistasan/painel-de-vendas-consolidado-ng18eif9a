@@ -52,6 +52,7 @@ export const RELATORIO_COLUMNS: ColumnDef[] = [
   { key: 'numero_nfe', label: 'Nr. NF', type: 'text', sortKey: 'numero_nfe' },
   { key: 'tipo_documento', label: 'Tipo de Documento', type: 'text', sortKey: 'tipo_documento' },
   { key: 'nome_cliente', label: 'Cliente', type: 'text', sortKey: 'nome_cliente' },
+  { key: 'tipo_cliente', label: 'Tipo de Cliente', type: 'badge', sortKey: 'tipo_cliente' },
   { key: 'vendedor_cliente', label: 'Vendedor', type: 'text', sortKey: 'vendedor_cliente' },
   { key: 'descricao_item', label: 'Item', type: 'text', sortKey: 'descricao_item' },
   { key: 'quantidade', label: 'Qtde', type: 'number', sortKey: 'quantidade', align: 'center' },
@@ -65,6 +66,8 @@ export const RELATORIO_COLUMNS: ColumnDef[] = [
   },
   { key: 'utilizacao', label: 'Utilização', type: 'text', sortKey: 'utilizacao' },
   // Colunas complementares de enriquecimento
+  { key: 'status_cadastro', label: 'Status do Cadastro', type: 'text', sortKey: 'status_cadastro' },
+  { key: 'tipo_pn', label: 'Tipo de PN', type: 'text', sortKey: 'tipo_pn' },
   { key: 'numero_sap', label: 'Número SAP', type: 'text', sortKey: 'numero_sap' },
   { key: 'codigo_cliente', label: 'Cód. Cliente', type: 'text', sortKey: 'codigo_cliente' },
   { key: 'nome_vendedor', label: 'Nome Vendedor', type: 'text', sortKey: 'nome_vendedor' },
@@ -123,6 +126,9 @@ export const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   numero_nfe: 120,
   tipo_documento: 160,
   nome_cliente: 240,
+  tipo_cliente: 160,
+  status_cadastro: 150,
+  tipo_pn: 130,
   vendedor_cliente: 220,
   descricao_item: 280,
   quantidade: 90,
@@ -1042,6 +1048,65 @@ export function VendasRelatorioTable({
                                         title={item.usuario_emissor_pedido || '-'}
                                       >
                                         {item.usuario_emissor_pedido || '-'}
+                                      </div>
+                                    </td>
+                                  )
+                                case 'tipo_cliente':
+                                  return (
+                                    <td
+                                      key={col.key}
+                                      style={cellStyle}
+                                      className="py-2 px-3 border-r border-slate-100"
+                                    >
+                                      {item.tipo_cliente ? (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-[10px] font-semibold bg-purple-50 text-purple-700 border-purple-200 px-2 py-0.5 truncate max-w-full"
+                                          title={item.tipo_cliente}
+                                        >
+                                          {item.tipo_cliente}
+                                        </Badge>
+                                      ) : (
+                                        <span className="text-slate-400">-</span>
+                                      )}
+                                    </td>
+                                  )
+                                case 'status_cadastro':
+                                  return (
+                                    <td
+                                      key={col.key}
+                                      style={cellStyle}
+                                      className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                                    >
+                                      <div
+                                        className={isExpanded ? '' : 'truncate'}
+                                        title={item.status_cadastro || '-'}
+                                      >
+                                        {item.status_cadastro ? (
+                                          <Badge
+                                            variant="outline"
+                                            className="text-[10px] font-medium bg-slate-50 text-slate-700 border-slate-200"
+                                          >
+                                            {item.status_cadastro}
+                                          </Badge>
+                                        ) : (
+                                          '-'
+                                        )}
+                                      </div>
+                                    </td>
+                                  )
+                                case 'tipo_pn':
+                                  return (
+                                    <td
+                                      key={col.key}
+                                      style={cellStyle}
+                                      className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                                    >
+                                      <div
+                                        className={isExpanded ? '' : 'truncate'}
+                                        title={item.tipo_pn || '-'}
+                                      >
+                                        {item.tipo_pn || '-'}
                                       </div>
                                     </td>
                                   )

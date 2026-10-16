@@ -52,6 +52,7 @@ import ChartCard from '@/components/ChartCard'
 import { MetasIndicador } from '@/components/MetasIndicador'
 import type { VendaConsolidada } from '@/types/sales'
 import { fetchVendasList } from '@/services/sales'
+import { fetchTiposClienteOptions } from '@/services/tiposCliente'
 import { useTableSort } from '@/hooks/use-table-sort'
 import { VendasRelatorioTable, RELATORIO_COLUMNS } from '@/components/VendasRelatorioTable'
 import { FileSpreadsheet, Package, FileText, DollarSign } from 'lucide-react'
@@ -158,6 +159,7 @@ export default function DashboardGeral() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [exportingReport, setExportingReport] = useState(false)
+  const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
 
   // Estado do Relatório Consolidado de Vendas (incorporado de /vendas)
   const [paginatedVendas, setPaginatedVendas] = useState<VendaConsolidada[]>([])
@@ -281,6 +283,20 @@ export default function DashboardGeral() {
   }
 
   useEffect(() => {
+    let mounted = true
+    fetchTiposClienteOptions()
+      .then((res) => {
+        if (mounted && Array.isArray(res.options) && res.options.length > 0) {
+          setTipoClienteOptions(res.options)
+        }
+      })
+      .catch((err) => console.warn('Falha ao buscar opções de tipo de cliente:', err))
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  useEffect(() => {
     loadData(filters)
     loadVendasData(filters, vendasPage, sort.field, sort.dir, isAllGroupedNfe)
     return () => {
@@ -296,24 +312,28 @@ export default function DashboardGeral() {
   })
 
   const filterOptions = useMemo(() => {
-    if (!data?.filterOptions) {
-      return {
-        vendedorCliente: [],
-        vendedor: [],
-        grupoItem: [],
-        estado: [],
-        utilizacao: [],
-        tipoDocumento: [],
-        canais: [],
-        canaisClientes: [],
-        inside: [],
-        anos: [],
-        meses: [],
-        dias: [],
-      }
+    const baseOpts = data?.filterOptions || {
+      vendedorCliente: [],
+      vendedor: [],
+      grupoItem: [],
+      estado: [],
+      utilizacao: [],
+      tipoDocumento: [],
+      canais: [],
+      canaisClientes: [],
+      inside: [],
+      anos: [],
+      meses: [],
+      dias: [],
     }
-    return data.filterOptions
-  }, [data])
+    return {
+      ...baseOpts,
+      tipoCliente:
+        baseOpts.tipoCliente && baseOpts.tipoCliente.length > 0
+          ? baseOpts.tipoCliente
+          : tipoClienteOptions,
+    }
+  }, [data, tipoClienteOptions])
 
   const chartVendasPorMes = data?.charts?.vendasPorMes || []
   const chartVendasPorAno = data?.charts?.vendasPorAno || []
@@ -735,6 +755,9 @@ export default function DashboardGeral() {
         { key: 'tipo_documento', label: 'Tipo de Documento' },
         { key: 'codigo_cliente', label: 'Código do Cliente' },
         { key: 'nome_cliente', label: 'Nome do Cliente' },
+        { key: 'tipo_cliente', label: 'Tipo de Cliente' },
+        { key: 'status_cadastro', label: 'Status do Cadastro' },
+        { key: 'tipo_pn', label: 'Tipo de PN' },
         { key: 'vendedor_cliente', label: 'Vendedor > Cliente' },
         { key: 'nome_vendedor', label: 'Nome do Vendedor' },
         { key: 'codigo_item', label: 'Cód. do Item' },

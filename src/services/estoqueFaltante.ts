@@ -251,11 +251,14 @@ export async function fetchUltimaCargaEstoqueSap(): Promise<string | null> {
   }
 }
 
-export async function fetchMrpData(options?: { signal?: AbortSignal }): Promise<MrpResult> {
+export async function fetchMrpData(
+  filters?: Record<string, unknown>,
+  options?: { signal?: AbortSignal },
+): Promise<MrpResult> {
   const run = () =>
     pb.send<MrpResult>('/backend/v1/estoque-faltante/mrp', {
       method: 'POST',
-      body: {},
+      body: { filters: filters || {} },
       signal: options?.signal,
     })
 
