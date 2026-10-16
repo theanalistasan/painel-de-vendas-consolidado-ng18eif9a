@@ -43,11 +43,17 @@ export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [ultimaCarga, setUltimaCarga] = useState<string | null>(null)
   const [dashboardOpen, setDashboardOpen] = useState(true)
+  const [canaisGroupOpen, setCanaisGroupOpen] = useState(true)
   const location = useLocation()
   const navigate = useNavigate()
 
   const isPedidosAbertosActive = location.pathname === '/pedidos-abertos'
   const isEstoqueFaltanteActive = location.pathname === '/estoque-faltante'
+  const isCanaisPageActive = location.pathname === '/canais'
+
+  // Grupo Canais ativo quando estiver em /canais, /pedidos-abertos ou /estoque-faltante
+  const isCanaisGroupActive =
+    isCanaisPageActive || isPedidosAbertosActive || isEstoqueFaltanteActive
 
   const isDashboardActive =
     location.pathname === '/' ||
@@ -59,7 +65,7 @@ export default function Layout() {
     location.pathname === '/' ||
     location.pathname === '/dashboard/geral' ||
     location.pathname === '/vendas'
-  const isCanaisActive = location.pathname === '/dashboard/canais'
+  const isDashboardCanaisActive = location.pathname === '/dashboard/canais'
 
   // Garantir que se a rota atual for dashboard, o submenu fica expandido
   useEffect(() => {
@@ -67,6 +73,13 @@ export default function Layout() {
       setDashboardOpen(true)
     }
   }, [isDashboardActive])
+
+  // Garantir que se a rota atual for de Canais ou seus sub-itens, o grupo Canais fica expandido
+  useEffect(() => {
+    if (isCanaisGroupActive) {
+      setCanaisGroupOpen(true)
+    }
+  }, [isCanaisGroupActive])
 
   const toggleDesktopSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -133,21 +146,6 @@ export default function Layout() {
       title: 'Dashboard',
       href: '/',
       icon: LayoutDashboard,
-    },
-    {
-      title: 'Pedidos em Aberto',
-      href: '/pedidos-abertos',
-      icon: ClipboardList,
-    },
-    {
-      title: 'Estoque Faltante',
-      href: '/estoque-faltante',
-      icon: AlertTriangle,
-    },
-    {
-      title: 'Canais',
-      href: '/canais',
-      icon: Network,
     },
     {
       title: 'Importar Dados',
@@ -340,7 +338,7 @@ export default function Layout() {
                       to="/dashboard/canais"
                       className={cn(
                         'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
-                        isCanaisActive
+                        isDashboardCanaisActive
                           ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
                           : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
                       )}
@@ -354,7 +352,103 @@ export default function Layout() {
             )}
           </div>
 
-          {/* Demais Itens de Navegação (Canais, Importar, Admin, etc.) */}
+          {/* Item Canais com Submenu (Canais, Pedidos em Aberto, Estoque Faltante) */}
+          <div className="space-y-1">
+            {sidebarCollapsed ? (
+              // No modo colapsado, link direto para a página de Canais com tooltip
+              <NavLink
+                to="/canais"
+                title="Canais (Canais, Pedidos em Aberto & Estoque Faltante)"
+                className={cn(
+                  'flex items-center justify-center w-10 h-10 mx-auto rounded-full text-sm font-medium transition-all duration-200',
+                  isCanaisGroupActive
+                    ? 'bg-[#0B6E99] text-white shadow-sm font-bold'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
+                )}
+              >
+                <Network className="w-4 h-4 shrink-0" />
+              </NavLink>
+            ) : (
+              // No modo expandido, cabeçalho expansível do grupo Canais
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setCanaisGroupOpen((prev) => !prev)}
+                  className={cn(
+                    'w-full flex items-center justify-between rounded-full text-sm font-medium transition-all duration-200 px-3.5 py-2.5',
+                    isCanaisGroupActive
+                      ? 'bg-slate-800/90 text-white font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <Network
+                      className={cn(
+                        'w-4 h-4 shrink-0',
+                        isCanaisGroupActive ? 'text-[#0B6E99]' : 'text-slate-400',
+                      )}
+                    />
+                    <span className="truncate">Canais</span>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      'w-4 h-4 transition-transform duration-200 text-slate-400',
+                      canaisGroupOpen ? 'rotate-180' : '',
+                    )}
+                  />
+                </button>
+
+                {/* Submenu de Canais */}
+                {canaisGroupOpen && (
+                  <div className="mt-1 ml-4 pl-3 border-l border-slate-800 space-y-1">
+                    {/* 1. Canais (página principal) */}
+                    <NavLink
+                      to="/canais"
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
+                        isCanaisPageActive
+                          ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+                      )}
+                    >
+                      <Network className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Canais</span>
+                    </NavLink>
+
+                    {/* 2. Pedidos em Aberto */}
+                    <NavLink
+                      to="/pedidos-abertos"
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
+                        isPedidosAbertosActive
+                          ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+                      )}
+                    >
+                      <ClipboardList className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Pedidos em Aberto</span>
+                    </NavLink>
+
+                    {/* 3. Estoque Faltante */}
+                    <NavLink
+                      to="/estoque-faltante"
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
+                        isEstoqueFaltanteActive
+                          ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+                      )}
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Estoque Faltante</span>
+                    </NavLink>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Demais Itens de Navegação (Importar, Admin, Usuários, Auditoria) */}
           {navItems
             .filter((item) => item.href !== '/')
             .map((item) => {
@@ -528,7 +622,7 @@ export default function Layout() {
                       onClick={() => setMobileMenuOpen(false)}
                       className={cn(
                         'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
-                        isCanaisActive
+                        isDashboardCanaisActive
                           ? 'bg-[#0B6E99] text-white font-bold'
                           : 'text-slate-400 hover:text-white hover:bg-slate-800',
                       )}
@@ -540,7 +634,86 @@ export default function Layout() {
                 )}
               </div>
 
-              {/* Demais itens mobile (Canais, Importar, Admin, etc.) */}
+              {/* Canais Mobile com Submenu */}
+              <div className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() => setCanaisGroupOpen((prev) => !prev)}
+                  className={cn(
+                    'w-full flex items-center justify-between px-3.5 py-2.5 rounded-full text-sm font-medium transition-all',
+                    isCanaisGroupActive
+                      ? 'bg-slate-800 text-white font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <Network
+                      className={cn(
+                        'w-4 h-4',
+                        isCanaisGroupActive ? 'text-[#0B6E99]' : 'text-slate-400',
+                      )}
+                    />
+                    <span>Canais</span>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      'w-4 h-4 transition-transform duration-200 text-slate-400',
+                      canaisGroupOpen ? 'rotate-180' : '',
+                    )}
+                  />
+                </button>
+
+                {canaisGroupOpen && (
+                  <div className="ml-4 pl-3 border-l border-slate-800 space-y-1">
+                    {/* 1. Canais */}
+                    <NavLink
+                      to="/canais"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
+                        isCanaisPageActive
+                          ? 'bg-[#0B6E99] text-white font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                      )}
+                    >
+                      <Network className="w-3.5 h-3.5 shrink-0" />
+                      <span>Canais</span>
+                    </NavLink>
+
+                    {/* 2. Pedidos em Aberto */}
+                    <NavLink
+                      to="/pedidos-abertos"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
+                        isPedidosAbertosActive
+                          ? 'bg-[#0B6E99] text-white font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                      )}
+                    >
+                      <ClipboardList className="w-3.5 h-3.5 shrink-0" />
+                      <span>Pedidos em Aberto</span>
+                    </NavLink>
+
+                    {/* 3. Estoque Faltante */}
+                    <NavLink
+                      to="/estoque-faltante"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
+                        isEstoqueFaltanteActive
+                          ? 'bg-[#0B6E99] text-white font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                      )}
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Estoque Faltante</span>
+                    </NavLink>
+                  </div>
+                )}
+              </div>
+
+              {/* Demais itens mobile (Importar, Admin, Usuários, Auditoria) */}
               {navItems
                 .filter((item) => item.href !== '/')
                 .map((item) => {
