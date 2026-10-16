@@ -872,6 +872,26 @@ routerAdd(
       console.warn('estoque_faltante stats: top20 valor err:', tvErr)
     }
 
+    // Opções de tipo_cliente
+    let tipoClienteOptions = []
+    try {
+      const tcOptRows = arrayOf(new DynamicModel({ tc: '' }))
+      $app
+        .db()
+        .newQuery(
+          "SELECT DISTINCT tipo_cliente AS tc FROM tipos_cliente WHERE tipo_cliente IS NOT NULL AND TRIM(tipo_cliente) != '' ORDER BY tipo_cliente ASC",
+        )
+        .all(tcOptRows)
+      for (let i = 0; i < tcOptRows.length; i++) {
+        const val = (tcOptRows[i].tc || '').trim()
+        if (val && tipoClienteOptions.indexOf(val) === -1) {
+          tipoClienteOptions.push(val)
+        }
+      }
+    } catch (tcErr) {
+      console.warn('estoque_faltante stats: tipos_cliente options err:', tcErr)
+    }
+
     return e.json(200, {
       kpis: {
         totalItensDistintos,
@@ -893,6 +913,9 @@ routerAdd(
       },
       top20Qtd,
       top20Valor,
+      filterOptions: {
+        tipoCliente: tipoClienteOptions,
+      },
     })
   },
   $apis.requireAuth(),
@@ -909,6 +932,42 @@ routerAdd(
       const n = parseFloat(v)
       return isNaN(n) ? 0 : n
     }
+
+    const body = e.requestInfo().body || {}
+    const f = body.filters || {}
+    const sqlEsc = (s) => String(s).replace(/'/g, "''")
+
+    // Cláusulas adicionais de filtro vindas da tela de Estoque Faltante (ex: tipoCliente)
+    const extraWhere = []
+    const tipoClienteFilter = Array.isArray(f.tipoCliente)
+      ? f.tipoCliente
+      : f.tipoCliente
+        ? [f.tipoCliente]
+        : []
+    if (tipoClienteFilter.length > 0 && !tipoClienteFilter.includes('TODOS')) {
+      const tcConds = []
+      const tcValues = []
+      for (let tcIdx = 0; tcIdx < tipoClienteFilter.length; tcIdx++) {
+        const val = String(tipoClienteFilter[tcIdx]).trim()
+        if (
+          val.toUpperCase() === 'SEM INFORMACAO' ||
+          val.toUpperCase() === 'VAZIO' ||
+          val.toUpperCase() === 'SEM TIPO'
+        ) {
+          tcConds.push("(tipo_cliente IS NULL OR tipo_cliente = '')")
+        } else if (val) {
+          tcValues.push("'" + sqlEsc(val) + "'")
+        }
+      }
+      if (tcValues.length > 0) {
+        tcConds.push('tipo_cliente IN (' + tcValues.join(',') + ')')
+      }
+      if (tcConds.length > 0) {
+        extraWhere.push('(' + tcConds.join(' OR ') + ')')
+      }
+    }
+
+    const extraWhereSql = extraWhere.length > 0 ? ' AND ' + extraWhere.join(' AND ') : ''
 
     // Determina a data máxima na base Vendas para definir os 6 meses mais recentes
     let maxData = '2026-09-30'
@@ -948,7 +1007,8 @@ routerAdd(
         "WHERE data_lancamento >= '" +
         dataLimite +
         "' " +
-        "AND (tipo_documento != 'NF de Entrada' OR tipo_documento IS NULL) " +
+        extraWhereSql +
+        " AND (tipo_documento != 'NF de Entrada' OR tipo_documento IS NULL) " +
         "AND codigo_item IS NOT NULL AND TRIM(codigo_item) != '' AND codigo_item != '1' " +
         "AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS' " +
         'GROUP BY codigo_item ' +

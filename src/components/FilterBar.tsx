@@ -31,6 +31,7 @@ interface FilterBarProps {
     canaisClientes?: CanalClienteOption[]
     inside?: string[]
     tipoCliente?: string[]
+    isLoadingTipoCliente?: boolean
     anos: number[]
     meses: number[]
     dias: number[]
@@ -50,6 +51,8 @@ function MultiSelectDropdown({
   placeholder,
   highlight = false,
   getOptionLabel,
+  isLoading = false,
+  emptyMessage,
 }: {
   label: string
   options: string[]
@@ -58,6 +61,8 @@ function MultiSelectDropdown({
   placeholder: string
   highlight?: boolean
   getOptionLabel?: (option: string) => string
+  isLoading?: boolean
+  emptyMessage?: string
 }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')

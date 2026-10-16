@@ -1037,6 +1037,26 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const distinctSummaryCol = (col, maxLimit) => {
       const rows = arrayOf(new DynamicModel({ a: '' }))
       try {
+        // Para tipo_cliente, busca prioritariamente da coleção de referência tipos_cliente
+        if (col === 'tipo_cliente') {
+          try {
+            const tcRows = arrayOf(new DynamicModel({ a: '' }))
+            $app
+              .db()
+              .newQuery(
+                "SELECT DISTINCT tipo_cliente AS a FROM tipos_cliente WHERE tipo_cliente IS NOT NULL AND TRIM(tipo_cliente) != '' ORDER BY tipo_cliente ASC",
+              )
+              .all(tcRows)
+            if (tcRows.length > 0) {
+              const tcOut = []
+              for (let t = 0; t < tcRows.length; t++) {
+                if (tcRows[t].a) tcOut.push(tcRows[t].a)
+              }
+              if (tcOut.length > 0) return tcOut
+            }
+          } catch (_) {}
+        }
+
         const lim = maxLimit ? ' LIMIT ' + maxLimit : ''
         $app
           .db()
@@ -1203,6 +1223,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       canais: canaisOptions,
       canaisClientes: canaisClientesOptions,
       inside: insideOptions,
+      tipoCliente: cleanFilterOptions(distinctSummaryCol('tipo_cliente', 50)),
       anos: anosList,
       meses: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
       dias: [

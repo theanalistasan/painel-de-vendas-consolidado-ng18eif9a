@@ -944,6 +944,26 @@ routerAdd(
       console.warn('pedidos_abertos stats: canais filter options err:', canalErr)
     }
 
+    // Buscar opções distintas de tipo_cliente
+    let tipoClienteOptions = []
+    try {
+      const tcOptRows = arrayOf(new DynamicModel({ tc: '' }))
+      $app
+        .db()
+        .newQuery(
+          "SELECT DISTINCT tipo_cliente AS tc FROM tipos_cliente WHERE tipo_cliente IS NOT NULL AND TRIM(tipo_cliente) != '' ORDER BY tipo_cliente ASC",
+        )
+        .all(tcOptRows)
+      for (let i = 0; i < tcOptRows.length; i++) {
+        const val = (tcOptRows[i].tc || '').trim()
+        if (val && tipoClienteOptions.indexOf(val) === -1) {
+          tipoClienteOptions.push(val)
+        }
+      }
+    } catch (tcErr) {
+      console.warn('pedidos_abertos stats: tipos_cliente options err:', tcErr)
+    }
+
     return e.json(200, {
       kpis: {
         valorTotalAberto,
@@ -956,6 +976,7 @@ routerAdd(
         canais: canaisOptions,
         canaisClientes: canaisClientesOptions,
         inside: insideOptions,
+        tipoCliente: tipoClienteOptions,
       },
     })
   },
