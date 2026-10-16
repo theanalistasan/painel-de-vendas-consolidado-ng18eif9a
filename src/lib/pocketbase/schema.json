@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-16T15:36:57.492Z",
+  "generatedAt": "2026-10-16T15:47:08.099Z",
   "collections": [
     {
       "name": "users",
@@ -343,6 +343,24 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "status_cadastro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_pn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -545,6 +563,24 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "status_cadastro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_pn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -870,6 +906,24 @@
         {
           "name": "tem_netsales",
           "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_cadastro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_pn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_cliente",
+          "type": "text",
           "required": false,
           "system": false
         }
@@ -1391,6 +1445,24 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "status_cadastro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_pn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -1618,6 +1690,73 @@
       "indexes": [
         "CREATE UNIQUE INDEX idx_estoque_sap_codigo_item ON estoque_sap (codigo_item)",
         "CREATE INDEX idx_estoque_sap_data_carga ON estoque_sap (data_carga)"
+      ]
+    },
+    {
+      "name": "tipos_cliente",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != ''",
+        "delete": "@request.auth.id != ''"
+      },
+      "fields": [
+        {
+          "name": "codigo_pn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_pn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_cadastro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_pn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_carga",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX idx_tipos_cliente_codigo ON tipos_cliente (codigo_pn)",
+        "CREATE INDEX idx_tipos_cliente_tipo ON tipos_cliente (tipo_cliente)"
       ]
     }
   ]
