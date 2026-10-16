@@ -9,6 +9,7 @@ export type AuditAction =
   | 'pedidos_abertos_view'
   | 'pedidos_abertos_import'
   | 'estoque_sap_import'
+  | 'tipos_cliente_import'
 
 export interface AuditLog {
   id: string
