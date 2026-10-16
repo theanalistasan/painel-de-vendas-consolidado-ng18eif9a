@@ -30,6 +30,7 @@ interface FilterBarProps {
     canais?: CanalOption[]
     canaisClientes?: CanalClienteOption[]
     inside?: string[]
+    tipoCliente?: string[]
     anos: number[]
     meses: number[]
     dias: number[]
@@ -255,6 +256,7 @@ export default function FilterBar({
       (filters.canalClientes?.length || 0) +
       (filters.deploy?.length || 0) +
       (filters.inside?.length || 0) +
+      (filters.tipoCliente?.length || 0) +
       filters.vendedorCliente.length +
       filters.vendedor.length +
       filters.grupoItem.length +
@@ -291,6 +293,7 @@ export default function FilterBar({
       canalClientes: [],
       deploy: [],
       inside: [],
+      tipoCliente: [],
       search: '',
       ano: [],
       mes: [],
@@ -330,6 +333,7 @@ export default function FilterBar({
         type === 'canalClientes' ||
         type === 'deploy' ||
         type === 'inside' ||
+        type === 'tipoCliente' ||
         type === 'tipoDocumento')
     ) {
       nextState = {
@@ -513,6 +517,18 @@ export default function FilterBar({
           type: 'inside',
           value: item,
           bgClass: 'bg-teal-50 border-teal-200 text-teal-900 font-semibold',
+        })
+      })
+    }
+
+    if (Array.isArray(filters.tipoCliente)) {
+      filters.tipoCliente.forEach((item) => {
+        list.push({
+          id: `tipoCliente-${item}`,
+          label: `Tipo: ${item}`,
+          type: 'tipoCliente',
+          value: item,
+          bgClass: 'bg-purple-50 border-purple-200 text-purple-900 font-semibold',
         })
       })
     }
@@ -757,6 +773,19 @@ export default function FilterBar({
             onChange={(values) => setLocalFilters((prev) => ({ ...prev, tipoDocumento: values }))}
             placeholder="Todos"
             highlight={localFilters.tipoDocumento.length > 0}
+          />
+        </div>
+
+        {/* Tipo de Cliente (SAP) */}
+        <div>
+          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">Tipo de Cliente</Label>
+          <MultiSelectDropdown
+            label="Tipo de Cliente"
+            options={options.tipoCliente || []}
+            selected={localFilters.tipoCliente || []}
+            onChange={(values) => setLocalFilters((prev) => ({ ...prev, tipoCliente: values }))}
+            placeholder="Todos (Atas, Revendas, ...)"
+            highlight={(localFilters.tipoCliente || []).length > 0}
           />
         </div>
       </div>

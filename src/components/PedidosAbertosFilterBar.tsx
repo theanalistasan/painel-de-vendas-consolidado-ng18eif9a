@@ -13,6 +13,7 @@ export interface PedidosAbertosFilters {
   deploy: string[]
   inside: string[]
   ehCanal?: 'todos' | 'sim' | 'nao' | ''
+  tipoCliente?: string[]
 }
 
 export const EMPTY_PEDIDOS_ABERTOS_FILTERS: PedidosAbertosFilters = {
@@ -21,6 +22,7 @@ export const EMPTY_PEDIDOS_ABERTOS_FILTERS: PedidosAbertosFilters = {
   deploy: [],
   inside: [],
   ehCanal: 'todos',
+  tipoCliente: [],
 }
 
 export interface PedidosAbertosFilterBarProps {
@@ -30,6 +32,7 @@ export interface PedidosAbertosFilterBarProps {
     canais?: CanalOption[]
     canaisClientes?: CanalClienteOption[]
     inside?: string[]
+    tipoCliente?: string[]
   }
   onApplyFilters?: (appliedFilters: PedidosAbertosFilters) => void
   isLoading?: boolean
@@ -230,6 +233,7 @@ export default function PedidosAbertosFilterBar({
       (filters.canalClientes?.length || 0) +
       (filters.deploy?.length || 0) +
       (filters.inside?.length || 0) +
+      (filters.tipoCliente?.length || 0) +
       (filters.ehCanal && filters.ehCanal !== 'todos' ? 1 : 0)
     )
   }, [filters])
@@ -530,6 +534,21 @@ export default function PedidosAbertosFilterBar({
                 onChange={(values) => setLocalFilters((prev) => ({ ...prev, inside: values }))}
                 placeholder="Todos os inside"
                 highlight={(localFilters.inside || []).length > 0}
+              />
+            </div>
+
+            {/* 5. Tipo de Cliente (SAP) */}
+            <div className="md:col-span-4 lg:col-span-1">
+              <Label className="text-[10px] font-bold text-slate-600 mb-1 block">
+                Tipo de Cliente
+              </Label>
+              <MultiSelectDropdown
+                label="Tipo de Cliente"
+                options={options.tipoCliente || []}
+                selected={localFilters.tipoCliente || []}
+                onChange={(values) => setLocalFilters((prev) => ({ ...prev, tipoCliente: values }))}
+                placeholder="Todos (Atas, Revendas, ...)"
+                highlight={(localFilters.tipoCliente || []).length > 0}
               />
             </div>
           </div>

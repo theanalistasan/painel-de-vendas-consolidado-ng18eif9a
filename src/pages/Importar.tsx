@@ -25,6 +25,7 @@ import {
 } from '@/services/sales'
 import { importPedidosAbertosApi, fetchUltimaCargaPedidosAbertos } from '@/services/pedidosAbertos'
 import { importEstoqueSapApi, fetchUltimaCargaEstoqueSap } from '@/services/estoqueFaltante'
+import { importTiposClienteApi, fetchUltimaCargaTiposCliente } from '@/services/tiposCliente'
 import { logAudit } from '@/services/audit'
 import { parseCSV, parseXLSX, formatNumber, formatDateTime } from '@/lib/formatters'
 import type { ImportResult, ConsolidarResult } from '@/types/sales'
@@ -70,6 +71,7 @@ type BaseKey =
   | 'canais_clientes'
   | 'pedidos_abertos'
   | 'estoque_sap'
+  | 'tipos_cliente'
 
 interface CardImportProps {
   title: string
@@ -754,9 +756,11 @@ export default function Importar() {
     canais_clientes: number
     pedidos_abertos: number
     estoque_sap: number
+    tipos_cliente?: number
     ultimaCarga: string | null
     ultimaCargaPedidosAbertos?: string | null
     ultimaCargaEstoqueSap?: string | null
+    ultimaCargaTiposCliente?: string | null
   }>({
     produtos: 0,
     racnew: 0,
@@ -765,12 +769,15 @@ export default function Importar() {
     canais_clientes: 0,
     pedidos_abertos: 0,
     estoque_sap: 0,
+    tipos_cliente: 0,
     ultimaCarga: null,
     ultimaCargaPedidosAbertos: null,
     ultimaCargaEstoqueSap: null,
+    ultimaCargaTiposCliente: null,
   })
   const [ultimaCargaPedidosAbertos, setUltimaCargaPedidosAbertos] = useState<string | null>(null)
   const [ultimaCargaEstoqueSap, setUltimaCargaEstoqueSap] = useState<string | null>(null)
+  const [ultimaCargaTiposCliente, setUltimaCargaTiposCliente] = useState<string | null>(null)
   const [consolidating, setConsolidating] = useState(false)
   const [rebuildingSummaries, setRebuildingSummaries] = useState(false)
   const [consolidationResult, setConsolidationResult] = useState<ConsolidarResult | null>(null)
@@ -783,6 +790,7 @@ export default function Importar() {
     canais_clientes?: ImportResult
     pedidos_abertos?: ImportResult
     estoque_sap?: ImportResult
+    tipos_cliente?: ImportResult
   }>({})
   const { toast } = useToast()
 
@@ -803,12 +811,20 @@ export default function Importar() {
         const directEstoqueDate = await fetchUltimaCargaEstoqueSap()
         setUltimaCargaEstoqueSap(directEstoqueDate)
       }
+      if (data.ultimaCargaTiposCliente) {
+        setUltimaCargaTiposCliente(data.ultimaCargaTiposCliente)
+      } else {
+        const directTcDate = await fetchUltimaCargaTiposCliente()
+        setUltimaCargaTiposCliente(directTcDate)
+      }
     } catch (err) {
       console.error('Erro ao buscar contagens:', err)
       const directDate = await fetchUltimaCargaPedidosAbertos()
       setUltimaCargaPedidosAbertos(directDate)
       const directEstoqueDate = await fetchUltimaCargaEstoqueSap()
       setUltimaCargaEstoqueSap(directEstoqueDate)
+      const directTcDate = await fetchUltimaCargaTiposCliente()
+      setUltimaCargaTiposCliente(directTcDate)
     }
   }
 
@@ -928,6 +944,18 @@ export default function Importar() {
         'estoque_sap_import',
         `Estoque Real (SAP): ${result.importados ?? 0} novos, ${result.atualizados ?? 0} atualizados, ${result.mesclados ?? 0} mesclados, ${result.ignorados ?? 0} ignorados`,
       )
+    } else if (base === 'tipos_cliente') {
+      if (result.data_carga) {
+        setUltimaCargaTiposCliente(result.data_carga)
+      } else {
+        fetchUltimaCargaTiposCliente().then((d) => {
+          if (d) setUltimaCargaTiposCliente(d)
+        })
+      }
+      logAudit(
+        'tipos_cliente_import',
+        `Tipos de Cliente (SAP): ${result.importados ?? 0} novos, ${result.atualizados ?? 0} atualizados, ${result.mesclados ?? 0} mesclados, ${result.ignorados ?? 0} ignorados`,
+      )
     }
   }
 
@@ -938,6 +966,7 @@ export default function Importar() {
     { base: 'canais_clientes', label: 'Canais x Clientes', color: 'text-sky-700' },
     { base: 'pedidos_abertos', label: 'Pedidos em Aberto', color: 'text-amber-700' },
     { base: 'estoque_sap', label: 'Posição Estoque (SAP)', color: 'text-emerald-700' },
+    { base: 'tipos_cliente', label: 'Tipo de Cliente (SAP)', color: 'text-purple-700' },
   ]
   const hasAnyImportResult = Object.values(importResults).some((r) => r)
 
@@ -1024,7 +1053,7 @@ export default function Importar() {
           )}
 
           {/* Counts metrics bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 mt-6 pt-6 border-t border-slate-800/80">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mt-6 pt-6 border-t border-slate-800/80">
             <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/50">
               <span className="text-[11px] text-slate-400 block font-medium">
                 Produtos Cadastrados
@@ -1069,6 +1098,14 @@ export default function Importar() {
               </span>
               <span className="text-lg font-bold text-emerald-200 tabular-nums">
                 {formatNumber(counts.estoque_sap ?? 0)}
+              </span>
+            </div>
+            <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/50">
+              <span className="text-[11px] text-purple-300 block font-medium">
+                Tipos de Cliente (SAP)
+              </span>
+              <span className="text-lg font-bold text-purple-200 tabular-nums">
+                {formatNumber(counts.tipos_cliente ?? 0)}
               </span>
             </div>
             <div className="bg-indigo-950/80 p-3 rounded-lg border border-indigo-700/50">
@@ -1381,6 +1418,79 @@ export default function Importar() {
           baseCount={counts.estoque_sap ?? 0}
           onImported={(r) => handleImported('estoque_sap', r)}
         />
+
+        {/* Card 7: Tipo de Cliente (SAP) */}
+        <BaseImportCard
+          title="Tipo de Cliente (SAP)"
+          subtitle="Classificação cadastral do parceiro de negócio (substituição completa da base)"
+          badgeLabel="Substituição Total"
+          badgeColor="bg-purple-600"
+          lastImportDate={ultimaCargaTiposCliente}
+          confirmDialog={{
+            title: 'Substituir base de Tipo de Cliente (SAP)?',
+            description:
+              'A importação de Tipo de Cliente apaga todos os registros atualmente cadastrados na base antes de inserir o novo extrato do SAP.\n\nEssa ação garante que novos clientes ou alterações de classificação (Atas, Revendas, Cliente Final) reflitam fielmente no painel.',
+            confirmLabel: 'Sim, substituir base',
+            cancelLabel: 'Cancelar',
+          }}
+          customGuide={
+            <div className="rounded-lg bg-slate-50 border border-slate-200/80 p-2.5 text-[11px] text-slate-600 space-y-1.5 shadow-2xs">
+              <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-[11px]">
+                <Info className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                <span>Caminho do relatório no SAP:</span>
+              </div>
+              <ol className="text-[10px] leading-relaxed text-slate-600 space-y-0.5 list-none">
+                <li className="flex items-center gap-1 flex-wrap">
+                  <span className="font-semibold text-slate-700">SAP</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Consultas</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Gerenciador de Consultas</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Depto de TI</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-bold text-purple-700">Tipos de cliente</span>
+                </li>
+                <li className="flex items-center gap-1">
+                  <span>Botão direito na #</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Copiar Tabela</span>
+                </li>
+                <li className="flex items-center gap-1">
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Colar e Salvar em um Excel</span>
+                </li>
+                <li className="flex items-center gap-1">
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span>
+                    <strong className="text-slate-700">Importar Planilha</strong>
+                  </span>
+                </li>
+              </ol>
+              <div className="pt-1 border-t border-slate-200/60 font-mono text-[9px] text-slate-500 break-words leading-tight select-all">
+                SAP &gt; Consultas &gt; Gerenciador de Consultas &gt; Depto de TI &gt; Tipos de
+                cliente &gt; Botão direito na # &gt; Copiar Tabela &gt; Colar e Salvar em um Excel
+                &gt; Importar Planilha
+              </div>
+            </div>
+          }
+          expectedColumns={[
+            'Código do PN',
+            'Nome do PN',
+            'Status do cadastro',
+            'Tipo de PN',
+            'Tipo de Cliente',
+          ]}
+          onImport={(rows, batchMeta) =>
+            importTiposClienteApi(rows, {
+              batchIndex: batchMeta?.batchIndex ?? 0,
+              totalBatches: batchMeta?.totalBatches ?? 1,
+              isSubsequentBatch: batchMeta?.isSubsequentBatch ?? false,
+            })
+          }
+          baseCount={counts.tipos_cliente ?? 0}
+          onImported={(r) => handleImported('tipos_cliente', r)}
+        />
       </div>
 
       {/* Resumo final por base — cada base mantém seu próprio resultado */}
@@ -1410,7 +1520,9 @@ export default function Importar() {
                           ? (counts.canais_clientes ?? 0)
                           : base === 'pedidos_abertos'
                             ? (counts.pedidos_abertos ?? 0)
-                            : (counts.estoque_sap ?? 0)
+                            : base === 'estoque_sap'
+                              ? (counts.estoque_sap ?? 0)
+                              : (counts.tipos_cliente ?? 0)
                 return (
                   <div
                     key={base}

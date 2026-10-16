@@ -156,6 +156,9 @@ export interface VendaConsolidada extends RecordModel {
   // Enriched
   grupo_item: string
   vendedor_cliente: string
+  status_cadastro?: string
+  tipo_pn?: string
+  tipo_cliente?: string
   origem: string
   tem_racnew?: boolean
   tem_netsales?: boolean
@@ -176,6 +179,7 @@ export interface FilterState {
   canalClientes?: string[]
   deploy?: string[]
   inside?: string[]
+  tipoCliente?: string[]
   search: string
   /** Anos (string[]) extraídos da Data de Lançamento, ex: ["2024", "2025"] */
   ano: string[]
@@ -322,6 +326,9 @@ export interface PedidoAberto extends RecordModel {
   nome_canal?: string
   deploy?: string
   inside?: string
+  status_cadastro?: string
+  tipo_pn?: string
+  tipo_cliente?: string
   origem: string
   data_carga: string
 }
@@ -364,5 +371,6 @@ export interface PedidosAbertosStatsResult {
     canais?: CanalOption[]
     canaisClientes?: CanalClienteOption[]
     inside?: string[]
+    tipoCliente?: string[]
   }
 }

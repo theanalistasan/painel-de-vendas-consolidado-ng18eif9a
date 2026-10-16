@@ -128,9 +128,11 @@ export interface CountsSummary {
   canais_clientes: number
   pedidos_abertos: number
   estoque_sap: number
+  tipos_cliente?: number
   ultimaCarga: string | null
   ultimaCargaPedidosAbertos?: string | null
   ultimaCargaEstoqueSap?: string | null
+  ultimaCargaTiposCliente?: string | null
 }
 /**
  * Contagem autoritativa de registros de cada base.
@@ -147,8 +149,11 @@ export async function getCountsSummary(): Promise<CountsSummary> {
       canais_clientes?: number
       pedidos_abertos?: number
       estoque_sap?: number
+      tipos_cliente?: number
       ultimaCarga: string
       ultimaCargaPedidosAbertos?: string
+      ultimaCargaEstoqueSap?: string
+      ultimaCargaTiposCliente?: string
     }>('/backend/v1/stats/counts', {
       method: 'GET',
     })
@@ -182,9 +187,12 @@ export async function getCountsSummary(): Promise<CountsSummary> {
     canais_clientes: (data as unknown as Record<string, number>).canais_clientes ?? 0,
     pedidos_abertos: (data as unknown as Record<string, number>).pedidos_abertos ?? 0,
     estoque_sap: (data as unknown as Record<string, number>).estoque_sap ?? 0,
+    tipos_cliente: (data as unknown as Record<string, number>).tipos_cliente ?? 0,
     ultimaCarga: data.ultimaCarga || null,
     ultimaCargaPedidosAbertos: data.ultimaCargaPedidosAbertos || null,
     ultimaCargaEstoqueSap: data.ultimaCargaEstoqueSap || null,
+    ultimaCargaTiposCliente:
+      (data as unknown as Record<string, string>).ultimaCargaTiposCliente || null,
   }
 }
 
@@ -251,6 +259,7 @@ export interface DashboardStatsResult {
     canais?: CanalOption[]
     canaisClientes?: import('../types/sales').CanalClienteOption[]
     inside?: string[]
+    tipoCliente?: string[]
     anos: number[]
     meses: number[]
     dias: number[]
