@@ -551,7 +551,7 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
           'CAST(COALESCE(total_nf_novo, 0.0) AS REAL) AS total_nf_novo, ' +
           'CAST(COALESCE(valor_liquido, 0.0) AS REAL) AS valor_liquido, ' +
           'CAST(COALESCE(custo_total, 0.0) AS REAL) AS custo_total, ' +
-          'classificacao, vendedor_revenda, grupo_item, vendedor_cliente, origem, ' +
+          'classificacao, vendedor_revenda, grupo_item, vendedor_cliente, status_cadastro, tipo_pn, tipo_cliente, origem, ' +
           'CAST(COALESCE(tem_racnew, 0) AS INTEGER) AS tem_racnew, ' +
           'CAST(COALESCE(tem_netsales, 0) AS INTEGER) AS tem_netsales, ' +
           'data_carga, created, updated ' +

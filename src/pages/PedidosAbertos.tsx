@@ -1735,7 +1735,7 @@ export default function PedidosAbertos() {
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={viewMode !== 'detalhado' ? 14 : 13}
+                      colSpan={viewMode !== 'detalhado' ? 15 : 14}
                       className="p-8 text-center text-slate-400"
                     >
                       <div className="flex items-center justify-center gap-2">
@@ -1757,7 +1757,7 @@ export default function PedidosAbertos() {
                   ) ? (
                   <tr>
                     <td
-                      colSpan={viewMode !== 'detalhado' ? 14 : 13}
+                      colSpan={viewMode !== 'detalhado' ? 15 : 14}
                       className="p-12 text-center text-slate-400"
                     >
                       <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />

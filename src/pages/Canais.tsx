@@ -1835,7 +1835,7 @@ export default function Canais() {
                           </td>
 
                           {/* Título do Grupo e Totais Agregados */}
-                          <td colSpan={showLocationCols ? 10 : 8} className="py-2.5 px-3">
+                          <td colSpan={showLocationCols ? 11 : 9} className="py-2.5 px-3">
                             <div className="flex items-center gap-2 flex-wrap">
                               {groupByLevel === 'canal' ? (
                                 <button
