@@ -193,15 +193,12 @@ export async function fetchCanaisClientes(
     filterParts.push('eh_canal = false')
   }
 
-  if (params.tipoCliente && params.tipoCliente.length > 0) {
-    const tcEscaped = params.tipoCliente.map((t) => t.trim().replace(/['"\\]/g, '')).filter(Boolean)
-    if (tcEscaped.length === 1) {
-      filterParts.push(`tipo_cliente = '${tcEscaped[0]}'`)
-    } else if (tcEscaped.length > 1) {
-      const tcOr = tcEscaped.map((t) => `tipo_cliente = '${t}'`).join(' || ')
-      filterParts.push(`(${tcOr})`)
-    }
-  }
+  // NOTA: canais_clientes não possui coluna nativa tipo_cliente no schema do PocketBase.
+  // A classificação por Tipo de Cliente (ex: ATA, Prospect, REVENDA, Suspect) é obtida
+  // a partir da coleção de referência tipos_cliente cruzada por codigo_cliente (código PN)
+  // e filtrada client-side em memória pela página Canais via tiposClienteMap.
+  // Por isso, NÃO devemos injetar `tipo_cliente = '...'` na query do PocketBase de canais_clientes,
+  // caso contrário o PocketBase rejeita com erro 400 "Something went wrong while processing your request".
 
   const filter = filterParts.length > 0 ? filterParts.join(' && ') : undefined
   const sort = params.sort || 'nome_canal,nome_cliente'
