@@ -285,9 +285,9 @@ export default function DashboardGeral() {
   useEffect(() => {
     let mounted = true
     fetchTiposClienteOptions()
-      .then((res) => {
-        if (mounted && Array.isArray(res.options) && res.options.length > 0) {
-          setTipoClienteOptions(res.options)
+      .then((options) => {
+        if (mounted && Array.isArray(options) && options.length > 0) {
+          setTipoClienteOptions(options)
         }
       })
       .catch((err) => console.warn('Falha ao buscar opções de tipo de cliente:', err))

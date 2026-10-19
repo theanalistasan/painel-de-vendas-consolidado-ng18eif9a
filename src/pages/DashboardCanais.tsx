@@ -205,9 +205,9 @@ export default function DashboardCanais() {
   useEffect(() => {
     let mounted = true
     fetchTiposClienteOptions()
-      .then((res) => {
-        if (mounted && Array.isArray(res.options) && res.options.length > 0) {
-          setTipoClienteOptions(res.options)
+      .then((options) => {
+        if (mounted && Array.isArray(options) && options.length > 0) {
+          setTipoClienteOptions(options)
         }
       })
       .catch((err) => console.warn('[DashboardCanais] Erro ao carregar tipos de cliente:', err))

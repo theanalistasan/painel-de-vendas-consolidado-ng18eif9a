@@ -331,3 +331,46 @@ routerAdd(
   },
   $apis.requireAuth(),
 )
+
+// Endpoint: GET /backend/v1/tipos-cliente/map
+// Retorna mapa de todos os clientes cadastrados em tipos_cliente: { [codigo_pn]: { tipo_cliente, status_cadastro, tipo_pn } }
+routerAdd(
+  'GET',
+  '/backend/v1/tipos-cliente/map',
+  (e) => {
+    try {
+      const rows = arrayOf(
+        new DynamicModel({
+          codigo_pn: '',
+          status_cadastro: '',
+          tipo_pn: '',
+          tipo_cliente: '',
+        }),
+      )
+      $app
+        .db()
+        .newQuery(
+          'SELECT codigo_pn, status_cadastro, tipo_pn, tipo_cliente FROM tipos_cliente WHERE codigo_pn IS NOT NULL AND TRIM(codigo_pn) != ""',
+        )
+        .all(rows)
+
+      const map = {}
+      for (let i = 0; i < rows.length; i++) {
+        const cod = (rows[i].codigo_pn || '').trim().toUpperCase()
+        if (cod) {
+          map[cod] = {
+            tipo_cliente: (rows[i].tipo_cliente || '').trim(),
+            status_cadastro: (rows[i].status_cadastro || '').trim(),
+            tipo_pn: (rows[i].tipo_pn || '').trim(),
+          }
+        }
+      }
+
+      return e.json(200, { map })
+    } catch (err) {
+      console.warn('Erro ao obter mapa de tipos_cliente:', err)
+      return e.json(200, { map: {} })
+    }
+  },
+  $apis.requireAuth(),
+)
