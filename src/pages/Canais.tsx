@@ -39,6 +39,12 @@ import {
   type CanaisSyncStatus,
   type CanalClientePayload,
 } from '@/services/canais'
+import {
+  fetchTiposClienteOptions,
+  fetchTiposClienteMap,
+  type TipoClienteInfo,
+} from '@/services/tiposCliente'
+import { MultiSelectDropdown } from '@/components/FilterBar'
 import type { CanalCliente, CanalMeta } from '@/types/sales'
 import { formatCurrency, formatDateTime, MESES_PT_BR } from '@/lib/formatters'
 import { Target } from 'lucide-react'
@@ -130,6 +136,23 @@ export default function Canais() {
   const [deployFilter, setDeployFilter] = useState('__all')
   const [insideFilter, setInsideFilter] = useState('__all')
   const [ehCanalFilter, setEhCanalFilter] = useState<'all' | 'true' | 'false'>('true')
+  const [tipoClienteFilter, setTipoClienteFilter] = useState<string[]>(() => {
+    try {
+      const raw = sessionStorage.getItem('paineis_vendas_filters')
+      if (raw) {
+        const parsed = JSON.parse(raw) as { tipoCliente?: unknown }
+        if (Array.isArray(parsed?.tipoCliente)) {
+          return parsed.tipoCliente.map(String).filter(Boolean)
+        }
+      }
+    } catch {
+      // ignora
+    }
+    return []
+  })
+  const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
+  const [loadingTipoClienteOptions, setLoadingTipoClienteOptions] = useState(false)
+  const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, TipoClienteInfo>>({})
   const [showLocationCols, setShowLocationCols] = useState(true)
 
   // Estado de Agrupamento / Colapso do Relatório (Nível e nós expandidos)
@@ -508,6 +531,40 @@ export default function Canais() {
     }
   }, [toast])
 
+  // Carrega opções e mapa de Tipos de Cliente (mesmo padrão de Visão Geral / Visão Canais)
+  const loadTiposClienteData = useCallback(async () => {
+    try {
+      setLoadingTipoClienteOptions(true)
+      const [opts, map] = await Promise.all([fetchTiposClienteOptions(), fetchTiposClienteMap()])
+      setTipoClienteOptions(opts || [])
+      setTiposClienteMap(map || {})
+    } catch (err) {
+      console.error('Erro ao carregar tipos de cliente na página Canais:', err)
+    } finally {
+      setLoadingTipoClienteOptions(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadTiposClienteData()
+  }, [loadTiposClienteData])
+
+  // Persiste a escolha do tipoCliente no sessionStorage compartilhado
+  const handleTipoClienteChange = useCallback((newSelection: string[]) => {
+    setTipoClienteFilter(newSelection)
+    setPage(1)
+    try {
+      const raw = sessionStorage.getItem('paineis_vendas_filters')
+      const current = raw ? JSON.parse(raw) : {}
+      sessionStorage.setItem(
+        'paineis_vendas_filters',
+        JSON.stringify({ ...current, tipoCliente: newSelection }),
+      )
+    } catch {
+      // ignora se sessionStorage indisponível
+    }
+  }, [])
+
   // Carrega Lista de Canais
   const loadList = useCallback(async () => {
     try {
@@ -523,11 +580,31 @@ export default function Canais() {
         deploy: deployFilter,
         inside: insideFilter,
         ehCanal: ehCanalFilter,
+        tipoCliente: tipoClienteFilter.length > 0 ? tipoClienteFilter : undefined,
         sort: 'nome_canal,nome_cliente',
       })
-      setItems(res.items || [])
+
+      let fetchedItems = res.items || []
+
+      // Fallback client-side para canais_clientes que não tenham tipo_cliente preenchido diretamente na coleção
+      // mas cujo cliente tenha classificação no mapa de tipos de cliente (código PN = codigo_cliente)
+      if (tipoClienteFilter.length > 0) {
+        const selectedSet = new Set(tipoClienteFilter)
+        fetchedItems = fetchedItems.filter((item) => {
+          const directType = (item as unknown as { tipo_cliente?: string }).tipo_cliente?.trim()
+          if (directType && selectedSet.has(directType)) return true
+          const cod = item.codigo_cliente?.trim().toUpperCase()
+          if (cod && tiposClienteMap[cod]) {
+            const mappedType = tiposClienteMap[cod].tipo_cliente?.trim()
+            if (mappedType && selectedSet.has(mappedType)) return true
+          }
+          return false
+        })
+      }
+
+      setItems(fetchedItems)
       setTotalPages(1)
-      setTotalItems(res.totalItems || 0)
+      setTotalItems(fetchedItems.length)
       // Mantém o estado padrão colapsado ao recarregar a lista
       setExpandedGroups(new Set())
     } catch (err) {
@@ -542,7 +619,16 @@ export default function Canais() {
     } finally {
       setLoadingList(false)
     }
-  }, [search, canalFilter, deployFilter, insideFilter, ehCanalFilter, toast])
+  }, [
+    search,
+    canalFilter,
+    deployFilter,
+    insideFilter,
+    ehCanalFilter,
+    tipoClienteFilter,
+    tiposClienteMap,
+    toast,
+  ])
 
   const loadSyncInfo = useCallback(async () => {
     try {
@@ -596,6 +682,7 @@ export default function Canais() {
     setDeployFilter('__all')
     setInsideFilter('__all')
     setEhCanalFilter('true')
+    handleTipoClienteChange([])
     setPage(1)
     setExpandedGroups(new Set())
   }
@@ -1316,7 +1403,7 @@ export default function Canais() {
           </div>
 
           {/* Barra de Busca e Filtros Rápidos */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 pt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 pt-3">
             {/* Busca textual */}
             <div className="sm:col-span-2 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
@@ -1388,6 +1475,20 @@ export default function Canais() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Filtro Tipo de Cliente (Multi-select conectado ao serviço fetchTiposClienteOptions) */}
+            <div>
+              <MultiSelectDropdown
+                label="Tipo de Cliente"
+                options={tipoClienteOptions}
+                selected={tipoClienteFilter}
+                onChange={handleTipoClienteChange}
+                placeholder="Tipo: Todos"
+                isLoading={loadingTipoClienteOptions}
+                emptyMessage="Nenhum tipo de cliente"
+                triggerClassName="h-9 text-xs rounded-lg"
+              />
+            </div>
           </div>
 
           {/* Segunda linha de filtros rápidos: eh_canal e botão Limpar */}
@@ -1446,6 +1547,7 @@ export default function Canais() {
               canalFilter !== '__all' ||
               deployFilter !== '__all' ||
               insideFilter !== '__all' ||
+              tipoClienteFilter.length > 0 ||
               ehCanalFilter !== 'true') && (
               <Button
                 variant="ghost"

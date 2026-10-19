@@ -43,7 +43,7 @@ interface FilterBarProps {
 }
 
 // Reusable MultiSelect Dropdown with Roland DG Accent
-function MultiSelectDropdown({
+export function MultiSelectDropdown({
   label,
   options = [],
   selected,
@@ -53,6 +53,7 @@ function MultiSelectDropdown({
   getOptionLabel,
   isLoading = false,
   emptyMessage,
+  triggerClassName,
 }: {
   label: string
   options?: string[]
@@ -63,6 +64,7 @@ function MultiSelectDropdown({
   getOptionLabel?: (option: string) => string
   isLoading?: boolean
   emptyMessage?: string
+  triggerClassName?: string
 }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -131,6 +133,7 @@ function MultiSelectDropdown({
             ? 'border-[#0B6E99]/60 font-semibold text-slate-900 bg-cyan-50/30'
             : 'border-gray-200 text-slate-600 hover:border-slate-300',
           highlight && 'border-[#0B6E99] ring-1 ring-[#0B6E99]/30',
+          triggerClassName,
         )}
       >
         <div className="flex items-center gap-1.5 truncate pr-2">

@@ -18,6 +18,7 @@ export interface FetchCanaisClientesParams {
   deploy?: string
   inside?: string
   ehCanal?: string // 'all' | 'true' | 'false'
+  tipoCliente?: string[]
   sort?: string
 }
 
@@ -190,6 +191,16 @@ export async function fetchCanaisClientes(
     filterParts.push('eh_canal = true')
   } else if (params.ehCanal === 'false') {
     filterParts.push('eh_canal = false')
+  }
+
+  if (params.tipoCliente && params.tipoCliente.length > 0) {
+    const tcEscaped = params.tipoCliente.map((t) => t.trim().replace(/['"\\]/g, '')).filter(Boolean)
+    if (tcEscaped.length === 1) {
+      filterParts.push(`tipo_cliente = '${tcEscaped[0]}'`)
+    } else if (tcEscaped.length > 1) {
+      const tcOr = tcEscaped.map((t) => `tipo_cliente = '${t}'`).join(' || ')
+      filterParts.push(`(${tcOr})`)
+    }
   }
 
   const filter = filterParts.length > 0 ? filterParts.join(' && ') : undefined
