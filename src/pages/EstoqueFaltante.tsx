@@ -38,6 +38,7 @@ import {
   fetchEstoqueFaltanteStats,
   fetchMrpData,
   type EstoqueFaltanteItem,
+  type EstoqueFaltanteListResult,
   type EstoqueFaltanteStatsResult,
   type MrpItem,
   type MrpResult,
@@ -46,6 +47,11 @@ import PedidosAbertosFilterBar, {
   type PedidosAbertosFilters,
   EMPTY_PEDIDOS_ABERTOS_FILTERS,
 } from '@/components/PedidosAbertosFilterBar'
+import {
+  fetchTiposClienteOptions,
+  fetchTiposClienteMap,
+  type TipoClienteInfo,
+} from '@/services/tiposCliente'
 import { formatCurrency, formatNumber, formatDate, formatDateTime } from '@/lib/formatters'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -70,18 +76,36 @@ export default function EstoqueFaltante() {
   // Tabs principais: 'itens_faltantes' | 'mrp'
   const [activeTab, setActiveTab] = useState<'itens_faltantes' | 'mrp'>('itens_faltantes')
 
-  // Inicialização de filtros vindos da querystring do Dashboard Pedidos em Aberto
+  // Inicialização de filtros vindos da querystring do Dashboard Pedidos em Aberto ou do sessionStorage compartilhado
   const initialFilters = useMemo<PedidosAbertosFilters>(() => {
     const canalParam = searchParams.get('canal')
     const canalClientesParam = searchParams.get('canalClientes')
     const deployParam = searchParams.get('deploy')
     const insideParam = searchParams.get('inside')
     const ehCanalParam = searchParams.get('ehCanal')
+    const tipoClienteParam = searchParams.get('tipoCliente')
+
+    let savedTipoCliente: string[] = []
+    try {
+      const raw = sessionStorage.getItem('paineis_vendas_filters')
+      if (raw) {
+        const parsed = JSON.parse(raw) as { tipoCliente?: unknown }
+        if (Array.isArray(parsed?.tipoCliente)) {
+          savedTipoCliente = parsed.tipoCliente.map(String).filter(Boolean)
+        }
+      }
+    } catch {
+      // ignora
+    }
 
     const ehCanalValid =
       ehCanalParam === 'sim' || ehCanalParam === 'nao' || ehCanalParam === 'todos'
         ? (ehCanalParam as 'sim' | 'nao' | 'todos')
         : 'todos'
+
+    const initialTipoCliente = tipoClienteParam
+      ? tipoClienteParam.split(',').filter(Boolean)
+      : savedTipoCliente
 
     return {
       ...EMPTY_PEDIDOS_ABERTOS_FILTERS,
@@ -90,10 +114,16 @@ export default function EstoqueFaltante() {
       deploy: deployParam ? deployParam.split(',').filter(Boolean) : [],
       inside: insideParam ? insideParam.split(',').filter(Boolean) : [],
       ehCanal: ehCanalValid,
+      tipoCliente: initialTipoCliente,
     }
   }, [searchParams])
 
   const [filters, setFilters] = useState<PedidosAbertosFilters>(initialFilters)
+
+  // Tipo de Cliente (SAP)
+  const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
+  const [loadingTipoClienteOptions, setLoadingTipoClienteOptions] = useState(false)
+  const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, TipoClienteInfo>>({})
 
   // Sub-filtro de trânsito na visão Itens Faltantes: '' (todos faltantes) | 'com_transito' | 'sem_transito'
   const [statusTransitoFilter, setStatusTransitoFilter] = useState<
@@ -116,16 +146,42 @@ export default function EstoqueFaltante() {
   const [totalQtd, setTotalQtd] = useState(0)
   const [listLoading, setListLoading] = useState(true)
 
-  // Opções para a barra de filtros (canais, clientes, inside)
+  // Opções para a barra de filtros (canais, clientes, inside, tipoCliente)
   const [filterOptions, setFilterOptions] = useState<{
     canais?: import('@/types/sales').CanalOption[]
     canaisClientes?: import('@/types/sales').CanalClienteOption[]
     inside?: string[]
+    tipoCliente?: string[]
+    isLoadingTipoCliente?: boolean
+    onOpenTipoCliente?: () => void
   }>({
     canais: [],
     canaisClientes: [],
     inside: [],
+    tipoCliente: [],
   })
+
+  // Carrega opções e mapa de Tipos de Cliente (mesmo padrão de PedidosAbertos.tsx)
+  const loadTiposClienteData = useCallback(async () => {
+    try {
+      setLoadingTipoClienteOptions(true)
+      const [opts, map] = await Promise.all([fetchTiposClienteOptions(), fetchTiposClienteMap()])
+      if (Array.isArray(opts) && opts.length > 0) {
+        setTipoClienteOptions(opts)
+      }
+      if (map && Object.keys(map).length > 0) {
+        setTiposClienteMap(map)
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar tipos de cliente em Estoque Faltante:', err)
+    } finally {
+      setLoadingTipoClienteOptions(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadTiposClienteData()
+  }, [loadTiposClienteData])
 
   // KPIs e Top 20 da Visão 1 (carregamento escalonado para performance)
   const [statsData, setStatsData] = useState<EstoqueFaltanteStatsResult | null>(null)
@@ -156,27 +212,100 @@ export default function EstoqueFaltante() {
 
     setListLoading(true)
     try {
-      const res = await fetchEstoqueFaltanteList({
-        page,
-        perPage,
-        sortField,
-        sortDirection,
-        statusTransito: statusTransitoFilter,
-        search: appliedSearch,
-        filters: {
-          canal: filters.canal,
-          canalClientes: filters.canalClientes,
-          deploy: filters.deploy,
-          inside: filters.inside,
-          ehCanal: filters.ehCanal,
-        },
-        signal: controller.signal,
-      })
-      setItems(res.items || [])
-      setTotalItems(res.totalItems || 0)
-      setTotalPages(res.totalPages || 1)
-      setTotalValor(res.totalValor || 0)
-      setTotalQtd(res.totalQtd || 0)
+      let res: EstoqueFaltanteListResult
+      let usedMemoryFallback = false
+
+      try {
+        res = await fetchEstoqueFaltanteList({
+          page,
+          perPage,
+          sortField,
+          sortDirection,
+          statusTransito: statusTransitoFilter,
+          search: appliedSearch,
+          filters: {
+            canal: filters.canal,
+            canalClientes: filters.canalClientes,
+            deploy: filters.deploy,
+            inside: filters.inside,
+            ehCanal: filters.ehCanal,
+            tipoCliente: filters.tipoCliente,
+          },
+          signal: controller.signal,
+        })
+      } catch (backendErr: unknown) {
+        const status = (backendErr as { status?: number })?.status
+        if (status === 400 && filters.tipoCliente && filters.tipoCliente.length > 0) {
+          res = await fetchEstoqueFaltanteList({
+            page,
+            perPage,
+            sortField,
+            sortDirection,
+            statusTransito: statusTransitoFilter,
+            search: appliedSearch,
+            filters: {
+              canal: filters.canal,
+              canalClientes: filters.canalClientes,
+              deploy: filters.deploy,
+              inside: filters.inside,
+              ehCanal: filters.ehCanal,
+            },
+            signal: controller.signal,
+          })
+          usedMemoryFallback = true
+        } else {
+          throw backendErr
+        }
+      }
+
+      let items = res.items || []
+
+      // Se filtro de tipo de cliente estiver ativo, garante recorte com resiliência:
+      if (filters.tipoCliente && filters.tipoCliente.length > 0) {
+        let currentMap = tiposClienteMap
+        if (Object.keys(currentMap).length === 0) {
+          try {
+            currentMap = await fetchTiposClienteMap()
+            setTiposClienteMap(currentMap)
+          } catch {
+            // mantém mapa atual
+          }
+        }
+        const selectedSet = new Set(filters.tipoCliente)
+
+        items = items.filter((item) => {
+          const directType = (item as unknown as { tipo_cliente?: string }).tipo_cliente?.trim()
+          if (directType && selectedSet.has(directType)) return true
+
+          const cod = (item as unknown as { codigo_cliente?: string }).codigo_cliente
+            ?.trim()
+            .toUpperCase()
+          if (cod && currentMap[cod]) {
+            const mappedType = currentMap[cod].tipo_cliente?.trim()
+            if (mappedType && selectedSet.has(mappedType)) return true
+          }
+
+          return false
+        })
+      }
+
+      const isTipoClienteActive = Boolean(filters.tipoCliente && filters.tipoCliente.length > 0)
+      const computedTotalItems =
+        usedMemoryFallback || isTipoClienteActive ? items.length : res.totalItems || items.length
+      setItems(items)
+      setTotalItems(computedTotalItems)
+      setTotalPages(Math.max(1, Math.ceil(computedTotalItems / perPage)))
+
+      const computedTotalValor =
+        usedMemoryFallback || isTipoClienteActive
+          ? items.reduce((acc, cur) => acc + (Number(cur.valor_em_aberto) || 0), 0)
+          : res.totalValor || 0
+      const computedTotalQtd =
+        usedMemoryFallback || isTipoClienteActive
+          ? items.reduce((acc, cur) => acc + (Number(cur.qtd_aberto) || 0), 0)
+          : res.totalQtd || 0
+      setTotalValor(computedTotalValor)
+      setTotalQtd(computedTotalQtd)
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError') return
       console.error('Erro ao carregar lista de itens faltantes:', err)
@@ -188,7 +317,17 @@ export default function EstoqueFaltante() {
     } finally {
       setListLoading(false)
     }
-  }, [page, perPage, sortField, sortDirection, statusTransitoFilter, appliedSearch, filters, toast])
+  }, [
+    page,
+    perPage,
+    sortField,
+    sortDirection,
+    statusTransitoFilter,
+    appliedSearch,
+    filters,
+    tiposClienteMap,
+    toast,
+  ])
 
   // 2. Carregamento escalonado de KPIs e Gráficos Top 20 (após a tabela iniciar)
   const loadStats = useCallback(async () => {
@@ -201,20 +340,52 @@ export default function EstoqueFaltante() {
     setStatsLoading(true)
     try {
       const [res, statsPedidos] = await Promise.allSettled([
-        fetchEstoqueFaltanteStats(
-          {
-            canal: filters.canal,
-            canalClientes: filters.canalClientes,
-            deploy: filters.deploy,
-            inside: filters.inside,
-            ehCanal: filters.ehCanal,
-            search: appliedSearch,
-          },
-          { signal: controller.signal },
-        ),
+        (async () => {
+          try {
+            return await fetchEstoqueFaltanteStats(
+              {
+                canal: filters.canal,
+                canalClientes: filters.canalClientes,
+                deploy: filters.deploy,
+                inside: filters.inside,
+                ehCanal: filters.ehCanal,
+                tipoCliente: filters.tipoCliente,
+                search: appliedSearch,
+              },
+              { signal: controller.signal },
+            )
+          } catch (backendErr: unknown) {
+            const status = (backendErr as { status?: number })?.status
+            if (status === 400 && filters.tipoCliente && filters.tipoCliente.length > 0) {
+              return await fetchEstoqueFaltanteStats(
+                {
+                  canal: filters.canal,
+                  canalClientes: filters.canalClientes,
+                  deploy: filters.deploy,
+                  inside: filters.inside,
+                  ehCanal: filters.ehCanal,
+                  search: appliedSearch,
+                },
+                { signal: controller.signal },
+              )
+            }
+            throw backendErr
+          }
+        })(),
         (async () => {
           const { fetchPedidosAbertosStats } = await import('@/services/pedidosAbertos')
-          return fetchPedidosAbertosStats(filters as unknown as Record<string, unknown>)
+          try {
+            return await fetchPedidosAbertosStats(filters as unknown as Record<string, unknown>)
+          } catch (backendErr: unknown) {
+            const status = (backendErr as { status?: number })?.status
+            if (status === 400 && filters.tipoCliente && filters.tipoCliente.length > 0) {
+              const { tipoCliente: _removed, ...filtersWithoutTipoCliente } = filters
+              return await fetchPedidosAbertosStats(
+                filtersWithoutTipoCliente as unknown as Record<string, unknown>,
+              )
+            }
+            throw backendErr
+          }
         })(),
       ])
 
@@ -225,11 +396,25 @@ export default function EstoqueFaltante() {
       }
 
       if (statsPedidos.status === 'fulfilled' && statsPedidos.value?.filterOptions) {
-        setFilterOptions({
+        setFilterOptions((prev) => ({
+          ...prev,
           canais: statsPedidos.value.filterOptions.canais || [],
           canaisClientes: statsPedidos.value.filterOptions.canaisClientes || [],
           inside: statsPedidos.value.filterOptions.inside || [],
-        })
+          tipoCliente:
+            statsPedidos.value.filterOptions.tipoCliente &&
+            statsPedidos.value.filterOptions.tipoCliente.length > 0
+              ? statsPedidos.value.filterOptions.tipoCliente
+              : prev.tipoCliente,
+        }))
+        if (
+          Array.isArray(statsPedidos.value.filterOptions.tipoCliente) &&
+          statsPedidos.value.filterOptions.tipoCliente.length > 0
+        ) {
+          setTipoClienteOptions((prev) =>
+            prev.length > 0 ? prev : statsPedidos.value.filterOptions.tipoCliente!,
+          )
+        }
       }
     } finally {
       setStatsLoading(false)
@@ -520,10 +705,41 @@ export default function EstoqueFaltante() {
     setPage(1)
   }
 
+  // Atualiza filtros e persiste seleção de tipoCliente no sessionStorage compartilhado
+  const handleFiltersChange = (newFilters: PedidosAbertosFilters) => {
+    setFilters(newFilters)
+    try {
+      const raw = sessionStorage.getItem('paineis_vendas_filters')
+      const current = raw ? JSON.parse(raw) : {}
+      sessionStorage.setItem(
+        'paineis_vendas_filters',
+        JSON.stringify({
+          ...current,
+          tipoCliente: newFilters.tipoCliente || [],
+        }),
+      )
+    } catch {
+      // ignora se indisponível
+    }
+  }
+
   // Aplicação de filtros de Canais
   const handleApplyFilters = (newFilters: PedidosAbertosFilters) => {
     setFilters(newFilters)
     setPage(1)
+    try {
+      const raw = sessionStorage.getItem('paineis_vendas_filters')
+      const current = raw ? JSON.parse(raw) : {}
+      sessionStorage.setItem(
+        'paineis_vendas_filters',
+        JSON.stringify({
+          ...current,
+          tipoCliente: newFilters.tipoCliente || [],
+        }),
+      )
+    } catch {
+      // ignora se indisponível
+    }
   }
 
   // Exportação Excel (Itens Faltantes ou MRP dependendo da aba ativa)
@@ -601,6 +817,7 @@ export default function EstoqueFaltante() {
             deploy: filters.deploy,
             inside: filters.inside,
             ehCanal: filters.ehCanal,
+            tipoCliente: filters.tipoCliente,
           },
         })
 
@@ -704,8 +921,18 @@ export default function EstoqueFaltante() {
       {/* Barra de Filtros de Canais (herdando os mesmos controles de Pedidos em Aberto) */}
       <PedidosAbertosFilterBar
         filters={filters}
-        setFilters={setFilters}
-        options={filterOptions}
+        setFilters={handleFiltersChange}
+        options={{
+          ...filterOptions,
+          tipoCliente:
+            tipoClienteOptions.length > 0 ? tipoClienteOptions : filterOptions.tipoCliente,
+          isLoadingTipoCliente: loadingTipoClienteOptions,
+          onOpenTipoCliente: () => {
+            if (tipoClienteOptions.length === 0 && !loadingTipoClienteOptions) {
+              loadTiposClienteData()
+            }
+          },
+        }}
         isLoading={listLoading || statsLoading}
         loadingMessage="Atualizando itens faltantes..."
         onApplyFilters={handleApplyFilters}
