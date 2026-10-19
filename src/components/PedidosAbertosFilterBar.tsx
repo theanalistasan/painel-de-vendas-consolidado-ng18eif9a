@@ -34,6 +34,7 @@ export interface PedidosAbertosFilterBarProps {
     inside?: string[]
     tipoCliente?: string[]
     isLoadingTipoCliente?: boolean
+    onOpenTipoCliente?: () => void
   }
   onApplyFilters?: (filters: PedidosAbertosFilters) => void
   isLoading?: boolean
@@ -51,6 +52,7 @@ function MultiSelectDropdown({
   getOptionLabel,
   isLoading = false,
   emptyMessage,
+  onOpen,
 }: {
   label: string
   options?: string[]
@@ -61,6 +63,7 @@ function MultiSelectDropdown({
   getOptionLabel?: (option: string) => string
   isLoading?: boolean
   emptyMessage?: string
+  onOpen?: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -116,7 +119,13 @@ function MultiSelectDropdown({
     <div className="relative" ref={containerRef}>
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          const nextOpen = !open
+          setOpen(nextOpen)
+          if (nextOpen && onOpen) {
+            onOpen()
+          }
+        }}
         className={cn(
           'flex items-center justify-between w-full h-10 px-3 py-2 text-xs rounded-lg border bg-white transition-colors text-left focus:outline-hidden focus:ring-2 focus:ring-[#0B6E99]/40',
           selected.length > 0
@@ -439,7 +448,7 @@ export default function PedidosAbertosFilterBar({
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
             {/* 1. Nome do Canal */}
             <div>
               <Label className="text-[10px] font-bold text-slate-600 mb-1 block">
@@ -556,7 +565,7 @@ export default function PedidosAbertosFilterBar({
             </div>
 
             {/* 5. Tipo de Cliente (SAP) */}
-            <div className="md:col-span-4 lg:col-span-1">
+            <div>
               <Label className="text-[10px] font-bold text-slate-600 mb-1 block">
                 Tipo de Cliente
               </Label>
@@ -569,6 +578,7 @@ export default function PedidosAbertosFilterBar({
                 highlight={(localFilters.tipoCliente || []).length > 0}
                 isLoading={options.isLoadingTipoCliente}
                 emptyMessage="Importe a base de Tipo de Cliente (SAP)"
+                onOpen={options.onOpenTipoCliente}
               />
             </div>
           </div>

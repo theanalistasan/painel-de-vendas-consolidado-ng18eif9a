@@ -19,6 +19,11 @@ import {
   Briefcase,
 } from 'lucide-react'
 import { fetchPedidosAbertosList, fetchPedidosAbertosStats } from '@/services/pedidosAbertos'
+import {
+  fetchTiposClienteOptions,
+  fetchTiposClienteMap,
+  TipoClienteInfo,
+} from '@/services/tiposCliente'
 import { logAudit } from '@/services/audit'
 import type {
   PedidoAberto,
@@ -108,9 +113,30 @@ export default function PedidosAbertos() {
   const sort = useTableSort<SortField>()
   const { toast } = useToast()
 
-  const [filters, setFilters] = useState<PedidosAbertosFilters>(() => ({
-    ...EMPTY_PEDIDOS_ABERTOS_FILTERS,
-  }))
+  const [filters, setFilters] = useState<PedidosAbertosFilters>(() => {
+    try {
+      const raw = sessionStorage.getItem('paineis_vendas_filters')
+      if (raw) {
+        const parsed = JSON.parse(raw) as { tipoCliente?: unknown }
+        if (Array.isArray(parsed?.tipoCliente)) {
+          const savedTipoCliente = parsed.tipoCliente.map(String).filter(Boolean)
+          return {
+            ...EMPTY_PEDIDOS_ABERTOS_FILTERS,
+            tipoCliente: savedTipoCliente,
+          }
+        }
+      }
+    } catch {
+      // ignora
+    }
+    return {
+      ...EMPTY_PEDIDOS_ABERTOS_FILTERS,
+    }
+  })
+
+  const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
+  const [loadingTipoClienteOptions, setLoadingTipoClienteOptions] = useState(false)
+  const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, TipoClienteInfo>>({})
 
   const [kpis, setKpis] = useState<PedidosAbertosKpis>({
     valorTotalAberto: 0,
@@ -123,32 +149,86 @@ export default function PedidosAbertos() {
     canais?: CanalOption[]
     canaisClientes?: CanalClienteOption[]
     inside?: string[]
+    tipoCliente?: string[]
   }>({
     canais: [],
     canaisClientes: [],
     inside: [],
+    tipoCliente: [],
   })
 
   const [statsLoading, setStatsLoading] = useState(false)
+
+  // Carrega opções e mapa de Tipos de Cliente (mesmo padrão de Visão Geral / Visão Canais / Canais)
+  const loadTiposClienteData = async () => {
+    try {
+      setLoadingTipoClienteOptions(true)
+      const [opts, map] = await Promise.all([fetchTiposClienteOptions(), fetchTiposClienteMap()])
+      if (Array.isArray(opts) && opts.length > 0) {
+        setTipoClienteOptions(opts)
+      }
+      if (map && Object.keys(map).length > 0) {
+        setTiposClienteMap(map)
+      }
+    } catch (err) {
+      console.warn('Erro ao carregar tipos de cliente em Pedidos em Aberto:', err)
+    } finally {
+      setLoadingTipoClienteOptions(false)
+    }
+  }
+
+  useEffect(() => {
+    loadTiposClienteData()
+  }, [])
 
   // Carrega opções de canais e KPIs de pedidos abertos
   const loadStats = async (activeFilters = filters) => {
     try {
       setStatsLoading(true)
-      const statsPedidos = await fetchPedidosAbertosStats(
-        activeFilters as unknown as Record<string, unknown>,
-      )
+      let statsPedidos: Awaited<ReturnType<typeof fetchPedidosAbertosStats>>
+      try {
+        statsPedidos = await fetchPedidosAbertosStats(
+          activeFilters as unknown as Record<string, unknown>,
+        )
+      } catch (backendErr: unknown) {
+        const status = (backendErr as { status?: number })?.status
+        if (status === 400 && activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0) {
+          const { tipoCliente: _removed, ...filtersWithoutTipoCliente } = activeFilters
+          statsPedidos = await fetchPedidosAbertosStats(
+            filtersWithoutTipoCliente as unknown as Record<string, unknown>,
+          )
+        } else {
+          throw backendErr
+        }
+      }
 
-      if (statsPedidos?.kpis) {
+      if (
+        statsPedidos?.kpis &&
+        (!activeFilters.tipoCliente || activeFilters.tipoCliente.length === 0)
+      ) {
         setKpis(statsPedidos.kpis)
       }
 
       if (statsPedidos?.filterOptions) {
-        setFilterOptions({
+        setFilterOptions((prev) => ({
+          ...prev,
           canais: statsPedidos.filterOptions.canais || [],
           canaisClientes: statsPedidos.filterOptions.canaisClientes || [],
           inside: statsPedidos.filterOptions.inside || [],
-        })
+          tipoCliente:
+            statsPedidos.filterOptions.tipoCliente &&
+            statsPedidos.filterOptions.tipoCliente.length > 0
+              ? statsPedidos.filterOptions.tipoCliente
+              : prev.tipoCliente,
+        }))
+        if (
+          Array.isArray(statsPedidos.filterOptions.tipoCliente) &&
+          statsPedidos.filterOptions.tipoCliente.length > 0
+        ) {
+          setTipoClienteOptions((prev) =>
+            prev.length > 0 ? prev : statsPedidos.filterOptions.tipoCliente!,
+          )
+        }
       }
     } catch (err: unknown) {
       console.error('Erro ao carregar estatísticas de pedidos abertos:', err)
@@ -182,25 +262,104 @@ export default function PedidosAbertos() {
     sortDir = sort.dir,
     search = searchTerm,
     currentViewMode = viewMode,
+    activeMap = tiposClienteMap,
   ) => {
     setLoading(true)
     try {
       // Sempre carregamos a base completa do recorte (até 2000 registros) para alimentar
       // com precisão o Dashboard e os agrupamentos por Canal / Cliente / Faturamento
-      const res = await fetchPedidosAbertosList({
-        page: 1,
-        perPage: 2000,
-        sortField: sortField || 'data_pedido',
-        sortDirection: sortDir || 'desc',
-        search: search.trim() || undefined,
-        filters: activeFilters as unknown as Record<string, unknown>,
-      })
-      const items = res.items || []
+      let res: Awaited<ReturnType<typeof fetchPedidosAbertosList>>
+      let usedMemoryFallback = false
+
+      try {
+        res = await fetchPedidosAbertosList({
+          page: 1,
+          perPage: 2000,
+          sortField: sortField || 'data_pedido',
+          sortDirection: sortDir || 'desc',
+          search: search.trim() || undefined,
+          filters: activeFilters as unknown as Record<string, unknown>,
+        })
+      } catch (backendErr: unknown) {
+        const status = (backendErr as { status?: number })?.status
+        // Se der erro 400 (ex: coluna não existe no backend), tenta sem o filtro tipoCliente e aplica em memória
+        if (status === 400 && activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0) {
+          const { tipoCliente: _removed, ...filtersWithoutTipoCliente } = activeFilters
+          res = await fetchPedidosAbertosList({
+            page: 1,
+            perPage: 2000,
+            sortField: sortField || 'data_pedido',
+            sortDirection: sortDir || 'desc',
+            search: search.trim() || undefined,
+            filters: filtersWithoutTipoCliente as unknown as Record<string, unknown>,
+          })
+          usedMemoryFallback = true
+        } else {
+          throw backendErr
+        }
+      }
+
+      let items = res.items || []
+
+      // Se o filtro de tipo de cliente estiver ativo, garante o recorte considerando:
+      // 1. Campo tipo_cliente direto no pedido aberto (caso gravado no banco);
+      // 2. Mapa código_cliente -> tipo_cliente (mesmo mecanismo de Canais.tsx commit 0.0.177).
+      if (activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0) {
+        let currentMap = activeMap
+        if (Object.keys(currentMap).length === 0) {
+          try {
+            currentMap = await fetchTiposClienteMap()
+            setTiposClienteMap(currentMap)
+          } catch {
+            // mantém fallback
+          }
+        }
+        const selectedSet = new Set(activeFilters.tipoCliente)
+        items = items.filter((item) => {
+          const directType = (item as unknown as { tipo_cliente?: string }).tipo_cliente?.trim()
+          if (directType && selectedSet.has(directType)) return true
+          const cod = item.codigo_cliente?.trim().toUpperCase()
+          if (cod && currentMap[cod]) {
+            const mappedType = currentMap[cod].tipo_cliente?.trim()
+            if (mappedType && selectedSet.has(mappedType)) return true
+          }
+          return false
+        })
+      }
+
       setDashboardPedidos(items)
-      setTotalItems(res.totalItems || items.length)
-      setTotalPages(Math.max(1, Math.ceil((res.totalItems || items.length) / PAGE_SIZE)))
-      setTotalValor(res.totalValor || 0)
-      setTotalQtd(res.totalQtd || 0)
+      const isTipoClienteActive = Boolean(
+        activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0,
+      )
+      const computedTotalItems =
+        usedMemoryFallback || isTipoClienteActive ? items.length : res.totalItems || items.length
+      setTotalItems(computedTotalItems)
+      setTotalPages(Math.max(1, Math.ceil(computedTotalItems / PAGE_SIZE)))
+
+      const computedTotalValor =
+        usedMemoryFallback || isTipoClienteActive
+          ? items.reduce((acc, cur) => acc + (Number(cur.valor_em_aberto) || 0), 0)
+          : res.totalValor || 0
+      const computedTotalQtd =
+        usedMemoryFallback || isTipoClienteActive
+          ? items.reduce((acc, cur) => acc + (Number(cur.qtd_aberto) || 0), 0)
+          : res.totalQtd || 0
+      setTotalValor(computedTotalValor)
+      setTotalQtd(computedTotalQtd)
+
+      // Atualiza também os KPIs com base no recorte filtrado quando tipoCliente está ativo
+      if (isTipoClienteActive) {
+        const distinctOrders = new Set(items.map((i) => i.numero_pedido).filter(Boolean))
+        const distinctClients = new Set(
+          items.map((i) => (i.codigo_cliente || i.nome_cliente || '').trim()).filter(Boolean),
+        )
+        setKpis({
+          valorTotalAberto: computedTotalValor,
+          pedidosDistintos: distinctOrders.size || items.length,
+          itensPendentes: items.length,
+          clientesDistintos: distinctClients.size || (items.length > 0 ? 1 : 0),
+        })
+      }
 
       const isGrouped = currentViewMode !== 'detalhado'
       if (isGrouped) {
@@ -260,8 +419,41 @@ export default function PedidosAbertos() {
     }
   }, [page, filters, sort.field, sort.dir, viewMode])
 
+  // Atualiza os filtros e persiste a seleção de tipoCliente no sessionStorage compartilhado
+  const handleFiltersChange = (newFilters: PedidosAbertosFilters) => {
+    setFilters(newFilters)
+    try {
+      const raw = sessionStorage.getItem('paineis_vendas_filters')
+      const current = raw ? JSON.parse(raw) : {}
+      sessionStorage.setItem(
+        'paineis_vendas_filters',
+        JSON.stringify({
+          ...current,
+          tipoCliente: newFilters.tipoCliente || [],
+        }),
+      )
+    } catch {
+      // ignora se sessionStorage indisponível
+    }
+  }
+
   const handleApplyFilters = (applied: PedidosAbertosFilters) => {
     setPage(1)
+    // Garante persistência da seleção ao aplicar
+    try {
+      const raw = sessionStorage.getItem('paineis_vendas_filters')
+      const current = raw ? JSON.parse(raw) : {}
+      sessionStorage.setItem(
+        'paineis_vendas_filters',
+        JSON.stringify({
+          ...current,
+          tipoCliente: applied.tipoCliente || [],
+        }),
+      )
+    } catch {
+      // ignora se sessionStorage indisponível
+    }
+
     // Carrega primeiro a listagem e depois as estatísticas
     loadData(applied, 1, sort.field, sort.dir, searchTerm, viewMode).then(() => {
       loadStats(applied)
@@ -679,11 +871,21 @@ export default function PedidosAbertos() {
         </div>
       </div>
 
-      {/* Filtros específicos de Pedidos em Aberto (Canais, Clientes, Deploy, Inside e Período) */}
+      {/* Filtros específicos de Pedidos em Aberto (Canais, Clientes, Deploy, Inside, Tipo de Cliente e Período) */}
       <PedidosAbertosFilterBar
         filters={filters}
-        setFilters={setFilters}
-        options={filterOptions}
+        setFilters={handleFiltersChange}
+        options={{
+          ...filterOptions,
+          tipoCliente:
+            tipoClienteOptions.length > 0 ? tipoClienteOptions : filterOptions.tipoCliente || [],
+          isLoadingTipoCliente: loadingTipoClienteOptions,
+          onOpenTipoCliente: () => {
+            if (tipoClienteOptions.length === 0) {
+              loadTiposClienteData()
+            }
+          },
+        }}
         isLoading={loading || statsLoading}
         loadingMessage="Atualizando carteira de pedidos em aberto..."
         onApplyFilters={handleApplyFilters}
