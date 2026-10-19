@@ -1745,6 +1745,7 @@ export default function Canais() {
                     <th className="py-2.5 px-3">Deploy</th>
                     <th className="py-2.5 px-3">COD</th>
                     <th className="py-2.5 px-3">Cliente / Razão Social</th>
+                    <th className="py-2.5 px-3">Tipo de Cliente</th>
                     <th className="py-2.5 px-3">Contato / Cargo</th>
                     <th className="py-2.5 px-3">E-mail / Telefone</th>
                     {showLocationCols && <th className="py-2.5 px-3">Município / UF</th>}
@@ -1792,7 +1793,7 @@ export default function Canais() {
                           </td>
 
                           {/* Título do Grupo e Totais Agregados */}
-                          <td colSpan={showLocationCols ? 9 : 7} className="py-2.5 px-3">
+                          <td colSpan={showLocationCols ? 10 : 8} className="py-2.5 px-3">
                             <div className="flex items-center gap-2 flex-wrap">
                               {groupByLevel === 'canal' ? (
                                 <button
@@ -1964,6 +1965,31 @@ export default function Canais() {
                                   )}
                                 </td>
 
+                                {/* Tipo de Cliente */}
+                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                  {(() => {
+                                    const directType = (
+                                      row as unknown as { tipo_cliente?: string }
+                                    ).tipo_cliente?.trim()
+                                    const cod = row.codigo_cliente?.trim().toUpperCase()
+                                    const resolvedTipo =
+                                      directType ||
+                                      (cod ? tiposClienteMap[cod]?.tipo_cliente?.trim() : undefined)
+
+                                    return resolvedTipo ? (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px] px-1.5 py-0 font-medium bg-slate-50 border-slate-200 text-slate-700"
+                                        title={resolvedTipo}
+                                      >
+                                        {resolvedTipo}
+                                      </Badge>
+                                    ) : (
+                                      <span className="text-slate-400 text-xs">-</span>
+                                    )
+                                  })()}
+                                </td>
+
                                 {/* Contato / Cargo */}
                                 <td className="py-2.5 px-3 max-w-[160px]">
                                   <span
@@ -2093,6 +2119,7 @@ export default function Canais() {
                     <th className="py-2.5 px-3">Deploy</th>
                     <th className="py-2.5 px-3">COD</th>
                     <th className="py-2.5 px-3">Cliente / Razão Social</th>
+                    <th className="py-2.5 px-3">Tipo de Cliente</th>
                     <th className="py-2.5 px-3">Contato / Cargo</th>
                     <th className="py-2.5 px-3">E-mail / Telefone</th>
                     <th className="py-2.5 px-3">Inside</th>
@@ -2165,6 +2192,31 @@ export default function Canais() {
                               {row.segmento}
                             </span>
                           )}
+                        </td>
+
+                        {/* Tipo de Cliente */}
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {(() => {
+                            const directType = (
+                              row as unknown as { tipo_cliente?: string }
+                            ).tipo_cliente?.trim()
+                            const cod = row.codigo_cliente?.trim().toUpperCase()
+                            const resolvedTipo =
+                              directType ||
+                              (cod ? tiposClienteMap[cod]?.tipo_cliente?.trim() : undefined)
+
+                            return resolvedTipo ? (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] px-1.5 py-0 font-medium bg-slate-50 border-slate-200 text-slate-700"
+                                title={resolvedTipo}
+                              >
+                                {resolvedTipo}
+                              </Badge>
+                            ) : (
+                              <span className="text-slate-400 text-xs">-</span>
+                            )
+                          })()}
                         </td>
 
                         {/* Contato / Cargo */}
