@@ -242,6 +242,60 @@ routerAdd(
       }
     }
 
+    // Filtro por Status do Cadastro (ex: Ativo)
+    const statusCadastroFilter = Array.isArray(f.statusCadastro)
+      ? f.statusCadastro
+      : f.statusCadastro
+        ? [f.statusCadastro]
+        : []
+    if (statusCadastroFilter.length > 0 && !statusCadastroFilter.includes('TODOS')) {
+      const scConds = []
+      const scValues = []
+      for (let scIdx = 0; scIdx < statusCadastroFilter.length; scIdx++) {
+        const val = String(statusCadastroFilter[scIdx]).trim()
+        if (
+          val.toUpperCase() === 'SEM INFORMACAO' ||
+          val.toUpperCase() === 'VAZIO' ||
+          val.toUpperCase() === 'SEM STATUS'
+        ) {
+          scConds.push("(status_cadastro IS NULL OR status_cadastro = '')")
+        } else if (val) {
+          scValues.push("'" + sqlEsc(val) + "'")
+        }
+      }
+      if (scValues.length > 0) {
+        scConds.push('status_cadastro IN (' + scValues.join(',') + ')')
+      }
+      if (scConds.length > 0) {
+        whereClauses.push('(' + scConds.join(' OR ') + ')')
+      }
+    }
+
+    // Filtro por Tipo de PN (ex: Cliente)
+    const tipoPnFilter = Array.isArray(f.tipoPn) ? f.tipoPn : f.tipoPn ? [f.tipoPn] : []
+    if (tipoPnFilter.length > 0 && !tipoPnFilter.includes('TODOS')) {
+      const tpnConds = []
+      const tpnValues = []
+      for (let tpnIdx = 0; tpnIdx < tipoPnFilter.length; tpnIdx++) {
+        const val = String(tipoPnFilter[tpnIdx]).trim()
+        if (
+          val.toUpperCase() === 'SEM INFORMACAO' ||
+          val.toUpperCase() === 'VAZIO' ||
+          val.toUpperCase() === 'SEM TIPO'
+        ) {
+          tpnConds.push("(tipo_pn IS NULL OR tipo_pn = '')")
+        } else if (val) {
+          tpnValues.push("'" + sqlEsc(val) + "'")
+        }
+      }
+      if (tpnValues.length > 0) {
+        tpnConds.push('tipo_pn IN (' + tpnValues.join(',') + ')')
+      }
+      if (tpnConds.length > 0) {
+        whereClauses.push('(' + tpnConds.join(' OR ') + ')')
+      }
+    }
+
     // TAREFA 1: Desabilitar o produto "SERVICOS" em todas as visões
     whereClauses.push("(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')")
 
@@ -685,6 +739,60 @@ routerAdd(
       }
     }
 
+    // Filtro por Status do Cadastro (ex: Ativo)
+    const statusCadastroFilter = Array.isArray(f.statusCadastro)
+      ? f.statusCadastro
+      : f.statusCadastro
+        ? [f.statusCadastro]
+        : []
+    if (statusCadastroFilter.length > 0 && !statusCadastroFilter.includes('TODOS')) {
+      const scConds = []
+      const scValues = []
+      for (let scIdx = 0; scIdx < statusCadastroFilter.length; scIdx++) {
+        const val = String(statusCadastroFilter[scIdx]).trim()
+        if (
+          val.toUpperCase() === 'SEM INFORMACAO' ||
+          val.toUpperCase() === 'VAZIO' ||
+          val.toUpperCase() === 'SEM STATUS'
+        ) {
+          scConds.push("(status_cadastro IS NULL OR status_cadastro = '')")
+        } else if (val) {
+          scValues.push("'" + sqlEsc(val) + "'")
+        }
+      }
+      if (scValues.length > 0) {
+        scConds.push('status_cadastro IN (' + scValues.join(',') + ')')
+      }
+      if (scConds.length > 0) {
+        paWhereClauses.push('(' + scConds.join(' OR ') + ')')
+      }
+    }
+
+    // Filtro por Tipo de PN (ex: Cliente)
+    const tipoPnFilter = Array.isArray(f.tipoPn) ? f.tipoPn : f.tipoPn ? [f.tipoPn] : []
+    if (tipoPnFilter.length > 0 && !tipoPnFilter.includes('TODOS')) {
+      const tpnConds = []
+      const tpnValues = []
+      for (let tpnIdx = 0; tpnIdx < tipoPnFilter.length; tpnIdx++) {
+        const val = String(tipoPnFilter[tpnIdx]).trim()
+        if (
+          val.toUpperCase() === 'SEM INFORMACAO' ||
+          val.toUpperCase() === 'VAZIO' ||
+          val.toUpperCase() === 'SEM TIPO'
+        ) {
+          tpnConds.push("(tipo_pn IS NULL OR tipo_pn = '')")
+        } else if (val) {
+          tpnValues.push("'" + sqlEsc(val) + "'")
+        }
+      }
+      if (tpnValues.length > 0) {
+        tpnConds.push('tipo_pn IN (' + tpnValues.join(',') + ')')
+      }
+      if (tpnConds.length > 0) {
+        paWhereClauses.push('(' + tpnConds.join(' OR ') + ')')
+      }
+    }
+
     // TAREFA 1: Desabilitar o produto "SERVICOS" em todas as visões
     paWhereClauses.push("(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')")
 
@@ -944,22 +1052,35 @@ routerAdd(
       console.warn('pedidos_abertos stats: canais filter options err:', canalErr)
     }
 
-    // Buscar opções distintas de tipo_cliente
+    // Buscar opções distintas de tipo_cliente, status_cadastro e tipo_pn
     let tipoClienteOptions = []
+    let statusCadastroOptions = []
+    let tipoPnOptions = []
     try {
-      const tcOptRows = arrayOf(new DynamicModel({ tc: '' }))
+      const tcOptRows = arrayOf(new DynamicModel({ tc: '', sc: '', tpn: '' }))
       $app
         .db()
         .newQuery(
-          "SELECT DISTINCT tipo_cliente AS tc FROM tipos_cliente WHERE tipo_cliente IS NOT NULL AND TRIM(tipo_cliente) != '' ORDER BY tipo_cliente ASC",
+          'SELECT DISTINCT tipo_cliente AS tc, status_cadastro AS sc, tipo_pn AS tpn FROM tipos_cliente',
         )
         .all(tcOptRows)
       for (let i = 0; i < tcOptRows.length; i++) {
-        const val = (tcOptRows[i].tc || '').trim()
-        if (val && tipoClienteOptions.indexOf(val) === -1) {
-          tipoClienteOptions.push(val)
+        const valTc = (tcOptRows[i].tc || '').trim()
+        if (valTc && tipoClienteOptions.indexOf(valTc) === -1) {
+          tipoClienteOptions.push(valTc)
+        }
+        const valSc = (tcOptRows[i].sc || '').trim()
+        if (valSc && statusCadastroOptions.indexOf(valSc) === -1) {
+          statusCadastroOptions.push(valSc)
+        }
+        const valTpn = (tcOptRows[i].tpn || '').trim()
+        if (valTpn && tipoPnOptions.indexOf(valTpn) === -1) {
+          tipoPnOptions.push(valTpn)
         }
       }
+      tipoClienteOptions.sort()
+      statusCadastroOptions.sort()
+      tipoPnOptions.sort()
     } catch (tcErr) {
       console.warn('pedidos_abertos stats: tipos_cliente options err:', tcErr)
     }
@@ -977,6 +1098,8 @@ routerAdd(
         canaisClientes: canaisClientesOptions,
         inside: insideOptions,
         tipoCliente: tipoClienteOptions,
+        statusCadastro: statusCadastroOptions,
+        tipoPn: tipoPnOptions,
       },
     })
   },

@@ -372,5 +372,7 @@ export interface PedidosAbertosStatsResult {
     canaisClientes?: CanalClienteOption[]
     inside?: string[]
     tipoCliente?: string[]
+    statusCadastro?: string[]
+    tipoPn?: string[]
   }
 }

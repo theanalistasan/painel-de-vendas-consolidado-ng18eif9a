@@ -14,6 +14,8 @@ export interface PedidosAbertosFilters {
   inside: string[]
   ehCanal?: 'todos' | 'sim' | 'nao' | ''
   tipoCliente?: string[]
+  statusCadastro?: string[]
+  tipoPn?: string[]
 }
 
 export const EMPTY_PEDIDOS_ABERTOS_FILTERS: PedidosAbertosFilters = {
@@ -23,6 +25,8 @@ export const EMPTY_PEDIDOS_ABERTOS_FILTERS: PedidosAbertosFilters = {
   inside: [],
   ehCanal: 'todos',
   tipoCliente: [],
+  statusCadastro: [],
+  tipoPn: [],
 }
 
 export interface PedidosAbertosFilterBarProps {
@@ -35,6 +39,12 @@ export interface PedidosAbertosFilterBarProps {
     tipoCliente?: string[]
     isLoadingTipoCliente?: boolean
     onOpenTipoCliente?: () => void
+    statusCadastro?: string[]
+    isLoadingStatusCadastro?: boolean
+    onOpenStatusCadastro?: () => void
+    tipoPn?: string[]
+    isLoadingTipoPn?: boolean
+    onOpenTipoPn?: () => void
   }
   onApplyFilters?: (filters: PedidosAbertosFilters) => void
   isLoading?: boolean
@@ -261,6 +271,8 @@ export default function PedidosAbertosFilterBar({
       (filters.deploy?.length || 0) +
       (filters.inside?.length || 0) +
       (filters.tipoCliente?.length || 0) +
+      (filters.statusCadastro?.length || 0) +
+      (filters.tipoPn?.length || 0) +
       (filters.ehCanal && filters.ehCanal !== 'todos' ? 1 : 0)
     )
   }, [filters])
@@ -579,6 +591,45 @@ export default function PedidosAbertosFilterBar({
                 isLoading={options.isLoadingTipoCliente}
                 emptyMessage="Importe a base de Tipo de Cliente (SAP)"
                 onOpen={options.onOpenTipoCliente}
+              />
+            </div>
+          </div>
+
+          {/* Filtros de Cadastro de Cliente (Status do Cadastro e Tipo de PN) */}
+          <div className="mt-2 pt-2 border-t border-cyan-100/70 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {/* Status do Cadastro (SAP: Ativo, Inativo, etc.) */}
+            <div>
+              <Label className="text-[10px] font-bold text-slate-600 mb-1 block">
+                Status do Cadastro
+              </Label>
+              <MultiSelectDropdown
+                label="Status do Cadastro"
+                options={options.statusCadastro || []}
+                selected={localFilters.statusCadastro || []}
+                onChange={(values) =>
+                  setLocalFilters((prev) => ({ ...prev, statusCadastro: values }))
+                }
+                placeholder="Todos (Ativo, ...)"
+                highlight={(localFilters.statusCadastro || []).length > 0}
+                isLoading={options.isLoadingStatusCadastro}
+                emptyMessage="Importe a base de Tipos de Cliente (SAP)"
+                onOpen={options.onOpenStatusCadastro}
+              />
+            </div>
+
+            {/* Tipo de PN (SAP: Cliente, Lead, etc.) */}
+            <div>
+              <Label className="text-[10px] font-bold text-slate-600 mb-1 block">Tipo de PN</Label>
+              <MultiSelectDropdown
+                label="Tipo de PN"
+                options={options.tipoPn || []}
+                selected={localFilters.tipoPn || []}
+                onChange={(values) => setLocalFilters((prev) => ({ ...prev, tipoPn: values }))}
+                placeholder="Todos (Cliente, ...)"
+                highlight={(localFilters.tipoPn || []).length > 0}
+                isLoading={options.isLoadingTipoPn}
+                emptyMessage="Importe a base de Tipos de Cliente (SAP)"
+                onOpen={options.onOpenTipoPn}
               />
             </div>
           </div>

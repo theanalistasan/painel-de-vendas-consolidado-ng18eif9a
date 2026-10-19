@@ -17,6 +17,7 @@ import {
   AlertCircle,
   Boxes,
   Briefcase,
+  Users,
 } from 'lucide-react'
 import { fetchPedidosAbertosList, fetchPedidosAbertosStats } from '@/services/pedidosAbertos'
 import {
@@ -49,7 +50,20 @@ const PAGE_SIZE = 25
 
 type SortField = Extract<keyof PedidoAberto, string>
 
-type ViewMode = 'faturamento' | 'canal' | 'cliente' | 'detalhado'
+type ViewMode = 'faturamento' | 'canal' | 'cliente' | 'tipo_cliente' | 'detalhado'
+
+interface TipoClienteGroup {
+  key: string
+  tipo_cliente: string
+  totalPedidos: number
+  totalLinhas: number
+  totalClientes: number
+  totalQtdAberto: number
+  totalQtdSolicitada: number
+  totalValorEmAberto: number
+  totalValorLiquido: number
+  items: PedidoAberto[]
+}
 
 interface CanalFaturamentoGroup {
   key: string
@@ -110,6 +124,18 @@ export default function PedidosAbertos() {
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
   const [expandedCanais, setExpandedCanais] = useState<Set<string>>(new Set())
   const [expandedFaturamentos, setExpandedFaturamentos] = useState<Set<string>>(new Set())
+  const [expandedTiposCliente, setExpandedTiposCliente] = useState<Set<string>>(() => {
+    try {
+      const raw = sessionStorage.getItem('pedidos_abertos_expanded_tipos')
+      if (raw) {
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr)) return new Set(arr)
+      }
+    } catch {
+      // ignora
+    }
+    return new Set<string>()
+  })
   const sort = useTableSort<SortField>()
   const { toast } = useToast()
 
@@ -117,13 +143,25 @@ export default function PedidosAbertos() {
     try {
       const raw = sessionStorage.getItem('paineis_vendas_filters')
       if (raw) {
-        const parsed = JSON.parse(raw) as { tipoCliente?: unknown }
-        if (Array.isArray(parsed?.tipoCliente)) {
-          const savedTipoCliente = parsed.tipoCliente.map(String).filter(Boolean)
-          return {
-            ...EMPTY_PEDIDOS_ABERTOS_FILTERS,
-            tipoCliente: savedTipoCliente,
-          }
+        const parsed = JSON.parse(raw) as {
+          tipoCliente?: unknown
+          statusCadastro?: unknown
+          tipoPn?: unknown
+        }
+        const savedTipoCliente = Array.isArray(parsed?.tipoCliente)
+          ? parsed.tipoCliente.map(String).filter(Boolean)
+          : []
+        const savedStatusCadastro = Array.isArray(parsed?.statusCadastro)
+          ? parsed.statusCadastro.map(String).filter(Boolean)
+          : []
+        const savedTipoPn = Array.isArray(parsed?.tipoPn)
+          ? parsed.tipoPn.map(String).filter(Boolean)
+          : []
+        return {
+          ...EMPTY_PEDIDOS_ABERTOS_FILTERS,
+          tipoCliente: savedTipoCliente,
+          statusCadastro: savedStatusCadastro,
+          tipoPn: savedTipoPn,
         }
       }
     } catch {
@@ -135,6 +173,8 @@ export default function PedidosAbertos() {
   })
 
   const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
+  const [statusCadastroOptions, setStatusCadastroOptions] = useState<string[]>([])
+  const [tipoPnOptions, setTipoPnOptions] = useState<string[]>([])
   const [loadingTipoClienteOptions, setLoadingTipoClienteOptions] = useState(false)
   const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, TipoClienteInfo>>({})
 
@@ -150,11 +190,15 @@ export default function PedidosAbertos() {
     canaisClientes?: CanalClienteOption[]
     inside?: string[]
     tipoCliente?: string[]
+    statusCadastro?: string[]
+    tipoPn?: string[]
   }>({
     canais: [],
     canaisClientes: [],
     inside: [],
     tipoCliente: [],
+    statusCadastro: [],
+    tipoPn: [],
   })
 
   const [statsLoading, setStatsLoading] = useState(false)
@@ -231,6 +275,19 @@ export default function PedidosAbertos() {
       }
       if (map && Object.keys(map).length > 0) {
         setTiposClienteMap(map)
+        // Extrai também opções de status_cadastro e tipo_pn a partir do mapa em memória se disponíveis
+        const scSet = new Set<string>()
+        const tpnSet = new Set<string>()
+        Object.values(map).forEach((info) => {
+          if (info.status_cadastro?.trim()) scSet.add(info.status_cadastro.trim())
+          if (info.tipo_pn?.trim()) tpnSet.add(info.tipo_pn.trim())
+        })
+        if (scSet.size > 0) {
+          setStatusCadastroOptions(Array.from(scSet).sort())
+        }
+        if (tpnSet.size > 0) {
+          setTipoPnOptions(Array.from(tpnSet).sort())
+        }
       }
     } catch (err) {
       console.warn('Erro ao carregar tipos de cliente em Pedidos em Aberto:', err)
@@ -254,20 +311,33 @@ export default function PedidosAbertos() {
         )
       } catch (backendErr: unknown) {
         const status = (backendErr as { status?: number })?.status
-        if (status === 400 && activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0) {
-          const { tipoCliente: _removed, ...filtersWithoutTipoCliente } = activeFilters
+        if (
+          status === 400 &&
+          ((activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0) ||
+            (activeFilters.statusCadastro && activeFilters.statusCadastro.length > 0) ||
+            (activeFilters.tipoPn && activeFilters.tipoPn.length > 0))
+        ) {
+          const {
+            tipoCliente: _tc,
+            statusCadastro: _sc,
+            tipoPn: _tpn,
+            ...filtersWithoutCadastro
+          } = activeFilters
           statsPedidos = await fetchPedidosAbertosStats(
-            filtersWithoutTipoCliente as unknown as Record<string, unknown>,
+            filtersWithoutCadastro as unknown as Record<string, unknown>,
           )
         } else {
           throw backendErr
         }
       }
 
-      if (
-        statsPedidos?.kpis &&
-        (!activeFilters.tipoCliente || activeFilters.tipoCliente.length === 0)
-      ) {
+      const hasCustomCadastroFilters = Boolean(
+        (activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0) ||
+        (activeFilters.statusCadastro && activeFilters.statusCadastro.length > 0) ||
+        (activeFilters.tipoPn && activeFilters.tipoPn.length > 0),
+      )
+
+      if (statsPedidos?.kpis && !hasCustomCadastroFilters) {
         setKpis(statsPedidos.kpis)
       }
 
@@ -282,6 +352,15 @@ export default function PedidosAbertos() {
             statsPedidos.filterOptions.tipoCliente.length > 0
               ? statsPedidos.filterOptions.tipoCliente
               : prev.tipoCliente,
+          statusCadastro:
+            statsPedidos.filterOptions.statusCadastro &&
+            statsPedidos.filterOptions.statusCadastro.length > 0
+              ? statsPedidos.filterOptions.statusCadastro
+              : prev.statusCadastro,
+          tipoPn:
+            statsPedidos.filterOptions.tipoPn && statsPedidos.filterOptions.tipoPn.length > 0
+              ? statsPedidos.filterOptions.tipoPn
+              : prev.tipoPn,
         }))
         if (
           Array.isArray(statsPedidos.filterOptions.tipoCliente) &&
@@ -290,6 +369,20 @@ export default function PedidosAbertos() {
           setTipoClienteOptions((prev) =>
             prev.length > 0 ? prev : statsPedidos.filterOptions.tipoCliente!,
           )
+        }
+        if (
+          Array.isArray(statsPedidos.filterOptions.statusCadastro) &&
+          statsPedidos.filterOptions.statusCadastro.length > 0
+        ) {
+          setStatusCadastroOptions((prev) =>
+            prev.length > 0 ? prev : statsPedidos.filterOptions.statusCadastro!,
+          )
+        }
+        if (
+          Array.isArray(statsPedidos.filterOptions.tipoPn) &&
+          statsPedidos.filterOptions.tipoPn.length > 0
+        ) {
+          setTipoPnOptions((prev) => (prev.length > 0 ? prev : statsPedidos.filterOptions.tipoPn!))
         }
       }
     } catch (err: unknown) {
@@ -329,7 +422,7 @@ export default function PedidosAbertos() {
     setLoading(true)
     try {
       // Sempre carregamos a base completa do recorte (até 2000 registros) para alimentar
-      // com precisão o Dashboard e os agrupamentos por Canal / Cliente / Faturamento
+      // com precisão o Dashboard e os agrupamentos por Canal / Cliente / Faturamento / Tipo de Cliente
       let res: Awaited<ReturnType<typeof fetchPedidosAbertosList>>
       let usedMemoryFallback = false
 
@@ -344,16 +437,26 @@ export default function PedidosAbertos() {
         })
       } catch (backendErr: unknown) {
         const status = (backendErr as { status?: number })?.status
-        // Se der erro 400 (ex: coluna não existe no backend), tenta sem o filtro tipoCliente e aplica em memória
-        if (status === 400 && activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0) {
-          const { tipoCliente: _removed, ...filtersWithoutTipoCliente } = activeFilters
+        // Se der erro 400 (ex: coluna não existe no backend), tenta sem os filtros de cadastro e aplica em memória
+        const hasCadastro = Boolean(
+          (activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0) ||
+          (activeFilters.statusCadastro && activeFilters.statusCadastro.length > 0) ||
+          (activeFilters.tipoPn && activeFilters.tipoPn.length > 0),
+        )
+        if (status === 400 && hasCadastro) {
+          const {
+            tipoCliente: _tc,
+            statusCadastro: _sc,
+            tipoPn: _tpn,
+            ...filtersWithoutCadastro
+          } = activeFilters
           res = await fetchPedidosAbertosList({
             page: 1,
             perPage: 2000,
             sortField: sortField || 'data_pedido',
             sortDirection: sortDir || 'desc',
             search: search.trim() || undefined,
-            filters: filtersWithoutTipoCliente as unknown as Record<string, unknown>,
+            filters: filtersWithoutCadastro as unknown as Record<string, unknown>,
           })
           usedMemoryFallback = true
         } else {
@@ -363,54 +466,81 @@ export default function PedidosAbertos() {
 
       let items = res.items || []
 
-      // Se o filtro de tipo de cliente estiver ativo, garante o recorte considerando:
-      // 1. Campo tipo_cliente direto no pedido aberto (caso gravado no banco);
-      // 2. Mapa código_cliente -> tipo_cliente (mesmo mecanismo de Canais.tsx commit 0.0.177).
-      if (activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0) {
-        let currentMap = activeMap
-        if (Object.keys(currentMap).length === 0) {
-          try {
-            currentMap = await fetchTiposClienteMap()
-            setTiposClienteMap(currentMap)
-          } catch {
-            // mantém fallback
-          }
+      // Garante mapa de tipos_cliente em memória se houver filtros de cadastro ativos
+      const hasTipoClienteFilter = Boolean(
+        activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0,
+      )
+      const hasStatusCadastroFilter = Boolean(
+        activeFilters.statusCadastro && activeFilters.statusCadastro.length > 0,
+      )
+      const hasTipoPnFilter = Boolean(activeFilters.tipoPn && activeFilters.tipoPn.length > 0)
+
+      let currentMap = activeMap
+      if (
+        (hasTipoClienteFilter || hasStatusCadastroFilter || hasTipoPnFilter) &&
+        Object.keys(currentMap).length === 0
+      ) {
+        try {
+          currentMap = await fetchTiposClienteMap()
+          setTiposClienteMap(currentMap)
+        } catch {
+          // mantém fallback
         }
-        const selectedSet = new Set(activeFilters.tipoCliente)
+      }
+
+      // Aplica recorte em memória resiliente para Tipo de Cliente, Status do Cadastro e Tipo de PN
+      if (hasTipoClienteFilter || hasStatusCadastroFilter || hasTipoPnFilter) {
+        const tcSet = hasTipoClienteFilter ? new Set(activeFilters.tipoCliente) : null
+        const scSet = hasStatusCadastroFilter ? new Set(activeFilters.statusCadastro) : null
+        const tpnSet = hasTipoPnFilter ? new Set(activeFilters.tipoPn) : null
+
         items = items.filter((item) => {
-          const directType = (item as unknown as { tipo_cliente?: string }).tipo_cliente?.trim()
-          if (directType && selectedSet.has(directType)) return true
-          const cod = item.codigo_cliente?.trim().toUpperCase()
-          if (cod && currentMap[cod]) {
-            const mappedType = currentMap[cod].tipo_cliente?.trim()
-            if (mappedType && selectedSet.has(mappedType)) return true
+          const cod = (item.codigo_cliente || '').trim().toUpperCase()
+          const mapped = cod ? currentMap[cod] : undefined
+
+          if (tcSet) {
+            const direct = (item as unknown as { tipo_cliente?: string }).tipo_cliente?.trim()
+            const resolved = direct || mapped?.tipo_cliente?.trim() || ''
+            if (!resolved || !tcSet.has(resolved)) return false
           }
-          return false
+
+          if (scSet) {
+            const direct = (item as unknown as { status_cadastro?: string }).status_cadastro?.trim()
+            const resolved = direct || mapped?.status_cadastro?.trim() || ''
+            if (!resolved || !scSet.has(resolved)) return false
+          }
+
+          if (tpnSet) {
+            const direct = (item as unknown as { tipo_pn?: string }).tipo_pn?.trim()
+            const resolved = direct || mapped?.tipo_pn?.trim() || ''
+            if (!resolved || !tpnSet.has(resolved)) return false
+          }
+
+          return true
         })
       }
 
       setDashboardPedidos(items)
-      const isTipoClienteActive = Boolean(
-        activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0,
-      )
+      const isCustomCadastroActive =
+        hasTipoClienteFilter || hasStatusCadastroFilter || hasTipoPnFilter
       const computedTotalItems =
-        usedMemoryFallback || isTipoClienteActive ? items.length : res.totalItems || items.length
+        usedMemoryFallback || isCustomCadastroActive ? items.length : res.totalItems || items.length
       setTotalItems(computedTotalItems)
       setTotalPages(Math.max(1, Math.ceil(computedTotalItems / PAGE_SIZE)))
 
       const computedTotalValor =
-        usedMemoryFallback || isTipoClienteActive
+        usedMemoryFallback || isCustomCadastroActive
           ? items.reduce((acc, cur) => acc + (Number(cur.valor_em_aberto) || 0), 0)
           : res.totalValor || 0
       const computedTotalQtd =
-        usedMemoryFallback || isTipoClienteActive
+        usedMemoryFallback || isCustomCadastroActive
           ? items.reduce((acc, cur) => acc + (Number(cur.qtd_aberto) || 0), 0)
           : res.totalQtd || 0
       setTotalValor(computedTotalValor)
       setTotalQtd(computedTotalQtd)
 
-      // Atualiza também os KPIs com base no recorte filtrado quando tipoCliente está ativo
-      if (isTipoClienteActive) {
+      // Atualiza também os KPIs com base no recorte filtrado quando filtros de cadastro estão ativos
+      if (isCustomCadastroActive) {
         const distinctOrders = new Set(items.map((i) => i.numero_pedido).filter(Boolean))
         const distinctClients = new Set(
           items.map((i) => (i.codigo_cliente || i.nome_cliente || '').trim()).filter(Boolean),
@@ -481,7 +611,7 @@ export default function PedidosAbertos() {
     }
   }, [page, filters, sort.field, sort.dir, viewMode])
 
-  // Atualiza os filtros e persiste a seleção de tipoCliente no sessionStorage compartilhado
+  // Atualiza os filtros e persiste a seleção de tipoCliente, statusCadastro e tipoPn no sessionStorage compartilhado
   const handleFiltersChange = (newFilters: PedidosAbertosFilters) => {
     setFilters(newFilters)
     try {
@@ -492,6 +622,8 @@ export default function PedidosAbertos() {
         JSON.stringify({
           ...current,
           tipoCliente: newFilters.tipoCliente || [],
+          statusCadastro: newFilters.statusCadastro || [],
+          tipoPn: newFilters.tipoPn || [],
         }),
       )
     } catch {
@@ -510,6 +642,8 @@ export default function PedidosAbertos() {
         JSON.stringify({
           ...current,
           tipoCliente: applied.tipoCliente || [],
+          statusCadastro: applied.statusCadastro || [],
+          tipoPn: applied.tipoPn || [],
         }),
       )
     } catch {
@@ -653,6 +787,113 @@ export default function PedidosAbertos() {
     })
     return list
   }, [viewMode, allFilteredPedidos, paginatedPedidos])
+
+  // Agrupamento por Tipo de Cliente (ex: Revendas, Atas, ..., Sem tipo)
+  // Segue o mesmo padrão visual e de regras da página Canais (commit 0.0.179)
+  const tipoClienteGroups: TipoClienteGroup[] = useMemo(() => {
+    if (viewMode !== 'tipo_cliente') return []
+    const sourceItems = allFilteredPedidos.length > 0 ? allFilteredPedidos : paginatedPedidos
+
+    const groupMap = new Map<string, TipoClienteGroup>()
+
+    for (const item of sourceItems) {
+      const resolved = resolveClienteInfo(item)
+      const rawTipo = resolved.tipo_cliente?.trim()
+      const upper = rawTipo ? rawTipo.toUpperCase() : ''
+      const isSemTipo =
+        !rawTipo || upper === 'SEM TIPO' || upper === '-' || upper === 'SEM INFORMACAO'
+
+      const key = isSemTipo ? 'SEM_TIPO' : upper
+      const label = isSemTipo ? 'Sem tipo' : rawTipo
+
+      let group = groupMap.get(key)
+      if (!group) {
+        group = {
+          key,
+          tipo_cliente: label,
+          totalPedidos: 0,
+          totalLinhas: 0,
+          totalClientes: 0,
+          totalQtdAberto: 0,
+          totalQtdSolicitada: 0,
+          totalValorEmAberto: 0,
+          totalValorLiquido: 0,
+          items: [],
+        }
+        groupMap.set(key, group)
+      }
+
+      group.items.push(item)
+      group.totalLinhas += 1
+      const qtdAbertoNum = Number(item.qtd_aberto) || 0
+      const qtdSolNum = Number(item.qtd_solicitada) || 0
+      const valorEmAbertoNum = Number(item.valor_em_aberto) || 0
+      const precoLiq = Number(item.preco_apos_desconto) || Number(item.preco_unitario) || 0
+
+      group.totalQtdAberto += qtdAbertoNum
+      group.totalQtdSolicitada += qtdSolNum
+      group.totalValorEmAberto += valorEmAbertoNum
+      group.totalValorLiquido += precoLiq * (qtdAbertoNum || 1)
+    }
+
+    const list = Array.from(groupMap.values())
+    for (const g of list) {
+      const distinctOrders = new Set(g.items.map((i) => i.numero_pedido).filter(Boolean))
+      g.totalPedidos = distinctOrders.size || g.totalLinhas
+      const distinctClients = new Set(
+        g.items.map((i) => (i.codigo_cliente || i.nome_cliente || '').trim()).filter(Boolean),
+      )
+      g.totalClientes = distinctClients.size || 1
+    }
+
+    // Ordenação alfabética; "Sem tipo" sempre ao final (mesmo padrão de Canais)
+    list.sort((a, b) => {
+      if (a.key === 'SEM_TIPO') return 1
+      if (b.key === 'SEM_TIPO') return -1
+      return a.tipo_cliente.localeCompare(b.tipo_cliente, 'pt-BR', {
+        sensitivity: 'base',
+      })
+    })
+
+    return list
+  }, [viewMode, allFilteredPedidos, paginatedPedidos, tiposClienteMap])
+
+  // Controles de expansão e colapso por Tipo de Cliente (com persistência na sessão)
+  const toggleTipoClienteGroup = (key: string) => {
+    setExpandedTiposCliente((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      try {
+        sessionStorage.setItem('pedidos_abertos_expanded_tipos', JSON.stringify(Array.from(next)))
+      } catch {
+        // ignora
+      }
+      return next
+    })
+  }
+
+  const collapseAllTiposCliente = () => {
+    setExpandedTiposCliente(new Set())
+    try {
+      sessionStorage.setItem('pedidos_abertos_expanded_tipos', JSON.stringify([]))
+    } catch {
+      // ignora
+    }
+  }
+
+  const expandAllTiposCliente = () => {
+    const allKeys = new Set(tipoClienteGroups.map((g) => g.key))
+    setExpandedTiposCliente(allKeys)
+    try {
+      sessionStorage.setItem('pedidos_abertos_expanded_tipos', JSON.stringify(Array.from(allKeys)))
+    } catch {
+      // ignora
+    }
+  }
 
   // Agrupamento por Canal de Faturamento (ex: AGIS, Roland, Nenhum):
   // soma de todos os campos de valor, qtd aberta, qtd solicitada, pedidos distintos, itens e clientes distintos
@@ -819,7 +1060,7 @@ export default function PedidosAbertos() {
     })
 
     try {
-      // Busca até 2000 registros para exportação com fallback resiliente para tipoCliente
+      // Busca até 2000 registros para exportação com fallback resiliente para filtros de cadastro
       let res: Awaited<ReturnType<typeof fetchPedidosAbertosList>>
       try {
         res = await fetchPedidosAbertosList({
@@ -832,15 +1073,25 @@ export default function PedidosAbertos() {
         })
       } catch (backendErr: unknown) {
         const status = (backendErr as { status?: number })?.status
-        if (status === 400 && filters.tipoCliente && filters.tipoCliente.length > 0) {
-          const { tipoCliente: _removed, ...filtersWithoutTipoCliente } = filters
+        const hasCadastro = Boolean(
+          (filters.tipoCliente && filters.tipoCliente.length > 0) ||
+          (filters.statusCadastro && filters.statusCadastro.length > 0) ||
+          (filters.tipoPn && filters.tipoPn.length > 0),
+        )
+        if (status === 400 && hasCadastro) {
+          const {
+            tipoCliente: _tc,
+            statusCadastro: _sc,
+            tipoPn: _tpn,
+            ...filtersWithoutCadastro
+          } = filters
           res = await fetchPedidosAbertosList({
             page: 1,
             perPage: 2000,
             sortField: sort.field || 'data_pedido',
             sortDirection: sort.dir || 'desc',
             search: searchTerm.trim() || undefined,
-            filters: filtersWithoutTipoCliente as unknown as Record<string, unknown>,
+            filters: filtersWithoutCadastro as unknown as Record<string, unknown>,
           })
         } else {
           throw backendErr
@@ -860,18 +1111,39 @@ export default function PedidosAbertos() {
         }
       }
 
-      // Se filtro de tipoCliente estiver ativo, aplica recorte em memória
-      if (filters.tipoCliente && filters.tipoCliente.length > 0) {
-        const selectedSet = new Set(filters.tipoCliente)
+      // Se houver filtros de cadastro ativos, aplica recorte em memória
+      const hasTc = Boolean(filters.tipoCliente && filters.tipoCliente.length > 0)
+      const hasSc = Boolean(filters.statusCadastro && filters.statusCadastro.length > 0)
+      const hasTpn = Boolean(filters.tipoPn && filters.tipoPn.length > 0)
+
+      if (hasTc || hasSc || hasTpn) {
+        const tcSet = hasTc ? new Set(filters.tipoCliente) : null
+        const scSet = hasSc ? new Set(filters.statusCadastro) : null
+        const tpnSet = hasTpn ? new Set(filters.tipoPn) : null
+
         rows = rows.filter((item) => {
-          const directType = (item as unknown as { tipo_cliente?: string }).tipo_cliente?.trim()
-          if (directType && selectedSet.has(directType)) return true
-          const cod = item.codigo_cliente?.trim().toUpperCase()
-          if (cod && mapToUse[cod]) {
-            const mappedType = mapToUse[cod].tipo_cliente?.trim()
-            if (mappedType && selectedSet.has(mappedType)) return true
+          const cod = (item.codigo_cliente || '').trim().toUpperCase()
+          const mapped = cod ? mapToUse[cod] : undefined
+
+          if (tcSet) {
+            const direct = (item as unknown as { tipo_cliente?: string }).tipo_cliente?.trim()
+            const resolved = direct || mapped?.tipo_cliente?.trim() || ''
+            if (!resolved || !tcSet.has(resolved)) return false
           }
-          return false
+
+          if (scSet) {
+            const direct = (item as unknown as { status_cadastro?: string }).status_cadastro?.trim()
+            const resolved = direct || mapped?.status_cadastro?.trim() || ''
+            if (!resolved || !scSet.has(resolved)) return false
+          }
+
+          if (tpnSet) {
+            const direct = (item as unknown as { tipo_pn?: string }).tipo_pn?.trim()
+            const resolved = direct || mapped?.tipo_pn?.trim() || ''
+            if (!resolved || !tpnSet.has(resolved)) return false
+          }
+
+          return true
         })
       }
 
@@ -992,7 +1264,7 @@ export default function PedidosAbertos() {
         </div>
       </div>
 
-      {/* Filtros específicos de Pedidos em Aberto (Canais, Clientes, Deploy, Inside, Tipo de Cliente e Período) */}
+      {/* Filtros específicos de Pedidos em Aberto (Canais, Clientes, Deploy, Inside, Tipo de Cliente, Status do Cadastro, Tipo de PN e Período) */}
       <PedidosAbertosFilterBar
         filters={filters}
         setFilters={handleFiltersChange}
@@ -1003,6 +1275,23 @@ export default function PedidosAbertos() {
           isLoadingTipoCliente: loadingTipoClienteOptions,
           onOpenTipoCliente: () => {
             if (tipoClienteOptions.length === 0) {
+              loadTiposClienteData()
+            }
+          },
+          statusCadastro:
+            statusCadastroOptions.length > 0
+              ? statusCadastroOptions
+              : filterOptions.statusCadastro || [],
+          isLoadingStatusCadastro: loadingTipoClienteOptions,
+          onOpenStatusCadastro: () => {
+            if (statusCadastroOptions.length === 0) {
+              loadTiposClienteData()
+            }
+          },
+          tipoPn: tipoPnOptions.length > 0 ? tipoPnOptions : filterOptions.tipoPn || [],
+          isLoadingTipoPn: loadingTipoClienteOptions,
+          onOpenTipoPn: () => {
+            if (tipoPnOptions.length === 0) {
               loadTiposClienteData()
             }
           },
@@ -1071,7 +1360,9 @@ export default function PedidosAbertos() {
                       ? 'Pedidos em Aberto por Canal'
                       : viewMode === 'cliente'
                         ? 'Pedidos em Aberto por Cliente'
-                        : 'Linhas de Pedidos Pendentes'}
+                        : viewMode === 'tipo_cliente'
+                          ? 'Pedidos em Aberto por Tipo de Cliente'
+                          : 'Linhas de Pedidos Pendentes'}
                 </span>
                 <Badge
                   variant="secondary"
@@ -1083,7 +1374,9 @@ export default function PedidosAbertos() {
                       ? `${formatNumber(canalGroups.length)} canal(is) • ${formatNumber(totalItems)} linha(s)`
                       : viewMode === 'cliente'
                         ? `${formatNumber(clientGroups.length)} cliente(s) • ${formatNumber(totalItems)} linha(s)`
-                        : `${formatNumber(totalItems)} registro(s)`}
+                        : viewMode === 'tipo_cliente'
+                          ? `${formatNumber(tipoClienteGroups.length)} tipo(s) de cliente • ${formatNumber(totalItems)} linha(s)`
+                          : `${formatNumber(totalItems)} registro(s)`}
                 </Badge>
               </CardTitle>
               <CardDescription className="text-xs text-slate-500 mt-0.5">
@@ -1177,6 +1470,25 @@ export default function PedidosAbertos() {
                 >
                   <Building2 className="w-3 h-3" />
                   Agrupado por Cliente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode('tipo_cliente')
+                    setExpandedClients(new Set())
+                    setExpandedCanais(new Set())
+                    setExpandedFaturamentos(new Set())
+                  }}
+                  className={cn(
+                    'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer flex items-center gap-1',
+                    viewMode === 'tipo_cliente'
+                      ? 'bg-white text-[#0B6E99] shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                  title="Agrupar e colapsar por Tipo de Cliente (ex: Revendas, Atas, Sem tipo) somando todos os valores"
+                >
+                  <Users className="w-3 h-3" />
+                  Tipo de Cliente
                 </button>
                 <button
                   type="button"
@@ -1297,6 +1609,39 @@ export default function PedidosAbertos() {
                 </Button>
               </div>
             )}
+
+            {/* Ações de Expandir/Colapsar todos quando agrupado por Tipo de Cliente */}
+            {viewMode === 'tipo_cliente' && tipoClienteGroups.length > 0 && (
+              <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                <span className="text-[11px] text-slate-500 font-medium mr-1 hidden sm:inline">
+                  {tipoClienteGroups.length} tipo(s) •
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={collapseAllTiposCliente}
+                  disabled={expandedTiposCliente.size === 0}
+                  className="h-7 px-2.5 text-[11px] bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-bold gap-1 shadow-2xs"
+                  title="Colapsar todos os tipos de cliente (modo consolidado com somas)"
+                >
+                  <ChevronsDownUp className="w-3 h-3 text-[#0B6E99]" />
+                  Colapsar Todos
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={expandAllTiposCliente}
+                  disabled={expandedTiposCliente.size === tipoClienteGroups.length}
+                  className="h-7 px-2.5 text-[11px] bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-bold gap-1 shadow-2xs"
+                  title="Expandir todos os tipos de cliente para ver os pedidos e itens detalhados"
+                >
+                  <ChevronsUpDown className="w-3 h-3 text-[#0B6E99]" />
+                  Expandir Todos
+                </Button>
+              </div>
+            )}
           </div>
         </CardHeader>
 
@@ -1406,7 +1751,9 @@ export default function PedidosAbertos() {
                         ? canalGroups.length === 0
                         : viewMode === 'cliente'
                           ? clientGroups.length === 0
-                          : paginatedPedidos.length === 0
+                          : viewMode === 'tipo_cliente'
+                            ? tipoClienteGroups.length === 0
+                            : paginatedPedidos.length === 0
                   ) ? (
                   <tr>
                     <td
@@ -2187,6 +2534,311 @@ export default function PedidosAbertos() {
                           {/* Ação rápida */}
                           <td className="p-3 text-center whitespace-nowrap text-[10px] text-slate-400 font-medium">
                             {isExpanded ? 'Recolher ▲' : 'Ver itens ▼'}
+                          </td>
+                        </tr>
+
+                        {/* Linhas detalhadas quando expandido */}
+                        {isExpanded &&
+                          group.items.map((item) => (
+                            <tr
+                              key={item.id}
+                              className="bg-white hover:bg-slate-50/80 transition-colors border-b border-slate-100/80"
+                            >
+                              <td className="py-2.5 px-2 text-center text-slate-300">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300" />
+                              </td>
+
+                              {/* 1. Canal / Deploy (PRIMEIRA COLUNA) */}
+                              <td className="p-3 whitespace-nowrap">
+                                {item.nome_canal ? (
+                                  <div className="space-y-0.5">
+                                    <span className="inline-block text-[11px] font-bold text-[#0B6E99]">
+                                      {item.nome_canal}
+                                    </span>
+                                    {item.deploy && (
+                                      <div className="text-[10px] text-slate-500 font-medium">
+                                        Deploy: {item.deploy}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400 text-[11px] italic">—</span>
+                                )}
+                              </td>
+
+                              {/* Pedido / Linha */}
+                              <td className="p-3 font-semibold text-slate-900 whitespace-nowrap">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-mono text-xs text-[#0B6E99] font-bold">
+                                    {item.numero_pedido}
+                                  </span>
+                                  <span className="text-[11px] text-slate-400">
+                                    / L{item.linha}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Data */}
+                              <td className="p-3 text-slate-600 whitespace-nowrap">
+                                {item.data_pedido ? formatDate(item.data_pedido) : '-'}
+                              </td>
+
+                              {/* Cliente */}
+                              <td className="p-3 min-w-[200px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_cliente}
+                                >
+                                  {item.nome_cliente || 'Cliente não identificado'}
+                                </div>
+                                {item.codigo_cliente && (
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {item.codigo_cliente}
+                                  </div>
+                                )}
+                              </td>
+
+                              {/* Tipo de Cliente */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
+                              </td>
+
+                              {/* Status do Cadastro */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderStatusCadastroCell(resolveClienteInfo(item).status_cadastro)}
+                              </td>
+
+                              {/* Tipo de PN */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
+                              </td>
+
+                              {/* Item / Descrição */}
+                              <td className="p-3 min-w-[220px]">
+                                <div className="font-mono text-xs font-semibold text-slate-800">
+                                  {item.codigo_item || '-'}
+                                </div>
+                                <div
+                                  className="text-[11px] text-slate-600 truncate"
+                                  title={item.descricao_item}
+                                >
+                                  {item.descricao_item || '-'}
+                                </div>
+                                {item.grupo_item && (
+                                  <span className="inline-block text-[10px] text-slate-400 uppercase tracking-tight mt-0.5">
+                                    Grupo: {item.grupo_item}
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Qtd Aberto */}
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <div className="font-bold text-slate-900">
+                                  {formatNumber(item.qtd_aberto)}
+                                </div>
+                                <div className="text-[10px] text-slate-400">
+                                  de {formatNumber(item.qtd_solicitada)} ped.
+                                </div>
+                              </td>
+
+                              {/* Preço Unitário Líquido */}
+                              <td className="p-3 text-right text-slate-700 whitespace-nowrap font-medium">
+                                {formatCurrency(
+                                  Number(item.preco_apos_desconto) ||
+                                    Number(item.preco_unitario) ||
+                                    0,
+                                )}
+                                {Number(item.desconto_percentual) > 0 && (
+                                  <span className="block text-[10px] text-rose-500">
+                                    -{Math.round(Number(item.desconto_percentual))}%
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Valor em Aberto */}
+                              <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
+                                {formatCurrency(Number(item.valor_em_aberto) || 0)}
+                              </td>
+                              {/* Status Linha */}
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    item.status_linha?.toLowerCase() === 'fechada'
+                                      ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
+                                  }
+                                >
+                                  {item.status_linha || 'Aberta'}
+                                </Badge>
+                              </td>
+
+                              {/* Estoque / Trânsito */}
+                              <td className="p-3 text-center whitespace-nowrap text-[11px]">
+                                <div className="flex items-center justify-center gap-2">
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Estoque"
+                                  >
+                                    Est: {formatNumber(item.em_estoque)}
+                                  </span>
+                                  <span className="text-slate-300">|</span>
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Trânsito"
+                                  >
+                                    Trân: {formatNumber(item.em_transito)}
+                                  </span>
+                                </div>
+                                {item.deposito && (
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    Depósito: {item.deposito}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                      </React.Fragment>
+                    )
+                  })
+                ) : viewMode === 'tipo_cliente' ? (
+                  /* MODO AGRUPADO / COLAPSÁVEL POR TIPO DE CLIENTE */
+                  tipoClienteGroups.map((group) => {
+                    const isExpanded = expandedTiposCliente.has(group.key)
+                    const isSemTipo = group.key === 'SEM_TIPO'
+                    return (
+                      <React.Fragment key={group.key}>
+                        {/* Linha Consolidada do Tipo de Cliente (Cabeçalho com soma de todos os valores) */}
+                        <tr
+                          onClick={() => toggleTipoClienteGroup(group.key)}
+                          className={cn(
+                            'cursor-pointer transition-colors border-y border-slate-200/80 font-semibold select-none',
+                            isExpanded
+                              ? 'bg-purple-50/80 hover:bg-purple-100/70 text-slate-900'
+                              : isSemTipo
+                                ? 'bg-slate-50/90 hover:bg-slate-100/80 text-slate-600'
+                                : 'bg-purple-50/40 hover:bg-purple-100/50 text-slate-800',
+                          )}
+                          title={
+                            isExpanded
+                              ? 'Clique para recolher pedidos do tipo de cliente'
+                              : 'Clique para expandir pedidos do tipo de cliente'
+                          }
+                        >
+                          {/* Toggle */}
+                          <td className="py-2.5 px-2 text-center align-middle">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleTipoClienteGroup(group.key)
+                              }}
+                              className="p-1 rounded hover:bg-purple-200/60 text-purple-800 focus:outline-hidden transition-colors"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4 text-purple-700" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-slate-500" />
+                              )}
+                            </button>
+                          </td>
+
+                          {/* 1. Tipo de Cliente no cabeçalho consolidado */}
+                          <td className="p-3 whitespace-nowrap min-w-[180px]">
+                            {isSemTipo ? (
+                              <span className="text-slate-500 font-bold italic">Sem tipo</span>
+                            ) : (
+                              <div className="space-y-0.5">
+                                <span className="inline-block text-xs font-black text-purple-900">
+                                  {group.tipo_cliente}
+                                </span>
+                                <div className="text-[10px] text-purple-700/80 font-semibold">
+                                  Tipo de Cliente
+                                </div>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Resumo de Pedidos do Tipo de Cliente */}
+                          <td className="p-3 font-semibold text-slate-900 whitespace-nowrap">
+                            <Badge
+                              variant="outline"
+                              className="text-xs bg-white text-purple-800 border-purple-200 font-bold"
+                            >
+                              {group.totalPedidos} pedido(s) • {group.totalLinhas} lin.
+                            </Badge>
+                          </td>
+
+                          {/* Data (indicação de consolidado) */}
+                          <td className="p-3 text-slate-500 whitespace-nowrap text-[11px]">
+                            {isExpanded ? 'Detalhamento ▼' : 'Consolidado ▲'}
+                          </td>
+
+                          {/* Clientes distintos do Tipo de Cliente */}
+                          <td className="p-3 min-w-[200px]">
+                            <div className="font-bold text-slate-800 text-xs">
+                              {group.totalClientes} cliente(s) distinto(s)
+                            </div>
+                            <div className="text-[11px] text-slate-400">
+                              {group.items.length} itens no tipo
+                            </div>
+                          </td>
+
+                          {/* Colunas complementares no consolidado (Tipo de Cliente, Status do Cadastro, Tipo de PN) */}
+                          <td className="p-3 whitespace-nowrap">
+                            {renderTipoClienteBadge(isSemTipo ? undefined : group.tipo_cliente)}
+                          </td>
+                          <td className="p-3 text-center text-slate-300">-</td>
+                          <td className="p-3 text-center text-slate-300">-</td>
+
+                          {/* Itens do Tipo de Cliente */}
+                          <td className="p-3 text-slate-600 text-[11px]">
+                            <span className="font-bold text-slate-800">
+                              {group.totalLinhas} item(ns)
+                            </span>
+                            <span className="text-slate-400 ml-1">pendente(s)</span>
+                          </td>
+
+                          {/* SOMA Qtd Aberto */}
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <div className="font-extrabold text-slate-900">
+                              {formatNumber(group.totalQtdAberto)}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              de {formatNumber(group.totalQtdSolicitada)} solicit.
+                            </div>
+                          </td>
+
+                          {/* Preço Líquido Médio */}
+                          <td className="p-3 text-right text-slate-600 whitespace-nowrap font-medium text-[11px]">
+                            {group.totalQtdAberto > 0
+                              ? formatCurrency(group.totalValorEmAberto / group.totalQtdAberto)
+                              : '-'}
+                            <span className="block text-[9px] text-slate-400">preço médio</span>
+                          </td>
+
+                          {/* SOMA de todos os valores em aberto do Tipo de Cliente */}
+                          <td className="p-3 text-right whitespace-nowrap font-black text-purple-950 text-sm bg-purple-100/50">
+                            {formatCurrency(group.totalValorEmAberto)}
+                          </td>
+
+                          {/* Status consolidado */}
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-200"
+                            >
+                              {isExpanded ? 'Expandido' : 'Colapsado'}
+                            </Badge>
+                          </td>
+
+                          {/* Ação rápida */}
+                          <td className="p-3 text-center whitespace-nowrap text-[10px] text-slate-400 font-medium">
+                            {isExpanded ? 'Recolher ▲' : 'Ver pedidos ▼'}
                           </td>
                         </tr>
 
