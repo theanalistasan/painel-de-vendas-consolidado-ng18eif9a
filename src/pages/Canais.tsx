@@ -156,9 +156,9 @@ export default function Canais() {
   const [showLocationCols, setShowLocationCols] = useState(true)
 
   // Estado de Agrupamento / Colapso do Relatório (Nível e nós expandidos)
-  // Níveis possíveis: 'none' (tabela detalhada clássica), 'eh_canal' (É Canal), 'canal' (Canal), 'inside' (Inside), 'cliente' (Cliente)
+  // Níveis possíveis: 'none' (tabela detalhada clássica), 'eh_canal' (É Canal), 'canal' (Canal), 'inside' (Inside), 'cliente' (Cliente), 'tipo_cliente' (Tipo de Cliente)
   const [groupByLevel, setGroupByLevel] = useState<
-    'eh_canal' | 'canal' | 'inside' | 'cliente' | 'none'
+    'eh_canal' | 'canal' | 'inside' | 'cliente' | 'tipo_cliente' | 'none'
   >('canal')
   // Por padrão, o relatório deve ser apresentado colapsado (todos os grupos fechados)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
@@ -440,6 +440,23 @@ export default function Canais() {
           badgeText = item.nome_canal
           badgeClass = 'bg-cyan-50 text-[#0B6E99] border-cyan-200'
         }
+      } else if (groupByLevel === 'tipo_cliente') {
+        const directType = (item as unknown as { tipo_cliente?: string }).tipo_cliente?.trim()
+        const cod = item.codigo_cliente?.trim().toUpperCase()
+        const resolvedTipo =
+          directType || (cod ? tiposClienteMap[cod]?.tipo_cliente?.trim() : undefined)
+
+        if (resolvedTipo) {
+          groupKey = `tipo_${resolvedTipo}`
+          groupTitle = resolvedTipo
+          badgeText = 'Tipo de Cliente'
+          badgeClass = 'bg-slate-100 text-slate-700 border-slate-300 font-semibold'
+        } else {
+          groupKey = 'tipo___sem_tipo'
+          groupTitle = 'Sem tipo'
+          badgeText = 'Sem tipo'
+          badgeClass = 'bg-slate-100 text-slate-400 border-slate-200'
+        }
       }
 
       if (!map.has(groupKey)) {
@@ -483,13 +500,22 @@ export default function Canais() {
     } else if (groupByLevel === 'eh_canal') {
       // Sim primeiro, depois Não
       groups.sort((a, b) => (a.key === 'eh_canal_sim' ? -1 : 1))
+    } else if (groupByLevel === 'tipo_cliente') {
+      // Tipos ordenados alfabeticamente, deixando "Sem tipo" sempre no final
+      groups.sort((a, b) => {
+        const isASemTipo = a.key === 'tipo___sem_tipo'
+        const isBSemTipo = b.key === 'tipo___sem_tipo'
+        if (isASemTipo && !isBSemTipo) return 1
+        if (!isASemTipo && isBSemTipo) return -1
+        return a.title.localeCompare(b.title, 'pt-BR', { sensitivity: 'base' })
+      })
     } else {
       // Demais grupos em ordem alfabética do título
       groups.sort((a, b) => a.title.localeCompare(b.title, 'pt-BR', { sensitivity: 'base' }))
     }
 
     return groups
-  }, [sortedItems, groupByLevel])
+  }, [sortedItems, groupByLevel, tiposClienteMap])
 
   // Handlers para expandir / colapsar grupos
   const toggleGroup = useCallback((groupKey: string) => {
@@ -1638,6 +1664,22 @@ export default function Canais() {
               <button
                 type="button"
                 onClick={() => {
+                  setGroupByLevel('tipo_cliente')
+                  setExpandedGroups(new Set())
+                }}
+                className={cn(
+                  'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all',
+                  groupByLevel === 'tipo_cliente'
+                    ? 'bg-white text-[#0B6E99] shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900',
+                )}
+                title="Agrupar e colapsar por Tipo de Cliente (classificação SAP)"
+              >
+                Tipo de Cliente
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   setGroupByLevel('none')
                   setExpandedGroups(new Set())
                 }}
@@ -1861,7 +1903,9 @@ export default function Canais() {
                                   {group.totalClientes} cliente(s) único(s)
                                 </Badge>
                               )}
-                              {groupByLevel === 'eh_canal' || groupByLevel === 'inside' ? (
+                              {groupByLevel === 'eh_canal' ||
+                              groupByLevel === 'inside' ||
+                              groupByLevel === 'tipo_cliente' ? (
                                 <Badge
                                   variant="outline"
                                   className="text-[10px] bg-white text-teal-700 border-teal-200 font-bold px-2 py-0.2"
