@@ -159,6 +159,68 @@ export default function PedidosAbertos() {
 
   const [statsLoading, setStatsLoading] = useState(false)
 
+  // Resolução resiliente dos campos de Tipo de Cliente a partir do código do cliente e mapa em memória
+  const resolveClienteInfo = (item: {
+    codigo_cliente?: string
+    tipo_cliente?: string
+    status_cadastro?: string
+    tipo_pn?: string
+  }) => {
+    const cod = (item.codigo_cliente || '').trim().toUpperCase()
+    const mapped = cod ? tiposClienteMap[cod] : undefined
+
+    const directTipo = item.tipo_cliente?.trim()
+    const directStatus = item.status_cadastro?.trim()
+    const directTipoPn = item.tipo_pn?.trim()
+
+    const tipo_cliente = directTipo || mapped?.tipo_cliente?.trim() || ''
+    const status_cadastro = directStatus || mapped?.status_cadastro?.trim() || ''
+    const tipo_pn = directTipoPn || mapped?.tipo_pn?.trim() || ''
+
+    return { tipo_cliente, status_cadastro, tipo_pn }
+  }
+
+  const renderTipoClienteBadge = (tipo?: string) => {
+    if (!tipo) {
+      return <span className="text-slate-400 text-xs">-</span>
+    }
+    return (
+      <Badge
+        variant="outline"
+        className="text-[10px] font-semibold bg-purple-50 text-purple-700 border-purple-200 px-2 py-0.5 whitespace-nowrap"
+        title={tipo}
+      >
+        {tipo}
+      </Badge>
+    )
+  }
+
+  const renderStatusCadastroCell = (status?: string) => {
+    if (!status) {
+      return <span className="text-slate-400 text-xs">-</span>
+    }
+    return (
+      <Badge
+        variant="outline"
+        className="text-[10px] font-medium bg-slate-50 text-slate-700 border-slate-200 whitespace-nowrap"
+        title={status}
+      >
+        {status}
+      </Badge>
+    )
+  }
+
+  const renderTipoPnCell = (tipoPn?: string) => {
+    if (!tipoPn) {
+      return <span className="text-slate-400 text-xs">-</span>
+    }
+    return (
+      <span className="text-slate-700 text-xs font-medium whitespace-nowrap" title={tipoPn}>
+        {tipoPn}
+      </span>
+    )
+  }
+
   // Carrega opções e mapa de Tipos de Cliente (mesmo padrão de Visão Geral / Visão Canais / Canais)
   const loadTiposClienteData = async () => {
     try {
@@ -757,17 +819,62 @@ export default function PedidosAbertos() {
     })
 
     try {
-      // Busca até 1000 registros para exportação
-      const res = await fetchPedidosAbertosList({
-        page: 1,
-        perPage: 1000,
-        sortField: sort.field || 'data_pedido',
-        sortDirection: sort.dir || 'desc',
-        search: searchTerm.trim() || undefined,
-        filters: filters as unknown as Record<string, unknown>,
-      })
+      // Busca até 2000 registros para exportação com fallback resiliente para tipoCliente
+      let res: Awaited<ReturnType<typeof fetchPedidosAbertosList>>
+      try {
+        res = await fetchPedidosAbertosList({
+          page: 1,
+          perPage: 2000,
+          sortField: sort.field || 'data_pedido',
+          sortDirection: sort.dir || 'desc',
+          search: searchTerm.trim() || undefined,
+          filters: filters as unknown as Record<string, unknown>,
+        })
+      } catch (backendErr: unknown) {
+        const status = (backendErr as { status?: number })?.status
+        if (status === 400 && filters.tipoCliente && filters.tipoCliente.length > 0) {
+          const { tipoCliente: _removed, ...filtersWithoutTipoCliente } = filters
+          res = await fetchPedidosAbertosList({
+            page: 1,
+            perPage: 2000,
+            sortField: sort.field || 'data_pedido',
+            sortDirection: sort.dir || 'desc',
+            search: searchTerm.trim() || undefined,
+            filters: filtersWithoutTipoCliente as unknown as Record<string, unknown>,
+          })
+        } else {
+          throw backendErr
+        }
+      }
 
-      const rows = res.items || []
+      let rows = res.items || []
+
+      // Garante mapa de tipos_cliente disponível
+      let mapToUse = tiposClienteMap
+      if (Object.keys(mapToUse).length === 0) {
+        try {
+          mapToUse = await fetchTiposClienteMap()
+          setTiposClienteMap(mapToUse)
+        } catch {
+          // fallback
+        }
+      }
+
+      // Se filtro de tipoCliente estiver ativo, aplica recorte em memória
+      if (filters.tipoCliente && filters.tipoCliente.length > 0) {
+        const selectedSet = new Set(filters.tipoCliente)
+        rows = rows.filter((item) => {
+          const directType = (item as unknown as { tipo_cliente?: string }).tipo_cliente?.trim()
+          if (directType && selectedSet.has(directType)) return true
+          const cod = item.codigo_cliente?.trim().toUpperCase()
+          if (cod && mapToUse[cod]) {
+            const mappedType = mapToUse[cod].tipo_cliente?.trim()
+            if (mappedType && selectedSet.has(mappedType)) return true
+          }
+          return false
+        })
+      }
+
       const exportCols = [
         { key: 'nome_canal', label: 'Canal' },
         { key: 'deploy', label: 'Deploy' },
@@ -777,6 +884,9 @@ export default function PedidosAbertos() {
         { key: 'data_pedido', label: 'Data do Pedido' },
         { key: 'codigo_cliente', label: 'Código Cliente' },
         { key: 'nome_cliente', label: 'Nome Cliente' },
+        { key: 'tipo_cliente', label: 'Tipo de Cliente' },
+        { key: 'status_cadastro', label: 'Status do Cadastro' },
+        { key: 'tipo_pn', label: 'Tipo de PN' },
         { key: 'codigo_item', label: 'Código Item' },
         { key: 'descricao_item', label: 'Descrição Item' },
         { key: 'grupo_item', label: 'Grupo do Item' },
@@ -795,13 +905,24 @@ export default function PedidosAbertos() {
         { key: 'origem', label: 'Origem' },
       ]
 
-      const formatted = rows.map((r) => ({
-        ...r,
-        data_pedido: r.data_pedido ? formatDate(r.data_pedido) : '',
-        valor_em_aberto: r.valor_em_aberto?.toFixed(2) || '0.00',
-        preco_unitario: r.preco_unitario?.toFixed(2) || '0.00',
-        preco_apos_desconto: r.preco_apos_desconto?.toFixed(2) || '0.00',
-      }))
+      const formatted = rows.map((r) => {
+        const cod = (r.codigo_cliente || '').trim().toUpperCase()
+        const mapped = cod ? mapToUse[cod] : undefined
+        const directTipo = (r as unknown as { tipo_cliente?: string }).tipo_cliente?.trim()
+        const directStatus = (r as unknown as { status_cadastro?: string }).status_cadastro?.trim()
+        const directTipoPn = (r as unknown as { tipo_pn?: string }).tipo_pn?.trim()
+
+        return {
+          ...r,
+          tipo_cliente: directTipo || mapped?.tipo_cliente?.trim() || '-',
+          status_cadastro: directStatus || mapped?.status_cadastro?.trim() || '-',
+          tipo_pn: directTipoPn || mapped?.tipo_pn?.trim() || '-',
+          data_pedido: r.data_pedido ? formatDate(r.data_pedido) : '',
+          valor_em_aberto: r.valor_em_aberto?.toFixed(2) || '0.00',
+          preco_unitario: r.preco_unitario?.toFixed(2) || '0.00',
+          preco_apos_desconto: r.preco_apos_desconto?.toFixed(2) || '0.00',
+        }
+      })
 
       const dateStr = new Date().toISOString().slice(0, 10)
       exportToCSV(
@@ -1226,6 +1347,13 @@ export default function PedidosAbertos() {
                       <ArrowUpDown className="w-3 h-3 text-slate-400" />
                     </div>
                   </th>
+                  <th className="p-3 sticky top-0 bg-slate-100 whitespace-nowrap">
+                    Tipo de Cliente
+                  </th>
+                  <th className="p-3 sticky top-0 bg-slate-100 whitespace-nowrap">
+                    Status do Cadastro
+                  </th>
+                  <th className="p-3 sticky top-0 bg-slate-100 whitespace-nowrap">Tipo de PN</th>
                   <th
                     className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
                     onClick={() => handleSort('codigo_item')}
@@ -1262,7 +1390,7 @@ export default function PedidosAbertos() {
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={viewMode !== 'detalhado' ? 11 : 10}
+                      colSpan={viewMode !== 'detalhado' ? 14 : 13}
                       className="p-8 text-center text-slate-400"
                     >
                       <div className="flex items-center justify-center gap-2">
@@ -1282,7 +1410,7 @@ export default function PedidosAbertos() {
                   ) ? (
                   <tr>
                     <td
-                      colSpan={viewMode !== 'detalhado' ? 11 : 10}
+                      colSpan={viewMode !== 'detalhado' ? 14 : 13}
                       className="p-12 text-center text-slate-400"
                     >
                       <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
@@ -1376,6 +1504,11 @@ export default function PedidosAbertos() {
                               {group.items.length} itens no canal
                             </div>
                           </td>
+
+                          {/* Colunas complementares no consolidado */}
+                          <td className="p-3 text-center text-slate-300">-</td>
+                          <td className="p-3 text-center text-slate-300">-</td>
+                          <td className="p-3 text-center text-slate-300">-</td>
 
                           {/* Itens do Canal de Faturamento */}
                           <td className="p-3 text-slate-600 text-[11px]">
@@ -1483,6 +1616,21 @@ export default function PedidosAbertos() {
                                     {item.codigo_cliente}
                                   </div>
                                 )}
+                              </td>
+
+                              {/* Tipo de Cliente */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
+                              </td>
+
+                              {/* Status do Cadastro */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderStatusCadastroCell(resolveClienteInfo(item).status_cadastro)}
+                              </td>
+
+                              {/* Tipo de PN */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
                               </td>
 
                               {/* Item / Descrição */}
@@ -1660,6 +1808,11 @@ export default function PedidosAbertos() {
                             </div>
                           </td>
 
+                          {/* Colunas complementares no consolidado */}
+                          <td className="p-3 text-center text-slate-300">-</td>
+                          <td className="p-3 text-center text-slate-300">-</td>
+                          <td className="p-3 text-center text-slate-300">-</td>
+
                           {/* Itens do Canal */}
                           <td className="p-3 text-slate-600 text-[11px]">
                             <span className="font-bold text-slate-800">
@@ -1766,6 +1919,21 @@ export default function PedidosAbertos() {
                                     {item.codigo_cliente}
                                   </div>
                                 )}
+                              </td>
+
+                              {/* Tipo de Cliente */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
+                              </td>
+
+                              {/* Status do Cadastro */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderStatusCadastroCell(resolveClienteInfo(item).status_cadastro)}
+                              </td>
+
+                              {/* Tipo de PN */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
                               </td>
 
                               {/* Item / Descrição */}
@@ -1948,6 +2116,33 @@ export default function PedidosAbertos() {
                             )}
                           </td>
 
+                          {/* Tipo de Cliente do grupo de cliente */}
+                          <td className="p-3 whitespace-nowrap">
+                            {(() => {
+                              const clientCod = (group.codigo_cliente || '').trim().toUpperCase()
+                              const clientInfo = clientCod ? tiposClienteMap[clientCod] : undefined
+                              return renderTipoClienteBadge(clientInfo?.tipo_cliente)
+                            })()}
+                          </td>
+
+                          {/* Status do Cadastro do grupo de cliente */}
+                          <td className="p-3 whitespace-nowrap">
+                            {(() => {
+                              const clientCod = (group.codigo_cliente || '').trim().toUpperCase()
+                              const clientInfo = clientCod ? tiposClienteMap[clientCod] : undefined
+                              return renderStatusCadastroCell(clientInfo?.status_cadastro)
+                            })()}
+                          </td>
+
+                          {/* Tipo de PN do grupo de cliente */}
+                          <td className="p-3 whitespace-nowrap">
+                            {(() => {
+                              const clientCod = (group.codigo_cliente || '').trim().toUpperCase()
+                              const clientInfo = clientCod ? tiposClienteMap[clientCod] : undefined
+                              return renderTipoPnCell(clientInfo?.tipo_pn)
+                            })()}
+                          </td>
+
                           {/* Itens do Cliente */}
                           <td className="p-3 text-slate-600 text-[11px]">
                             <span className="font-bold text-slate-800">
@@ -2054,6 +2249,21 @@ export default function PedidosAbertos() {
                                     {item.codigo_cliente}
                                   </div>
                                 )}
+                              </td>
+
+                              {/* Tipo de Cliente */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
+                              </td>
+
+                              {/* Status do Cadastro */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderStatusCadastroCell(resolveClienteInfo(item).status_cadastro)}
+                              </td>
+
+                              {/* Tipo de PN */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
                               </td>
 
                               {/* Item / Descrição */}
@@ -2201,6 +2411,21 @@ export default function PedidosAbertos() {
                             {item.codigo_cliente}
                           </div>
                         )}
+                      </td>
+
+                      {/* Tipo de Cliente */}
+                      <td className="p-3 whitespace-nowrap">
+                        {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
+                      </td>
+
+                      {/* Status do Cadastro */}
+                      <td className="p-3 whitespace-nowrap">
+                        {renderStatusCadastroCell(resolveClienteInfo(item).status_cadastro)}
+                      </td>
+
+                      {/* Tipo de PN */}
+                      <td className="p-3 whitespace-nowrap">
+                        {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
                       </td>
 
                       {/* Item / Descrição */}
