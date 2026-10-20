@@ -20,6 +20,7 @@ import {
   Boxes,
   Briefcase,
   Users,
+  Filter,
 } from 'lucide-react'
 import { fetchPedidosAbertosList, fetchPedidosAbertosStats } from '@/services/pedidosAbertos'
 import {
@@ -68,6 +69,20 @@ type PedidosAbertosSortColumn =
 type SortField = PedidosAbertosSortColumn
 
 type ViewMode = 'none' | 'faturamento' | 'canal' | 'cliente' | 'tipo_cliente' | 'detalhado'
+
+export type StatusLinhaFilter = 'todos' | 'Aberta' | 'Fechada'
+
+const matchesStatusLinha = (item: PedidoAberto, filter: StatusLinhaFilter): boolean => {
+  if (filter === 'todos') return true
+  const st = (item.status_linha || 'Aberta').trim().toLowerCase()
+  if (filter === 'Aberta') {
+    return st === 'aberta' || st === 'aberto' || st === 'a' || !st
+  }
+  if (filter === 'Fechada') {
+    return st === 'fechada' || st === 'fechado' || st === 'f'
+  }
+  return true
+}
 
 interface TipoClienteGroup {
   key: string
@@ -158,6 +173,17 @@ export default function PedidosAbertos() {
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
   const [expandedCanais, setExpandedCanais] = useState<Set<string>>(new Set())
   const [expandedFaturamentos, setExpandedFaturamentos] = useState<Set<string>>(new Set())
+  const [statusLinhaFilter, setStatusLinhaFilter] = useState<StatusLinhaFilter>(() => {
+    try {
+      const saved = sessionStorage.getItem('pedidos_abertos_status_linha')
+      if (saved === 'todos' || saved === 'Aberta' || saved === 'Fechada') {
+        return saved
+      }
+    } catch {
+      // ignora
+    }
+    return 'Aberta'
+  })
   const [expandedTiposCliente, setExpandedTiposCliente] = useState<Set<string>>(() => {
     try {
       const raw = sessionStorage.getItem('pedidos_abertos_expanded_tipos')
@@ -221,6 +247,14 @@ export default function PedidosAbertos() {
       // ignora
     }
   }, [viewMode])
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('pedidos_abertos_status_linha', statusLinhaFilter)
+    } catch {
+      // ignora
+    }
+  }, [statusLinhaFilter])
 
   const [filters, setFilters] = useState<PedidosAbertosFilters>(() => {
     try {
@@ -545,9 +579,11 @@ export default function PedidosAbertos() {
       const hasCustomCadastroFilters = Boolean(
         (activeFilters.tipoCliente && activeFilters.tipoCliente.length > 0) ||
         (activeFilters.statusCadastro && activeFilters.statusCadastro.length > 0) ||
-        (activeFilters.tipoPn && activeFilters.tipoPn.length > 0),
+        (activeFilters.tipoPn && activeFilters.tipoPn.length > 0) ||
+        statusLinhaFilter !== 'todos',
       )
 
+      // Só sobrescreve os KPIs agregados se nenhum filtro customizado ou de status da linha estiver ativo
       if (statsPedidos?.kpis && !hasCustomCadastroFilters) {
         setKpis(statsPedidos.kpis)
       }
@@ -629,6 +665,7 @@ export default function PedidosAbertos() {
     search = searchTerm,
     currentViewMode = viewMode,
     activeMap = tiposClienteMap,
+    activeStatusLinha = statusLinhaFilter,
   ) => {
     setLoading(true)
     try {
@@ -731,12 +768,21 @@ export default function PedidosAbertos() {
         })
       }
 
+      // Aplica o filtro de Status da Linha (padrão 'Aberta' para visualizar o que tem aberto para faturar)
+      if (activeStatusLinha !== 'todos') {
+        items = items.filter((item) => matchesStatusLinha(item, activeStatusLinha))
+      }
+
       // Ordenação aplicada usando a função de comparação robusta
       items.sort((a, b) => comparePedidos(a, b, sortField, sortDir))
 
       setDashboardPedidos(items)
       const isCustomCadastroActive =
-        hasTipoClienteFilter || hasStatusCadastroFilter || hasTipoPnFilter
+        hasTipoClienteFilter ||
+        hasStatusCadastroFilter ||
+        hasTipoPnFilter ||
+        activeStatusLinha !== 'todos'
+
       const computedTotalItems =
         usedMemoryFallback || isCustomCadastroActive ? items.length : res.totalItems || items.length
       setTotalItems(computedTotalItems)
@@ -753,7 +799,7 @@ export default function PedidosAbertos() {
       setTotalValor(computedTotalValor)
       setTotalQtd(computedTotalQtd)
 
-      // Atualiza também os KPIs com base no recorte filtrado quando filtros de cadastro estão ativos
+      // Atualiza também os KPIs com base no recorte filtrado
       if (isCustomCadastroActive) {
         const distinctOrders = new Set(items.map((i) => i.numero_pedido).filter(Boolean))
         const distinctClients = new Set(
@@ -761,7 +807,7 @@ export default function PedidosAbertos() {
         )
         setKpis({
           valorTotalAberto: computedTotalValor,
-          pedidosDistintos: distinctOrders.size || items.length,
+          pedidosDistintos: distinctOrders.size || (items.length > 0 ? 1 : 0),
           itensPendentes: items.length,
           clientesDistintos: distinctClients.size || (items.length > 0 ? 1 : 0),
         })
@@ -811,7 +857,16 @@ export default function PedidosAbertos() {
 
     const runStaggeredLoad = async () => {
       // 1. Carrega primeiro a listagem de pedidos
-      await loadData(filters, page, sort.field, sort.dir, searchTerm, viewMode)
+      await loadData(
+        filters,
+        page,
+        sort.field,
+        sort.dir,
+        searchTerm,
+        viewMode,
+        tiposClienteMap,
+        statusLinhaFilter,
+      )
       if (isCancelled) return
 
       // 2. Carrega depois os KPIs e estatísticas agregadas
@@ -823,7 +878,7 @@ export default function PedidosAbertos() {
     return () => {
       isCancelled = true
     }
-  }, [page, filters, sort.field, sort.dir, viewMode])
+  }, [page, filters, sort.field, sort.dir, viewMode, statusLinhaFilter])
 
   // Atualiza os filtros e persiste a seleção de tipoCliente, statusCadastro e tipoPn no sessionStorage compartilhado
   const handleFiltersChange = (newFilters: PedidosAbertosFilters) => {
@@ -865,15 +920,38 @@ export default function PedidosAbertos() {
     }
 
     // Carrega primeiro a listagem e depois as estatísticas
-    loadData(applied, 1, sort.field, sort.dir, searchTerm, viewMode).then(() => {
+    loadData(
+      applied,
+      1,
+      sort.field,
+      sort.dir,
+      searchTerm,
+      viewMode,
+      tiposClienteMap,
+      statusLinhaFilter,
+    ).then(() => {
       loadStats(applied)
     })
+  }
+
+  const handleStatusLinhaChange = (val: StatusLinhaFilter) => {
+    setStatusLinhaFilter(val)
+    setPage(1)
   }
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setPage(1)
-    loadData(filters, 1, sort.field, sort.dir, searchTerm, viewMode)
+    loadData(
+      filters,
+      1,
+      sort.field,
+      sort.dir,
+      searchTerm,
+      viewMode,
+      tiposClienteMap,
+      statusLinhaFilter,
+    )
   }
 
   const handleSort = (field: SortField) => {
@@ -1371,6 +1449,11 @@ export default function PedidosAbertos() {
 
           return true
         })
+      }
+
+      // Aplica o filtro de status da linha também na exportação CSV
+      if (statusLinhaFilter !== 'todos') {
+        rows = rows.filter((item) => matchesStatusLinha(item, statusLinhaFilter))
       }
 
       const exportCols = [
@@ -1873,6 +1956,74 @@ export default function PedidosAbertos() {
               </div>
             )}
           </div>
+
+          {/* Filtro Status Linha (posicionado logo abaixo de Sem agrupamento / controles de visualização) */}
+          <div className="mt-2.5 pt-2.5 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-slate-700 font-bold">
+                <Filter className="w-3.5 h-3.5 text-[#0B6E99]" />
+                <span className="text-[11px]">Status Linha:</span>
+              </div>
+              <div className="inline-flex rounded-lg bg-slate-200/70 p-0.5 gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => handleStatusLinhaChange('todos')}
+                  className={cn(
+                    'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer',
+                    statusLinhaFilter === 'todos'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                  title="Visualizar todas as linhas de pedidos (abertas e fechadas)"
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleStatusLinhaChange('Aberta')}
+                  className={cn(
+                    'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer flex items-center gap-1.5',
+                    statusLinhaFilter === 'Aberta'
+                      ? 'bg-amber-500 text-white shadow-xs font-black'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                  title="Visualizar apenas o que ainda tem aberto para faturar"
+                >
+                  <span
+                    className={cn(
+                      'inline-block w-1.5 h-1.5 rounded-full',
+                      statusLinhaFilter === 'Aberta' ? 'bg-amber-100' : 'bg-amber-500',
+                    )}
+                  />
+                  Aberta
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleStatusLinhaChange('Fechada')}
+                  className={cn(
+                    'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer flex items-center gap-1.5',
+                    statusLinhaFilter === 'Fechada'
+                      ? 'bg-slate-700 text-white shadow-xs font-black'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                  title="Visualizar apenas linhas fechadas"
+                >
+                  <span
+                    className={cn(
+                      'inline-block w-1.5 h-1.5 rounded-full',
+                      statusLinhaFilter === 'Fechada' ? 'bg-slate-300' : 'bg-slate-500',
+                    )}
+                  />
+                  Fechada
+                </button>
+              </div>
+              {statusLinhaFilter === 'Aberta' && (
+                <span className="text-[11px] text-amber-800 bg-amber-50 font-semibold px-2 py-0.5 rounded border border-amber-200/80">
+                  Filtro ativo: visualizando o que ainda está em aberto para faturar
+                </span>
+              )}
+            </div>
+          </div>
         </CardHeader>
 
         <CardContent className="p-0">
@@ -1966,6 +2117,43 @@ export default function PedidosAbertos() {
                     <div className="flex items-center gap-1">
                       <span>Cliente (Código)</span>
                       {sort.field === 'nome_cliente' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  {/* Status da Linha e Estoque / Trânsito reposicionados IMEDIATAMENTE após Cliente (Código) */}
+                  <th
+                    className="p-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
+                    onClick={() => handleSort('status_linha')}
+                    title="Ordenar por Status da Linha"
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Status Linha</span>
+                      {sort.field === 'status_linha' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    className="p-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
+                    onClick={() => handleSort('em_estoque')}
+                    title="Ordenar por Estoque"
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Estoque / Trânsito</span>
+                      {sort.field === 'em_estoque' ? (
                         sort.dir === 'asc' ? (
                           <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
                         ) : (
@@ -2084,49 +2272,13 @@ export default function PedidosAbertos() {
                       )}
                     </div>
                   </th>
-                  <th
-                    className="p-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
-                    onClick={() => handleSort('status_linha')}
-                    title="Ordenar por Status da Linha"
-                  >
-                    <div className="flex items-center justify-center gap-1">
-                      <span>Status Linha</span>
-                      {sort.field === 'status_linha' ? (
-                        sort.dir === 'asc' ? (
-                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
-                        ) : (
-                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
-                        )
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    className="p-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
-                    onClick={() => handleSort('em_estoque')}
-                    title="Ordenar por Estoque"
-                  >
-                    <div className="flex items-center justify-center gap-1">
-                      <span>Estoque / Trânsito</span>
-                      {sort.field === 'em_estoque' ? (
-                        sort.dir === 'asc' ? (
-                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
-                        ) : (
-                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
-                        )
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
-                      )}
-                    </div>
-                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={viewMode !== 'none' && viewMode !== 'detalhado' ? 15 : 14}
+                      colSpan={viewMode !== 'none' && viewMode !== 'detalhado' ? 14 : 13}
                       className="p-8 text-center text-slate-400"
                     >
                       <div className="flex items-center justify-center gap-2">
@@ -2148,7 +2300,7 @@ export default function PedidosAbertos() {
                   ) ? (
                   <tr>
                     <td
-                      colSpan={viewMode !== 'none' && viewMode !== 'detalhado' ? 15 : 14}
+                      colSpan={viewMode !== 'none' && viewMode !== 'detalhado' ? 14 : 13}
                       className="p-12 text-center text-slate-400"
                     >
                       <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
@@ -2246,6 +2398,21 @@ export default function PedidosAbertos() {
                             </div>
                           </td>
 
+                          {/* Status consolidado (alinhado com a coluna Status Linha) */}
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] font-bold bg-blue-100 text-blue-950 border border-blue-200"
+                            >
+                              {isExpanded ? 'Expandido' : 'Colapsado'}
+                            </Badge>
+                          </td>
+
+                          {/* Ação rápida (alinhado com a coluna Estoque / Trânsito) */}
+                          <td className="p-3 text-center whitespace-nowrap text-[10px] text-slate-400 font-medium">
+                            {isExpanded ? 'Recolher ▲' : 'Ver pedidos ▼'}
+                          </td>
+
                           {/* Colunas complementares no consolidado: Status do Cadastro e Tipo de PN */}
                           <td className="p-3 text-center text-slate-300">-</td>
                           <td className="p-3 text-center text-slate-300">-</td>
@@ -2279,21 +2446,6 @@ export default function PedidosAbertos() {
                           {/* SOMA de todos os valores em aberto do Canal de Faturamento */}
                           <td className="p-3 text-right whitespace-nowrap font-black text-blue-900 text-sm bg-blue-100/40">
                             {formatCurrency(group.totalValorEmAberto)}
-                          </td>
-
-                          {/* Status consolidado */}
-                          <td className="p-3 text-center whitespace-nowrap">
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] font-bold bg-blue-100 text-blue-950 border border-blue-200"
-                            >
-                              {isExpanded ? 'Expandido' : 'Colapsado'}
-                            </Badge>
-                          </td>
-
-                          {/* Ação rápida */}
-                          <td className="p-3 text-center whitespace-nowrap text-[10px] text-slate-400 font-medium">
-                            {isExpanded ? 'Recolher ▲' : 'Ver pedidos ▼'}
                           </td>
                         </tr>
 
@@ -2363,6 +2515,48 @@ export default function PedidosAbertos() {
                                 )}
                               </td>
 
+                              {/* Status Linha */}
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    item.status_linha?.toLowerCase() === 'fechada'
+                                      ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
+                                  }
+                                >
+                                  {item.status_linha || 'Aberta'}
+                                </Badge>
+                              </td>
+
+                              {/* Estoque / Trânsito */}
+                              <td className="p-3 text-center whitespace-nowrap text-[11px]">
+                                <div className="flex items-center justify-center gap-2">
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Estoque"
+                                  >
+                                    Est: {formatNumber(item.em_estoque)}
+                                  </span>
+                                  <span className="text-slate-300">|</span>
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Trânsito"
+                                  >
+                                    Trân: {formatNumber(item.em_transito)}
+                                  </span>
+                                </div>
+                                {item.deposito && (
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    Depósito: {item.deposito}
+                                  </div>
+                                )}
+                              </td>
+
                               {/* Status do Cadastro */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderStatusCadastroCell(resolveClienteInfo(item).status_cadastro)}
@@ -2418,48 +2612,6 @@ export default function PedidosAbertos() {
                               {/* Valor em Aberto */}
                               <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
                                 {formatCurrency(Number(item.valor_em_aberto) || 0)}
-                              </td>
-
-                              {/* Status Linha */}
-                              <td className="p-3 text-center whitespace-nowrap">
-                                <Badge
-                                  variant="outline"
-                                  className={
-                                    item.status_linha?.toLowerCase() === 'fechada'
-                                      ? 'bg-slate-100 text-slate-600 border-slate-200'
-                                      : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
-                                  }
-                                >
-                                  {item.status_linha || 'Aberta'}
-                                </Badge>
-                              </td>
-
-                              {/* Estoque / Trânsito */}
-                              <td className="p-3 text-center whitespace-nowrap text-[11px]">
-                                <div className="flex items-center justify-center gap-2">
-                                  <span
-                                    className={`font-semibold ${
-                                      item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
-                                    }`}
-                                    title="Em Estoque"
-                                  >
-                                    Est: {formatNumber(item.em_estoque)}
-                                  </span>
-                                  <span className="text-slate-300">|</span>
-                                  <span
-                                    className={`font-semibold ${
-                                      item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
-                                    }`}
-                                    title="Em Trânsito"
-                                  >
-                                    Trân: {formatNumber(item.em_transito)}
-                                  </span>
-                                </div>
-                                {item.deposito && (
-                                  <div className="text-[10px] text-slate-400 mt-0.5">
-                                    Depósito: {item.deposito}
-                                  </div>
-                                )}
                               </td>
                             </tr>
                           ))}
@@ -2551,6 +2703,21 @@ export default function PedidosAbertos() {
                             </div>
                           </td>
 
+                          {/* Status consolidado (alinhado com Status Linha) */}
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] font-bold bg-cyan-100 text-cyan-950 border border-cyan-200"
+                            >
+                              {isExpanded ? 'Expandido' : 'Colapsado'}
+                            </Badge>
+                          </td>
+
+                          {/* Ação rápida (alinhado com Estoque / Trânsito) */}
+                          <td className="p-3 text-center whitespace-nowrap text-[10px] text-slate-400 font-medium">
+                            {isExpanded ? 'Recolher ▲' : 'Ver pedidos ▼'}
+                          </td>
+
                           {/* Colunas complementares no consolidado: Status do Cadastro e Tipo de PN */}
                           <td className="p-3 text-center text-slate-300">-</td>
                           <td className="p-3 text-center text-slate-300">-</td>
@@ -2584,21 +2751,6 @@ export default function PedidosAbertos() {
                           {/* SOMA de todos os valores em aberto do Canal */}
                           <td className="p-3 text-right whitespace-nowrap font-black text-cyan-900 text-sm bg-cyan-100/40">
                             {formatCurrency(group.totalValorEmAberto)}
-                          </td>
-
-                          {/* Status consolidado */}
-                          <td className="p-3 text-center whitespace-nowrap">
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] font-bold bg-cyan-100 text-cyan-950 border border-cyan-200"
-                            >
-                              {isExpanded ? 'Expandido' : 'Colapsado'}
-                            </Badge>
-                          </td>
-
-                          {/* Ação rápida */}
-                          <td className="p-3 text-center whitespace-nowrap text-[10px] text-slate-400 font-medium">
-                            {isExpanded ? 'Recolher ▲' : 'Ver pedidos ▼'}
                           </td>
                         </tr>
 
@@ -2668,6 +2820,48 @@ export default function PedidosAbertos() {
                                 )}
                               </td>
 
+                              {/* Status Linha */}
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    item.status_linha?.toLowerCase() === 'fechada'
+                                      ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
+                                  }
+                                >
+                                  {item.status_linha || 'Aberta'}
+                                </Badge>
+                              </td>
+
+                              {/* Estoque / Trânsito */}
+                              <td className="p-3 text-center whitespace-nowrap text-[11px]">
+                                <div className="flex items-center justify-center gap-2">
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Estoque"
+                                  >
+                                    Est: {formatNumber(item.em_estoque)}
+                                  </span>
+                                  <span className="text-slate-300">|</span>
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Trânsito"
+                                  >
+                                    Trân: {formatNumber(item.em_transito)}
+                                  </span>
+                                </div>
+                                {item.deposito && (
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    Depósito: {item.deposito}
+                                  </div>
+                                )}
+                              </td>
+
                               {/* Status do Cadastro */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderStatusCadastroCell(resolveClienteInfo(item).status_cadastro)}
@@ -2723,48 +2917,6 @@ export default function PedidosAbertos() {
                               {/* Valor em Aberto */}
                               <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
                                 {formatCurrency(Number(item.valor_em_aberto) || 0)}
-                              </td>
-
-                              {/* Status Linha */}
-                              <td className="p-3 text-center whitespace-nowrap">
-                                <Badge
-                                  variant="outline"
-                                  className={
-                                    item.status_linha?.toLowerCase() === 'fechada'
-                                      ? 'bg-slate-100 text-slate-600 border-slate-200'
-                                      : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
-                                  }
-                                >
-                                  {item.status_linha || 'Aberta'}
-                                </Badge>
-                              </td>
-
-                              {/* Estoque / Trânsito */}
-                              <td className="p-3 text-center whitespace-nowrap text-[11px]">
-                                <div className="flex items-center justify-center gap-2">
-                                  <span
-                                    className={`font-semibold ${
-                                      item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
-                                    }`}
-                                    title="Em Estoque"
-                                  >
-                                    Est: {formatNumber(item.em_estoque)}
-                                  </span>
-                                  <span className="text-slate-300">|</span>
-                                  <span
-                                    className={`font-semibold ${
-                                      item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
-                                    }`}
-                                    title="Em Trânsito"
-                                  >
-                                    Trân: {formatNumber(item.em_transito)}
-                                  </span>
-                                </div>
-                                {item.deposito && (
-                                  <div className="text-[10px] text-slate-400 mt-0.5">
-                                    Depósito: {item.deposito}
-                                  </div>
-                                )}
                               </td>
                             </tr>
                           ))}
@@ -2867,6 +3019,21 @@ export default function PedidosAbertos() {
                             )}
                           </td>
 
+                          {/* Status consolidado (alinhado com Status Linha) */}
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200"
+                            >
+                              {isExpanded ? 'Expandido' : 'Colapsado'}
+                            </Badge>
+                          </td>
+
+                          {/* Ação rápida (alinhado com Estoque / Trânsito) */}
+                          <td className="p-3 text-center whitespace-nowrap text-[10px] text-slate-400 font-medium">
+                            {isExpanded ? 'Recolher ▲' : 'Ver itens ▼'}
+                          </td>
+
                           {/* Status do Cadastro do grupo de cliente */}
                           <td className="p-3 whitespace-nowrap">
                             {(() => {
@@ -2914,21 +3081,6 @@ export default function PedidosAbertos() {
                           {/* SOMA de todos os valores em aberto do Cliente */}
                           <td className="p-3 text-right whitespace-nowrap font-black text-amber-800 text-sm bg-amber-100/40">
                             {formatCurrency(group.totalValorEmAberto)}
-                          </td>
-
-                          {/* Status consolidado */}
-                          <td className="p-3 text-center whitespace-nowrap">
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200"
-                            >
-                              {isExpanded ? 'Expandido' : 'Colapsado'}
-                            </Badge>
-                          </td>
-
-                          {/* Ação rápida */}
-                          <td className="p-3 text-center whitespace-nowrap text-[10px] text-slate-400 font-medium">
-                            {isExpanded ? 'Recolher ▲' : 'Ver itens ▼'}
                           </td>
                         </tr>
 
@@ -2998,6 +3150,48 @@ export default function PedidosAbertos() {
                                 )}
                               </td>
 
+                              {/* Status Linha */}
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    item.status_linha?.toLowerCase() === 'fechada'
+                                      ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
+                                  }
+                                >
+                                  {item.status_linha || 'Aberta'}
+                                </Badge>
+                              </td>
+
+                              {/* Estoque / Trânsito */}
+                              <td className="p-3 text-center whitespace-nowrap text-[11px]">
+                                <div className="flex items-center justify-center gap-2">
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Estoque"
+                                  >
+                                    Est: {formatNumber(item.em_estoque)}
+                                  </span>
+                                  <span className="text-slate-300">|</span>
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Trânsito"
+                                  >
+                                    Trân: {formatNumber(item.em_transito)}
+                                  </span>
+                                </div>
+                                {item.deposito && (
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    Depósito: {item.deposito}
+                                  </div>
+                                )}
+                              </td>
+
                               {/* Status do Cadastro */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderStatusCadastroCell(resolveClienteInfo(item).status_cadastro)}
@@ -3053,47 +3247,6 @@ export default function PedidosAbertos() {
                               {/* Valor em Aberto */}
                               <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
                                 {formatCurrency(Number(item.valor_em_aberto) || 0)}
-                              </td>
-                              {/* Status Linha */}
-                              <td className="p-3 text-center whitespace-nowrap">
-                                <Badge
-                                  variant="outline"
-                                  className={
-                                    item.status_linha?.toLowerCase() === 'fechada'
-                                      ? 'bg-slate-100 text-slate-600 border-slate-200'
-                                      : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
-                                  }
-                                >
-                                  {item.status_linha || 'Aberta'}
-                                </Badge>
-                              </td>
-
-                              {/* Estoque / Trânsito */}
-                              <td className="p-3 text-center whitespace-nowrap text-[11px]">
-                                <div className="flex items-center justify-center gap-2">
-                                  <span
-                                    className={`font-semibold ${
-                                      item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
-                                    }`}
-                                    title="Em Estoque"
-                                  >
-                                    Est: {formatNumber(item.em_estoque)}
-                                  </span>
-                                  <span className="text-slate-300">|</span>
-                                  <span
-                                    className={`font-semibold ${
-                                      item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
-                                    }`}
-                                    title="Em Trânsito"
-                                  >
-                                    Trân: {formatNumber(item.em_transito)}
-                                  </span>
-                                </div>
-                                {item.deposito && (
-                                  <div className="text-[10px] text-slate-400 mt-0.5">
-                                    Depósito: {item.deposito}
-                                  </div>
-                                )}
                               </td>
                             </tr>
                           ))}
@@ -3188,6 +3341,21 @@ export default function PedidosAbertos() {
                             </div>
                           </td>
 
+                          {/* Status consolidado (alinhado com Status Linha) */}
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-200"
+                            >
+                              {isExpanded ? 'Expandido' : 'Colapsado'}
+                            </Badge>
+                          </td>
+
+                          {/* Ação rápida (alinhado com Estoque / Trânsito) */}
+                          <td className="p-3 text-center whitespace-nowrap text-[10px] text-slate-400 font-medium">
+                            {isExpanded ? 'Recolher ▲' : 'Ver pedidos ▼'}
+                          </td>
+
                           {/* Colunas complementares no consolidado (Status do Cadastro, Tipo de PN) */}
                           <td className="p-3 text-center text-slate-300">-</td>
                           <td className="p-3 text-center text-slate-300">-</td>
@@ -3221,21 +3389,6 @@ export default function PedidosAbertos() {
                           {/* SOMA de todos os valores em aberto do Tipo de Cliente */}
                           <td className="p-3 text-right whitespace-nowrap font-black text-purple-950 text-sm bg-purple-100/50">
                             {formatCurrency(group.totalValorEmAberto)}
-                          </td>
-
-                          {/* Status consolidado */}
-                          <td className="p-3 text-center whitespace-nowrap">
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] font-bold bg-purple-100 text-purple-900 border border-purple-200"
-                            >
-                              {isExpanded ? 'Expandido' : 'Colapsado'}
-                            </Badge>
-                          </td>
-
-                          {/* Ação rápida */}
-                          <td className="p-3 text-center whitespace-nowrap text-[10px] text-slate-400 font-medium">
-                            {isExpanded ? 'Recolher ▲' : 'Ver pedidos ▼'}
                           </td>
                         </tr>
 
@@ -3305,6 +3458,48 @@ export default function PedidosAbertos() {
                                 )}
                               </td>
 
+                              {/* Status Linha */}
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <Badge
+                                  variant="outline"
+                                  className={
+                                    item.status_linha?.toLowerCase() === 'fechada'
+                                      ? 'bg-slate-100 text-slate-600 border-slate-200'
+                                      : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
+                                  }
+                                >
+                                  {item.status_linha || 'Aberta'}
+                                </Badge>
+                              </td>
+
+                              {/* Estoque / Trânsito */}
+                              <td className="p-3 text-center whitespace-nowrap text-[11px]">
+                                <div className="flex items-center justify-center gap-2">
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Estoque"
+                                  >
+                                    Est: {formatNumber(item.em_estoque)}
+                                  </span>
+                                  <span className="text-slate-300">|</span>
+                                  <span
+                                    className={`font-semibold ${
+                                      item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
+                                    }`}
+                                    title="Em Trânsito"
+                                  >
+                                    Trân: {formatNumber(item.em_transito)}
+                                  </span>
+                                </div>
+                                {item.deposito && (
+                                  <div className="text-[10px] text-slate-400 mt-0.5">
+                                    Depósito: {item.deposito}
+                                  </div>
+                                )}
+                              </td>
+
                               {/* Status do Cadastro */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderStatusCadastroCell(resolveClienteInfo(item).status_cadastro)}
@@ -3360,47 +3555,6 @@ export default function PedidosAbertos() {
                               {/* Valor em Aberto */}
                               <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
                                 {formatCurrency(Number(item.valor_em_aberto) || 0)}
-                              </td>
-                              {/* Status Linha */}
-                              <td className="p-3 text-center whitespace-nowrap">
-                                <Badge
-                                  variant="outline"
-                                  className={
-                                    item.status_linha?.toLowerCase() === 'fechada'
-                                      ? 'bg-slate-100 text-slate-600 border-slate-200'
-                                      : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
-                                  }
-                                >
-                                  {item.status_linha || 'Aberta'}
-                                </Badge>
-                              </td>
-
-                              {/* Estoque / Trânsito */}
-                              <td className="p-3 text-center whitespace-nowrap text-[11px]">
-                                <div className="flex items-center justify-center gap-2">
-                                  <span
-                                    className={`font-semibold ${
-                                      item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
-                                    }`}
-                                    title="Em Estoque"
-                                  >
-                                    Est: {formatNumber(item.em_estoque)}
-                                  </span>
-                                  <span className="text-slate-300">|</span>
-                                  <span
-                                    className={`font-semibold ${
-                                      item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
-                                    }`}
-                                    title="Em Trânsito"
-                                  >
-                                    Trân: {formatNumber(item.em_transito)}
-                                  </span>
-                                </div>
-                                {item.deposito && (
-                                  <div className="text-[10px] text-slate-400 mt-0.5">
-                                    Depósito: {item.deposito}
-                                  </div>
-                                )}
                               </td>
                             </tr>
                           ))}
@@ -3467,6 +3621,48 @@ export default function PedidosAbertos() {
                         )}
                       </td>
 
+                      {/* Status Linha */}
+                      <td className="p-3 text-center whitespace-nowrap">
+                        <Badge
+                          variant="outline"
+                          className={
+                            item.status_linha?.toLowerCase() === 'fechada'
+                              ? 'bg-slate-100 text-slate-600 border-slate-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
+                          }
+                        >
+                          {item.status_linha || 'Aberta'}
+                        </Badge>
+                      </td>
+
+                      {/* Estoque / Trânsito */}
+                      <td className="p-3 text-center whitespace-nowrap text-[11px]">
+                        <div className="flex items-center justify-center gap-2">
+                          <span
+                            className={`font-semibold ${
+                              item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
+                            }`}
+                            title="Em Estoque"
+                          >
+                            Est: {formatNumber(item.em_estoque)}
+                          </span>
+                          <span className="text-slate-300">|</span>
+                          <span
+                            className={`font-semibold ${
+                              item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
+                            }`}
+                            title="Em Trânsito"
+                          >
+                            Trân: {formatNumber(item.em_transito)}
+                          </span>
+                        </div>
+                        {item.deposito && (
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            Depósito: {item.deposito}
+                          </div>
+                        )}
+                      </td>
+
                       {/* Status do Cadastro */}
                       <td className="p-3 whitespace-nowrap">
                         {renderStatusCadastroCell(resolveClienteInfo(item).status_cadastro)}
@@ -3520,48 +3716,6 @@ export default function PedidosAbertos() {
                       {/* Valor em Aberto */}
                       <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
                         {formatCurrency(Number(item.valor_em_aberto) || 0)}
-                      </td>
-
-                      {/* Status Linha */}
-                      <td className="p-3 text-center whitespace-nowrap">
-                        <Badge
-                          variant="outline"
-                          className={
-                            item.status_linha?.toLowerCase() === 'fechada'
-                              ? 'bg-slate-100 text-slate-600 border-slate-200'
-                              : 'bg-amber-50 text-amber-700 border-amber-200 font-semibold'
-                          }
-                        >
-                          {item.status_linha || 'Aberta'}
-                        </Badge>
-                      </td>
-
-                      {/* Estoque / Trânsito */}
-                      <td className="p-3 text-center whitespace-nowrap text-[11px]">
-                        <div className="flex items-center justify-center gap-2">
-                          <span
-                            className={`font-semibold ${
-                              item.em_estoque > 0 ? 'text-emerald-600' : 'text-slate-400'
-                            }`}
-                            title="Em Estoque"
-                          >
-                            Est: {formatNumber(item.em_estoque)}
-                          </span>
-                          <span className="text-slate-300">|</span>
-                          <span
-                            className={`font-semibold ${
-                              item.em_transito > 0 ? 'text-sky-600' : 'text-slate-400'
-                            }`}
-                            title="Em Trânsito"
-                          >
-                            Trân: {formatNumber(item.em_transito)}
-                          </span>
-                        </div>
-                        {item.deposito && (
-                          <div className="text-[10px] text-slate-400 mt-0.5">
-                            Depósito: {item.deposito}
-                          </div>
-                        )}
                       </td>
                     </tr>
                   ))
