@@ -1748,6 +1748,9 @@ export default function PedidosAbertos() {
                       <ArrowUpDown className="w-3 h-3 text-slate-400" />
                     </div>
                   </th>
+                  <th className="p-3 sticky top-0 bg-slate-100 whitespace-nowrap">
+                    Tipo de Cliente
+                  </th>
                   <th
                     className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
                     onClick={() => handleSort('nome_cliente')}
@@ -1756,9 +1759,6 @@ export default function PedidosAbertos() {
                       <span>Cliente (Código)</span>
                       <ArrowUpDown className="w-3 h-3 text-slate-400" />
                     </div>
-                  </th>
-                  <th className="p-3 sticky top-0 bg-slate-100 whitespace-nowrap">
-                    Tipo de Cliente
                   </th>
                   <th className="p-3 sticky top-0 bg-slate-100 whitespace-nowrap">
                     Status do Cadastro
@@ -1907,6 +1907,9 @@ export default function PedidosAbertos() {
                             {isExpanded ? 'Detalhamento ▼' : 'Consolidado ▲'}
                           </td>
 
+                          {/* Colunas complementares no consolidado: Tipo de Cliente */}
+                          <td className="p-3 text-center text-slate-300">-</td>
+
                           {/* Clientes distintos do Canal de Faturamento */}
                           <td className="p-3 min-w-[200px]">
                             <div className="font-bold text-slate-800 text-xs">
@@ -1917,8 +1920,7 @@ export default function PedidosAbertos() {
                             </div>
                           </td>
 
-                          {/* Colunas complementares no consolidado */}
-                          <td className="p-3 text-center text-slate-300">-</td>
+                          {/* Colunas complementares no consolidado: Status do Cadastro e Tipo de PN */}
                           <td className="p-3 text-center text-slate-300">-</td>
                           <td className="p-3 text-center text-slate-300">-</td>
 
@@ -2015,6 +2017,11 @@ export default function PedidosAbertos() {
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
                               </td>
 
+                              {/* Tipo de Cliente */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
+                              </td>
+
                               {/* Cliente */}
                               <td className="p-3 min-w-[200px]">
                                 <div
@@ -2028,11 +2035,6 @@ export default function PedidosAbertos() {
                                     {item.codigo_cliente}
                                   </div>
                                 )}
-                              </td>
-
-                              {/* Tipo de Cliente */}
-                              <td className="p-3 whitespace-nowrap">
-                                {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
                               </td>
 
                               {/* Status do Cadastro */}
@@ -2210,6 +2212,9 @@ export default function PedidosAbertos() {
                             {isExpanded ? 'Detalhamento ▼' : 'Consolidado ▲'}
                           </td>
 
+                          {/* Colunas complementares no consolidado: Tipo de Cliente */}
+                          <td className="p-3 text-center text-slate-300">-</td>
+
                           {/* Clientes distintos do Canal */}
                           <td className="p-3 min-w-[200px]">
                             <div className="font-bold text-slate-800 text-xs">
@@ -2220,8 +2225,7 @@ export default function PedidosAbertos() {
                             </div>
                           </td>
 
-                          {/* Colunas complementares no consolidado */}
-                          <td className="p-3 text-center text-slate-300">-</td>
+                          {/* Colunas complementares no consolidado: Status do Cadastro e Tipo de PN */}
                           <td className="p-3 text-center text-slate-300">-</td>
                           <td className="p-3 text-center text-slate-300">-</td>
 
@@ -2318,6 +2322,11 @@ export default function PedidosAbertos() {
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
                               </td>
 
+                              {/* Tipo de Cliente */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
+                              </td>
+
                               {/* Cliente */}
                               <td className="p-3 min-w-[200px]">
                                 <div
@@ -2331,11 +2340,6 @@ export default function PedidosAbertos() {
                                     {item.codigo_cliente}
                                   </div>
                                 )}
-                              </td>
-
-                              {/* Tipo de Cliente */}
-                              <td className="p-3 whitespace-nowrap">
-                                {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
                               </td>
 
                               {/* Status do Cadastro */}
@@ -2513,6 +2517,15 @@ export default function PedidosAbertos() {
                             {isExpanded ? 'Detalhamento ▼' : 'Consolidado ▲'}
                           </td>
 
+                          {/* Tipo de Cliente do grupo de cliente */}
+                          <td className="p-3 whitespace-nowrap">
+                            {(() => {
+                              const clientCod = (group.codigo_cliente || '').trim().toUpperCase()
+                              const clientInfo = clientCod ? tiposClienteMap[clientCod] : undefined
+                              return renderTipoClienteBadge(clientInfo?.tipo_cliente)
+                            })()}
+                          </td>
+
                           {/* Cliente e Código */}
                           <td className="p-3 min-w-[200px]">
                             <div
@@ -2526,15 +2539,6 @@ export default function PedidosAbertos() {
                                 Cód: {group.codigo_cliente}
                               </div>
                             )}
-                          </td>
-
-                          {/* Tipo de Cliente do grupo de cliente */}
-                          <td className="p-3 whitespace-nowrap">
-                            {(() => {
-                              const clientCod = (group.codigo_cliente || '').trim().toUpperCase()
-                              const clientInfo = clientCod ? tiposClienteMap[clientCod] : undefined
-                              return renderTipoClienteBadge(clientInfo?.tipo_cliente)
-                            })()}
                           </td>
 
                           {/* Status do Cadastro do grupo de cliente */}
@@ -2648,6 +2652,11 @@ export default function PedidosAbertos() {
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
                               </td>
 
+                              {/* Tipo de Cliente */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
+                              </td>
+
                               {/* Cliente */}
                               <td className="p-3 min-w-[200px]">
                                 <div
@@ -2661,11 +2670,6 @@ export default function PedidosAbertos() {
                                     {item.codigo_cliente}
                                   </div>
                                 )}
-                              </td>
-
-                              {/* Tipo de Cliente */}
-                              <td className="p-3 whitespace-nowrap">
-                                {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
                               </td>
 
                               {/* Status do Cadastro */}
@@ -2843,6 +2847,11 @@ export default function PedidosAbertos() {
                             {isExpanded ? 'Detalhamento ▼' : 'Consolidado ▲'}
                           </td>
 
+                          {/* Coluna consolidada: Tipo de Cliente */}
+                          <td className="p-3 whitespace-nowrap">
+                            {renderTipoClienteBadge(isSemTipo ? undefined : group.tipo_cliente)}
+                          </td>
+
                           {/* Clientes distintos do Tipo de Cliente */}
                           <td className="p-3 min-w-[200px]">
                             <div className="font-bold text-slate-800 text-xs">
@@ -2853,10 +2862,7 @@ export default function PedidosAbertos() {
                             </div>
                           </td>
 
-                          {/* Colunas complementares no consolidado (Tipo de Cliente, Status do Cadastro, Tipo de PN) */}
-                          <td className="p-3 whitespace-nowrap">
-                            {renderTipoClienteBadge(isSemTipo ? undefined : group.tipo_cliente)}
-                          </td>
+                          {/* Colunas complementares no consolidado (Status do Cadastro, Tipo de PN) */}
                           <td className="p-3 text-center text-slate-300">-</td>
                           <td className="p-3 text-center text-slate-300">-</td>
 
@@ -2953,6 +2959,11 @@ export default function PedidosAbertos() {
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
                               </td>
 
+                              {/* Tipo de Cliente */}
+                              <td className="p-3 whitespace-nowrap">
+                                {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
+                              </td>
+
                               {/* Cliente */}
                               <td className="p-3 min-w-[200px]">
                                 <div
@@ -2966,11 +2977,6 @@ export default function PedidosAbertos() {
                                     {item.codigo_cliente}
                                   </div>
                                 )}
-                              </td>
-
-                              {/* Tipo de Cliente */}
-                              <td className="p-3 whitespace-nowrap">
-                                {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
                               </td>
 
                               {/* Status do Cadastro */}
@@ -3115,6 +3121,11 @@ export default function PedidosAbertos() {
                         {item.data_pedido ? formatDate(item.data_pedido) : '-'}
                       </td>
 
+                      {/* Tipo de Cliente */}
+                      <td className="p-3 whitespace-nowrap">
+                        {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
+                      </td>
+
                       {/* Cliente */}
                       <td className="p-3 min-w-[200px]">
                         <div
@@ -3128,11 +3139,6 @@ export default function PedidosAbertos() {
                             {item.codigo_cliente}
                           </div>
                         )}
-                      </td>
-
-                      {/* Tipo de Cliente */}
-                      <td className="p-3 whitespace-nowrap">
-                        {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
                       </td>
 
                       {/* Status do Cadastro */}
