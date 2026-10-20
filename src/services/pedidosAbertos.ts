@@ -112,3 +112,83 @@ export async function fetchUltimaCargaPedidosAbertos(): Promise<string | null> {
     return null
   }
 }
+
+export interface ResumoPedidosAbertosCliente {
+  qtd: number
+  valor: number
+}
+
+export type PedidosAbertosClienteMap = Record<string, ResumoPedidosAbertosCliente>
+
+/**
+ * Busca todos os registros da coleção pedidos_abertos e agrega por cliente:
+ * - Mapa indexado por codigo_cliente.trim().toUpperCase()
+ * - qtd: contagem de pedidos (numero_pedido distintos)
+ * - valor: somatório de valor_em_aberto
+ */
+export async function fetchPedidosAbertosClienteMap(): Promise<PedidosAbertosClienteMap> {
+  const run = async () => {
+    const records = await pb.collection('pedidos_abertos').getFullList<{
+      codigo_cliente?: string
+      numero_pedido?: string
+      valor_em_aberto?: number
+    }>({
+      fields: 'codigo_cliente,numero_pedido,valor_em_aberto',
+      requestKey: null,
+    })
+
+    const ordersByClient = new Map<string, Set<string>>()
+    const valorByClient = new Map<string, number>()
+
+    for (const r of records) {
+      const cod = (r.codigo_cliente || '').trim().toUpperCase()
+      if (!cod) continue
+
+      if (!ordersByClient.has(cod)) {
+        ordersByClient.set(cod, new Set())
+      }
+      if (r.numero_pedido) {
+        ordersByClient.get(cod)!.add(String(r.numero_pedido).trim())
+      }
+
+      const val = Number(r.valor_em_aberto) || 0
+      valorByClient.set(cod, (valorByClient.get(cod) || 0) + val)
+    }
+
+    const map: PedidosAbertosClienteMap = {}
+    for (const [cod, orderSet] of ordersByClient.entries()) {
+      map[cod] = {
+        qtd: orderSet.size,
+        valor: valorByClient.get(cod) || 0,
+      }
+    }
+    for (const [cod, val] of valorByClient.entries()) {
+      if (!map[cod]) {
+        map[cod] = {
+          qtd: 0,
+          valor: val,
+        }
+      }
+    }
+
+    return map
+  }
+
+  try {
+    return await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 401 || status === 403) {
+      try {
+        const refreshed = await safeAuthRefresh()
+        if (refreshed && pb.authStore.isValid) {
+          return await run()
+        }
+      } catch {
+        // fallback silencioso
+      }
+    }
+    console.warn('Erro ao carregar mapa de pedidos abertos por cliente:', err)
+    return {}
+  }
+}

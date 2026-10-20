@@ -22,6 +22,9 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   ExternalLink,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import {
   fetchCanaisClientes,
@@ -44,6 +47,10 @@ import {
   fetchTiposClienteMap,
   type TipoClienteInfo,
 } from '@/services/tiposCliente'
+import {
+  fetchPedidosAbertosClienteMap,
+  type PedidosAbertosClienteMap,
+} from '@/services/pedidosAbertos'
 import { MultiSelectDropdown } from '@/components/FilterBar'
 import type { CanalCliente, CanalMeta } from '@/types/sales'
 import { formatCurrency, formatDateTime, MESES_PT_BR } from '@/lib/formatters'
@@ -154,12 +161,57 @@ export default function Canais() {
   const [loadingTipoClienteOptions, setLoadingTipoClienteOptions] = useState(false)
   const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, TipoClienteInfo>>({})
   const [showLocationCols, setShowLocationCols] = useState(true)
+  const [pedidosAbertosMap, setPedidosAbertosMap] = useState<PedidosAbertosClienteMap>({})
+
+  // Estado de ordenação interativa das colunas do relatório
+  const [tableSortField, setTableSortField] = useState<string | null>(null)
+  const [tableSortDir, setTableSortDir] = useState<'asc' | 'desc'>('asc')
+
+  const handleTableSort = (field: string) => {
+    if (tableSortField === field) {
+      if (tableSortDir === 'asc') {
+        setTableSortDir('desc')
+      } else {
+        setTableSortField(null)
+        setTableSortDir('asc')
+      }
+    } else {
+      setTableSortField(field)
+      setTableSortDir('asc')
+    }
+  }
 
   // Estado de Agrupamento / Colapso do Relatório (Nível e nós expandidos)
   // Níveis possíveis: 'none' (tabela detalhada clássica), 'eh_canal' (É Canal), 'canal' (Canal), 'inside' (Inside), 'cliente' (Cliente), 'tipo_cliente' (Tipo de Cliente)
   const [groupByLevel, setGroupByLevel] = useState<
     'eh_canal' | 'canal' | 'inside' | 'cliente' | 'tipo_cliente' | 'none'
-  >('canal')
+  >(() => {
+    try {
+      const saved = sessionStorage.getItem('canais_groupByLevel')
+      if (
+        saved &&
+        ['eh_canal', 'canal', 'inside', 'cliente', 'tipo_cliente', 'none'].includes(saved)
+      ) {
+        return saved as 'eh_canal' | 'canal' | 'inside' | 'cliente' | 'tipo_cliente' | 'none'
+      }
+    } catch {
+      // ignora
+    }
+    return 'none'
+  })
+
+  const handleSelectGroupByLevel = useCallback(
+    (level: 'eh_canal' | 'canal' | 'inside' | 'cliente' | 'tipo_cliente' | 'none') => {
+      setGroupByLevel(level)
+      setExpandedGroups(new Set())
+      try {
+        sessionStorage.setItem('canais_groupByLevel', level)
+      } catch {
+        // ignora
+      }
+    },
+    [],
+  )
   // Por padrão, o relatório deve ser apresentado colapsado (todos os grupos fechados)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
 
@@ -348,9 +400,73 @@ export default function Canais() {
       .sort()
   }, [indicadores])
 
-  // Itens classificados por Canal em ordem alfabética crescente (A→Z), com desempate por Cliente
+  // Itens classificados por Canal em ordem alfabética crescente (A→Z), com suporte a ordenação interativa
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => {
+      if (tableSortField) {
+        let valA: unknown = null
+        let valB: unknown = null
+
+        const codA = (a.codigo_cliente || '').trim().toUpperCase()
+        const codB = (b.codigo_cliente || '').trim().toUpperCase()
+        const pedA = pedidosAbertosMap[codA]
+        const pedB = pedidosAbertosMap[codB]
+
+        if (tableSortField === 'pedidos_abertos_qtd') {
+          valA = pedA ? pedA.qtd : 0
+          valB = pedB ? pedB.qtd : 0
+        } else if (tableSortField === 'pedidos_abertos_valor') {
+          valA = pedA ? pedA.valor : 0
+          valB = pedB ? pedB.valor : 0
+        } else if (tableSortField === 'nome_canal') {
+          valA = (a.nome_canal || '').trim()
+          valB = (b.nome_canal || '').trim()
+        } else if (tableSortField === 'deploy') {
+          valA = (a.deploy || '').trim()
+          valB = (b.deploy || '').trim()
+        } else if (tableSortField === 'codigo_cliente') {
+          valA = codA
+          valB = codB
+        } else if (tableSortField === 'nome_cliente') {
+          valA = (a.nome_cliente || '').trim()
+          valB = (b.nome_cliente || '').trim()
+        } else if (tableSortField === 'tipo_cliente') {
+          const directTypeA = (a as unknown as { tipo_cliente?: string }).tipo_cliente?.trim()
+          valA = directTypeA || (codA ? tiposClienteMap[codA]?.tipo_cliente?.trim() : '') || ''
+          const directTypeB = (b as unknown as { tipo_cliente?: string }).tipo_cliente?.trim()
+          valB = directTypeB || (codB ? tiposClienteMap[codB]?.tipo_cliente?.trim() : '') || ''
+        } else if (tableSortField === 'contato') {
+          valA = (a.contato || '').trim()
+          valB = (b.contato || '').trim()
+        } else if (tableSortField === 'email') {
+          valA = (a.email || '').trim()
+          valB = (b.email || '').trim()
+        } else if (tableSortField === 'inside') {
+          valA = (a.inside || '').trim()
+          valB = (b.inside || '').trim()
+        } else if (tableSortField === 'eh_canal') {
+          valA = a.eh_canal ? 1 : 0
+          valB = b.eh_canal ? 1 : 0
+        } else if (tableSortField === 'municipio') {
+          valA = [a.municipio, a.estado].filter(Boolean).join(' - ')
+          valB = [b.municipio, b.estado].filter(Boolean).join(' - ')
+        } else if (tableSortField === 'meta_valor') {
+          valA = typeof a.meta_valor === 'number' ? a.meta_valor : 0
+          valB = typeof b.meta_valor === 'number' ? b.meta_valor : 0
+        }
+
+        if (typeof valA === 'number' && typeof valB === 'number') {
+          if (valA !== valB) {
+            return tableSortDir === 'asc' ? valA - valB : valB - valA
+          }
+        } else if (typeof valA === 'string' && typeof valB === 'string') {
+          const comp = valA.localeCompare(valB, 'pt-BR', { sensitivity: 'base' })
+          if (comp !== 0) {
+            return tableSortDir === 'asc' ? comp : -comp
+          }
+        }
+      }
+
       const canalA = (a.nome_canal || '').trim()
       const canalB = (b.nome_canal || '').trim()
       const compCanal = canalA.localeCompare(canalB, 'pt-BR', { sensitivity: 'base' })
@@ -359,7 +475,7 @@ export default function Canais() {
       const cliB = (b.nome_cliente || b.codigo_cliente || '').trim()
       return cliA.localeCompare(cliB, 'pt-BR', { sensitivity: 'base' })
     })
-  }, [items])
+  }, [items, tableSortField, tableSortDir, pedidosAbertosMap, tiposClienteMap])
 
   // Estrutura de grupos agregados de acordo com groupByLevel
   interface CanalReportGroup {
@@ -372,6 +488,8 @@ export default function Canais() {
     totalRegistros: number
     totalClientes: number
     totalCanais: number
+    totalPedidosAbertos: number
+    totalValorAberto: number
     items: CanalCliente[]
   }
 
@@ -389,8 +507,14 @@ export default function Canais() {
         items: CanalCliente[]
         clientesSet: Set<string>
         canaisSet: Set<string>
+        distinctOrdersSet: Set<string>
+        totalValorAberto: number
       }
     >()
+
+    // Para evitar duplicar pedidos quando múltiplos contatos compartilham o mesmo cliente no grupo,
+    // totalPedidosAbertos é a soma das quantidades distintas de pedidos por cliente único do grupo
+    const processedClientsPerGroup = new Map<string, Set<string>>()
 
     for (const item of sortedItems) {
       let groupKey = ''
@@ -468,30 +592,55 @@ export default function Canais() {
           items: [],
           clientesSet: new Set(),
           canaisSet: new Set(),
+          distinctOrdersSet: new Set(),
+          totalValorAberto: 0,
         })
+        processedClientsPerGroup.set(groupKey, new Set())
       }
 
       const entry = map.get(groupKey)!
       entry.items.push(item)
+      const codCli = (item.codigo_cliente || '').trim().toUpperCase()
       if (item.codigo_cliente || item.nome_cliente) {
         entry.clientesSet.add(item.codigo_cliente || item.nome_cliente)
       }
       if (item.nome_canal) {
         entry.canaisSet.add(item.nome_canal)
       }
+
+      const groupClients = processedClientsPerGroup.get(groupKey)!
+      if (codCli && !groupClients.has(codCli)) {
+        groupClients.add(codCli)
+        const pedInfo = pedidosAbertosMap[codCli]
+        if (pedInfo) {
+          entry.totalValorAberto += pedInfo.valor
+        }
+      }
     }
 
-    const groups: CanalReportGroup[] = Array.from(map.entries()).map(([key, data]) => ({
-      key,
-      title: data.title,
-      subtitle: data.subtitle,
-      badgeText: data.badgeText,
-      badgeClass: data.badgeClass,
-      totalRegistros: data.items.length,
-      totalClientes: data.clientesSet.size,
-      totalCanais: data.canaisSet.size,
-      items: data.items,
-    }))
+    // Calcula totalPedidosAbertos por grupo com base nos clientes únicos processados
+    const groups: CanalReportGroup[] = Array.from(map.entries()).map(([key, data]) => {
+      const groupClients = processedClientsPerGroup.get(key) || new Set<string>()
+      let totalQtd = 0
+      for (const cod of groupClients) {
+        const ped = pedidosAbertosMap[cod]
+        if (ped) totalQtd += ped.qtd
+      }
+
+      return {
+        key,
+        title: data.title,
+        subtitle: data.subtitle,
+        badgeText: data.badgeText,
+        badgeClass: data.badgeClass,
+        totalRegistros: data.items.length,
+        totalClientes: data.clientesSet.size,
+        totalCanais: data.canaisSet.size,
+        totalPedidosAbertos: totalQtd,
+        totalValorAberto: data.totalValorAberto,
+        items: data.items,
+      }
+    })
 
     // Ordenação padrão por Canal em ordem alfabética crescente (A→Z)
     // Se o agrupamento for por Canal, ordena os títulos em ordem alfabética A→Z
@@ -515,7 +664,7 @@ export default function Canais() {
     }
 
     return groups
-  }, [sortedItems, groupByLevel, tiposClienteMap])
+  }, [sortedItems, groupByLevel, tiposClienteMap, pedidosAbertosMap])
 
   // Handlers para expandir / colapsar grupos
   const toggleGroup = useCallback((groupKey: string) => {
@@ -571,9 +720,23 @@ export default function Canais() {
     }
   }, [])
 
+  // Carrega pedidos em aberto agregados por cliente
+  const loadPedidosAbertosData = useCallback(async () => {
+    try {
+      const map = await fetchPedidosAbertosClienteMap()
+      setPedidosAbertosMap(map || {})
+    } catch (err) {
+      console.error('Erro ao carregar pedidos em aberto por cliente na página Canais:', err)
+    }
+  }, [])
+
   useEffect(() => {
     loadTiposClienteData()
   }, [loadTiposClienteData])
+
+  useEffect(() => {
+    loadPedidosAbertosData()
+  }, [loadPedidosAbertosData])
 
   // Persiste a escolha do tipoCliente no sessionStorage compartilhado
   const handleTipoClienteChange = useCallback((newSelection: string[]) => {
@@ -682,7 +845,7 @@ export default function Canais() {
         title: 'Sincronização concluída!',
         description: `${res.revendasAtualizadas} revendas e ${res.contatosAtualizados} contatos sincronizados (${res.mudancas === false ? 'Base já em dia' : 'Registros atualizados'}).`,
       })
-      await Promise.all([loadIndicadores(), loadList(), loadSyncInfo()])
+      await Promise.all([loadIndicadores(), loadList(), loadSyncInfo(), loadPedidosAbertosData()])
     } catch (err: unknown) {
       console.error('Erro na sincronização:', err)
       const msg = err instanceof Error ? err.message : 'Falha ao sincronizar com a base de Canais.'
@@ -906,6 +1069,7 @@ export default function Canais() {
                   loadIndicadores()
                   loadList()
                   loadSyncInfo()
+                  loadPedidosAbertosData()
                 }}
                 disabled={loadingList || loadingIndicadores || loadingSync}
                 className="h-9 text-xs font-semibold text-slate-700 border-slate-200 hover:bg-slate-50"
@@ -1599,10 +1763,7 @@ export default function Canais() {
             <div className="inline-flex rounded-lg bg-slate-200/70 p-0.5 gap-0.5">
               <button
                 type="button"
-                onClick={() => {
-                  setGroupByLevel('eh_canal')
-                  setExpandedGroups(new Set())
-                }}
+                onClick={() => handleSelectGroupByLevel('eh_canal')}
                 className={cn(
                   'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all',
                   groupByLevel === 'eh_canal'
@@ -1615,10 +1776,7 @@ export default function Canais() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setGroupByLevel('canal')
-                  setExpandedGroups(new Set())
-                }}
+                onClick={() => handleSelectGroupByLevel('canal')}
                 className={cn(
                   'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all',
                   groupByLevel === 'canal'
@@ -1631,10 +1789,7 @@ export default function Canais() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setGroupByLevel('inside')
-                  setExpandedGroups(new Set())
-                }}
+                onClick={() => handleSelectGroupByLevel('inside')}
                 className={cn(
                   'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all',
                   groupByLevel === 'inside'
@@ -1647,10 +1802,7 @@ export default function Canais() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setGroupByLevel('cliente')
-                  setExpandedGroups(new Set())
-                }}
+                onClick={() => handleSelectGroupByLevel('cliente')}
                 className={cn(
                   'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all',
                   groupByLevel === 'cliente'
@@ -1663,10 +1815,7 @@ export default function Canais() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setGroupByLevel('tipo_cliente')
-                  setExpandedGroups(new Set())
-                }}
+                onClick={() => handleSelectGroupByLevel('tipo_cliente')}
                 className={cn(
                   'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all',
                   groupByLevel === 'tipo_cliente'
@@ -1679,10 +1828,7 @@ export default function Canais() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  setGroupByLevel('none')
-                  setExpandedGroups(new Set())
-                }}
+                onClick={() => handleSelectGroupByLevel('none')}
                 className={cn(
                   'px-2.5 py-1 text-[11px] font-medium rounded-md transition-all',
                   groupByLevel === 'none'
