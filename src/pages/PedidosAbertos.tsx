@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Download,
   ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
@@ -49,7 +51,22 @@ import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 25
 
-type SortField = Extract<keyof PedidoAberto, string>
+type PedidosAbertosSortColumn =
+  | 'nome_canal'
+  | 'numero_pedido'
+  | 'data_pedido'
+  | 'tipo_cliente'
+  | 'nome_cliente'
+  | 'status_cadastro'
+  | 'tipo_pn'
+  | 'codigo_item'
+  | 'qtd_aberto'
+  | 'preco_apos_desconto'
+  | 'valor_em_aberto'
+  | 'status_linha'
+  | 'em_estoque'
+
+type SortField = PedidosAbertosSortColumn
 
 type ViewMode = 'none' | 'faturamento' | 'canal' | 'cliente' | 'tipo_cliente' | 'detalhado'
 
