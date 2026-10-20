@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Download,
   ArrowUpDown,
@@ -45,8 +45,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
-import { useTableSort } from '@/hooks/use-table-sort'
-import { compareValues } from '@/lib/sort'
+import type { SortDir } from '@/lib/sort'
 import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 25
@@ -171,7 +170,48 @@ export default function PedidosAbertos() {
     }
     return new Set<string>()
   })
-  const sort = useTableSort<SortField>('data_pedido', 'asc')
+  const [sortState, setSortState] = useState<{ field: SortField | null; dir: SortDir }>(() => {
+    try {
+      const raw = sessionStorage.getItem('pedidos_abertos_sort')
+      if (raw) {
+        const parsed = JSON.parse(raw) as { field?: SortField | null; dir?: SortDir }
+        if (parsed && (parsed.dir === 'asc' || parsed.dir === 'desc')) {
+          return {
+            field: parsed.field || null,
+            dir: parsed.dir,
+          }
+        }
+      }
+    } catch {
+      // ignora
+    }
+    return { field: null, dir: 'asc' }
+  })
+
+  // Salva no sessionStorage sempre que o estado de ordenação mudar
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('pedidos_abertos_sort', JSON.stringify(sortState))
+    } catch {
+      // ignora
+    }
+  }, [sortState])
+
+  const sort = useMemo(
+    () => ({
+      field: sortState.field,
+      dir: sortState.dir,
+      toggle: (next: SortField) => {
+        setSortState((prev) => {
+          if (prev.field !== next) return { field: next, dir: 'asc' }
+          if (prev.dir === 'asc') return { field: next, dir: 'desc' }
+          return { field: null, dir: 'asc' }
+        })
+      },
+      reset: () => setSortState({ field: null, dir: 'asc' }),
+    }),
+    [sortState],
+  )
   const { toast } = useToast()
 
   useEffect(() => {
@@ -247,25 +287,153 @@ export default function PedidosAbertos() {
   const [statsLoading, setStatsLoading] = useState(false)
 
   // Resolução resiliente dos campos de Tipo de Cliente a partir do código do cliente e mapa em memória
-  const resolveClienteInfo = (item: {
-    codigo_cliente?: string
-    tipo_cliente?: string
-    status_cadastro?: string
-    tipo_pn?: string
-  }) => {
-    const cod = (item.codigo_cliente || '').trim().toUpperCase()
-    const mapped = cod ? tiposClienteMap[cod] : undefined
+  const resolveClienteInfo = useCallback(
+    (item: {
+      codigo_cliente?: string
+      tipo_cliente?: string
+      status_cadastro?: string
+      tipo_pn?: string
+    }) => {
+      const cod = (item.codigo_cliente || '').trim().toUpperCase()
+      const mapped = cod ? tiposClienteMap[cod] : undefined
 
-    const directTipo = item.tipo_cliente?.trim()
-    const directStatus = item.status_cadastro?.trim()
-    const directTipoPn = item.tipo_pn?.trim()
+      const directTipo = item.tipo_cliente?.trim()
+      const directStatus = item.status_cadastro?.trim()
+      const directTipoPn = item.tipo_pn?.trim()
 
-    const tipo_cliente = directTipo || mapped?.tipo_cliente?.trim() || ''
-    const status_cadastro = directStatus || mapped?.status_cadastro?.trim() || ''
-    const tipo_pn = directTipoPn || mapped?.tipo_pn?.trim() || ''
+      const tipo_cliente = directTipo || mapped?.tipo_cliente?.trim() || ''
+      const status_cadastro = directStatus || mapped?.status_cadastro?.trim() || ''
+      const tipo_pn = directTipoPn || mapped?.tipo_pn?.trim() || ''
 
-    return { tipo_cliente, status_cadastro, tipo_pn }
-  }
+      return { tipo_cliente, status_cadastro, tipo_pn }
+    },
+    [tiposClienteMap],
+  )
+
+  /**
+   * Função de comparação robusta para todas as colunas de Pedidos em Aberto.
+   * - Datas: cronologicamente por 'data_pedido' (ISO AAAA-MM-DD)
+   * - Números: qtd_aberto, preco_apos_desconto (fallback preco_unitario), valor_em_aberto, em_estoque (Number(x)||0)
+   * - Textos: nome_canal, nome_cliente, status_cadastro, tipo_pn, status_linha, codigo_item, numero_pedido (localeCompare pt-BR)
+   * - tipo_cliente: obtido via resolveClienteInfo(item).tipo_cliente (localeCompare pt-BR)
+   * - Desempate estável sempre por: data_pedido asc + numero_pedido asc
+   */
+  const comparePedidos = useCallback(
+    (
+      a: PedidoAberto,
+      b: PedidoAberto,
+      field: SortField | null = sort.field,
+      dir: SortDir = sort.dir,
+    ): number => {
+      // Comparador primário quando há campo ativo
+      if (field) {
+        let cmp = 0
+        switch (field) {
+          case 'data_pedido': {
+            const dataA = (a.data_pedido || '').trim()
+            const dataB = (b.data_pedido || '').trim()
+            cmp = dataA.localeCompare(dataB)
+            break
+          }
+          case 'qtd_aberto': {
+            const numA = Number(a.qtd_aberto) || 0
+            const numB = Number(b.qtd_aberto) || 0
+            cmp = numA - numB
+            break
+          }
+          case 'preco_apos_desconto': {
+            const numA = Number(a.preco_apos_desconto) || Number(a.preco_unitario) || 0
+            const numB = Number(b.preco_apos_desconto) || Number(b.preco_unitario) || 0
+            cmp = numA - numB
+            break
+          }
+          case 'valor_em_aberto': {
+            const numA = Number(a.valor_em_aberto) || 0
+            const numB = Number(b.valor_em_aberto) || 0
+            cmp = numA - numB
+            break
+          }
+          case 'em_estoque': {
+            const numA = Number(a.em_estoque) || 0
+            const numB = Number(b.em_estoque) || 0
+            cmp = numA - numB
+            break
+          }
+          case 'tipo_cliente': {
+            const tcA = resolveClienteInfo(a).tipo_cliente
+            const tcB = resolveClienteInfo(b).tipo_cliente
+            cmp = tcA.localeCompare(tcB, 'pt-BR', { sensitivity: 'base' })
+            break
+          }
+          case 'status_cadastro': {
+            const scA = resolveClienteInfo(a).status_cadastro
+            const scB = resolveClienteInfo(b).status_cadastro
+            cmp = scA.localeCompare(scB, 'pt-BR', { sensitivity: 'base' })
+            break
+          }
+          case 'tipo_pn': {
+            const tpnA = resolveClienteInfo(a).tipo_pn
+            const tpnB = resolveClienteInfo(b).tipo_pn
+            cmp = tpnA.localeCompare(tpnB, 'pt-BR', { sensitivity: 'base' })
+            break
+          }
+          case 'nome_canal': {
+            const strA = (a.nome_canal || '').trim()
+            const strB = (b.nome_canal || '').trim()
+            cmp = strA.localeCompare(strB, 'pt-BR', { sensitivity: 'base' })
+            break
+          }
+          case 'nome_cliente': {
+            const strA = (a.nome_cliente || '').trim()
+            const strB = (b.nome_cliente || '').trim()
+            cmp = strA.localeCompare(strB, 'pt-BR', { sensitivity: 'base' })
+            break
+          }
+          case 'status_linha': {
+            const strA = (a.status_linha || '').trim()
+            const strB = (b.status_linha || '').trim()
+            cmp = strA.localeCompare(strB, 'pt-BR', { sensitivity: 'base' })
+            break
+          }
+          case 'codigo_item': {
+            const strA = (a.codigo_item || '').trim()
+            const strB = (b.codigo_item || '').trim()
+            cmp = strA.localeCompare(strB, 'pt-BR', { sensitivity: 'base' })
+            break
+          }
+          case 'numero_pedido': {
+            const strA = String(a.numero_pedido || '').trim()
+            const strB = String(b.numero_pedido || '').trim()
+            cmp = strA.localeCompare(strB, 'pt-BR', { numeric: true, sensitivity: 'base' })
+            break
+          }
+          default: {
+            cmp = 0
+          }
+        }
+
+        if (cmp !== 0) {
+          return dir === 'desc' ? -cmp : cmp
+        }
+      }
+
+      // Desempate estável sempre por: data_pedido asc + numero_pedido asc
+      const tieData = (a.data_pedido || '').trim().localeCompare((b.data_pedido || '').trim())
+      if (tieData !== 0) return tieData
+
+      const tieNum = String(a.numero_pedido || '')
+        .trim()
+        .localeCompare(String(b.numero_pedido || '').trim(), 'pt-BR', {
+          numeric: true,
+          sensitivity: 'base',
+        })
+      if (tieNum !== 0) return tieNum
+
+      // Desempate complementar por linha do pedido
+      return (Number(a.linha) || 0) - (Number(b.linha) || 0)
+    },
+    [resolveClienteInfo, sort.field, sort.dir],
+  )
 
   const renderTipoClienteBadge = (tipo?: string) => {
     if (!tipo) {
@@ -563,40 +731,8 @@ export default function PedidosAbertos() {
         })
       }
 
-      // Ordenação aplicada: ordenado por Data (data_pedido) e depois por Número do Pedido (numero_pedido)
-      // com ordenação alfabética ascendente por esses dois campos (ou respeitando campo/direção ativos)
-      const activeSortField = sortField || 'data_pedido'
-      const activeSortDir = sortDir || 'asc'
-
-      items.sort((a, b) => {
-        if (activeSortField !== 'data_pedido' && activeSortField !== 'numero_pedido') {
-          const valA = a[activeSortField]
-          const valB = b[activeSortField]
-          const cmp = compareValues(valA, valB)
-          if (cmp !== 0) return activeSortDir === 'desc' ? -cmp : cmp
-        }
-        if (activeSortField === 'numero_pedido') {
-          const cmpNum = String(a.numero_pedido || '').localeCompare(
-            String(b.numero_pedido || ''),
-            'pt-BR',
-          )
-          if (cmpNum !== 0) return activeSortDir === 'desc' ? -cmpNum : cmpNum
-          return String(a.data_pedido || '').localeCompare(String(b.data_pedido || ''), 'pt-BR')
-        }
-        // activeSortField === 'data_pedido'
-        const cmpData = String(a.data_pedido || '').localeCompare(
-          String(b.data_pedido || ''),
-          'pt-BR',
-        )
-        if (cmpData !== 0) {
-          return activeSortDir === 'desc' ? -cmpData : cmpData
-        }
-        const cmpNum = String(a.numero_pedido || '').localeCompare(
-          String(b.numero_pedido || ''),
-          'pt-BR',
-        )
-        return cmpNum
-      })
+      // Ordenação aplicada usando a função de comparação robusta
+      items.sort((a, b) => comparePedidos(a, b, sortField, sortDir))
 
       setDashboardPedidos(items)
       const isCustomCadastroActive =
@@ -799,10 +935,13 @@ export default function PedidosAbertos() {
       g.totalPedidos = distinctOrders.size || g.totalLinhas
     }
 
-    // Ordena grupos pelo maior valor total em aberto por padrão
+    // Ordena grupos pelo maior valor total em aberto por padrão, mantendo ordenação das linhas internas
     list.sort((a, b) => b.totalValorEmAberto - a.totalValorEmAberto)
+    list.forEach((g) => {
+      g.items.sort((a, b) => comparePedidos(a, b))
+    })
     return list
-  }, [viewMode, allFilteredPedidos, paginatedPedidos])
+  }, [viewMode, allFilteredPedidos, paginatedPedidos, comparePedidos])
 
   // Agrupamento por Canal: soma de TODOS os campos de valor, qtd aberta, qtd solicitada,
   // nº pedidos distintos, nº itens e nº clientes distintos
@@ -863,8 +1002,11 @@ export default function PedidosAbertos() {
       if (b.key === 'SEM_CANAL') return -1
       return a.nome_canal.localeCompare(b.nome_canal, 'pt-BR', { sensitivity: 'base' })
     })
+    list.forEach((g) => {
+      g.items.sort((a, b) => comparePedidos(a, b))
+    })
     return list
-  }, [viewMode, allFilteredPedidos, paginatedPedidos])
+  }, [viewMode, allFilteredPedidos, paginatedPedidos, comparePedidos])
 
   // Agrupamento por Tipo de Cliente (ex: Revendas, Atas, ..., Sem tipo)
   // Segue o mesmo padrão visual e de regras da página Canais (commit 0.0.179)
@@ -932,9 +1074,12 @@ export default function PedidosAbertos() {
         sensitivity: 'base',
       })
     })
+    list.forEach((g) => {
+      g.items.sort((a, b) => comparePedidos(a, b))
+    })
 
     return list
-  }, [viewMode, allFilteredPedidos, paginatedPedidos, tiposClienteMap])
+  }, [viewMode, allFilteredPedidos, paginatedPedidos, tiposClienteMap, comparePedidos])
 
   // Controles de expansão e colapso por Tipo de Cliente (com persistência na sessão)
   const toggleTipoClienteGroup = (key: string) => {
@@ -1055,8 +1200,11 @@ export default function PedidosAbertos() {
         sensitivity: 'base',
       })
     })
+    list.forEach((g) => {
+      g.items.sort((a, b) => comparePedidos(a, b))
+    })
     return list
-  }, [viewMode, allFilteredPedidos, paginatedPedidos])
+  }, [viewMode, allFilteredPedidos, paginatedPedidos, comparePedidos])
 
   // Controles de expansão e colapso por Canal de Faturamento
   const toggleFaturamentoGroup = (key: string) => {
@@ -1319,8 +1467,8 @@ export default function PedidosAbertos() {
             variant="outline"
             size="sm"
             onClick={() => {
-              loadStats()
-              loadData()
+              loadStats(filters)
+              loadData(filters, page, sort.field, sort.dir, searchTerm, viewMode)
             }}
             disabled={loading}
             className="text-xs h-9 gap-1.5 border-slate-200 text-slate-700 hover:bg-slate-50"
@@ -1739,78 +1887,239 @@ export default function PedidosAbertos() {
                   )}
                   {/* Coluna Canal como PRIMEIRA COLUNA */}
                   <th
-                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
                     onClick={() => handleSort('nome_canal')}
+                    title="Ordenar por Canal"
                   >
                     <div className="flex items-center gap-1">
                       <span>Canal / Deploy</span>
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      {sort.field === 'nome_canal' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
                     </div>
                   </th>
                   <th
-                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
                     onClick={() => handleSort('numero_pedido')}
+                    title="Ordenar por Número do Pedido"
                   >
                     <div className="flex items-center gap-1">
                       <span>Nº Pedido / Linha</span>
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      {sort.field === 'numero_pedido' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
                     </div>
                   </th>
                   <th
-                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
                     onClick={() => handleSort('data_pedido')}
+                    title="Ordenar por Data do Pedido"
                   >
                     <div className="flex items-center gap-1">
                       <span>Data</span>
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      {sort.field === 'data_pedido' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
                     </div>
                   </th>
-                  <th className="p-3 sticky top-0 bg-slate-100 whitespace-nowrap">
-                    Tipo de Cliente
+                  <th
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
+                    onClick={() => handleSort('tipo_cliente')}
+                    title="Ordenar por Tipo de Cliente"
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Tipo de Cliente</span>
+                      {sort.field === 'tipo_cliente' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
+                    </div>
                   </th>
                   <th
-                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
                     onClick={() => handleSort('nome_cliente')}
+                    title="Ordenar por Cliente"
                   >
                     <div className="flex items-center gap-1">
                       <span>Cliente (Código)</span>
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      {sort.field === 'nome_cliente' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
                     </div>
                   </th>
-                  <th className="p-3 sticky top-0 bg-slate-100 whitespace-nowrap">
-                    Status do Cadastro
-                  </th>
-                  <th className="p-3 sticky top-0 bg-slate-100 whitespace-nowrap">Tipo de PN</th>
                   <th
-                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
+                    onClick={() => handleSort('status_cadastro')}
+                    title="Ordenar por Status do Cadastro"
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Status do Cadastro</span>
+                      {sort.field === 'status_cadastro' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
+                    onClick={() => handleSort('tipo_pn')}
+                    title="Ordenar por Tipo de PN"
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Tipo de PN</span>
+                      {sort.field === 'tipo_pn' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
                     onClick={() => handleSort('codigo_item')}
+                    title="Ordenar por Item / Descrição"
                   >
                     <div className="flex items-center gap-1">
                       <span>Item / Descrição</span>
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      {sort.field === 'codigo_item' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
                     </div>
                   </th>
                   <th
-                    className="p-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
+                    className="p-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
                     onClick={() => handleSort('qtd_aberto')}
+                    title="Ordenar por Quantidade em Aberto"
                   >
                     <div className="flex items-center justify-center gap-1">
                       <span>Qtd Aberto</span>
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      {sort.field === 'qtd_aberto' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
                     </div>
                   </th>
-                  <th className="p-3 text-right sticky top-0 bg-slate-100">Preço Liq.</th>
                   <th
-                    className="p-3 text-right cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100"
+                    className="p-3 text-right cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
+                    onClick={() => handleSort('preco_apos_desconto')}
+                    title="Ordenar por Preço Líquido"
+                  >
+                    <div className="flex items-center justify-end gap-1">
+                      <span>Preço Liq.</span>
+                      {sort.field === 'preco_apos_desconto' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    className="p-3 text-right cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
                     onClick={() => handleSort('valor_em_aberto')}
+                    title="Ordenar por Valor em Aberto"
                   >
                     <div className="flex items-center justify-end gap-1">
                       <span>Valor em Aberto</span>
-                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                      {sort.field === 'valor_em_aberto' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
                     </div>
                   </th>
-                  <th className="p-3 text-center sticky top-0 bg-slate-100">Status Linha</th>
-                  <th className="p-3 text-center sticky top-0 bg-slate-100">Estoque / Trânsito</th>
+                  <th
+                    className="p-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
+                    onClick={() => handleSort('status_linha')}
+                    title="Ordenar por Status da Linha"
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Status Linha</span>
+                      {sort.field === 'status_linha' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    className="p-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
+                    onClick={() => handleSort('em_estoque')}
+                    title="Ordenar por Estoque"
+                  >
+                    <div className="flex items-center justify-center gap-1">
+                      <span>Estoque / Trânsito</span>
+                      {sort.field === 'em_estoque' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
+                    </div>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
