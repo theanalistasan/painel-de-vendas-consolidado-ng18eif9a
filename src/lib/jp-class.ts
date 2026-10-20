@@ -1,0 +1,126 @@
+/**
+ * Normalização e De/Para de JP-Class
+ *
+ * Regras:
+ * - TINTAS → INKS
+ * - EQUIPAMENTOS → HARD
+ * - PEÇAS → OTHERS
+ * - ACESSÓRIOS → OTHERS (tratar também a grafia 'ASSESSÓRIOS' como OTHERS)
+ * - Qualquer outro valor mantém o valor original
+ * - Normalizar antes do De/Para: trim, maiúsculas e remoção de acentos (ex.: "PEÇAS" e "PECAS" caem na mesma regra)
+ */
+
+export function normalizeText(text: string | null | undefined): string {
+  if (!text) return ''
+  return text
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+}
+
+export function isMatchedJpClassRule(raw: string | null | undefined): boolean {
+  const norm = normalizeText(raw)
+  return (
+    norm === 'TINTAS' ||
+    norm === 'TINTA' ||
+    norm === 'EQUIPAMENTOS' ||
+    norm === 'EQUIPAMENTO' ||
+    norm === 'PECAS' ||
+    norm === 'PECA' ||
+    norm === 'ACESSORIOS' ||
+    norm === 'ACESSORIO' ||
+    norm === 'ASSESSORIOS' ||
+    norm === 'ASSESSORIO'
+  )
+}
+
+export function getJpClass(raw: string | null | undefined): string {
+  if (!raw) return ''
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+
+  const norm = normalizeText(trimmed)
+
+  if (norm === 'TINTAS' || norm === 'TINTA') {
+    return 'INKS'
+  }
+  if (norm === 'EQUIPAMENTOS' || norm === 'EQUIPAMENTO') {
+    return 'HARD'
+  }
+  if (
+    norm === 'PECAS' ||
+    norm === 'PECA' ||
+    norm === 'ACESSORIOS' ||
+    norm === 'ACESSORIO' ||
+    norm === 'ASSESSORIOS' ||
+    norm === 'ASSESSORIO'
+  ) {
+    return 'OTHERS'
+  }
+
+  // Qualquer outro valor mantém o valor original
+  return trimmed
+}
+
+/**
+ * Retorna o grupo de JP-Class para fins de agrupamento na tabela.
+ * Itens que não caíram em nenhuma regra do De/Para caem no grupo 'Sem classe'.
+ */
+export function getJpClassGroup(raw: string | null | undefined): string {
+  if (!raw) return 'Sem classe'
+  const trimmed = raw.trim()
+  if (!trimmed) return 'Sem classe'
+
+  const norm = normalizeText(trimmed)
+
+  if (norm === 'TINTAS' || norm === 'TINTA') {
+    return 'INKS'
+  }
+  if (norm === 'EQUIPAMENTOS' || norm === 'EQUIPAMENTO') {
+    return 'HARD'
+  }
+  if (
+    norm === 'PECAS' ||
+    norm === 'PECA' ||
+    norm === 'ACESSORIOS' ||
+    norm === 'ACESSORIO' ||
+    norm === 'ASSESSORIOS' ||
+    norm === 'ASSESSORIO'
+  ) {
+    return 'OTHERS'
+  }
+
+  return 'Sem classe'
+}
+
+/** Cores de Badge para JP-Class */
+export function getJpClassBadgeStyle(jpClass: string | null | undefined): {
+  className: string
+  bgHex?: string
+} {
+  const norm = (jpClass || '').toUpperCase().trim()
+  if (norm === 'INKS') {
+    return {
+      className: 'bg-sky-50 text-sky-700 border-sky-300 font-bold',
+    }
+  }
+  if (norm === 'HARD') {
+    return {
+      className: 'bg-amber-50 text-amber-800 border-amber-300 font-bold',
+    }
+  }
+  if (norm === 'OTHERS') {
+    return {
+      className: 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold',
+    }
+  }
+  if (norm === 'SEM CLASSE' || !norm) {
+    return {
+      className: 'bg-slate-100 text-slate-500 border-slate-200 italic',
+    }
+  }
+  return {
+    className: 'bg-purple-50 text-purple-700 border-purple-200 font-semibold',
+  }
+}

@@ -17,6 +17,7 @@ const EMPTY_FILTERS: FilterState = {
   deploy: [],
   inside: [],
   tipoCliente: [],
+  jpClass: [],
   search: '',
   ano: [],
   mes: [],
@@ -48,6 +49,7 @@ export const DEFAULT_FILTERS: FilterState = {
   deploy: [],
   inside: [],
   tipoCliente: [],
+  jpClass: [],
   search: '',
   ano: ['2026'],
   mes: ['8'],
@@ -198,6 +200,7 @@ export function buildDynamicInitialFilters(options?: {
     deploy: [],
     inside: [],
     tipoCliente: [],
+    jpClass: [],
   }
 }
 
@@ -274,6 +277,7 @@ export function loadFiltersFromSession(): FilterState {
       deploy: normalizeArray(parsed.deploy),
       inside: normalizeArray(parsed.inside),
       tipoCliente: normalizeArray(parsed.tipoCliente),
+      jpClass: normalizeArray(parsed.jpClass),
       dataDe: typeof parsed.dataDe === 'string' ? parsed.dataDe : '',
       dataAte: typeof parsed.dataAte === 'string' ? parsed.dataAte : '',
       search: typeof parsed.search === 'string' ? parsed.search : '',

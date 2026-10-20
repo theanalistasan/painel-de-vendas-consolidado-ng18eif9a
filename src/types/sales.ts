@@ -159,6 +159,7 @@ export interface VendaConsolidada extends RecordModel {
   status_cadastro?: string
   tipo_pn?: string
   tipo_cliente?: string
+  jp_class?: string
   origem: string
   tem_racnew?: boolean
   tem_netsales?: boolean
@@ -180,6 +181,7 @@ export interface FilterState {
   deploy?: string[]
   inside?: string[]
   tipoCliente?: string[]
+  jpClass?: string[]
   search: string
   /** Anos (string[]) extraídos da Data de Lançamento, ex: ["2024", "2025"] */
   ano: string[]

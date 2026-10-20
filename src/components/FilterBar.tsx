@@ -32,6 +32,8 @@ interface FilterBarProps {
     inside?: string[]
     tipoCliente?: string[]
     isLoadingTipoCliente?: boolean
+    jpClass?: string[]
+    isLoadingJpClass?: boolean
     anos: number[]
     meses: number[]
     dias: number[]
@@ -278,6 +280,7 @@ export default function FilterBar({
       (filters.deploy?.length || 0) +
       (filters.inside?.length || 0) +
       (filters.tipoCliente?.length || 0) +
+      (filters.jpClass?.length || 0) +
       filters.vendedorCliente.length +
       filters.vendedor.length +
       filters.grupoItem.length +
@@ -315,6 +318,7 @@ export default function FilterBar({
       deploy: [],
       inside: [],
       tipoCliente: [],
+      jpClass: [],
       search: '',
       ano: [],
       mes: [],
@@ -355,6 +359,7 @@ export default function FilterBar({
         type === 'deploy' ||
         type === 'inside' ||
         type === 'tipoCliente' ||
+        type === 'jpClass' ||
         type === 'tipoDocumento')
     ) {
       nextState = {
@@ -550,6 +555,18 @@ export default function FilterBar({
           type: 'tipoCliente',
           value: item,
           bgClass: 'bg-purple-50 border-purple-200 text-purple-900 font-semibold',
+        })
+      })
+    }
+
+    if (Array.isArray(filters.jpClass)) {
+      filters.jpClass.forEach((item) => {
+        list.push({
+          id: `jpClass-${item}`,
+          label: `JP-Class: ${item}`,
+          type: 'jpClass',
+          value: item,
+          bgClass: 'bg-sky-50 border-sky-300 text-sky-900 font-bold',
         })
       })
     }
@@ -809,6 +826,21 @@ export default function FilterBar({
             highlight={(localFilters.tipoCliente || []).length > 0}
             isLoading={options.isLoadingTipoCliente}
             emptyMessage="Importe a base de Tipo de Cliente (SAP)"
+          />
+        </div>
+
+        {/* JP-Class (De/Para Descrição) */}
+        <div>
+          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">JP-Class</Label>
+          <MultiSelectDropdown
+            label="JP-Class"
+            options={options.jpClass || []}
+            selected={localFilters.jpClass || []}
+            onChange={(values) => setLocalFilters((prev) => ({ ...prev, jpClass: values }))}
+            placeholder="Todas as classes"
+            highlight={(localFilters.jpClass || []).length > 0}
+            isLoading={options.isLoadingJpClass}
+            emptyMessage="Nenhuma classe disponível"
           />
         </div>
       </div>
