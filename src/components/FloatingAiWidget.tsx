@@ -28,11 +28,140 @@ export interface ChatMessage {
 }
 
 const SUGGESTED_PROMPTS = [
-  'Qual o faturamento total em 2026?',
-  'Quais canais têm metas cadastradas?',
+  'Traga a tabela de vendas mais recentes de 2026',
+  'Mostre a tabela de pedidos em aberto com estoque',
   'Quais itens têm pedidos em aberto sem estoque?',
-  'Quais são os principais clientes por faturamento?',
+  'Quais canais e revendas temos cadastrados?',
 ]
+
+/**
+ * Renderiza blocos de texto e tabelas Markdown padrão (| Col | Col |)
+ */
+function renderMessageContent(content: string) {
+  if (!content) return null
+
+  // Identifica se há tabelas Markdown (| col | col | ... \n |---|---| ...)
+  const lines = content.split('\n')
+  const blocks: Array<
+    { type: 'text'; text: string } | { type: 'table'; headers: string[]; rows: string[][] }
+  > = []
+
+  let currentTextLines: string[] = []
+  let inTable = false
+  let tableHeaders: string[] = []
+  let tableRows: string[][] = []
+
+  const isTableRow = (line: string) => {
+    const trimmed = line.trim()
+    return trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.length > 2
+  }
+
+  const isTableSeparator = (line: string) => {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) return false
+    const inside = trimmed.slice(1, -1)
+    return inside
+      .split('|')
+      .every((cell) => /^[\s-:]+$/.test(cell.trim()) && cell.trim().length > 0)
+  }
+
+  const parseRowCells = (line: string): string[] => {
+    const trimmed = line.trim()
+    const rawCells = trimmed.slice(1, -1).split('|')
+    return rawCells.map((c) => c.trim())
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const nextLine = i + 1 < lines.length ? lines[i + 1] : null
+
+    if (!inTable) {
+      if (isTableRow(line) && nextLine && isTableSeparator(nextLine)) {
+        // Encerra texto anterior se houver
+        if (currentTextLines.length > 0) {
+          blocks.push({ type: 'text', text: currentTextLines.join('\n') })
+          currentTextLines = []
+        }
+        inTable = true
+        tableHeaders = parseRowCells(line)
+        tableRows = []
+        i++ // pula a linha de separador |---|---|
+        continue
+      } else {
+        currentTextLines.push(line)
+      }
+    } else {
+      // Já está dentro de tabela
+      if (isTableRow(line)) {
+        // Pode ser outra linha de separador (ignora) ou linha de dados
+        if (isTableSeparator(line)) {
+          continue
+        }
+        tableRows.push(parseRowCells(line))
+      } else {
+        // Encerrou a tabela
+        blocks.push({ type: 'table', headers: tableHeaders, rows: tableRows })
+        inTable = false
+        tableHeaders = []
+        tableRows = []
+        currentTextLines.push(line)
+      }
+    }
+  }
+
+  if (inTable && tableHeaders.length > 0) {
+    blocks.push({ type: 'table', headers: tableHeaders, rows: tableRows })
+  } else if (currentTextLines.length > 0) {
+    blocks.push({ type: 'text', text: currentTextLines.join('\n') })
+  }
+
+  return (
+    <div className="space-y-3">
+      {blocks.map((block, bIdx) => {
+        if (block.type === 'text') {
+          return (
+            <div key={bIdx} className="whitespace-pre-wrap leading-relaxed">
+              {block.text}
+            </div>
+          )
+        }
+
+        return (
+          <div
+            key={bIdx}
+            className="my-2.5 overflow-x-auto rounded-lg border border-slate-700/80 bg-slate-950/60 shadow-inner scrollbar-thin scrollbar-thumb-slate-700"
+          >
+            <table className="w-full text-left text-[11px] border-collapse">
+              <thead>
+                <tr className="border-b border-slate-700 bg-slate-900/90 text-slate-200">
+                  {block.headers.map((h, hIdx) => (
+                    <th
+                      key={hIdx}
+                      className="px-2.5 py-1.5 font-semibold text-slate-200 whitespace-nowrap"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/80 text-slate-300">
+                {block.rows.map((row, rIdx) => (
+                  <tr key={rIdx} className="hover:bg-slate-800/50 transition-colors">
+                    {row.map((cell, cIdx) => (
+                      <td key={cIdx} className="px-2.5 py-1.5 whitespace-nowrap text-slate-300">
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export const FloatingAiWidget: React.FC = () => {
   const { user } = useAuth()
@@ -348,10 +477,10 @@ export const FloatingAiWidget: React.FC = () => {
               >
                 <div
                   className={cn(
-                    'rounded-2xl px-3.5 py-2.5 max-w-[85%] text-xs leading-relaxed shadow-md',
+                    'rounded-2xl px-3.5 py-2.5 max-w-[95%] sm:max-w-[90%] text-xs leading-relaxed shadow-md',
                     m.role === 'user'
-                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-none'
-                      : 'bg-slate-800/90 text-slate-200 border border-slate-700/60 rounded-tl-none',
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-tr-none max-w-[85%]'
+                      : 'bg-slate-800/90 text-slate-200 border border-slate-700/60 rounded-tl-none w-full sm:w-auto',
                   )}
                 >
                   {/* Tool running indicator */}
@@ -363,9 +492,9 @@ export const FloatingAiWidget: React.FC = () => {
                   )}
 
                   {/* Conteúdo da mensagem */}
-                  <div className="whitespace-pre-wrap select-text">
+                  <div className="select-text">
                     {m.content ? (
-                      m.content
+                      renderMessageContent(m.content)
                     ) : (
                       <span className="flex items-center gap-1.5 text-slate-400 italic">
                         <Loader2 className="h-3 w-3 animate-spin" /> Consultando dados do painel...
