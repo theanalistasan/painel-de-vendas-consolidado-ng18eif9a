@@ -293,16 +293,57 @@ routerAdd(
       return e.json(502, { success: false, message: msg })
     }
 
-    // Se nenhum registro mudou
+    // 5. Limpeza de registros órfãos legados da "Base Única de Canais"
+    // Executada a CADA sincronização (mesmo que a origem não tenha novos registros),
+    // garantindo que resquícios do importador desativado sejam eliminados permanentemente.
+    let orfaosRemovidos = 0
+    try {
+      const countCheck = arrayOf(
+        new DynamicModel({
+          total: '',
+        }),
+      )
+      $app
+        .db()
+        .newQuery(
+          "SELECT CAST(COUNT(*) AS TEXT) AS total FROM canais_clientes WHERE origem = 'Base Única de Canais'",
+        )
+        .all(countCheck)
+      if (countCheck.length > 0 && countCheck[0].total) {
+        orfaosRemovidos = parseInt(countCheck[0].total, 10) || 0
+      }
+
+      if (orfaosRemovidos > 0) {
+        $app
+          .db()
+          .newQuery("DELETE FROM canais_clientes WHERE origem = 'Base Única de Canais'")
+          .execute()
+        console.log(
+          'sync_canais: ' +
+            orfaosRemovidos +
+            " registro(s) órfão(s) com origem = 'Base Única de Canais' foram excluídos.",
+        )
+      }
+    } catch (cleanErr) {
+      console.warn(
+        'sync_canais: aviso ao limpar registros com origem Base Única de Canais:',
+        cleanErr,
+      )
+    }
+
+    // Se nenhum registro mudou na origem
     if (revendasLidas === 0 && contatosLidos === 0) {
       stateRecord.set('status', 'sucesso_sem_mudancas')
       stateRecord.set('ultimo_sucesso', nowIso)
-      stateRecord.set(
-        'detalhes',
+      let msgDetalhes =
         'Sincronização executada. Nenhum registro alterado na origem desde ' +
-          (ultimoCorte || 'início') +
-          '.',
-      )
+        (ultimoCorte || 'início') +
+        '.'
+      if (orfaosRemovidos > 0) {
+        msgDetalhes +=
+          ' (' + orfaosRemovidos + " registro(s) da 'Base Única de Canais' expurgados)."
+      }
+      stateRecord.set('detalhes', msgDetalhes)
       stateRecord.set('revendas_lidas', 0)
       stateRecord.set('revendas_atualizadas', 0)
       stateRecord.set('contatos_lidos', 0)
@@ -317,15 +358,21 @@ routerAdd(
         revendasAtualizadas: 0,
         contatosLidos: 0,
         contatosAtualizados: 0,
+        orfaosRemovidos: orfaosRemovidos,
         totalItemsOrigem: { revendas: revendasTotalItems, contatos: contatosTotalItems },
         ultimoCorte: ultimoCorte,
         novoCorte: ultimoCorte,
         duracaoMs: new Date().getTime() - startTime,
-        message: 'Base já sincronizada. Nenhum registro novo ou alterado na origem.',
+        message:
+          orfaosRemovidos > 0
+            ? 'Base já sincronizada. ' +
+              orfaosRemovidos +
+              " registro(s) órfãos da 'Base Única de Canais' expurgados."
+            : 'Base já sincronizada. Nenhum registro novo ou alterado na origem.',
       })
     }
 
-    // 5. Mapeamento e Upsert na coleção canais_clientes
+    // 6. Mapeamento e Upsert na coleção canais_clientes
     // Carregar registros locais em memória para matching rápido
     // Evitar bug Goja: inicializar strings/modelos com ''
     const localDbRows = arrayOf(
@@ -600,43 +647,53 @@ routerAdd(
       if (rev.id) localByOrigemRevendaIdNoContact[rev.id] = rec.id
     }
 
-    // 6. Atualizar estado da sincronização
+    // 7. Atualizar estado da sincronização
     stateRecord.set('status', 'sucesso')
     stateRecord.set('ultimo_corte', maiorUpdatedOrigem || ultimoCorte || nowIso)
     stateRecord.set('ultimo_sucesso', nowIso)
-    stateRecord.set(
-      'detalhes',
+    let detalhesSucesso =
       'Sincronização concluída com sucesso: ' +
-        revendasAtualizadas +
-        ' revenda(s) e ' +
-        contatosAtualizados +
-        ' contato(s) sincronizados.',
-    )
+      revendasAtualizadas +
+      ' revenda(s) e ' +
+      contatosAtualizados +
+      ' contato(s) sincronizados.'
+    if (orfaosRemovidos > 0) {
+      detalhesSucesso +=
+        ' ' + orfaosRemovidos + " registro(s) da 'Base Única de Canais' expurgados."
+    }
+    stateRecord.set('detalhes', detalhesSucesso)
     stateRecord.set('revendas_lidas', revendasLidas)
     stateRecord.set('revendas_atualizadas', revendasAtualizadas)
     stateRecord.set('contatos_lidos', contatosLidos)
     stateRecord.set('contatos_atualizados', contatosAtualizados)
     $app.save(stateRecord)
 
-    // 7. Registrar auditoria
+    // 8. Registrar auditoria
     try {
       const auditCol = $app.findCollectionByNameOrId('audit_logs')
       const auditRec = new Record(auditCol)
       const auth = e.auth
       auditRec.set('action', 'SYNC_CANAIS')
-      auditRec.set(
-        'details',
+      let auditDetails =
         'Sincronização de Canais e Contatos: ' +
-          revendasAtualizadas +
-          ' revendas e ' +
-          contatosAtualizados +
-          ' contatos atualizados. Corte: ' +
-          (maiorUpdatedOrigem || ultimoCorte),
-      )
+        revendasAtualizadas +
+        ' revendas e ' +
+        contatosAtualizados +
+        ' contatos atualizados. Corte: ' +
+        (maiorUpdatedOrigem || ultimoCorte)
+      if (orfaosRemovidos > 0) {
+        auditDetails +=
+          '. ' + orfaosRemovidos + " registro(s) órfãos ('Base Única de Canais') expurgados."
+      }
+      auditRec.set('details', auditDetails)
       if (auth && auth.id) auditRec.set('user_id', auth.id)
       if (auth && auth.email) auditRec.set('user_email', auth.email)
       if (auth && auth.name) auditRec.set('user_name', auth.name)
-      auditRec.set('ip', e.requestInfo().clientIP || '')
+      const reqHeaders = e.requestInfo().headers || {}
+      const clientIp = (reqHeaders['x-forwarded-for'] || reqHeaders['x-real-ip'] || '')
+        .split(',')[0]
+        .trim()
+      auditRec.set('ip', clientIp)
       $app.save(auditRec)
     } catch (auditErr) {
       console.warn('Aviso ao registrar auditoria de sync_canais:', auditErr)
@@ -652,6 +709,7 @@ routerAdd(
       contatosLidos,
       contatosAtualizados,
       totalItemsOrigem: { revendas: revendasTotalItems, contatos: contatosTotalItems },
+      orfaosRemovidos,
       ultimoCorte: ultimoCorte,
       novoCorte: maiorUpdatedOrigem || ultimoCorte,
       duracaoMs: duration,
