@@ -25,6 +25,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  ShoppingBag,
 } from 'lucide-react'
 import {
   fetchCanaisClientes,
@@ -53,7 +54,7 @@ import {
 } from '@/services/pedidosAbertos'
 import { MultiSelectDropdown } from '@/components/FilterBar'
 import type { CanalCliente, CanalMeta } from '@/types/sales'
-import { formatCurrency, formatDateTime, MESES_PT_BR } from '@/lib/formatters'
+import { formatCurrency, formatDateTime, formatNumber, MESES_PT_BR } from '@/lib/formatters'
 import { Target } from 'lucide-react'
 import { CanalDetailModal } from '@/components/CanalDetailModal'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -1929,17 +1930,244 @@ export default function Canais() {
                     <th className="py-2.5 px-3 w-10 text-center">
                       <Layers className="w-3.5 h-3.5 mx-auto text-slate-400" />
                     </th>
-                    <th className="py-2.5 px-3">Canal</th>
-                    <th className="py-2.5 px-3">Deploy</th>
-                    <th className="py-2.5 px-3">COD</th>
-                    <th className="py-2.5 px-3">Cliente / Razão Social</th>
-                    <th className="py-2.5 px-3">Tipo de Cliente</th>
-                    <th className="py-2.5 px-3">Contato / Cargo</th>
-                    <th className="py-2.5 px-3">E-mail / Telefone</th>
-                    {showLocationCols && <th className="py-2.5 px-3">Município / UF</th>}
-                    {showLocationCols && <th className="py-2.5 px-3 text-right">Meta (R$)</th>}
-                    <th className="py-2.5 px-3">Inside</th>
-                    <th className="py-2.5 px-3 text-center">É Canal</th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('nome_canal')}
+                      title="Ordenar por Canal"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Canal</span>
+                        {tableSortField === 'nome_canal' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 text-center cursor-pointer hover:bg-slate-100/80 transition-colors select-none whitespace-nowrap"
+                      onClick={() => handleTableSort('pedidos_abertos_qtd')}
+                      title="Ordenar por Pedidos em Aberto (quantidade)"
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>Pedidos em Aberto</span>
+                        {tableSortField === 'pedidos_abertos_qtd' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 text-right cursor-pointer hover:bg-slate-100/80 transition-colors select-none whitespace-nowrap"
+                      onClick={() => handleTableSort('pedidos_abertos_valor')}
+                      title="Ordenar por Valor do Pedido (valor em aberto R$)"
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <span>Valor do Pedido</span>
+                        {tableSortField === 'pedidos_abertos_valor' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('deploy')}
+                      title="Ordenar por Deploy"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Deploy</span>
+                        {tableSortField === 'deploy' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('codigo_cliente')}
+                      title="Ordenar por Código do Cliente"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>COD</span>
+                        {tableSortField === 'codigo_cliente' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('nome_cliente')}
+                      title="Ordenar por Cliente / Razão Social"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Cliente / Razão Social</span>
+                        {tableSortField === 'nome_cliente' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('tipo_cliente')}
+                      title="Ordenar por Tipo de Cliente"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Tipo de Cliente</span>
+                        {tableSortField === 'tipo_cliente' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('contato')}
+                      title="Ordenar por Contato"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Contato / Cargo</span>
+                        {tableSortField === 'contato' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('email')}
+                      title="Ordenar por E-mail"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>E-mail / Telefone</span>
+                        {tableSortField === 'email' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    {showLocationCols && (
+                      <th
+                        className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                        onClick={() => handleTableSort('municipio')}
+                        title="Ordenar por Município / UF"
+                      >
+                        <div className="flex items-center gap-1">
+                          <span>Município / UF</span>
+                          {tableSortField === 'municipio' ? (
+                            tableSortDir === 'asc' ? (
+                              <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+                    {showLocationCols && (
+                      <th
+                        className="py-2.5 px-3 text-right cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                        onClick={() => handleTableSort('meta_valor')}
+                        title="Ordenar por Meta (R$)"
+                      >
+                        <div className="flex items-center justify-end gap-1">
+                          <span>Meta (R$)</span>
+                          {tableSortField === 'meta_valor' ? (
+                            tableSortDir === 'asc' ? (
+                              <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                            ) : (
+                              <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                            )
+                          ) : (
+                            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                          )}
+                        </div>
+                      </th>
+                    )}
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('inside')}
+                      title="Ordenar por Inside"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Inside</span>
+                        {tableSortField === 'inside' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 text-center cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('eh_canal')}
+                      title="Ordenar por É Canal"
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>É Canal</span>
+                        {tableSortField === 'eh_canal' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
                     <th className="py-2.5 px-3 text-right">Ações</th>
                   </tr>
                 </thead>
@@ -1981,7 +2209,7 @@ export default function Canais() {
                           </td>
 
                           {/* Título do Grupo e Totais Agregados */}
-                          <td colSpan={showLocationCols ? 11 : 9} className="py-2.5 px-3">
+                          <td colSpan={showLocationCols ? 13 : 11} className="py-2.5 px-3">
                             <div className="flex items-center gap-2 flex-wrap">
                               {groupByLevel === 'canal' ? (
                                 <button
@@ -2059,6 +2287,43 @@ export default function Canais() {
                                   {group.totalCanais} canal(is)
                                 </Badge>
                               ) : null}
+
+                              {/* Subtotais de Pedidos em Aberto do Grupo */}
+                              <span className="text-[11px] text-slate-400 font-normal">•</span>
+                              {group.totalPedidosAbertos > 0 ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] bg-amber-50 text-amber-800 border-amber-200 font-bold px-2 py-0.2 inline-flex items-center gap-1"
+                                  title={`Total de ${group.totalPedidosAbertos} pedido(s) em aberto no grupo`}
+                                >
+                                  <ShoppingBag className="w-3 h-3 text-amber-600" />
+                                  <span>{group.totalPedidosAbertos} pedido(s) em aberto</span>
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] bg-slate-100 text-slate-500 border-slate-200 font-normal px-2 py-0.2"
+                                >
+                                  0 pedido em aberto
+                                </Badge>
+                              )}
+
+                              {group.totalValorAberto > 0 ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] bg-emerald-50 text-emerald-800 border-emerald-200 font-bold px-2 py-0.2"
+                                  title={`Valor total em aberto: ${formatCurrency(group.totalValorAberto)}`}
+                                >
+                                  {formatCurrency(group.totalValorAberto)}
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] bg-slate-100 text-slate-500 border-slate-200 font-normal px-2 py-0.2"
+                                >
+                                  R$ 0,00
+                                </Badge>
+                              )}
                             </div>
                           </td>
 
@@ -2113,6 +2378,42 @@ export default function Canais() {
                                   {row.status && (
                                     <span className="text-[10px] text-slate-400">{row.status}</span>
                                   )}
+                                </td>
+
+                                {/* Pedidos em Aberto (Quantidade) */}
+                                <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                                  {(() => {
+                                    const cod = row.codigo_cliente?.trim().toUpperCase()
+                                    const info = cod ? pedidosAbertosMap[cod] : undefined
+                                    if (!info || !info.qtd) {
+                                      return <span className="text-slate-300">-</span>
+                                    }
+                                    return (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[10px] font-bold bg-amber-50 text-amber-800 border-amber-200 px-2 py-0.5"
+                                        title={`${info.qtd} pedido(s) em aberto`}
+                                      >
+                                        {formatNumber(info.qtd)}
+                                      </Badge>
+                                    )
+                                  })()}
+                                </td>
+
+                                {/* Valor do Pedido (Valor Total em Aberto) */}
+                                <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                  {(() => {
+                                    const cod = row.codigo_cliente?.trim().toUpperCase()
+                                    const info = cod ? pedidosAbertosMap[cod] : undefined
+                                    if (!info || !info.valor) {
+                                      return <span className="text-slate-300">-</span>
+                                    }
+                                    return (
+                                      <span className="font-semibold text-slate-800">
+                                        {formatCurrency(info.valor)}
+                                      </span>
+                                    )
+                                  })()}
                                 </td>
 
                                 {/* Deploy */}
@@ -2305,15 +2606,204 @@ export default function Canais() {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                   <tr>
-                    <th className="py-2.5 px-3">Canal</th>
-                    <th className="py-2.5 px-3">Deploy</th>
-                    <th className="py-2.5 px-3">COD</th>
-                    <th className="py-2.5 px-3">Cliente / Razão Social</th>
-                    <th className="py-2.5 px-3">Tipo de Cliente</th>
-                    <th className="py-2.5 px-3">Contato / Cargo</th>
-                    <th className="py-2.5 px-3">E-mail / Telefone</th>
-                    <th className="py-2.5 px-3">Inside</th>
-                    <th className="py-2.5 px-3 text-center">É Canal</th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('nome_canal')}
+                      title="Ordenar por Canal"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Canal</span>
+                        {tableSortField === 'nome_canal' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 text-center cursor-pointer hover:bg-slate-100/80 transition-colors select-none whitespace-nowrap"
+                      onClick={() => handleTableSort('pedidos_abertos_qtd')}
+                      title="Ordenar por Pedidos em Aberto (quantidade)"
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>Pedidos em Aberto</span>
+                        {tableSortField === 'pedidos_abertos_qtd' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 text-right cursor-pointer hover:bg-slate-100/80 transition-colors select-none whitespace-nowrap"
+                      onClick={() => handleTableSort('pedidos_abertos_valor')}
+                      title="Ordenar por Valor do Pedido (valor em aberto R$)"
+                    >
+                      <div className="flex items-center justify-end gap-1">
+                        <span>Valor do Pedido</span>
+                        {tableSortField === 'pedidos_abertos_valor' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('deploy')}
+                      title="Ordenar por Deploy"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Deploy</span>
+                        {tableSortField === 'deploy' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('codigo_cliente')}
+                      title="Ordenar por Código do Cliente"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>COD</span>
+                        {tableSortField === 'codigo_cliente' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('nome_cliente')}
+                      title="Ordenar por Cliente / Razão Social"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Cliente / Razão Social</span>
+                        {tableSortField === 'nome_cliente' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('tipo_cliente')}
+                      title="Ordenar por Tipo de Cliente"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Tipo de Cliente</span>
+                        {tableSortField === 'tipo_cliente' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('contato')}
+                      title="Ordenar por Contato"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Contato / Cargo</span>
+                        {tableSortField === 'contato' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('email')}
+                      title="Ordenar por E-mail"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>E-mail / Telefone</span>
+                        {tableSortField === 'email' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('inside')}
+                      title="Ordenar por Inside"
+                    >
+                      <div className="flex items-center gap-1">
+                        <span>Inside</span>
+                        {tableSortField === 'inside' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
+                    <th
+                      className="py-2.5 px-3 text-center cursor-pointer hover:bg-slate-100/80 transition-colors select-none"
+                      onClick={() => handleTableSort('eh_canal')}
+                      title="Ordenar por É Canal"
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>É Canal</span>
+                        {tableSortField === 'eh_canal' ? (
+                          tableSortDir === 'asc' ? (
+                            <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                          ) : (
+                            <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                          )
+                        ) : (
+                          <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                        )}
+                      </div>
+                    </th>
                     <th className="py-2.5 px-3 text-right">Ações</th>
                   </tr>
                 </thead>
@@ -2342,6 +2832,42 @@ export default function Canais() {
                           {row.status && (
                             <span className="text-[10px] text-slate-400">{row.status}</span>
                           )}
+                        </td>
+
+                        {/* Pedidos em Aberto (Quantidade) */}
+                        <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                          {(() => {
+                            const cod = row.codigo_cliente?.trim().toUpperCase()
+                            const info = cod ? pedidosAbertosMap[cod] : undefined
+                            if (!info || !info.qtd) {
+                              return <span className="text-slate-300">-</span>
+                            }
+                            return (
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] font-bold bg-amber-50 text-amber-800 border-amber-200 px-2 py-0.5"
+                                title={`${info.qtd} pedido(s) em aberto`}
+                              >
+                                {formatNumber(info.qtd)}
+                              </Badge>
+                            )
+                          })()}
+                        </td>
+
+                        {/* Valor do Pedido (Valor Total em Aberto) */}
+                        <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                          {(() => {
+                            const cod = row.codigo_cliente?.trim().toUpperCase()
+                            const info = cod ? pedidosAbertosMap[cod] : undefined
+                            if (!info || !info.valor) {
+                              return <span className="text-slate-300">-</span>
+                            }
+                            return (
+                              <span className="font-semibold text-slate-800">
+                                {formatCurrency(info.valor)}
+                              </span>
+                            )
+                          })()}
                         </td>
 
                         {/* Deploy */}
