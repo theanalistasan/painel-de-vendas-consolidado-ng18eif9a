@@ -44,13 +44,14 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import { useTableSort } from '@/hooks/use-table-sort'
+import { compareValues } from '@/lib/sort'
 import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 25
 
 type SortField = Extract<keyof PedidoAberto, string>
 
-type ViewMode = 'faturamento' | 'canal' | 'cliente' | 'tipo_cliente' | 'detalhado'
+type ViewMode = 'none' | 'faturamento' | 'canal' | 'cliente' | 'tipo_cliente' | 'detalhado'
 
 interface TipoClienteGroup {
   key: string
@@ -120,7 +121,24 @@ export default function PedidosAbertos() {
   const [exporting, setExporting] = useState(false)
   const [page, setPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
-  const [viewMode, setViewMode] = useState<ViewMode>('canal')
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    try {
+      const saved = sessionStorage.getItem('pedidos_abertos_view_mode')
+      if (
+        saved === 'none' ||
+        saved === 'faturamento' ||
+        saved === 'canal' ||
+        saved === 'cliente' ||
+        saved === 'tipo_cliente' ||
+        saved === 'detalhado'
+      ) {
+        return (saved === 'detalhado' ? 'none' : saved) as ViewMode
+      }
+    } catch {
+      // ignora
+    }
+    return 'none'
+  })
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
   const [expandedCanais, setExpandedCanais] = useState<Set<string>>(new Set())
   const [expandedFaturamentos, setExpandedFaturamentos] = useState<Set<string>>(new Set())
@@ -136,8 +154,16 @@ export default function PedidosAbertos() {
     }
     return new Set<string>()
   })
-  const sort = useTableSort<SortField>()
+  const sort = useTableSort<SortField>('data_pedido', 'asc')
   const { toast } = useToast()
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('pedidos_abertos_view_mode', viewMode)
+    } catch {
+      // ignora
+    }
+  }, [viewMode])
 
   const [filters, setFilters] = useState<PedidosAbertosFilters>(() => {
     try {
@@ -431,7 +457,7 @@ export default function PedidosAbertos() {
           page: 1,
           perPage: 2000,
           sortField: sortField || 'data_pedido',
-          sortDirection: sortDir || 'desc',
+          sortDirection: sortDir || 'asc',
           search: search.trim() || undefined,
           filters: activeFilters as unknown as Record<string, unknown>,
         })
@@ -454,7 +480,7 @@ export default function PedidosAbertos() {
             page: 1,
             perPage: 2000,
             sortField: sortField || 'data_pedido',
-            sortDirection: sortDir || 'desc',
+            sortDirection: sortDir || 'asc',
             search: search.trim() || undefined,
             filters: filtersWithoutCadastro as unknown as Record<string, unknown>,
           })
@@ -520,6 +546,41 @@ export default function PedidosAbertos() {
         })
       }
 
+      // Ordenação aplicada: ordenado por Data (data_pedido) e depois por Número do Pedido (numero_pedido)
+      // com ordenação alfabética ascendente por esses dois campos (ou respeitando campo/direção ativos)
+      const activeSortField = sortField || 'data_pedido'
+      const activeSortDir = sortDir || 'asc'
+
+      items.sort((a, b) => {
+        if (activeSortField !== 'data_pedido' && activeSortField !== 'numero_pedido') {
+          const valA = a[activeSortField]
+          const valB = b[activeSortField]
+          const cmp = compareValues(valA, valB)
+          if (cmp !== 0) return activeSortDir === 'desc' ? -cmp : cmp
+        }
+        if (activeSortField === 'numero_pedido') {
+          const cmpNum = String(a.numero_pedido || '').localeCompare(
+            String(b.numero_pedido || ''),
+            'pt-BR',
+          )
+          if (cmpNum !== 0) return activeSortDir === 'desc' ? -cmpNum : cmpNum
+          return String(a.data_pedido || '').localeCompare(String(b.data_pedido || ''), 'pt-BR')
+        }
+        // activeSortField === 'data_pedido'
+        const cmpData = String(a.data_pedido || '').localeCompare(
+          String(b.data_pedido || ''),
+          'pt-BR',
+        )
+        if (cmpData !== 0) {
+          return activeSortDir === 'desc' ? -cmpData : cmpData
+        }
+        const cmpNum = String(a.numero_pedido || '').localeCompare(
+          String(b.numero_pedido || ''),
+          'pt-BR',
+        )
+        return cmpNum
+      })
+
       setDashboardPedidos(items)
       const isCustomCadastroActive =
         hasTipoClienteFilter || hasStatusCadastroFilter || hasTipoPnFilter
@@ -553,7 +614,7 @@ export default function PedidosAbertos() {
         })
       }
 
-      const isGrouped = currentViewMode !== 'detalhado'
+      const isGrouped = currentViewMode !== 'none' && currentViewMode !== 'detalhado'
       if (isGrouped) {
         setAllFilteredPedidos(items)
         setPaginatedPedidos(items.slice((targetPage - 1) * PAGE_SIZE, targetPage * PAGE_SIZE))
@@ -1067,7 +1128,7 @@ export default function PedidosAbertos() {
           page: 1,
           perPage: 2000,
           sortField: sort.field || 'data_pedido',
-          sortDirection: sort.dir || 'desc',
+          sortDirection: sort.dir || 'asc',
           search: searchTerm.trim() || undefined,
           filters: filters as unknown as Record<string, unknown>,
         })
@@ -1089,7 +1150,7 @@ export default function PedidosAbertos() {
             page: 1,
             perPage: 2000,
             sortField: sort.field || 'data_pedido',
-            sortDirection: sort.dir || 'desc',
+            sortDirection: sort.dir || 'asc',
             search: searchTerm.trim() || undefined,
             filters: filtersWithoutCadastro as unknown as Record<string, unknown>,
           })
@@ -1413,7 +1474,26 @@ export default function PedidosAbertos() {
                 <span className="text-[11px]">Visualização:</span>
               </div>
               <div className="inline-flex rounded-lg bg-slate-200/70 p-0.5 gap-0.5">
-                {/* 1. Primeira opção de agrupamento: Agrupado por Canal de Faturamento */}
+                {/* 1. Primeira opção: Sem agrupamento */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode('none')
+                    setExpandedClients(new Set())
+                    setExpandedCanais(new Set())
+                    setExpandedFaturamentos(new Set())
+                  }}
+                  className={cn(
+                    'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer',
+                    viewMode === 'none' || viewMode === 'detalhado'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900',
+                  )}
+                  title="Visualização direta por linha de pedido"
+                >
+                  Sem agrupamento
+                </button>
+                {/* 2. Agrupado por Canal de Faturamento */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1433,6 +1513,7 @@ export default function PedidosAbertos() {
                   <Briefcase className="w-3 h-3" />
                   Agrupado por Canal de Faturamento
                 </button>
+                {/* 3. Agrupado por Canal */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1452,6 +1533,7 @@ export default function PedidosAbertos() {
                   <Layers className="w-3 h-3" />
                   Agrupado por Canal
                 </button>
+                {/* 4. Agrupado por Cliente */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1471,6 +1553,7 @@ export default function PedidosAbertos() {
                   <Building2 className="w-3 h-3" />
                   Agrupado por Cliente
                 </button>
+                {/* 5. Tipo de Cliente */}
                 <button
                   type="button"
                   onClick={() => {
@@ -1489,24 +1572,6 @@ export default function PedidosAbertos() {
                 >
                   <Users className="w-3 h-3" />
                   Tipo de Cliente
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setViewMode('detalhado')
-                    setExpandedClients(new Set())
-                    setExpandedCanais(new Set())
-                    setExpandedFaturamentos(new Set())
-                  }}
-                  className={cn(
-                    'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer',
-                    viewMode === 'detalhado'
-                      ? 'bg-white text-slate-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900',
-                  )}
-                  title="Visualização direta por linha de pedido"
-                >
-                  Sem Agrupamento
                 </button>
               </div>
             </div>
@@ -1650,7 +1715,7 @@ export default function PedidosAbertos() {
             <table className="w-full text-left border-collapse text-xs min-w-[1000px]">
               <thead className="sticky top-0 z-20 bg-slate-100 shadow-2xs">
                 <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider text-[11px]">
-                  {viewMode !== 'detalhado' && (
+                  {viewMode !== 'none' && viewMode !== 'detalhado' && (
                     <th className="py-3 px-2 w-10 text-center sticky top-0 bg-slate-100">
                       <Layers className="w-3.5 h-3.5 mx-auto text-slate-400" />
                     </th>
@@ -1735,7 +1800,7 @@ export default function PedidosAbertos() {
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={viewMode !== 'detalhado' ? 15 : 14}
+                      colSpan={viewMode !== 'none' && viewMode !== 'detalhado' ? 15 : 14}
                       className="p-8 text-center text-slate-400"
                     >
                       <div className="flex items-center justify-center gap-2">
@@ -1757,7 +1822,7 @@ export default function PedidosAbertos() {
                   ) ? (
                   <tr>
                     <td
-                      colSpan={viewMode !== 'detalhado' ? 15 : 14}
+                      colSpan={viewMode !== 'none' && viewMode !== 'detalhado' ? 15 : 14}
                       className="p-12 text-center text-slate-400"
                     >
                       <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
@@ -3174,7 +3239,7 @@ export default function PedidosAbertos() {
           </div>
 
           {/* Paginação */}
-          {totalPages > 1 && viewMode === 'detalhado' && (
+          {totalPages > 1 && (viewMode === 'none' || viewMode === 'detalhado') && (
             <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs bg-slate-50/50">
               <div className="text-slate-500">
                 Página <span className="font-bold text-slate-800">{page}</span> de{' '}
