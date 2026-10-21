@@ -37,7 +37,7 @@ import {
   DEFAULT_JP_CLASS_FILTERS,
   EMPTY_JP_CLASS_FILTERS,
 } from '@/components/JpClassFilterBar'
-import { fetchTiposClienteMap } from '@/services/tiposCliente'
+import { fetchTiposClienteMap, fetchTiposClienteOptions } from '@/services/tiposCliente'
 import { DEVOLUCAO_TIPOS } from '@/types/sales'
 
 export default function JpClassPage() {
@@ -81,6 +81,7 @@ export default function JpClassPage() {
   const [error, setError] = useState<string | null>(null)
   const [rawVendas, setRawVendas] = useState<VendaComSemana[]>([])
   const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
+  const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
   const [loadingTiposCliente, setLoadingTiposCliente] = useState(false)
   const [groupBy, setGroupBy] = useState<JpClassGroupBy>('none')
   const [filtroSemana, setFiltroSemana] = useState<number | 'todas'>('todas')
@@ -117,23 +118,38 @@ export default function JpClassPage() {
     }
   })
 
-  // Carrega mapa de tipos_cliente para enriquecer o tipo de cliente (mesmo padrão fetchTiposClienteMap das outras páginas)
+  // Carrega opções e mapa de tipos_cliente para enriquecer o tipo de cliente (código PN -> nome do tipo, mesmo padrão das outras páginas)
   useEffect(() => {
     let mounted = true
-    const carregarMapaTipos = async () => {
+    const carregarTiposCliente = async () => {
       setLoadingTiposCliente(true)
       try {
-        const res = await fetchTiposClienteMap()
-        if (mounted && res?.map) {
-          setTiposClienteMap(res.map)
+        const [opts, resMap] = await Promise.all([
+          fetchTiposClienteOptions(),
+          fetchTiposClienteMap(),
+        ])
+        if (mounted) {
+          if (Array.isArray(opts) && opts.length > 0) {
+            setTipoClienteOptions(opts)
+          }
+          if (resMap && typeof resMap === 'object') {
+            const stringMap: Record<string, string> = {}
+            for (const [cod, info] of Object.entries(resMap)) {
+              const tipo = info?.tipo_cliente?.trim()
+              if (tipo) {
+                stringMap[cod.toUpperCase()] = tipo
+              }
+            }
+            setTiposClienteMap(stringMap)
+          }
         }
       } catch (err) {
-        console.warn('Erro ao carregar mapa de tipos_cliente no JP-Class:', err)
+        console.warn('Erro ao carregar dados de tipos_cliente no JP-Class:', err)
       } finally {
         if (mounted) setLoadingTiposCliente(false)
       }
     }
-    carregarMapaTipos()
+    carregarTiposCliente()
     return () => {
       mounted = false
     }
@@ -336,7 +352,10 @@ export default function JpClassPage() {
       }
     }
 
-    // Se temos o mapa tiposClienteMap, adiciona os tipos encontrados para que o usuário possa escolher
+    // Se temos opções da coleção ou do mapa, adiciona para que o usuário possa escolher
+    tipoClienteOptions.forEach((tc) => {
+      if (tc && tc.trim()) tiposCliSet.add(tc.trim())
+    })
     Object.values(tiposClienteMap).forEach((tc) => {
       if (tc && tc.trim()) tiposCliSet.add(tc.trim())
     })
@@ -366,7 +385,7 @@ export default function JpClassPage() {
       jpClass: ['INKS', 'HARD', 'OTHERS', 'Sem classe'],
       isLoadingTipoCliente: loadingTiposCliente,
     }
-  }, [rawVendas, tiposClienteMap, loadingTiposCliente])
+  }, [rawVendas, tiposClienteMap, tipoClienteOptions, loadingTiposCliente])
 
   // Aplicação dos 7 filtros multi-select + JP-Class (mesmo critério de Visão Geral / Canais)
   const vendasFiltradasPorCriterios = useMemo(() => {
