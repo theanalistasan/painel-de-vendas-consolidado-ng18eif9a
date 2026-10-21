@@ -83,7 +83,7 @@ export default function JpClassPage() {
   const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
   const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
   const [loadingTiposCliente, setLoadingTiposCliente] = useState(false)
-  const [groupBy, setGroupBy] = useState<JpClassGroupBy>('none')
+  const [groupBy, setGroupBy] = useState<JpClassGroupBy>('hierarquia')
   const [filtroSemana, setFiltroSemana] = useState<number | 'todas'>('todas')
   const [ultimoPeriodoDisponivel, setUltimoPeriodoDisponivel] = useState<{
     ano: number
