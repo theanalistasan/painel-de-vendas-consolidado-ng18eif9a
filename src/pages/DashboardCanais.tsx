@@ -62,6 +62,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useTableSort } from '@/hooks/use-table-sort'
 import { fetchTiposClienteOptions } from '@/services/tiposCliente'
 import { VendasRelatorioTable, RELATORIO_COLUMNS } from '@/components/VendasRelatorioTable'
+import { JP_CLASS_OPTIONS, matchesJpClassFilter } from '@/lib/jp-class'
+import { isDevolucao } from '@/types/sales'
 
 const COLOR_BLUE = '#0B6E99'
 const RELATORIO_PAGE_SIZE = 15
@@ -105,6 +107,13 @@ export default function DashboardCanais() {
 
   const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
+
+  const displayedReportVendas = useMemo(() => {
+    if (!filters.jpClass || filters.jpClass.length === 0) return reportVendas
+    return reportVendas.filter((item) =>
+      matchesJpClassFilter(item.jp_class, item.descricao_item, filters.jpClass),
+    )
+  }, [reportVendas, filters.jpClass])
   const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
   const [mapExpanded, setMapExpanded] = useState(false)
 
@@ -273,6 +282,7 @@ export default function DashboardCanais() {
     }
     return {
       ...baseOpts,
+      jpClass: JP_CLASS_OPTIONS as unknown as string[],
       tipoCliente:
         baseOpts.tipoCliente && baseOpts.tipoCliente.length > 0
           ? baseOpts.tipoCliente
@@ -280,15 +290,51 @@ export default function DashboardCanais() {
     }
   }, [data, tipoClienteOptions])
 
+  const isJpClassFilterActive = Boolean(filters.jpClass && filters.jpClass.length > 0)
+
   const kpis = useMemo(() => {
-    return {
-      faturamento: data?.kpis?.faturamento || 0,
-      valorLiquido: data?.kpis?.valorLiquido || 0,
-      itensVendidos: data?.kpis?.itensVendidos || 0,
-      documentos: data?.kpis?.documentos || 0,
-      devolucoes: data?.kpis?.devolucoes || 0,
+    if (!isJpClassFilterActive) {
+      return {
+        faturamento: data?.kpis?.faturamento || 0,
+        valorLiquido: data?.kpis?.valorLiquido || 0,
+        itensVendidos: data?.kpis?.itensVendidos || 0,
+        documentos: data?.kpis?.documentos || 0,
+        devolucoes: data?.kpis?.devolucoes || 0,
+      }
     }
-  }, [data])
+
+    let faturamento = 0
+    let valorLiquido = 0
+    let itensVendidos = 0
+    let devolucoes = 0
+    const nfes = new Set<string>()
+
+    for (const item of displayedReportVendas) {
+      const totalLinha = Number(item.total_linha) || 0
+      faturamento += totalLinha
+      valorLiquido += Number(item.valor_liquido) || 0
+      itensVendidos += Number(item.quantidade) || 0
+
+      const nfe = (item.numero_nfe || '').trim()
+      if (nfe) {
+        nfes.add(nfe)
+      } else if (item.id) {
+        nfes.add(`__item_${item.id}`)
+      }
+
+      if (isDevolucao(item.tipo_documento)) {
+        devolucoes += totalLinha
+      }
+    }
+
+    return {
+      faturamento,
+      valorLiquido,
+      itensVendidos,
+      documentos: nfes.size,
+      devolucoes,
+    }
+  }, [data, displayedReportVendas, isJpClassFilterActive])
 
   const chartVendasPorMes = data?.charts?.vendasPorMes || []
   const chartTopVendedores = data?.charts?.topVendedores || []
@@ -320,6 +366,7 @@ export default function DashboardCanais() {
       deploy: [],
       inside: [],
       tipoCliente: [],
+      jpClass: [],
       search: '',
       ano: [],
       mes: [],
@@ -799,7 +846,7 @@ export default function DashboardCanais() {
             </CardHeader>
 
             <VendasRelatorioTable
-              items={reportVendas}
+              items={displayedReportVendas}
               loading={reportLoading}
               totalItems={reportTotalItems}
               totalNetsales={reportTotalNetsales}
@@ -827,7 +874,7 @@ export default function DashboardCanais() {
               Sincronização em tempo real ativa
             </span>
             <span className="font-medium">
-              Exibindo {reportVendas.length} de {reportTotalItems}{' '}
+              Exibindo {displayedReportVendas.length} de {reportTotalItems}{' '}
               {isGroupedByNfe ? 'notas fiscais' : 'registros'} consolidados
             </span>
           </div>

@@ -55,6 +55,8 @@ import { fetchVendasList } from '@/services/sales'
 import { fetchTiposClienteOptions } from '@/services/tiposCliente'
 import { useTableSort } from '@/hooks/use-table-sort'
 import { VendasRelatorioTable, RELATORIO_COLUMNS } from '@/components/VendasRelatorioTable'
+import { JP_CLASS_OPTIONS, matchesJpClassFilter } from '@/lib/jp-class'
+import { isDevolucao } from '@/types/sales'
 import { FileSpreadsheet, Package, FileText, DollarSign } from 'lucide-react'
 import KpiCard from '@/components/KpiCard'
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -175,6 +177,13 @@ export default function DashboardGeral() {
 
   const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
+
+  const displayedVendas = useMemo(() => {
+    if (!filters.jpClass || filters.jpClass.length === 0) return paginatedVendas
+    return paginatedVendas.filter((item) =>
+      matchesJpClassFilter(item.jp_class, item.descricao_item, filters.jpClass),
+    )
+  }, [paginatedVendas, filters.jpClass])
   const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
 
   useEffect(() => {
@@ -328,6 +337,7 @@ export default function DashboardGeral() {
     }
     return {
       ...baseOpts,
+      jpClass: JP_CLASS_OPTIONS as unknown as string[],
       tipoCliente:
         baseOpts.tipoCliente && baseOpts.tipoCliente.length > 0
           ? baseOpts.tipoCliente
@@ -490,6 +500,52 @@ export default function DashboardGeral() {
       </text>
     )
   }
+
+  const isJpClassFilterActive = Boolean(filters.jpClass && filters.jpClass.length > 0)
+
+  const reportKpis = useMemo(() => {
+    if (!isJpClassFilterActive) {
+      return {
+        faturamento: data?.kpis?.faturamento || 0,
+        valorLiquido: data?.kpis?.valorLiquido || 0,
+        itensVendidos: data?.kpis?.itensVendidos || 0,
+        documentos: data?.kpis?.documentos || 0,
+        devolucoes: data?.kpis?.devolucoes || 0,
+      }
+    }
+
+    let faturamento = 0
+    let valorLiquido = 0
+    let itensVendidos = 0
+    let devolucoes = 0
+    const nfes = new Set<string>()
+
+    for (const item of displayedVendas) {
+      const totalLinha = Number(item.total_linha) || 0
+      faturamento += totalLinha
+      valorLiquido += Number(item.valor_liquido) || 0
+      itensVendidos += Number(item.quantidade) || 0
+
+      const nfe = (item.numero_nfe || '').trim()
+      if (nfe) {
+        nfes.add(nfe)
+      } else if (item.id) {
+        nfes.add(`__item_${item.id}`)
+      }
+
+      if (isDevolucao(item.tipo_documento)) {
+        devolucoes += totalLinha
+      }
+    }
+
+    return {
+      faturamento,
+      valorLiquido,
+      itensVendidos,
+      documentos: nfes.size,
+      devolucoes,
+    }
+  }, [data, displayedVendas, isJpClassFilterActive])
 
   const isNoData =
     !loading &&
@@ -709,6 +765,8 @@ export default function DashboardGeral() {
       canalClientes: [],
       deploy: [],
       inside: [],
+      tipoCliente: [],
+      jpClass: [],
       search: '',
       ano: [],
       mes: [],
@@ -1889,7 +1947,7 @@ export default function DashboardGeral() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
               <KpiCard
                 title="Faturamento Total"
-                value={data?.kpis?.faturamento || 0}
+                value={reportKpis.faturamento}
                 isCurrency
                 icon={DollarSign}
                 iconBgColor="bg-cyan-50"
@@ -1897,7 +1955,7 @@ export default function DashboardGeral() {
               />
               <KpiCard
                 title="Valor Líquido"
-                value={data?.kpis?.valorLiquido || 0}
+                value={reportKpis.valorLiquido}
                 isCurrency
                 icon={TrendingUp}
                 iconBgColor="bg-teal-50"
@@ -1905,7 +1963,7 @@ export default function DashboardGeral() {
               />
               <KpiCard
                 title="Itens Vendidos"
-                value={data?.kpis?.itensVendidos || 0}
+                value={reportKpis.itensVendidos}
                 decimals={0}
                 icon={Package}
                 iconBgColor="bg-cyan-50"
@@ -1913,7 +1971,7 @@ export default function DashboardGeral() {
               />
               <KpiCard
                 title="Documentos (NFe)"
-                value={data?.kpis?.documentos || 0}
+                value={reportKpis.documentos}
                 decimals={0}
                 icon={FileText}
                 iconBgColor="bg-slate-100"
@@ -1921,7 +1979,7 @@ export default function DashboardGeral() {
               />
               <KpiCard
                 title="Devoluções"
-                value={data?.kpis?.devolucoes || 0}
+                value={reportKpis.devolucoes}
                 isCurrency
                 icon={RotateCcw}
                 iconBgColor="bg-rose-50"
@@ -1947,7 +2005,7 @@ export default function DashboardGeral() {
               </CardHeader>
 
               <VendasRelatorioTable
-                items={paginatedVendas}
+                items={displayedVendas}
                 loading={vendasLoading}
                 totalItems={totalVendasItems}
                 totalNetsales={totalNetsales}
