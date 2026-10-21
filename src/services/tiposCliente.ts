@@ -8,8 +8,11 @@ export interface TiposClienteOptionsResult {
 
 export interface TipoClienteInfo {
   tipo_cliente: string
-  status_cadastro: string
-  tipo_pn: string
+  status_cadastro?: string
+  tipo_pn?: string
+  codigo_cliente?: string
+  nome_cliente?: string
+  data_carga?: string
 }
 
 export interface TiposClienteMapResult {
