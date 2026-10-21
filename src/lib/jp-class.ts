@@ -112,6 +112,27 @@ export function getStandardJpClass(
   return 'Sem classe'
 }
 
+/**
+ * Verifica se uma linha/item casa com a seleção de filtro JP-Class.
+ * "Sem classe" casa com itens sem correspondência (jp_class vazio ou "Sem classe").
+ */
+export function matchesJpClassFilter(
+  itemJpClass: string | null | undefined,
+  descricaoItem: string | null | undefined,
+  selectedClasses: string[] | undefined,
+): boolean {
+  if (!selectedClasses || selectedClasses.length === 0) return true
+  const raw = itemJpClass || getJpClass(descricaoItem) || ''
+  const standard = getStandardJpClass(raw)
+  return selectedClasses.some((sel) => {
+    const s = (sel || '').trim().toLowerCase()
+    if (s === 'sem classe' || s === 'sem_classe' || s === 'sem informação' || s === 'vazio') {
+      return standard === 'Sem classe'
+    }
+    return s === standard.toLowerCase()
+  })
+}
+
 /** Cores de Badge para JP-Class */
 export function getJpClassBadgeStyle(jpClass: string | null | undefined): {
   className: string
