@@ -985,6 +985,33 @@ export function VendasRelatorioTable({
                   </div>
                 </td>
               )
+            case 'tipo_cliente': {
+              const tc = (item.tipo_cliente || '').trim()
+              const displayVal = tc && tc !== '-' ? tc : '-'
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                >
+                  <div
+                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
+                    title={displayVal}
+                  >
+                    {displayVal !== '-' ? (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] font-medium bg-indigo-50 text-indigo-700 border-indigo-200"
+                      >
+                        {displayVal}
+                      </Badge>
+                    ) : (
+                      <span className="text-slate-400">-</span>
+                    )}
+                  </div>
+                </td>
+              )
+            }
             case 'tipo_pn':
               return (
                 <td

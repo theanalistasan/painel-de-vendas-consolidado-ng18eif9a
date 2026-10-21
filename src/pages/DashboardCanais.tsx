@@ -60,7 +60,13 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTableSort } from '@/hooks/use-table-sort'
-import { fetchTiposClienteOptions } from '@/services/tiposCliente'
+import {
+  fetchTiposClienteOptions,
+  fetchTiposClienteMap,
+  buildTiposClienteStringMap,
+  enrichVendaTipoCliente,
+  resolveTipoCliente,
+} from '@/services/tiposCliente'
 import { VendasRelatorioTable, RELATORIO_COLUMNS } from '@/components/VendasRelatorioTable'
 import { JP_CLASS_OPTIONS, matchesJpClassFilter } from '@/lib/jp-class'
 import { isDevolucao } from '@/types/sales'
@@ -88,6 +94,8 @@ export default function DashboardCanais() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
+  const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
+  const [loadingTiposCliente, setLoadingTiposCliente] = useState(false)
 
   // Relatório de Lançamentos/Vendas no modelo de Vendas.tsx
   const [reportVendas, setReportVendas] = useState<(VendaConsolidada & { itens_qtd?: number })[]>(
@@ -109,9 +117,26 @@ export default function DashboardCanais() {
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
 
   const displayedReportVendas = useMemo(() => {
-    if (!filters.jpClass || filters.jpClass.length === 0) return reportVendas
-    return reportVendas.filter((item) => matchesJpClassFilter(item.grupo_item, filters.jpClass))
-  }, [reportVendas, filters.jpClass])
+    // 1. Enriquece com o mapa de tipos_cliente como fallback
+    let list = reportVendas.map((item) => enrichVendaTipoCliente(item, tiposClienteMap))
+
+    // 2. Fallback de filtro de tipoCliente no cliente (garante consistência mesmo se o backend estiver pendente de backfill)
+    if (
+      filters.tipoCliente &&
+      filters.tipoCliente.length > 0 &&
+      !filters.tipoCliente.includes('TODOS')
+    ) {
+      const selected = new Set(filters.tipoCliente.map((t) => t.trim()))
+      list = list.filter((item) => {
+        const tc = resolveTipoCliente(item.tipo_cliente, item.codigo_cliente, tiposClienteMap)
+        return selected.has(tc)
+      })
+    }
+
+    // 3. Filtro JP-Class
+    if (!filters.jpClass || filters.jpClass.length === 0) return list
+    return list.filter((item) => matchesJpClassFilter(item.grupo_item, filters.jpClass))
+  }, [reportVendas, tiposClienteMap, filters.tipoCliente, filters.jpClass])
   const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
   const [mapExpanded, setMapExpanded] = useState(false)
 
@@ -211,13 +236,22 @@ export default function DashboardCanais() {
 
   useEffect(() => {
     let mounted = true
-    fetchTiposClienteOptions()
-      .then((options) => {
-        if (mounted && Array.isArray(options) && options.length > 0) {
-          setTipoClienteOptions(options)
+    setLoadingTiposCliente(true)
+    Promise.all([fetchTiposClienteOptions(), fetchTiposClienteMap()])
+      .then(([opts, rawMap]) => {
+        if (!mounted) return
+        if (Array.isArray(opts) && opts.length > 0) {
+          setTipoClienteOptions(opts)
+        }
+        if (rawMap && typeof rawMap === 'object') {
+          const stringMap = buildTiposClienteStringMap(rawMap)
+          setTiposClienteMap(stringMap)
         }
       })
       .catch((err) => console.warn('[DashboardCanais] Erro ao carregar tipos de cliente:', err))
+      .finally(() => {
+        if (mounted) setLoadingTiposCliente(false)
+      })
     return () => {
       mounted = false
     }
@@ -281,12 +315,20 @@ export default function DashboardCanais() {
     return {
       ...baseOpts,
       jpClass: JP_CLASS_OPTIONS as unknown as string[],
-      tipoCliente:
-        baseOpts.tipoCliente && baseOpts.tipoCliente.length > 0
-          ? baseOpts.tipoCliente
-          : tipoClienteOptions,
+      tipoCliente: (() => {
+        const set = new Set<string>()
+        if (baseOpts.tipoCliente) {
+          baseOpts.tipoCliente.forEach((tc) => tc && set.add(tc.trim()))
+        }
+        tipoClienteOptions.forEach((tc) => tc && set.add(tc.trim()))
+        Object.values(tiposClienteMap).forEach((tc) => tc && set.add(tc.trim()))
+        return Array.from(set)
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+      })(),
+      isLoadingTipoCliente: loadingTiposCliente,
     }
-  }, [data, tipoClienteOptions])
+  }, [data, tipoClienteOptions, tiposClienteMap, loadingTiposCliente])
 
   const isJpClassFilterActive = Boolean(filters.jpClass && filters.jpClass.length > 0)
 
@@ -413,15 +455,18 @@ export default function DashboardCanais() {
         label: c.label,
       }))
 
-      const formattedRows = rowsToExport.map((row) => ({
-        ...row,
-        origem:
-          row.tem_netsales && row.tem_racnew
-            ? 'Consolidado'
-            : row.tem_netsales
-              ? 'NetSales'
-              : 'RacNew',
-      }))
+      const formattedRows = rowsToExport.map((row) => {
+        const enriched = enrichVendaTipoCliente(row, tiposClienteMap)
+        return {
+          ...enriched,
+          origem:
+            row.tem_netsales && row.tem_racnew
+              ? 'Consolidado'
+              : row.tem_netsales
+                ? 'NetSales'
+                : 'RacNew',
+        }
+      })
 
       const dateStr = new Date().toISOString().slice(0, 10)
       const filenameSuffix = shouldGroup ? 'por_nf' : 'detalhado'

@@ -127,6 +127,55 @@ export async function fetchTiposClienteMap(options?: {
 }
 
 /**
+ * Converte o mapa completo de TipoClienteInfo para um mapa simples código PN -> tipo_cliente (em maiúsculas).
+ */
+export function buildTiposClienteStringMap(
+  map: Record<string, TipoClienteInfo> | undefined | null,
+): Record<string, string> {
+  const result: Record<string, string> = {}
+  if (!map || typeof map !== 'object') return result
+  for (const [cod, info] of Object.entries(map)) {
+    const tipo = info?.tipo_cliente?.trim()
+    if (tipo) {
+      result[cod.trim().toUpperCase()] = tipo
+    }
+  }
+  return result
+}
+
+/**
+ * Resolve o tipo_cliente de um registro usando o valor original ou o mapa como fallback.
+ * Retorna '-' se nenhum valor for encontrado (nunca string vazia).
+ */
+export function resolveTipoCliente(
+  tipoCliente: string | undefined | null,
+  codigoCliente: string | undefined | null,
+  stringMap: Record<string, string>,
+): string {
+  const tc = (tipoCliente || '').trim()
+  if (tc && tc !== '-') return tc
+  if (codigoCliente) {
+    const cod = codigoCliente.trim().toUpperCase()
+    if (stringMap[cod]) {
+      return stringMap[cod]
+    }
+  }
+  return '-'
+}
+
+/**
+ * Enriquece um registro de venda com tipo_cliente resolvido via mapa de fallback.
+ */
+export function enrichVendaTipoCliente<
+  T extends { tipo_cliente?: string; codigo_cliente?: string },
+>(item: T, stringMap: Record<string, string>): T {
+  return {
+    ...item,
+    tipo_cliente: resolveTipoCliente(item.tipo_cliente, item.codigo_cliente, stringMap),
+  }
+}
+
+/**
  * Busca a data_carga mais recente da coleção tipos_cliente.
  */
 export async function fetchUltimaCargaTiposCliente(): Promise<string | null> {
