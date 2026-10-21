@@ -83,10 +83,13 @@ export default function JpClassPage() {
       for (const item of res.items || []) {
         const sem = encontrarSemanaDaData(item.data_lancamento, semanas)
         if (sem) {
-          // JP-Class SEMPRE derivado via getJpClass sobre grupo_item
-          const derivedJpClass = getJpClass(item.grupo_item)
+          // JP-Class SEMPRE derivado ao vivo a partir do Grupo do item (grupo_item ou itms_grp_nam),
+          // eliminando qualquer valor pré-calculado antigo de item.jp_class
+          const grupoValor = (item.grupo_item || item.itms_grp_nam || '').trim()
+          const derivedJpClass = getJpClass(grupoValor)
           comSemanas.push({
             ...item,
+            grupo_item: grupoValor || item.grupo_item || '',
             semanaNumero: sem.numero,
             semanaNome: sem.nome,
             jpClass: derivedJpClass,

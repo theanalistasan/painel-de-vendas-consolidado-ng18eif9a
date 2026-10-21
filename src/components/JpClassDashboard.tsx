@@ -14,6 +14,7 @@ import {
 } from 'recharts'
 import ChartCard from '@/components/ChartCard'
 import { formatCurrency, formatCompactCurrency, formatNumber } from '@/lib/formatters'
+import { getJpClass } from '@/lib/jp-class'
 import type { VendaComSemana } from '@/components/JpClassRelatorio'
 
 export interface JpClassDashboardProps {
@@ -46,7 +47,8 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
     const map = new Map<string, { faturamento: number; quantidade: number }>()
 
     for (const it of items) {
-      const cls = it.jpClass || 'Sem classe'
+      // Derivar SEMPRE ao vivo a partir do Grupo do item, eliminando qualquer legado
+      const cls = getJpClass(it.grupo_item || it.itms_grp_nam)
       const cur = map.get(cls) || { faturamento: 0, quantidade: 0 }
       cur.faturamento += Number(it.total_linha) || 0
       cur.quantidade += Number(it.quantidade) || 0
@@ -75,7 +77,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
     const map = new Map<string, { faturamento: number; quantidade: number }>()
 
     for (const it of items) {
-      const grp = (it.grupo_item || '(Sem Grupo)').trim()
+      const grp = (it.grupo_item || it.itms_grp_nam || '(Sem Grupo)').trim()
       const cur = map.get(grp) || { faturamento: 0, quantidade: 0 }
       cur.faturamento += Number(it.total_linha) || 0
       cur.quantidade += Number(it.quantidade) || 0

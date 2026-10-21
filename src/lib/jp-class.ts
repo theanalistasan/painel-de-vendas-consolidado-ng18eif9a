@@ -39,7 +39,50 @@ export function isMatchedJpClassRule(raw: string | null | undefined): boolean {
 export const JP_CLASS_OPTIONS = ['HARD', 'INKS', 'OTHERS', 'Sem classe'] as const
 export type JpClassOption = (typeof JP_CLASS_OPTIONS)[number]
 
-export function getJpClass(raw: string | null | undefined): string {
+/**
+ * Extrai o campo Grupo do item a partir de qualquer uma das propriedades conhecidas
+ * (grupo_item, grupo ou itms_grp_nam), sem considerar valores pré-calculados de jp_class.
+ */
+export function extractGrupoItem(
+  source:
+    | string
+    | {
+        grupo_item?: string | null
+        itms_grp_nam?: string | null
+        grupo?: string | null
+      }
+    | null
+    | undefined,
+): string {
+  if (!source) return ''
+  if (typeof source === 'string') return source
+  return (
+    (source.grupo_item && source.grupo_item.trim()) ||
+    (source.grupo && source.grupo.trim()) ||
+    (source.itms_grp_nam && source.itms_grp_nam.trim()) ||
+    ''
+  )
+}
+
+export function getJpClass(
+  rawOrItem:
+    | string
+    | {
+        grupo_item?: string | null
+        itms_grp_nam?: string | null
+        grupo?: string | null
+        jp_class?: string | null
+      }
+    | null
+    | undefined,
+): string {
+  const raw =
+    typeof rawOrItem === 'object' && rawOrItem !== null
+      ? extractGrupoItem(rawOrItem)
+      : typeof rawOrItem === 'string'
+        ? rawOrItem
+        : ''
+
   if (!raw) return 'Sem classe'
   const trimmed = raw.trim()
   if (!trimmed) return 'Sem classe'
@@ -64,11 +107,16 @@ export function getJpClass(raw: string | null | undefined): string {
     return 'OTHERS'
   }
 
-  if (norm === 'SEM CLASSE') {
+  if (
+    norm === 'SEM CLASSE' ||
+    norm === 'SEM_CLASSE' ||
+    norm === 'SEM INFORMACAO' ||
+    norm === 'VAZIO'
+  ) {
     return 'Sem classe'
   }
 
-  // Qualquer outro valor de Grupo não mapeado recebe OTHERS
+  // Qualquer outro valor de Grupo não mapeado recebe OTHERS (não mantém o original)
   return 'OTHERS'
 }
 
@@ -76,17 +124,35 @@ export function getJpClass(raw: string | null | undefined): string {
  * Retorna o grupo de JP-Class para fins de agrupamento na tabela.
  * Equivalente a getJpClass, garantindo 'HARD' | 'INKS' | 'OTHERS' | 'Sem classe'.
  */
-export function getJpClassGroup(raw: string | null | undefined): string {
-  return getJpClass(raw)
+export function getJpClassGroup(
+  rawOrItem:
+    | string
+    | {
+        grupo_item?: string | null
+        itms_grp_nam?: string | null
+        grupo?: string | null
+      }
+    | null
+    | undefined,
+): string {
+  return getJpClass(rawOrItem)
 }
 
 /**
  * Retorna uma das 4 opções padronizadas de JP_CLASS_OPTIONS ('HARD' | 'INKS' | 'OTHERS' | 'Sem classe')
  */
 export function getStandardJpClass(
-  raw: string | null | undefined,
+  rawOrItem:
+    | string
+    | {
+        grupo_item?: string | null
+        itms_grp_nam?: string | null
+        grupo?: string | null
+      }
+    | null
+    | undefined,
 ): (typeof JP_CLASS_OPTIONS)[number] {
-  const derived = getJpClass(raw)
+  const derived = getJpClass(rawOrItem)
   if (derived === 'HARD' || derived === 'INKS' || derived === 'OTHERS') {
     return derived
   }
@@ -95,15 +161,19 @@ export function getStandardJpClass(
 
 /**
  * Verifica se uma linha/item casa com a seleção de filtro JP-Class.
- * "Sem classe" casa com itens sem correspondência (jp_class vazio ou "Sem classe").
- */
-/**
- * Verifica se uma linha/item casa com a seleção de filtro JP-Class.
  * Suporta assinatura direta com (grupoItem, selectedClasses) ou legado (itemJpClass, grupoItem, selectedClasses).
  * "Sem classe" casa com itens sem correspondência (grupo vazio ou "Sem classe").
  */
 export function matchesJpClassFilter(
-  grupoOrJpClass: string | null | undefined,
+  grupoOrJpClass:
+    | string
+    | {
+        grupo_item?: string | null
+        itms_grp_nam?: string | null
+        grupo?: string | null
+      }
+    | null
+    | undefined,
   grupoOrSelected?: string | null | undefined | string[],
   selectedClasses?: string[],
 ): boolean {
@@ -112,7 +182,12 @@ export function matchesJpClassFilter(
 
   if (Array.isArray(grupoOrSelected)) {
     // Chamada direta: (grupoItem, selectedClasses)
-    targetGrupo = grupoOrJpClass
+    targetGrupo =
+      typeof grupoOrJpClass === 'object' && grupoOrJpClass !== null
+        ? extractGrupoItem(grupoOrJpClass)
+        : typeof grupoOrJpClass === 'string'
+          ? grupoOrJpClass
+          : ''
     targetClasses = grupoOrSelected
   } else {
     // Chamada legada de 3 argumentos: (itemJpClass, grupoItem, selectedClasses)
@@ -121,7 +196,11 @@ export function matchesJpClassFilter(
       grupoOrSelected !== null &&
       String(grupoOrSelected).trim() !== ''
         ? String(grupoOrSelected)
-        : grupoOrJpClass
+        : typeof grupoOrJpClass === 'object' && grupoOrJpClass !== null
+          ? extractGrupoItem(grupoOrJpClass)
+          : typeof grupoOrJpClass === 'string'
+            ? grupoOrJpClass
+            : ''
     targetClasses = selectedClasses
   }
 

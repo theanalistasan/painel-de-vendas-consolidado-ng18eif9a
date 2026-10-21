@@ -43,6 +43,15 @@ describe('Regra de De/Para JP-Class', () => {
       expect(getJpClass('SOFTWARE')).toBe('OTHERS')
     })
 
+    it('deve aceitar objetos contendo grupo_item, grupo ou itms_grp_nam e ignorar jp_class pré-calculado antigo', () => {
+      expect(getJpClass({ grupo_item: 'TINTAS', jp_class: 'HARD' })).toBe('INKS')
+      expect(getJpClass({ grupo_item: 'EQUIPAMENTOS', jp_class: 'INKS' })).toBe('HARD')
+      expect(getJpClass({ itms_grp_nam: 'TINTAS' })).toBe('INKS')
+      expect(getJpClass({ grupo: 'PEÇAS' })).toBe('OTHERS')
+      expect(getJpClass({ grupo_item: 'DIVERSOS', jp_class: 'HARD' })).toBe('OTHERS')
+      expect(getJpClass({ grupo_item: '', jp_class: 'HARD' })).toBe('Sem classe')
+    })
+
     it('deve retornar "Sem classe" apenas para valores vazios ou ausentes', () => {
       expect(getJpClass(null)).toBe('Sem classe')
       expect(getJpClass(undefined)).toBe('Sem classe')

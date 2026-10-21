@@ -161,17 +161,21 @@ export function JpClassRelatorio({
       let title = ''
       let badgeText: string | undefined
 
+      // Garante derivação ao vivo a partir do Grupo do item
+      const itemJpClass = getJpClass(item.grupo_item || item.itms_grp_nam)
+
       if (groupBy === 'jp_class') {
-        key = item.jpClass
-        title = item.jpClass
+        key = itemJpClass
+        title = itemJpClass
         badgeText = 'JP-Class'
       } else if (groupBy === 'item') {
         key = item.descricao_item || item.codigo_item || '(Sem item)'
         title = item.descricao_item || item.codigo_item || '(Sem item)'
         badgeText = item.codigo_item ? `Cód. ${item.codigo_item}` : undefined
       } else if (groupBy === 'grupo') {
-        key = item.grupo_item || '(Sem Grupo)'
-        title = item.grupo_item || '(Sem Grupo)'
+        const grp = item.grupo_item || item.itms_grp_nam || '(Sem Grupo)'
+        key = grp
+        title = grp
         badgeText = 'Grupo'
       }
 
@@ -438,7 +442,8 @@ export function JpClassRelatorio({
             ) : groupBy === 'none' ? (
               /* MODO SEM AGRUPAMENTO */
               sortedItems.map((item) => {
-                const badgeStyle = getJpClassBadgeStyle(item.jpClass)
+                const liveJpClass = getJpClass(item.grupo_item || item.itms_grp_nam)
+                const badgeStyle = getJpClassBadgeStyle(liveJpClass)
                 return (
                   <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
                     <td className="py-2.5 px-3.5 border-r border-slate-100 whitespace-nowrap font-medium text-slate-800">
@@ -459,7 +464,7 @@ export function JpClassRelatorio({
                         variant="outline"
                         className={`text-[10px] px-2 py-0.5 font-bold ${badgeStyle.className}`}
                       >
-                        {item.jpClass}
+                        {liveJpClass}
                       </Badge>
                     </td>
                     <td
@@ -580,7 +585,8 @@ export function JpClassRelatorio({
                     {/* Linhas detalhadas quando expandido */}
                     {!isCollapsed &&
                       sec.items.map((item) => {
-                        const rowBadgeStyle = getJpClassBadgeStyle(item.jpClass)
+                        const rowLiveJpClass = getJpClass(item.grupo_item || item.itms_grp_nam)
+                        const rowBadgeStyle = getJpClassBadgeStyle(rowLiveJpClass)
                         return (
                           <tr
                             key={item.id}
@@ -604,7 +610,7 @@ export function JpClassRelatorio({
                                 variant="outline"
                                 className={`text-[10px] px-2 py-0.5 font-bold ${rowBadgeStyle.className}`}
                               >
-                                {item.jpClass}
+                                {rowLiveJpClass}
                               </Badge>
                             </td>
                             <td
