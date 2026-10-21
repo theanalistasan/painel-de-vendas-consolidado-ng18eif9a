@@ -244,6 +244,67 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
         .join(',')
       sqlParts.push('UPPER(TRIM(grupo_item)) IN (' + sqlArr + ')')
     }
+    const jpClassFilter = Array.isArray(f.jpClass) ? f.jpClass : f.jpClass ? [f.jpClass] : []
+    if (jpClassFilter.length > 0) {
+      const hardPatterns = ["'EQUIPAMENTOS'", "'EQUIPAMENTO'", "'HARD'"]
+      const inksPatterns = ["'TINTAS'", "'TINTA'", "'INKS'"]
+      const othersPatterns = [
+        "'PECAS'",
+        "'PECA'",
+        "'ACESSORIOS'",
+        "'ACESSORIO'",
+        "'ASSESSORIOS'",
+        "'ASSESSORIO'",
+        "'OTHERS'",
+      ]
+      const allKnownPatterns = hardPatterns.concat(inksPatterns).concat(othersPatterns)
+
+      const conds = []
+      for (let j = 0; j < jpClassFilter.length; j++) {
+        const val = String(jpClassFilter[j]).trim()
+        const upper = val.toUpperCase()
+        if (upper === 'HARD') {
+          conds.push(
+            "(UPPER(TRIM(COALESCE(descricao_item, ''))) IN (" +
+              hardPatterns.join(',') +
+              ") OR UPPER(descricao_item) LIKE '%EQUIP%' OR UPPER(descricao_item) LIKE '%IMPRESS%' OR UPPER(descricao_item) LIKE '%PLOTTER%')",
+          )
+        } else if (upper === 'INKS') {
+          conds.push(
+            "(UPPER(TRIM(COALESCE(descricao_item, ''))) IN (" +
+              inksPatterns.join(',') +
+              ") OR UPPER(descricao_item) LIKE '%TINTA%' OR UPPER(descricao_item) LIKE '%INK%')",
+          )
+        } else if (upper === 'OTHERS') {
+          conds.push(
+            "(UPPER(TRIM(COALESCE(descricao_item, ''))) IN (" +
+              othersPatterns.join(',') +
+              ") OR UPPER(descricao_item) LIKE '%PECA%' OR UPPER(descricao_item) LIKE '%PEÇA%' OR UPPER(descricao_item) LIKE '%ACESS%' OR UPPER(descricao_item) LIKE '%ASSESS%')",
+          )
+        } else if (
+          upper === 'SEM CLASSE' ||
+          upper === 'SEM_CLASSE' ||
+          upper === 'SEM INFORMACAO' ||
+          upper === 'VAZIO'
+        ) {
+          conds.push(
+            "(descricao_item IS NULL OR TRIM(descricao_item) = '' OR (" +
+              'UPPER(TRIM(descricao_item)) NOT IN (' +
+              allKnownPatterns.join(',') +
+              ') AND ' +
+              "UPPER(descricao_item) NOT LIKE '%EQUIP%' AND UPPER(descricao_item) NOT LIKE '%IMPRESS%' AND UPPER(descricao_item) NOT LIKE '%PLOTTER%' AND " +
+              "UPPER(descricao_item) NOT LIKE '%TINTA%' AND UPPER(descricao_item) NOT LIKE '%INK%' AND " +
+              "UPPER(descricao_item) NOT LIKE '%PECA%' AND UPPER(descricao_item) NOT LIKE '%PEÇA%' AND UPPER(descricao_item) NOT LIKE '%ACESS%' AND UPPER(descricao_item) NOT LIKE '%ASSESS%' " +
+              '))',
+          )
+        } else if (val) {
+          conds.push("UPPER(TRIM(COALESCE(descricao_item, ''))) = '" + sqlEsc(upper) + "'")
+        }
+      }
+      if (conds.length > 0) {
+        sqlParts.push('(' + conds.join(' OR ') + ')')
+      }
+    }
     if (Array.isArray(f.estado) && f.estado.length > 0) {
       const sqlArr = f.estado.map((v) => "'" + sqlEsc(v) + "'").join(',')
       sqlParts.push('estado IN (' + sqlArr + ')')

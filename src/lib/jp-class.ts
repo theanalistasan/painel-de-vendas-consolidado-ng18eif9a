@@ -35,6 +35,9 @@ export function isMatchedJpClassRule(raw: string | null | undefined): boolean {
   )
 }
 
+export const JP_CLASS_OPTIONS = ['HARD', 'INKS', 'OTHERS', 'Sem classe'] as const
+export type JpClassOption = (typeof JP_CLASS_OPTIONS)[number]
+
 export function getJpClass(raw: string | null | undefined): string {
   if (!raw) return ''
   const trimmed = raw.trim()
@@ -42,13 +45,14 @@ export function getJpClass(raw: string | null | undefined): string {
 
   const norm = normalizeText(trimmed)
 
-  if (norm === 'TINTAS' || norm === 'TINTA') {
-    return 'INKS'
-  }
-  if (norm === 'EQUIPAMENTOS' || norm === 'EQUIPAMENTO') {
+  if (norm === 'HARD' || norm === 'EQUIPAMENTOS' || norm === 'EQUIPAMENTO') {
     return 'HARD'
   }
+  if (norm === 'INKS' || norm === 'TINTAS' || norm === 'TINTA') {
+    return 'INKS'
+  }
   if (
+    norm === 'OTHERS' ||
     norm === 'PECAS' ||
     norm === 'PECA' ||
     norm === 'ACESSORIOS' ||
@@ -74,13 +78,14 @@ export function getJpClassGroup(raw: string | null | undefined): string {
 
   const norm = normalizeText(trimmed)
 
-  if (norm === 'TINTAS' || norm === 'TINTA') {
-    return 'INKS'
-  }
-  if (norm === 'EQUIPAMENTOS' || norm === 'EQUIPAMENTO') {
+  if (norm === 'HARD' || norm === 'EQUIPAMENTOS' || norm === 'EQUIPAMENTO') {
     return 'HARD'
   }
+  if (norm === 'INKS' || norm === 'TINTAS' || norm === 'TINTA') {
+    return 'INKS'
+  }
   if (
+    norm === 'OTHERS' ||
     norm === 'PECAS' ||
     norm === 'PECA' ||
     norm === 'ACESSORIOS' ||
@@ -91,6 +96,19 @@ export function getJpClassGroup(raw: string | null | undefined): string {
     return 'OTHERS'
   }
 
+  return 'Sem classe'
+}
+
+/**
+ * Retorna uma das 4 opções padronizadas de JP_CLASS_OPTIONS ('HARD' | 'INKS' | 'OTHERS' | 'Sem classe')
+ */
+export function getStandardJpClass(
+  raw: string | null | undefined,
+): (typeof JP_CLASS_OPTIONS)[number] {
+  const derived = getJpClass(raw)
+  if (derived === 'HARD' || derived === 'INKS' || derived === 'OTHERS') {
+    return derived
+  }
   return 'Sem classe'
 }
 
