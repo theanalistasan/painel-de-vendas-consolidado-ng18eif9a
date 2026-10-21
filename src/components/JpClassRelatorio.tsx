@@ -18,7 +18,7 @@ import { getJpClass, getJpClassBadgeStyle, JP_CLASS_OPTIONS } from '@/lib/jp-cla
 import type { SemanaMes } from '@/lib/semanas'
 import type { VendaConsolidada } from '@/types/sales'
 
-export type JpClassGroupBy = 'none' | 'jp_class' | 'item' | 'grupo'
+export type JpClassGroupBy = 'none' | 'jp_class' | 'item' | 'grupo' | 'tipo_cliente'
 
 export interface VendaComSemana extends VendaConsolidada {
   semanaNumero: number
@@ -44,6 +44,7 @@ type SortField =
   | 'valor_liquido'
   | 'data_lancamento'
   | 'nome_cliente'
+  | 'tipo_cliente'
 type SortDir = 'asc' | 'desc'
 
 export function JpClassRelatorio({
@@ -114,6 +115,10 @@ export function JpClassRelatorio({
           valA = a.nome_cliente || ''
           valB = b.nome_cliente || ''
           break
+        case 'tipo_cliente':
+          valA = a.tipo_cliente || ''
+          valB = b.tipo_cliente || ''
+          break
         case 'data_lancamento':
         default:
           valA = a.data_lancamento || ''
@@ -177,6 +182,11 @@ export function JpClassRelatorio({
         key = grp
         title = grp
         badgeText = 'Grupo'
+      } else if (groupBy === 'tipo_cliente') {
+        const tc = item.tipo_cliente || '-'
+        key = tc
+        title = tc === '-' ? '- (Sem classificação)' : tc
+        badgeText = 'Tipo Cliente'
       }
 
       if (!map.has(key)) {
@@ -305,6 +315,17 @@ export function JpClassRelatorio({
             >
               Grupo
             </button>
+            <button
+              type="button"
+              onClick={() => onGroupByChange('tipo_cliente')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                groupBy === 'tipo_cliente'
+                  ? 'bg-[#0B6E99] text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              Tipo Cliente
+            </button>
           </div>
 
           {/* Botões Expandir Todos / Colapsar Todos se houver agrupamento */}
@@ -393,6 +414,13 @@ export function JpClassRelatorio({
                 {renderSortIndicator('nome_cliente')}
               </th>
               <th
+                onClick={() => handleSort('tipo_cliente')}
+                className="py-3 px-3 cursor-pointer hover:bg-slate-100/80 transition-colors border-r border-slate-100 w-32 whitespace-nowrap"
+              >
+                <span>Tipo Cliente</span>
+                {renderSortIndicator('tipo_cliente')}
+              </th>
+              <th
                 onClick={() => handleSort('quantidade')}
                 className="py-3 px-3 text-right cursor-pointer hover:bg-slate-100/80 transition-colors border-r border-slate-100 w-20 whitespace-nowrap"
               >
@@ -419,7 +447,7 @@ export function JpClassRelatorio({
           <tbody className="divide-y divide-slate-100 text-slate-700">
             {loading ? (
               <tr>
-                <td colSpan={9} className="py-12 text-center text-slate-500">
+                <td colSpan={10} className="py-12 text-center text-slate-500">
                   <div className="inline-flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-[#0B6E99] border-t-transparent rounded-full animate-spin" />
                     <span>Carregando dados de vendas do período...</span>
@@ -428,7 +456,7 @@ export function JpClassRelatorio({
               </tr>
             ) : sortedItems.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-16 text-center text-slate-500">
+                <td colSpan={10} className="py-16 text-center text-slate-500">
                   <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                   <p className="font-semibold text-slate-700">
                     Nenhuma venda encontrada nas semanas deste mês
@@ -491,6 +519,14 @@ export function JpClassRelatorio({
                         {item.nome_cliente || '-'}
                       </div>
                     </td>
+                    <td className="py-2.5 px-3 border-r border-slate-100 text-slate-600 whitespace-nowrap">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-purple-50/50 text-purple-900 border-purple-200 font-medium"
+                      >
+                        {item.tipo_cliente || '-'}
+                      </Badge>
+                    </td>
                     <td className="py-2.5 px-3 text-right border-r border-slate-100 font-medium tabular-nums">
                       {formatNumber(item.quantidade)}
                     </td>
@@ -520,7 +556,7 @@ export function JpClassRelatorio({
                           : 'bg-sky-50/70 hover:bg-sky-100/60 border-sky-200 text-slate-900'
                       }`}
                     >
-                      <td colSpan={6} className="py-2.5 px-3.5 border-r border-slate-200/60">
+                      <td colSpan={7} className="py-2.5 px-3.5 border-r border-slate-200/60">
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
@@ -636,6 +672,14 @@ export function JpClassRelatorio({
                               <div className="truncate max-w-[200px]" title={item.nome_cliente}>
                                 {item.nome_cliente || '-'}
                               </div>
+                            </td>
+                            <td className="py-2.5 px-3 border-r border-slate-100 text-slate-600 whitespace-nowrap">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-purple-50/50 text-purple-900 border-purple-200 font-medium"
+                              >
+                                {item.tipo_cliente || '-'}
+                              </Badge>
                             </td>
                             <td className="py-2.5 px-3 text-right border-r border-slate-100 font-medium tabular-nums text-slate-700">
                               {formatNumber(item.quantidade)}

@@ -31,6 +31,14 @@ import {
   type JpClassGroupBy,
 } from '@/components/JpClassRelatorio'
 import { JpClassDashboard } from '@/components/JpClassDashboard'
+import {
+  JpClassFilterBar,
+  type JpClassFilterState,
+  DEFAULT_JP_CLASS_FILTERS,
+  EMPTY_JP_CLASS_FILTERS,
+} from '@/components/JpClassFilterBar'
+import { fetchTiposClienteMap } from '@/services/tiposCliente'
+import { DEVOLUCAO_TIPOS } from '@/types/sales'
 
 export default function JpClassPage() {
   const hoje = new Date()
@@ -72,12 +80,64 @@ export default function JpClassPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rawVendas, setRawVendas] = useState<VendaComSemana[]>([])
+  const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
+  const [loadingTiposCliente, setLoadingTiposCliente] = useState(false)
   const [groupBy, setGroupBy] = useState<JpClassGroupBy>('none')
   const [filtroSemana, setFiltroSemana] = useState<number | 'todas'>('todas')
   const [ultimoPeriodoDisponivel, setUltimoPeriodoDisponivel] = useState<{
     ano: number
     mes: number
   } | null>(null)
+
+  // 7 filtros multi-select + JP-Class com critério de padrão inicial idêntico ao Visão Geral e Visão Canais
+  const [filters, setFilters] = useState<JpClassFilterState>(() => {
+    try {
+      const saved = loadFiltersFromSession()
+      return {
+        grupoItem:
+          saved.grupoItem && saved.grupoItem.length > 0
+            ? saved.grupoItem
+            : DEFAULT_JP_CLASS_FILTERS.grupoItem,
+        tipoDocumento:
+          saved.tipoDocumento && saved.tipoDocumento.length > 0
+            ? saved.tipoDocumento
+            : DEFAULT_JP_CLASS_FILTERS.tipoDocumento,
+        tipoCliente: saved.tipoCliente || [],
+        canal: saved.canal || [],
+        deploy: saved.deploy || [],
+        utilizacao:
+          saved.utilizacao && saved.utilizacao.length > 0
+            ? saved.utilizacao
+            : DEFAULT_JP_CLASS_FILTERS.utilizacao,
+        tipoDevolucao: saved.tipoDevolucao ? [saved.tipoDevolucao] : [],
+        jpClass: saved.jpClass || [],
+      }
+    } catch {
+      return DEFAULT_JP_CLASS_FILTERS
+    }
+  })
+
+  // Carrega mapa de tipos_cliente para enriquecer o tipo de cliente (mesmo padrão fetchTiposClienteMap das outras páginas)
+  useEffect(() => {
+    let mounted = true
+    const carregarMapaTipos = async () => {
+      setLoadingTiposCliente(true)
+      try {
+        const res = await fetchTiposClienteMap()
+        if (mounted && res?.map) {
+          setTiposClienteMap(res.map)
+        }
+      } catch (err) {
+        console.warn('Erro ao carregar mapa de tipos_cliente no JP-Class:', err)
+      } finally {
+        if (mounted) setLoadingTiposCliente(false)
+      }
+    }
+    carregarMapaTipos()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -176,7 +236,22 @@ export default function JpClassPage() {
         }
       }
 
-      setRawVendas(comSemanas)
+      // Enriquecer tipo_cliente usando tiposClienteMap como fallback se vier vazio do backend
+      const comTiposCliente = comSemanas.map((v) => {
+        let tc = (v.tipo_cliente || '').trim()
+        if (!tc && v.codigo_cliente) {
+          const codUpper = v.codigo_cliente.trim().toUpperCase()
+          tc = tiposClienteMap[codUpper] || '-'
+        } else if (!tc) {
+          tc = '-'
+        }
+        return {
+          ...v,
+          tipo_cliente: tc,
+        }
+      })
+
+      setRawVendas(comTiposCliente)
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
         return
@@ -199,18 +274,170 @@ export default function JpClassPage() {
         abortControllerRef.current.abort()
       }
     }
-  }, [ano, mes, dateRange])
+  }, [ano, mes, dateRange, tiposClienteMap])
+
+  // Opções dinâmicas para os dropdowns de filtro baseadas nas vendas carregadas no mês
+  const filterOptions = useMemo(() => {
+    const gruposSet = new Set<string>()
+    const tiposDocSet = new Set<string>()
+    const tiposCliSet = new Set<string>()
+    const canaisSet = new Set<string>()
+    const deploysSet = new Set<string>()
+    const utilizacoesSet = new Set<string>()
+    const devolucoesSet = new Set<string>()
+
+    // Valores padrão sempre presentes para facilitar a seleção
+    gruposSet.add('EQUIPAMENTOS')
+    gruposSet.add('ACESSÓRIOS')
+    gruposSet.add('TINTAS')
+    gruposSet.add('PEÇAS')
+
+    tiposDocSet.add('NF de Saída')
+    tiposDocSet.add('Dev. NF')
+    tiposDocSet.add('Dev. Entrega')
+
+    deploysSet.add('AGIS')
+    deploysSet.add('Roland')
+    deploysSet.add('Nenhum')
+
+    utilizacoesSet.add('VENDA DE MERCADORIA')
+    utilizacoesSet.add('VENDA CONSUMO')
+
+    DEVOLUCAO_TIPOS.forEach((d) => devolucoesSet.add(d))
+
+    for (const v of rawVendas) {
+      if (v.grupo_item && v.grupo_item.trim()) gruposSet.add(v.grupo_item.trim())
+      if (v.itms_grp_nam && v.itms_grp_nam.trim()) gruposSet.add(v.itms_grp_nam.trim())
+      if (v.tipo_documento && v.tipo_documento.trim()) tiposDocSet.add(v.tipo_documento.trim())
+
+      const tc = (v.tipo_cliente || '').trim() || '-'
+      tiposCliSet.add(tc)
+
+      // Canais
+      const canalNome = (v.vendedor_cliente || v.vendedor_revenda || v.vendedor || '').trim()
+      if (canalNome && !canalNome.toUpperCase().includes('SEM VENDEDOR')) {
+        canaisSet.add(canalNome)
+      }
+
+      // Deploy
+      const dep = (v.revenda || '').trim()
+      if (dep) deploysSet.add(dep)
+
+      // Utilização
+      const util = (v.utilizacao || v.usage || '').trim()
+      if (util) utilizacoesSet.add(util)
+
+      // Devoluções
+      if (
+        v.tipo_documento &&
+        (DEVOLUCAO_TIPOS as readonly string[]).includes(v.tipo_documento.trim())
+      ) {
+        devolucoesSet.add(v.tipo_documento.trim())
+      }
+    }
+
+    // Se temos o mapa tiposClienteMap, adiciona os tipos encontrados para que o usuário possa escolher
+    Object.values(tiposClienteMap).forEach((tc) => {
+      if (tc && tc.trim()) tiposCliSet.add(tc.trim())
+    })
+
+    return {
+      grupoItem: Array.from(gruposSet)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      tipoDocumento: Array.from(tiposDocSet)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      tipoCliente: Array.from(tiposCliSet)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      canal: Array.from(canaisSet)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      deploy: Array.from(deploysSet)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      utilizacao: Array.from(utilizacoesSet)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      tipoDevolucao: Array.from(devolucoesSet)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      jpClass: ['INKS', 'HARD', 'OTHERS', 'Sem classe'],
+      isLoadingTipoCliente: loadingTiposCliente,
+    }
+  }, [rawVendas, tiposClienteMap, loadingTiposCliente])
+
+  // Aplicação dos 7 filtros multi-select + JP-Class (mesmo critério de Visão Geral / Canais)
+  const vendasFiltradasPorCriterios = useMemo(() => {
+    return rawVendas.filter((v) => {
+      // (1) Grupo do Item
+      if (filters.grupoItem.length > 0) {
+        const grp = (v.grupo_item || v.itms_grp_nam || '').trim()
+        if (!filters.grupoItem.includes(grp)) return false
+      }
+
+      // (2) Tipo de Documento
+      if (filters.tipoDocumento.length > 0) {
+        const td = (v.tipo_documento || '').trim()
+        if (!filters.tipoDocumento.includes(td)) return false
+      }
+
+      // (3) Tipo de Cliente
+      if (filters.tipoCliente.length > 0) {
+        const tc = (v.tipo_cliente || '').trim() || '-'
+        if (!filters.tipoCliente.includes(tc)) return false
+      }
+
+      // (4) Canais
+      if (filters.canal.length > 0) {
+        const canalNome = (v.vendedor_cliente || v.vendedor_revenda || v.vendedor || '').trim()
+        if (!filters.canal.includes(canalNome)) return false
+      }
+
+      // (5) Deploy (Canal de Faturamento)
+      if (filters.deploy.length > 0) {
+        const depRaw = (v.revenda || '').trim().toUpperCase()
+        let dep = 'Nenhum'
+        if (depRaw.includes('AGIS')) dep = 'AGIS'
+        else if (depRaw.includes('ROLAND')) dep = 'Roland'
+        else if (depRaw) dep = (v.revenda || '').trim()
+
+        if (!filters.deploy.includes(dep)) return false
+      }
+
+      // (6) Utilização
+      if (filters.utilizacao.length > 0) {
+        const util = (v.utilizacao || v.usage || '').trim()
+        if (!filters.utilizacao.includes(util)) return false
+      }
+
+      // (7) Tipo de Devolução
+      if (filters.tipoDevolucao.length > 0) {
+        const td = (v.tipo_documento || '').trim()
+        if (!filters.tipoDevolucao.includes(td)) return false
+      }
+
+      // (8) JP-Class
+      if (filters.jpClass.length > 0) {
+        const jpc = (v.jpClass || getJpClass(v)).trim()
+        if (!filters.jpClass.includes(jpc)) return false
+      }
+
+      return true
+    })
+  }, [rawVendas, filters])
 
   // Vendas filtradas por semana (se o usuário selecionar uma semana específica nos KPIs)
   const vendasExibidas = useMemo(() => {
-    if (filtroSemana === 'todas') return rawVendas
-    return rawVendas.filter((v) => v.semanaNumero === filtroSemana)
-  }, [rawVendas, filtroSemana])
+    if (filtroSemana === 'todas') return vendasFiltradasPorCriterios
+    return vendasFiltradasPorCriterios.filter((v) => v.semanaNumero === filtroSemana)
+  }, [vendasFiltradasPorCriterios, filtroSemana])
 
-  // KPIs consolidados por semana
+  // KPIs consolidados por semana (refletem os 7 filtros + JP-Class aplicados)
   const kpisPorSemana = useMemo(() => {
     return semanas.map((sem) => {
-      const vendasSemana = rawVendas.filter((v) => v.semanaNumero === sem.numero)
+      const vendasSemana = vendasFiltradasPorCriterios.filter((v) => v.semanaNumero === sem.numero)
       const faturamento = vendasSemana.reduce((acc, v) => acc + (Number(v.total_linha) || 0), 0)
       const valorLiquido = vendasSemana.reduce((acc, v) => acc + (Number(v.valor_liquido) || 0), 0)
       const quantidade = vendasSemana.reduce((acc, v) => acc + (Number(v.quantidade) || 0), 0)
@@ -224,20 +451,29 @@ export default function JpClassPage() {
         linhas,
       }
     })
-  }, [semanas, rawVendas])
+  }, [semanas, vendasFiltradasPorCriterios])
 
-  // Totalizador geral do mês
+  // Totalizador geral do mês (reflete os 7 filtros + JP-Class aplicados)
   const totalGeral = useMemo(() => {
-    const faturamento = rawVendas.reduce((acc, v) => acc + (Number(v.total_linha) || 0), 0)
-    const valorLiquido = rawVendas.reduce((acc, v) => acc + (Number(v.valor_liquido) || 0), 0)
-    const quantidade = rawVendas.reduce((acc, v) => acc + (Number(v.quantidade) || 0), 0)
+    const faturamento = vendasFiltradasPorCriterios.reduce(
+      (acc, v) => acc + (Number(v.total_linha) || 0),
+      0,
+    )
+    const valorLiquido = vendasFiltradasPorCriterios.reduce(
+      (acc, v) => acc + (Number(v.valor_liquido) || 0),
+      0,
+    )
+    const quantidade = vendasFiltradasPorCriterios.reduce(
+      (acc, v) => acc + (Number(v.quantidade) || 0),
+      0,
+    )
     return {
       faturamento,
       valorLiquido,
       quantidade,
-      linhas: rawVendas.length,
+      linhas: vendasFiltradasPorCriterios.length,
     }
-  }, [rawVendas])
+  }, [vendasFiltradasPorCriterios])
 
   // Anos disponíveis para seleção (ano atual +/- 5 anos)
   const anosDisponiveis = useMemo(() => {
@@ -257,9 +493,11 @@ export default function JpClassPage() {
       { key: 'numero_nfe', label: 'Nr. NF' },
       { key: 'jpClass', label: 'JP-Class' },
       { key: 'grupo_item', label: 'Grupo' },
+      { key: 'tipo_documento', label: 'Tipo Documento' },
       { key: 'codigo_item', label: 'Código Item' },
       { key: 'descricao_item', label: 'Descrição Item' },
       { key: 'nome_cliente', label: 'Cliente' },
+      { key: 'tipo_cliente', label: 'Tipo Cliente' },
       { key: 'quantidade', label: 'Quantidade' },
       { key: 'total_linha', label: 'Total da Linha (R$)' },
       { key: 'valor_liquido', label: 'Valor Líquido (R$)' },
@@ -360,6 +598,15 @@ export default function JpClassPage() {
           </Button>
         </div>
       </div>
+
+      {/* Barra com os 7 Filtros Multi-Select + JP-Class */}
+      <JpClassFilterBar
+        filters={filters}
+        setFilters={setFilters}
+        options={filterOptions}
+        onResetToDefault={() => setFilters(DEFAULT_JP_CLASS_FILTERS)}
+        isLoading={loading}
+      />
 
       {/* Alerta de erro */}
       {error && (
