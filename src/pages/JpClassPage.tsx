@@ -788,15 +788,15 @@ export default function JpClassPage() {
         </div>
       </div>
 
-      {/* Dashboard do Módulo (3 Recortes: JP-Class, Grupo, Item) */}
-      <div>
+      {/* Dashboard do Módulo (Recortes por JP-Class, Tipo de Cliente com Subtotais, Grupo e Item) */}
+      <div className="w-full min-w-0">
         <div className="mb-3">
           <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
             <Layers className="w-4 h-4 text-[#0B6E99]" />
-            Dashboard — Recortes por JP-Class, Grupo e Item
+            Dashboard — Recortes por JP-Class, Tipo de Cliente, Grupo e Item
           </h3>
         </div>
-        <JpClassDashboard items={vendasExibidas} />
+        <JpClassDashboard items={vendasExibidas} tiposClienteMap={tiposClienteMap} />
       </div>
 
       {/* Relatório de Vendas por Semanas com Ordenação e Agrupamentos Colapsáveis */}
