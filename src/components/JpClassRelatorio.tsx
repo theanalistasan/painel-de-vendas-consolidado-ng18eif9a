@@ -426,10 +426,23 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
     setCollapsedKeys(new Set())
   }
 
-  // Colapsar Todos: colapsa o primeiro nível (L1) e propaga seletivamente
+  // Colapsar Todos: colapsa todos os níveis colapsáveis (L1, L2, L3 e L4)
+  // mantendo apenas os cabeçalhos visíveis de forma consistente
   const collapseAll = () => {
-    const allL1Keys = new Set(hierarchy.map((n) => n.key))
-    setCollapsedKeys(allL1Keys)
+    const allKeys = new Set<string>()
+    for (const l1 of hierarchy) {
+      allKeys.add(l1.key)
+      for (const l2 of l1.subNodes) {
+        allKeys.add(l2.key)
+        for (const l3 of l2.subNodes) {
+          allKeys.add(l3.key)
+          for (const l4 of l3.subNodes) {
+            allKeys.add(l4.key)
+          }
+        }
+      }
+    }
+    setCollapsedKeys(allKeys)
   }
 
   // Totais consolidados do rodapé
@@ -492,7 +505,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
               size="sm"
               onClick={collapseAll}
               className="bg-white border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold gap-1 h-8"
-              title="Colapsar no primeiro nível (todas as categorias permanecem visíveis nos cabeçalhos)"
+              title="Colapsar todos os níveis da hierarquia (cabeçalhos permanecem visíveis)"
             >
               <ChevronsDownUp className="w-3.5 h-3.5 text-[#0B6E99]" />
               Colapsar Todos

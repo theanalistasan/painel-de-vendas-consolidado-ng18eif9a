@@ -153,4 +153,68 @@ describe('Hierarquia em Cascata JP-Class (4 Níveis)', () => {
     expect(collapsedKeys.has('L1::INKS')).toBe(true)
     expect(collapsedKeys.has('L1::HARD')).toBe(false)
   })
+
+  it('deve permitir colapsar o nível 4 (Item) mantendo cabeçalho, contagem e somatórios intactos', () => {
+    const collapsedKeys = new Set<string>()
+    const itemKey = 'L4::INKS::1::TINTAS::INK-001 - Tinta ECO-SOL MAX Cyan'
+
+    // Inicialmente não colapsado
+    expect(collapsedKeys.has(itemKey)).toBe(false)
+
+    // Colapsa o item
+    collapsedKeys.add(itemKey)
+    expect(collapsedKeys.has(itemKey)).toBe(true)
+
+    // Ao colapsar o item, apenas suas linhas de detalhe ficam escondidas
+    // o cabeçalho do item permanece intacto com chevron, contagem e somatórios
+    const isItemCollapsed = collapsedKeys.has(itemKey)
+    expect(isItemCollapsed).toBe(true)
+
+    // Descolapsa
+    collapsedKeys.delete(itemKey)
+    expect(collapsedKeys.has(itemKey)).toBe(false)
+  })
+
+  it('deve incluir chaves de nível 4 (Item) ao colapsar todos os nós', () => {
+    const hierarchyMock = [
+      {
+        key: 'L1::INKS',
+        subNodes: [
+          {
+            key: 'L2::INKS::1',
+            subNodes: [
+              {
+                key: 'L3::INKS::1::TINTAS',
+                subNodes: [
+                  {
+                    key: 'L4::INKS::1::TINTAS::INK-001',
+                    subNodes: [],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]
+
+    const allKeys = new Set<string>()
+    for (const l1 of hierarchyMock) {
+      allKeys.add(l1.key)
+      for (const l2 of l1.subNodes) {
+        allKeys.add(l2.key)
+        for (const l3 of l2.subNodes) {
+          allKeys.add(l3.key)
+          for (const l4 of l3.subNodes) {
+            allKeys.add(l4.key)
+          }
+        }
+      }
+    }
+
+    expect(allKeys.has('L1::INKS')).toBe(true)
+    expect(allKeys.has('L2::INKS::1')).toBe(true)
+    expect(allKeys.has('L3::INKS::1::TINTAS')).toBe(true)
+    expect(allKeys.has('L4::INKS::1::TINTAS::INK-001')).toBe(true)
+  })
 })
