@@ -142,6 +142,8 @@ export const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
 
 const MIN_COLUMN_WIDTH = 60
 
+export type RelatorioGroupByMode = 'none' | 'jp_class'
+
 export interface VendasRelatorioTableProps {
   items: (VendaConsolidada & { itens_qtd?: number })[]
   loading: boolean
@@ -162,6 +164,8 @@ export interface VendasRelatorioTableProps {
   onExport?: (forceGrouped?: boolean) => void
   showOriginSummary?: boolean
   titleRightActions?: React.ReactNode
+  groupByMode?: RelatorioGroupByMode
+  onGroupByModeChange?: (mode: RelatorioGroupByMode) => void
 }
 
 export function VendasRelatorioTable({
@@ -184,6 +188,8 @@ export function VendasRelatorioTable({
   onExport,
   showOriginSummary = true,
   titleRightActions,
+  groupByMode: propGroupByMode,
+  onGroupByModeChange,
 }: VendasRelatorioTableProps) {
   const { toast } = useToast()
 
@@ -292,19 +298,37 @@ export function VendasRelatorioTable({
   }
 
   // Agrupamento por JP-Class
-  type GroupByMode = 'none' | 'jp_class'
   const storageKeyGroupBy = `${storageKeyPrefix}_group_by_v1`
-  const [groupByMode, setGroupByMode] = useState<GroupByMode>(() => {
+  const [internalGroupByMode, setInternalGroupByMode] = useState<RelatorioGroupByMode>(() => {
     try {
       const saved = localStorage.getItem(storageKeyGroupBy)
       if (saved === 'none' || saved === 'jp_class') {
-        return saved
+        return saved as RelatorioGroupByMode
       }
     } catch (_) {
       // ignore
     }
     return 'none'
   })
+
+  const groupByMode: RelatorioGroupByMode =
+    propGroupByMode !== undefined ? propGroupByMode : internalGroupByMode
+
+  const setGroupByMode = (mode: RelatorioGroupByMode) => {
+    setInternalGroupByMode(mode)
+    try {
+      localStorage.setItem(storageKeyGroupBy, mode)
+    } catch (_) {
+      // ignore
+    }
+    onGroupByModeChange?.(mode)
+  }
+
+  useEffect(() => {
+    if (propGroupByMode !== undefined && propGroupByMode !== internalGroupByMode) {
+      setInternalGroupByMode(propGroupByMode)
+    }
+  }, [propGroupByMode])
 
   useEffect(() => {
     try {
