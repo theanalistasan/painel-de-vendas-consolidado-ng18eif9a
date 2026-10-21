@@ -62,6 +62,8 @@ export default function Layout() {
     location.pathname === '/dashboard/canais' ||
     location.pathname === '/vendas'
 
+  const isJpClassActive = location.pathname === '/jp-class'
+
   const isGeralActive =
     location.pathname === '/' ||
     location.pathname === '/dashboard/geral' ||
@@ -182,6 +184,8 @@ export default function Layout() {
         return 'Dashboard — Visão Geral'
       case '/dashboard/canais':
         return 'Dashboard — Visão Canais'
+      case '/jp-class':
+        return 'JP-Class — Vendas por Semanas'
       case '/vendas':
         return 'Relatório Consolidado de Vendas'
       case '/pedidos-abertos':
@@ -351,6 +355,29 @@ export default function Layout() {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Item JP-Class posicionado abaixo de Dashboard */}
+          <div className="space-y-1">
+            <NavLink
+              to="/jp-class"
+              title={sidebarCollapsed ? 'JP-Class' : undefined}
+              className={cn(
+                'flex items-center rounded-full text-sm font-medium transition-all duration-200',
+                sidebarCollapsed ? 'justify-center w-10 h-10 mx-auto px-0' : 'gap-3 px-3.5 py-2.5',
+                isJpClassActive
+                  ? 'bg-[#0B6E99] text-white shadow-sm font-bold'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
+              )}
+            >
+              <Layers
+                className={cn(
+                  'w-4 h-4 shrink-0',
+                  isJpClassActive ? 'text-white' : 'text-slate-400',
+                )}
+              />
+              {!sidebarCollapsed && <span className="truncate">JP-Class</span>}
+            </NavLink>
           </div>
 
           {/* Item Canais com Submenu (Canais, Pedidos em Aberto, Estoque Faltante) */}
@@ -633,6 +660,23 @@ export default function Layout() {
                     </NavLink>
                   </div>
                 )}
+              </div>
+
+              {/* Item JP-Class Mobile posicionado abaixo de Dashboard */}
+              <div className="space-y-1">
+                <NavLink
+                  to="/jp-class"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={cn(
+                    'flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium transition-all',
+                    isJpClassActive
+                      ? 'bg-[#0B6E99] text-white font-bold'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                  )}
+                >
+                  <Layers className="w-4 h-4" />
+                  <span>JP-Class</span>
+                </NavLink>
               </div>
 
               {/* Canais Mobile com Submenu */}
