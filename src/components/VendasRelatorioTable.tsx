@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import type { VendaConsolidada } from '@/types/sales'
 import { formatCurrency, formatNumber, formatDate, getGrupoColor } from '@/lib/formatters'
-import { getJpClass, getJpClassBadgeStyle } from '@/lib/jp-class'
+import { getJpClass, getJpClassBadgeStyle, JP_CLASS_OPTIONS } from '@/lib/jp-class'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -291,10 +291,66 @@ export function VendasRelatorioTable({
     })
   }
 
+  // Agrupamento por JP-Class
+  type GroupByMode = 'none' | 'jp_class'
+  const storageKeyGroupBy = `${storageKeyPrefix}_group_by_v1`
+  const [groupByMode, setGroupByMode] = useState<GroupByMode>(() => {
+    try {
+      const saved = localStorage.getItem(storageKeyGroupBy)
+      if (saved === 'none' || saved === 'jp_class') {
+        return saved
+      }
+    } catch (_) {
+      // ignore
+    }
+    return 'none'
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKeyGroupBy, groupByMode)
+    } catch (_) {
+      // ignore
+    }
+  }, [groupByMode, storageKeyGroupBy])
+
+  // Grupos colapsados do JP-Class (padrão colapsado quando ativado)
+  const [collapsedJpGroups, setCollapsedJpGroups] = useState<Set<string>>(new Set())
+
+  // Sempre que mudar para modo jp_class, inicializa colapsado por padrão
+  useEffect(() => {
+    if (groupByMode === 'jp_class') {
+      setCollapsedJpGroups(new Set(JP_CLASS_OPTIONS))
+    } else {
+      setCollapsedJpGroups(new Set())
+    }
+  }, [groupByMode])
+
+  const toggleCollapseJpGroup = (groupKey: string) => {
+    setCollapsedJpGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupKey)) {
+        next.delete(groupKey)
+      } else {
+        next.add(groupKey)
+      }
+      return next
+    })
+  }
+
+  const collapseAllJpGroups = () => {
+    setCollapsedJpGroups(new Set(JP_CLASS_OPTIONS))
+  }
+
+  const expandAllJpGroups = () => {
+    setCollapsedJpGroups(new Set())
+  }
+
   // Agrupamento por Nº NFe localmente para visualização de linhas repetidas na mesma página
   const [collapsedNfes, setCollapsedNfes] = useState<Set<string>>(new Set())
 
-  const groupedRows = useMemo(() => {
+  // Função auxiliar para agrupar linhas por NFe
+  const buildNfeGroups = (itemList: (VendaConsolidada & { itens_qtd?: number })[]) => {
     const groups: Array<{
       nfeKey: string
       displayNfe: string
@@ -305,7 +361,7 @@ export function VendasRelatorioTable({
     const map = new Map<string, (VendaConsolidada & { itens_qtd?: number })[]>()
     const order: string[] = []
 
-    for (const item of items) {
+    for (const item of itemList) {
       const key = (item.numero_nfe || '').trim() || `__single_${item.id}`
       if (!map.has(key)) {
         map.set(key, [])
@@ -326,7 +382,73 @@ export function VendasRelatorioTable({
     }
 
     return groups
+  }
+
+  const groupedRows = useMemo(() => {
+    return buildNfeGroups(items)
   }, [items])
+
+  // Estrutura de grupos de JP-Class sobre as linhas do relatório
+  interface JpClassGroupInfo {
+    key: string
+    title: string
+    items: (VendaConsolidada & { itens_qtd?: number })[]
+    nfeGroups: Array<{
+      nfeKey: string
+      displayNfe: string
+      items: (VendaConsolidada & { itens_qtd?: number })[]
+      hasMultiple: boolean
+    }>
+    count: number
+    subtotal: number
+    totalQuantidade: number
+  }
+
+  const jpClassGroups = useMemo<JpClassGroupInfo[]>(() => {
+    if (groupByMode !== 'jp_class') return []
+
+    // Mapeamento das 4 classes canônicas
+    const map = new Map<string, (VendaConsolidada & { itens_qtd?: number })[]>()
+    for (const opt of JP_CLASS_OPTIONS) {
+      map.set(opt, [])
+    }
+
+    for (const item of items) {
+      const rawDerived = item.jp_class || getJpClass(item.descricao_item) || ''
+      let standardGroup: string
+      if (rawDerived === 'HARD' || rawDerived === 'INKS' || rawDerived === 'OTHERS') {
+        standardGroup = rawDerived
+      } else {
+        standardGroup = 'Sem classe'
+      }
+      map.get(standardGroup)!.push(item)
+    }
+
+    // Retorna os grupos na ordem de JP_CLASS_OPTIONS que contenham linhas
+    const result: JpClassGroupInfo[] = []
+    for (const opt of JP_CLASS_OPTIONS) {
+      const gItems = map.get(opt) || []
+      if (gItems.length > 0) {
+        let subtotal = 0
+        let totalQuantidade = 0
+        for (const it of gItems) {
+          subtotal += Number(it.total_linha) || 0
+          totalQuantidade += Number(it.quantidade) || 0
+        }
+        result.push({
+          key: opt,
+          title: opt,
+          items: gItems,
+          nfeGroups: buildNfeGroups(gItems),
+          count: gItems.length,
+          subtotal,
+          totalQuantidade,
+        })
+      }
+    }
+
+    return result
+  }, [items, groupByMode])
 
   const toggleCollapseNfe = (nfeKey: string) => {
     if (isGroupedByNfe) {
@@ -348,12 +470,615 @@ export function VendasRelatorioTable({
 
   const columns = RELATORIO_COLUMNS
 
+  // Renderizador de linha de item de venda (reutilizado tanto no modo flat quanto no modo agrupado por JP-Class)
+  const renderItemRow = (
+    item: VendaConsolidada & { itens_qtd?: number },
+    itemIdx: number,
+    group: {
+      nfeKey: string
+      displayNfe: string
+      items: (VendaConsolidada & { itens_qtd?: number })[]
+      hasMultiple: boolean
+    },
+  ) => {
+    const isFirstOfGroup = itemIdx === 0
+    const isGrouped = group.hasMultiple
+    const isCollapsed = collapsedNfes.has(group.nfeKey)
+
+    return (
+      <tr
+        key={item.id}
+        className={`transition-colors group ${
+          isGrouped && isFirstOfGroup && isCollapsed
+            ? 'bg-cyan-50/30 font-medium'
+            : isGrouped && !isCollapsed
+              ? 'hover:bg-slate-50/80'
+              : 'hover:bg-cyan-50/10'
+        }`}
+      >
+        {/* Botão de Expandir / Colapsar Grupo NFe */}
+        <td className="py-2 px-2 text-center align-middle border-r border-slate-100 w-9 min-w-[36px]">
+          {isGrouped && isFirstOfGroup ? (
+            <button
+              type="button"
+              onClick={() => toggleCollapseNfe(group.nfeKey)}
+              className="p-1 rounded hover:bg-cyan-100 text-[#0B6E99] focus:outline-hidden transition-colors"
+              title={
+                isCollapsed
+                  ? `Expandir NF ${group.displayNfe} (${group.items.length} itens)`
+                  : `Colapsar NF ${group.displayNfe}`
+              }
+            >
+              {isCollapsed ? (
+                <ChevronRightIcon className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+          ) : isGrouped ? (
+            <span className="inline-block w-2 h-0.5 bg-slate-200 rounded-full mx-auto" />
+          ) : null}
+        </td>
+
+        {/* Renderização de cada coluna na ordem exata solicitada */}
+        {columns.map((col) => {
+          const isExpanded = !!expandedCols[col.key]
+          const width = columnWidths[col.key] || DEFAULT_COLUMN_WIDTHS[col.key] || 150
+          const cellStyle: React.CSSProperties = {
+            width: isExpanded ? 'auto' : `${width}px`,
+            minWidth: `${Math.min(width, 80)}px`,
+            maxWidth: isExpanded ? 'none' : `${Math.max(width, 260)}px`,
+          }
+
+          switch (col.key) {
+            // 1. Data de Lançamento
+            case 'data_lancamento':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 font-medium text-slate-700 border-r border-slate-100"
+                >
+                  <div
+                    className={isExpanded ? '' : 'truncate'}
+                    title={formatDate(item.data_lancamento)}
+                  >
+                    {formatDate(item.data_lancamento)}
+                  </div>
+                </td>
+              )
+
+            // 2. Nr. NF
+            case 'numero_nfe':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 font-mono font-semibold text-slate-900 border-r border-slate-100"
+                >
+                  <div
+                    className={`flex items-center gap-1.5 ${isExpanded ? '' : 'truncate'}`}
+                    title={item.numero_nfe || '-'}
+                  >
+                    <span className="truncate">{item.numero_nfe || '-'}</span>
+                    {isGrouped && isFirstOfGroup && isCollapsed && (
+                      <Badge
+                        variant="secondary"
+                        className="text-[9px] px-1.5 py-0 h-4 bg-cyan-100 text-cyan-900 hover:bg-cyan-100 border-none font-sans font-bold shrink-0"
+                      >
+                        +{group.items.length - 1}
+                      </Badge>
+                    )}
+                    {isGroupedByNfe && item.itens_qtd && item.itens_qtd > 1 ? (
+                      <Badge
+                        variant="secondary"
+                        className="text-[9px] px-1.5 py-0 h-4 bg-cyan-100 text-cyan-900 border-none font-sans font-bold shrink-0"
+                        title={`${item.itens_qtd} itens na Nota Fiscal`}
+                      >
+                        +{item.itens_qtd - 1}
+                      </Badge>
+                    ) : isGroupedByNfe ? (
+                      <Badge
+                        variant="outline"
+                        className="text-[8px] px-1 py-0 h-3.5 bg-slate-100 text-slate-600 border-slate-200 shrink-0 font-sans"
+                      >
+                        NF
+                      </Badge>
+                    ) : null}
+                  </div>
+                </td>
+              )
+
+            // 3. Tipo de Documento
+            case 'tipo_documento':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                >
+                  <div
+                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
+                    title={item.tipo_documento || '-'}
+                  >
+                    {item.tipo_documento || '-'}
+                  </div>
+                </td>
+              )
+
+            // 4. Cliente (Nome do Cliente)
+            case 'nome_cliente':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 font-semibold text-slate-900 border-r border-slate-100"
+                >
+                  <div
+                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
+                    title={item.nome_cliente || '-'}
+                  >
+                    {item.nome_cliente || '-'}
+                  </div>
+                </td>
+              )
+
+            // 5. Vendedor (Vendedor > Cliente ou Nome Vendedor)
+            case 'vendedor_cliente':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-slate-900 font-medium bg-slate-50/40 border-r border-slate-100"
+                >
+                  <div
+                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
+                    title={item.vendedor_cliente || item.nome_vendedor || '-'}
+                  >
+                    {item.vendedor_cliente || item.nome_vendedor || '-'}
+                  </div>
+                </td>
+              )
+
+            // 6. Item (Descrição do Item com Cód. opcional)
+            case 'descricao_item':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                >
+                  <div
+                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
+                    title={item.descricao_item || item.codigo_item || '-'}
+                  >
+                    {item.descricao_item || (item.codigo_item ? `Cód. ${item.codigo_item}` : '-')}
+                  </div>
+                </td>
+              )
+
+            // JP-Class derivado via getJpClass
+            case 'jp_class': {
+              const jpClassVal = item.jp_class || getJpClass(item.descricao_item)
+              const badgeStyle = getJpClassBadgeStyle(jpClassVal)
+              return (
+                <td key={col.key} style={cellStyle} className="py-2 px-3 border-r border-slate-100">
+                  {jpClassVal ? (
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] px-2 py-0.5 truncate max-w-full ${badgeStyle.className}`}
+                      title={jpClassVal}
+                    >
+                      {jpClassVal}
+                    </Badge>
+                  ) : (
+                    <span className="text-slate-400">-</span>
+                  )}
+                </td>
+              )
+            }
+
+            // 7. Qtde (Quantidade)
+            case 'quantidade':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-center font-medium text-slate-800 border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'}>
+                    {formatNumber(item.quantidade)}
+                  </div>
+                </td>
+              )
+
+            // 8. Grupo (Grupo do Item)
+            case 'grupo_item':
+              return (
+                <td key={col.key} style={cellStyle} className="py-2 px-3 border-r border-slate-100">
+                  {item.grupo_item ? (
+                    <Badge
+                      className="text-[10px] font-semibold text-white px-2 py-0.5 truncate max-w-full"
+                      style={{
+                        backgroundColor: getGrupoColor(item.grupo_item),
+                      }}
+                      title={item.grupo_item}
+                    >
+                      {item.grupo_item}
+                    </Badge>
+                  ) : (
+                    <span className="text-slate-400">-</span>
+                  )}
+                </td>
+              )
+
+            // 9. Total da Linha (Valor Mercadoria)
+            case 'total_linha':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-right font-bold text-slate-900 tabular-nums bg-cyan-50/20 border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'}>
+                    {formatCurrency(item.total_linha)}
+                  </div>
+                </td>
+              )
+
+            // 10. Utilização
+            case 'utilizacao':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                >
+                  <div
+                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
+                    title={item.utilizacao || '-'}
+                  >
+                    {item.utilizacao || '-'}
+                  </div>
+                </td>
+              )
+
+            // Colunas complementares
+            case 'numero_sap':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 font-mono text-slate-600 border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'} title={item.numero_sap || '-'}>
+                    {item.numero_sap || '-'}
+                  </div>
+                </td>
+              )
+            case 'codigo_cliente':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 font-mono text-slate-700 border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'} title={item.codigo_cliente || '-'}>
+                    {item.codigo_cliente || '-'}
+                  </div>
+                </td>
+              )
+            case 'nome_vendedor':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                >
+                  <div
+                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
+                    title={item.nome_vendedor || '-'}
+                  >
+                    {item.nome_vendedor || '-'}
+                  </div>
+                </td>
+              )
+            case 'codigo_item':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 font-mono font-semibold text-slate-900 border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'} title={item.codigo_item || '-'}>
+                    {item.codigo_item || '-'}
+                  </div>
+                </td>
+              )
+            case 'preco_item':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'}>
+                    {formatCurrency(item.preco_item)}
+                  </div>
+                </td>
+              )
+            case 'preco_unitario':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'}>
+                    {formatCurrency(item.preco_unitario)}
+                  </div>
+                </td>
+              )
+            case 'total_nf_sem_frete':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'}>
+                    {formatCurrency(item.total_nf_sem_frete)}
+                  </div>
+                </td>
+              )
+            case 'valor_liquido':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-right font-bold text-teal-700 tabular-nums border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'}>
+                    {formatCurrency(item.valor_liquido)}
+                  </div>
+                </td>
+              )
+            case 'cmv':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-right text-slate-700 tabular-nums border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'}>{formatCurrency(item.cmv)}</div>
+                </td>
+              )
+            case 'lucro_bruto':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-right font-semibold text-slate-900 tabular-nums border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'}>
+                    {formatCurrency(item.lucro_bruto)}
+                  </div>
+                </td>
+              )
+            case 'margem_lucro':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'}>
+                    {item.margem_lucro !== undefined && item.margem_lucro !== null
+                      ? `${item.margem_lucro.toFixed(2)}%`
+                      : '-'}
+                  </div>
+                </td>
+              )
+            case 'uf':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-center border-r border-slate-100"
+                >
+                  {item.uf ? (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-mono font-semibold bg-slate-50 text-slate-700 border-slate-200 px-1.5 py-0"
+                    >
+                      {item.uf}
+                    </Badge>
+                  ) : (
+                    <span className="text-slate-400">-</span>
+                  )}
+                </td>
+              )
+            case 'cidade':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                >
+                  <div
+                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
+                    title={item.cidade || '-'}
+                  >
+                    {item.cidade || '-'}
+                  </div>
+                </td>
+              )
+            case 'canal':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                >
+                  <div
+                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
+                    title={item.canal || '-'}
+                  >
+                    {item.canal || '-'}
+                  </div>
+                </td>
+              )
+            case 'status_cadastro':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                >
+                  <div className={isExpanded ? '' : 'truncate'} title={item.status_cadastro || '-'}>
+                    {item.status_cadastro ? (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] font-medium bg-slate-50 text-slate-700 border-slate-200"
+                      >
+                        {item.status_cadastro}
+                      </Badge>
+                    ) : (
+                      '-'
+                    )}
+                  </div>
+                </td>
+              )
+            case 'tipo_pn':
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                >
+                  <div
+                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
+                    title={item.tipo_pn || '-'}
+                  >
+                    {item.tipo_pn || '-'}
+                  </div>
+                </td>
+              )
+            case 'origem':
+              return (
+                <td key={col.key} style={cellStyle} className="py-2 px-3 border-r border-slate-100">
+                  {item.tem_netsales && item.tem_racnew ? (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-0.5 inline-flex items-center gap-1"
+                    >
+                      Consolidado
+                    </Badge>
+                  ) : item.tem_netsales ? (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-semibold bg-indigo-50/70 text-indigo-700 border-indigo-200/80 px-2 py-0.5 inline-flex items-center gap-1"
+                    >
+                      <Database className="w-3 h-3 text-indigo-600" />
+                      <span>NetSales</span>
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] font-semibold bg-cyan-100 text-cyan-800 border-cyan-300 px-2 py-0.5 inline-flex items-center gap-1"
+                    >
+                      <FileText className="w-3 h-3 text-cyan-700" />
+                      <span>RacNew</span>
+                    </Badge>
+                  )}
+                </td>
+              )
+            default:
+              return (
+                <td
+                  key={col.key}
+                  style={cellStyle}
+                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
+                >
+                  <div className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}>
+                    {String((item as unknown as Record<string, unknown>)[col.key] ?? '-')}
+                  </div>
+                </td>
+              )
+          }
+        })}
+      </tr>
+    )
+  }
+
   return (
     <div className="w-full min-w-0 max-w-full">
-      {/* Barra de controle de NFs e Redefinir Larguras */}
+      {/* Barra de controle: Agrupamento, NFs e Redefinir Larguras */}
       <div className="px-6 py-2.5 bg-slate-50/60 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs">
-        {/* Lado esquerdo: Botão de Colapsar / Expandir itens de NFe */}
+        {/* Lado esquerdo: Seletor de agrupamento e controles */}
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Seletor de Agrupamento */}
+          <div className="inline-flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs">
+            <span className="text-[11px] font-bold text-slate-500 pl-2 pr-1 uppercase tracking-wider flex items-center gap-1">
+              <Layers className="w-3.5 h-3.5 text-[#0B6E99]" />
+              Agrupar:
+            </span>
+            <button
+              type="button"
+              onClick={() => setGroupByMode('none')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                groupByMode === 'none'
+                  ? 'bg-slate-800 text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              Sem Agrupamento
+            </button>
+            <button
+              type="button"
+              onClick={() => setGroupByMode('jp_class')}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${
+                groupByMode === 'jp_class'
+                  ? 'bg-[#0B6E99] text-white shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              JP-Class
+              {groupByMode === 'jp_class' && (
+                <span className="text-[10px] bg-white/20 px-1 rounded-sm">
+                  {jpClassGroups.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Botões Expandir Todos / Colapsar Todos para JP-Class */}
+          {groupByMode === 'jp_class' && (
+            <div className="inline-flex items-center gap-1 ml-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={expandAllJpGroups}
+                className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 hover:text-[#0B6E99] text-xs font-semibold gap-1 h-8"
+                title="Expandir todos os grupos JP-Class"
+              >
+                <ChevronsUpDown className="w-3.5 h-3.5" />
+                Expandir Todos
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={collapseAllJpGroups}
+                className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 hover:text-[#0B6E99] text-xs font-semibold gap-1 h-8"
+                title="Colapsar todos os grupos JP-Class"
+              >
+                <ChevronsDownUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                Colapsar Todos
+              </Button>
+            </div>
+          )}
+
+          {/* Botão de Colapsar / Expandir itens de NFe */}
           <Button
             variant={isGroupedByNfe ? 'default' : 'outline'}
             size="sm"
@@ -373,12 +1098,12 @@ export function VendasRelatorioTable({
             {isGroupedByNfe ? (
               <>
                 <ChevronsUpDown className="w-3.5 h-3.5" />
-                Expandir Todos os Itens
+                Expandir Itens NF
               </>
             ) : (
               <>
                 <ChevronsDownUp className="w-3.5 h-3.5 text-[#0B6E99]" />
-                Colapsar por NF (Consolidado)
+                Colapsar por NF
               </>
             )}
           </Button>
@@ -388,7 +1113,7 @@ export function VendasRelatorioTable({
               variant="outline"
               className="bg-cyan-50 text-[#0B6E99] border-cyan-200 font-medium px-2 py-0.5 text-[11px]"
             >
-              Modo compacto: 1 linha por NF em todo o filtro
+              1 linha por NF
             </Badge>
           )}
 
@@ -396,7 +1121,7 @@ export function VendasRelatorioTable({
             variant="outline"
             size="sm"
             onClick={resetColumnWidths}
-            className="bg-white border-gray-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold gap-1.5 h-8 ml-1"
+            className="bg-white border-gray-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold gap-1.5 h-8"
             title="Redefinir larguras das colunas para os padrões"
           >
             <RotateCw className="w-3.5 h-3.5 text-slate-500" />
