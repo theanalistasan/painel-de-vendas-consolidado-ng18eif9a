@@ -6,7 +6,8 @@
  * - EQUIPAMENTOS → HARD
  * - PEÇAS → OTHERS
  * - ACESSÓRIOS → OTHERS (tratar também a grafia 'ASSESSÓRIOS' como OTHERS)
- * - Qualquer outro valor mantém o valor original
+ * - Qualquer outro valor de Grupo NÃO mapeado recebe OTHERS (não mantém o original)
+ * - Apenas itens com Grupo vazio/ausente recebem 'Sem classe'
  * - Normalizar antes do De/Para: trim, maiúsculas e remoção de acentos (ex.: "PEÇAS" e "PECAS" caem na mesma regra)
  */
 
@@ -39,39 +40,6 @@ export const JP_CLASS_OPTIONS = ['HARD', 'INKS', 'OTHERS', 'Sem classe'] as cons
 export type JpClassOption = (typeof JP_CLASS_OPTIONS)[number]
 
 export function getJpClass(raw: string | null | undefined): string {
-  if (!raw) return ''
-  const trimmed = raw.trim()
-  if (!trimmed) return ''
-
-  const norm = normalizeText(trimmed)
-
-  if (norm === 'HARD' || norm === 'EQUIPAMENTOS' || norm === 'EQUIPAMENTO') {
-    return 'HARD'
-  }
-  if (norm === 'INKS' || norm === 'TINTAS' || norm === 'TINTA') {
-    return 'INKS'
-  }
-  if (
-    norm === 'OTHERS' ||
-    norm === 'PECAS' ||
-    norm === 'PECA' ||
-    norm === 'ACESSORIOS' ||
-    norm === 'ACESSORIO' ||
-    norm === 'ASSESSORIOS' ||
-    norm === 'ASSESSORIO'
-  ) {
-    return 'OTHERS'
-  }
-
-  // Qualquer outro valor mantém o valor original
-  return trimmed
-}
-
-/**
- * Retorna o grupo de JP-Class para fins de agrupamento na tabela.
- * Itens que não caíram em nenhuma regra do De/Para caem no grupo 'Sem classe'.
- */
-export function getJpClassGroup(raw: string | null | undefined): string {
   if (!raw) return 'Sem classe'
   const trimmed = raw.trim()
   if (!trimmed) return 'Sem classe'
@@ -96,7 +64,20 @@ export function getJpClassGroup(raw: string | null | undefined): string {
     return 'OTHERS'
   }
 
-  return 'Sem classe'
+  if (norm === 'SEM CLASSE') {
+    return 'Sem classe'
+  }
+
+  // Qualquer outro valor de Grupo não mapeado recebe OTHERS
+  return 'OTHERS'
+}
+
+/**
+ * Retorna o grupo de JP-Class para fins de agrupamento na tabela.
+ * Equivalente a getJpClass, garantindo 'HARD' | 'INKS' | 'OTHERS' | 'Sem classe'.
+ */
+export function getJpClassGroup(raw: string | null | undefined): string {
+  return getJpClass(raw)
 }
 
 /**
@@ -122,7 +103,7 @@ export function matchesJpClassFilter(
   selectedClasses: string[] | undefined,
 ): boolean {
   if (!selectedClasses || selectedClasses.length === 0) return true
-  const raw = itemJpClass || getJpClass(descricaoItem) || ''
+  const raw = itemJpClass || getJpClass(descricaoItem)
   const standard = getStandardJpClass(raw)
   return selectedClasses.some((sel) => {
     const s = (sel || '').trim().toLowerCase()
@@ -154,12 +135,8 @@ export function getJpClassBadgeStyle(jpClass: string | null | undefined): {
       className: 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold',
     }
   }
-  if (norm === 'SEM CLASSE' || !norm) {
-    return {
-      className: 'bg-slate-100 text-slate-500 border-slate-200 italic',
-    }
-  }
+  // 'SEM CLASSE' ou vazio
   return {
-    className: 'bg-purple-50 text-purple-700 border-purple-200 font-semibold',
+    className: 'bg-slate-100 text-slate-500 border-slate-200 italic',
   }
 }
