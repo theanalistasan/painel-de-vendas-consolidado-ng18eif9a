@@ -95,12 +95,9 @@ export interface Level1JpClassNode {
   totalLinhas: number
 }
 
-// Ordem canônica de JP-Class
-const JP_CLASS_ORDER = ['INKS', 'HARD', 'OTHERS', 'Sem classe']
-
 export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioProps) {
-  const [sortField, setSortField] = useState<SortField>('total_linha')
-  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [sortField, setSortField] = useState<SortField>('nome')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [search, setSearch] = useState('')
   // Controla o estado de colapso de nós da árvore
   const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set())
@@ -316,10 +313,28 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
             l3Items.push(...vList)
           }
 
-          // Ordenar L4 (Itens)
-          l4Nodes.sort((a, b) =>
-            compareNodes(a, b, a.descricaoItem || a.codigoItem, b.descricaoItem || b.codigoItem),
-          )
+          // Ordenar L4 (Itens): ordem alfabética crescente (A→Z) por padrão ou por métrica se clicado
+          l4Nodes.sort((a, b) => {
+            if (
+              sortField === 'total_linha' ||
+              sortField === 'valor_liquido' ||
+              sortField === 'quantidade'
+            ) {
+              return compareNodes(
+                a,
+                b,
+                a.descricaoItem || a.codigoItem,
+                b.descricaoItem || b.codigoItem,
+              )
+            }
+            const labelA = a.descricaoItem || a.codigoItem || ''
+            const labelB = b.descricaoItem || b.codigoItem || ''
+            const cmp = labelA.localeCompare(labelB, 'pt-BR', {
+              sensitivity: 'base',
+              numeric: true,
+            })
+            return sortField === 'nome' && sortDir === 'desc' ? -cmp : cmp
+          })
 
           l3Nodes.push({
             key: `L3::${jpc}::${semNum}::${grpNome}`,
@@ -338,8 +353,21 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
           l2Items.push(...l3Items)
         }
 
-        // Ordenar L3 (Grupos)
-        l3Nodes.sort((a, b) => compareNodes(a, b, a.grupoNome, b.grupoNome))
+        // Ordenar L3 (Grupos): ordem alfabética crescente (A→Z) por padrão ou por métrica se clicado
+        l3Nodes.sort((a, b) => {
+          if (
+            sortField === 'total_linha' ||
+            sortField === 'valor_liquido' ||
+            sortField === 'quantidade'
+          ) {
+            return compareNodes(a, b, a.grupoNome, b.grupoNome)
+          }
+          const cmp = a.grupoNome.localeCompare(b.grupoNome, 'pt-BR', {
+            sensitivity: 'base',
+            numeric: true,
+          })
+          return sortField === 'nome' && sortDir === 'desc' ? -cmp : cmp
+        })
 
         l2Nodes.push({
           key: `L2::${jpc}::${semNum}`,
@@ -359,8 +387,21 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
         l1Items.push(...l2Items)
       }
 
-      // Ordenar L2 (Semanas)
-      l2Nodes.sort((a, b) => compareNodes(a, b, a.semanaNumero, b.semanaNumero))
+      // Ordenar L2 (Semanas): ordem alfabética natural crescente (A→Z: "Semana 1", "Semana 2", ...) por padrão ou por métrica se clicado
+      l2Nodes.sort((a, b) => {
+        if (
+          sortField === 'total_linha' ||
+          sortField === 'valor_liquido' ||
+          sortField === 'quantidade'
+        ) {
+          return compareNodes(a, b, a.semanaNome, b.semanaNome)
+        }
+        const cmp = a.semanaNome.localeCompare(b.semanaNome, 'pt-BR', {
+          sensitivity: 'base',
+          numeric: true,
+        })
+        return sortField === 'nome' && sortDir === 'desc' ? -cmp : cmp
+      })
 
       l1Nodes.push({
         key: `L1::${jpc}`,
@@ -374,21 +415,20 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
       })
     }
 
-    // Ordenar L1 (JP-Class)
+    // Ordenar L1 (JP-Class): ordem alfabética crescente (A→Z: HARD, INKS, OTHERS, Sem classe) por padrão ou por métrica se clicado
     l1Nodes.sort((a, b) => {
-      // Se ordenação não for por valores numéricos, priorizar ordem canônica de JP-Class
       if (
-        sortField !== 'total_linha' &&
-        sortField !== 'valor_liquido' &&
-        sortField !== 'quantidade'
+        sortField === 'total_linha' ||
+        sortField === 'valor_liquido' ||
+        sortField === 'quantidade'
       ) {
-        const idxA = JP_CLASS_ORDER.indexOf(a.jpClass)
-        const idxB = JP_CLASS_ORDER.indexOf(b.jpClass)
-        const orderA = idxA >= 0 ? idxA : 99
-        const orderB = idxB >= 0 ? idxB : 99
-        return sortDir === 'asc' ? orderA - orderB : orderB - orderA
+        return compareNodes(a, b, a.jpClass, b.jpClass)
       }
-      return compareNodes(a, b, a.jpClass, b.jpClass)
+      const cmp = a.jpClass.localeCompare(b.jpClass, 'pt-BR', {
+        sensitivity: 'base',
+        numeric: true,
+      })
+      return sortField === 'nome' && sortDir === 'desc' ? -cmp : cmp
     })
 
     return l1Nodes
@@ -443,6 +483,24 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
       }
     }
     setCollapsedKeys(allKeys)
+  }
+
+  // Retorna true se a ordenação atual é por valores numéricos (total_linha, valor_liquido, quantidade)
+  const isNumericSort =
+    sortField === 'total_linha' || sortField === 'valor_liquido' || sortField === 'quantidade'
+
+  // Retorna o rótulo de indicação da ordenação atual
+  const getSortDescription = () => {
+    if (isNumericSort) {
+      const fieldName =
+        sortField === 'total_linha'
+          ? 'Total de Vendas'
+          : sortField === 'valor_liquido'
+            ? 'Valor Líquido'
+            : 'Quantidade'
+      return `${fieldName} (${sortDir === 'desc' ? 'Maior → Menor' : 'Menor → Maior'})`
+    }
+    return `Ordem Alfabética (${sortDir === 'desc' && sortField === 'nome' ? 'Z → A' : 'A → Z'})`
   }
 
   // Totais consolidados do rodapé
@@ -509,6 +567,20 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
             >
               <ChevronsDownUp className="w-3.5 h-3.5 text-[#0B6E99]" />
               Colapsar Todos
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSortField('nome')
+                setSortDir('asc')
+              }}
+              className="text-xs text-[#0B6E99] hover:bg-sky-50 h-8 gap-1 font-medium"
+              title="Redefinir ordenação para Ordem Alfabética A→Z em todos os níveis"
+            >
+              <ArrowUpDown className="w-3 h-3 text-[#0B6E99]" />
+              A→Z Padrão
             </Button>
           </div>
         </div>
@@ -1012,10 +1084,11 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
         <div className="flex items-center gap-2">
           <Sparkles className="w-3.5 h-3.5 text-[#0B6E99]" />
           <span>
-            Total do período recortado:{' '}
+            Total do período:{' '}
             <strong className="text-slate-900 font-bold">{totalGeral.linhas}</strong> linhas de
             vendas em <strong className="text-slate-900 font-bold">{hierarchy.length}</strong>{' '}
-            classes JP-Class
+            classes JP-Class • Ordenação:{' '}
+            <strong className="text-slate-900 font-bold">{getSortDescription()}</strong>
           </span>
         </div>
         <div className="flex items-center gap-4">

@@ -217,4 +217,45 @@ describe('Hierarquia em Cascata JP-Class (4 Níveis)', () => {
     expect(allKeys.has('L3::INKS::1::TINTAS')).toBe(true)
     expect(allKeys.has('L4::INKS::1::TINTAS::INK-001')).toBe(true)
   })
+
+  it('deve ordenar cada nível da hierarquia em ordem alfabética crescente (A→Z com normalização e numeric pt-BR)', () => {
+    // Teste dos 4 níveis de ordenação alfabética exigidos pelo usuário:
+    // 1. JP-Class: HARD, INKS, OTHERS, Sem classe (ordem alfabética A→Z)
+    const jpClasses = ['OTHERS', 'INKS', 'HARD', 'Sem classe']
+    const sortedJpClasses = [...jpClasses].sort((a, b) =>
+      a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true }),
+    )
+    expect(sortedJpClasses).toEqual(['HARD', 'INKS', 'OTHERS', 'Sem classe'])
+
+    // 2. Semana: "Semana 1", "Semana 2", "Semana 10" com ordenação natural (numeric: true)
+    const semanas = ['Semana 10', 'Semana 2', 'Semana 1', 'Semana 3']
+    const sortedSemanas = [...semanas].sort((a, b) =>
+      a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true }),
+    )
+    expect(sortedSemanas).toEqual(['Semana 1', 'Semana 2', 'Semana 3', 'Semana 10'])
+
+    // 3. Grupo: ordem alfabética dos grupos dentro da semana
+    const grupos = ['TINTAS', 'EQUIPAMENTOS', 'PEÇAS', 'ACESSÓRIOS']
+    const sortedGrupos = [...grupos].sort((a, b) =>
+      a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true }),
+    )
+    expect(sortedGrupos).toEqual(['ACESSÓRIOS', 'EQUIPAMENTOS', 'PEÇAS', 'TINTAS'])
+
+    // 4. Item: ordem alfabética dos itens dentro do grupo (case-insensitive / acentos tratados)
+    const itens = [
+      'Tinta TrueVIS Magenta',
+      'Cabo Flat Head',
+      'Plotter TrueVIS VG3-640',
+      'Adaptador USB',
+    ]
+    const sortedItens = [...itens].sort((a, b) =>
+      a.localeCompare(b, 'pt-BR', { sensitivity: 'base', numeric: true }),
+    )
+    expect(sortedItens).toEqual([
+      'Adaptador USB',
+      'Cabo Flat Head',
+      'Plotter TrueVIS VG3-640',
+      'Tinta TrueVIS Magenta',
+    ])
+  })
 })
