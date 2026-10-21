@@ -110,9 +110,7 @@ export default function DashboardCanais() {
 
   const displayedReportVendas = useMemo(() => {
     if (!filters.jpClass || filters.jpClass.length === 0) return reportVendas
-    return reportVendas.filter((item) =>
-      matchesJpClassFilter(item.jp_class, item.descricao_item, filters.jpClass),
-    )
+    return reportVendas.filter((item) => matchesJpClassFilter(item.grupo_item, filters.jpClass))
   }, [reportVendas, filters.jpClass])
   const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
   const [mapExpanded, setMapExpanded] = useState(false)

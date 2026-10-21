@@ -248,38 +248,21 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
     if (jpClassFilter.length > 0) {
       const hardPatterns = ["'EQUIPAMENTOS'", "'EQUIPAMENTO'", "'HARD'"]
       const inksPatterns = ["'TINTAS'", "'TINTA'", "'INKS'"]
-      const othersPatterns = [
-        "'PECAS'",
-        "'PECA'",
-        "'ACESSORIOS'",
-        "'ACESSORIO'",
-        "'ASSESSORIOS'",
-        "'ASSESSORIO'",
-        "'OTHERS'",
-      ]
-      const allKnownPatterns = hardPatterns.concat(inksPatterns).concat(othersPatterns)
 
       const conds = []
       for (let j = 0; j < jpClassFilter.length; j++) {
         const val = String(jpClassFilter[j]).trim()
         const upper = val.toUpperCase()
         if (upper === 'HARD') {
-          conds.push(
-            "(UPPER(TRIM(COALESCE(descricao_item, ''))) IN (" +
-              hardPatterns.join(',') +
-              ") OR UPPER(descricao_item) LIKE '%EQUIP%' OR UPPER(descricao_item) LIKE '%IMPRESS%' OR UPPER(descricao_item) LIKE '%PLOTTER%')",
-          )
+          conds.push("UPPER(TRIM(COALESCE(grupo_item, ''))) IN (" + hardPatterns.join(',') + ')')
         } else if (upper === 'INKS') {
-          conds.push(
-            "(UPPER(TRIM(COALESCE(descricao_item, ''))) IN (" +
-              inksPatterns.join(',') +
-              ") OR UPPER(descricao_item) LIKE '%TINTA%' OR UPPER(descricao_item) LIKE '%INK%')",
-          )
+          conds.push("UPPER(TRIM(COALESCE(grupo_item, ''))) IN (" + inksPatterns.join(',') + ')')
         } else if (upper === 'OTHERS') {
+          // OTHERS: qualquer grupo preenchido que não seja HARD nem INKS
           conds.push(
-            "(UPPER(TRIM(COALESCE(descricao_item, ''))) IN (" +
-              othersPatterns.join(',') +
-              ") OR UPPER(descricao_item) LIKE '%PECA%' OR UPPER(descricao_item) LIKE '%PEÇA%' OR UPPER(descricao_item) LIKE '%ACESS%' OR UPPER(descricao_item) LIKE '%ASSESS%')",
+            "(grupo_item IS NOT NULL AND TRIM(grupo_item) != '' AND UPPER(TRIM(grupo_item)) NOT IN (" +
+              hardPatterns.concat(inksPatterns).join(',') +
+              '))',
           )
         } else if (
           upper === 'SEM CLASSE' ||
@@ -288,17 +271,10 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
           upper === 'VAZIO'
         ) {
           conds.push(
-            "(descricao_item IS NULL OR TRIM(descricao_item) = '' OR (" +
-              'UPPER(TRIM(descricao_item)) NOT IN (' +
-              allKnownPatterns.join(',') +
-              ') AND ' +
-              "UPPER(descricao_item) NOT LIKE '%EQUIP%' AND UPPER(descricao_item) NOT LIKE '%IMPRESS%' AND UPPER(descricao_item) NOT LIKE '%PLOTTER%' AND " +
-              "UPPER(descricao_item) NOT LIKE '%TINTA%' AND UPPER(descricao_item) NOT LIKE '%INK%' AND " +
-              "UPPER(descricao_item) NOT LIKE '%PECA%' AND UPPER(descricao_item) NOT LIKE '%PEÇA%' AND UPPER(descricao_item) NOT LIKE '%ACESS%' AND UPPER(descricao_item) NOT LIKE '%ASSESS%' " +
-              '))',
+            "(grupo_item IS NULL OR TRIM(grupo_item) = '' OR UPPER(TRIM(grupo_item)) = 'SEM CLASSE')",
           )
         } else if (val) {
-          conds.push("UPPER(TRIM(COALESCE(descricao_item, ''))) = '" + sqlEsc(upper) + "'")
+          conds.push("UPPER(TRIM(COALESCE(grupo_item, ''))) = '" + sqlEsc(upper) + "'")
         }
       }
       if (conds.length > 0) {

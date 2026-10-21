@@ -68,17 +68,33 @@ describe('Regra de De/Para JP-Class', () => {
   })
 
   describe('matchesJpClassFilter', () => {
-    it('deve filtrar corretamente por JP-Class', () => {
+    it('deve filtrar corretamente por JP-Class (chamada direta e legada)', () => {
       // Sem filtro selecionado -> true
+      expect(matchesJpClassFilter('HARD', [])).toBe(true)
       expect(matchesJpClassFilter('HARD', undefined, [])).toBe(true)
-      expect(matchesJpClassFilter(undefined, undefined, undefined)).toBe(true)
+      expect(matchesJpClassFilter(undefined, undefined)).toBe(true)
+
+      // Com filtro INKS sobre Grupo TINTAS (qualquer caixa/espaço)
+      expect(matchesJpClassFilter('TINTAS', ['INKS'])).toBe(true)
+      expect(matchesJpClassFilter('Tintas', ['INKS'])).toBe(true)
+      expect(matchesJpClassFilter(' TINTAS ', ['INKS'])).toBe(true)
+      expect(matchesJpClassFilter('TINTAS', ['OTHERS'])).toBe(false)
 
       // Com filtro OTHERS
+      expect(matchesJpClassFilter('SERVIÇOS', ['OTHERS'])).toBe(true)
+      expect(matchesJpClassFilter('PEÇAS', ['OTHERS'])).toBe(true)
+      expect(matchesJpClassFilter('ACESSÓRIOS', ['OTHERS'])).toBe(true)
       expect(matchesJpClassFilter(undefined, 'SERVIÇOS', ['OTHERS'])).toBe(true)
       expect(matchesJpClassFilter(undefined, 'PEÇAS', ['OTHERS'])).toBe(true)
       expect(matchesJpClassFilter(undefined, 'TINTAS', ['OTHERS'])).toBe(false)
 
+      // Com filtro HARD
+      expect(matchesJpClassFilter('EQUIPAMENTOS', ['HARD'])).toBe(true)
+      expect(matchesJpClassFilter('Equipamentos', ['HARD'])).toBe(true)
+
       // Com filtro Sem classe
+      expect(matchesJpClassFilter('', ['Sem classe'])).toBe(true)
+      expect(matchesJpClassFilter(null, ['Sem classe'])).toBe(true)
       expect(matchesJpClassFilter(undefined, '', ['Sem classe'])).toBe(true)
       expect(matchesJpClassFilter(undefined, null, ['Sem classe'])).toBe(true)
       expect(matchesJpClassFilter(undefined, 'TINTAS', ['Sem classe'])).toBe(false)

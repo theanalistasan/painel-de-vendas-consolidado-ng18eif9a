@@ -441,7 +441,7 @@ export function VendasRelatorioTable({
     }
 
     for (const item of items) {
-      const rawDerived = item.jp_class || getJpClass(item.descricao_item) || ''
+      const rawDerived = getJpClass(item.grupo_item)
       let standardGroup: string
       if (rawDerived === 'HARD' || rawDerived === 'INKS' || rawDerived === 'OTHERS') {
         standardGroup = rawDerived
@@ -693,9 +693,9 @@ export function VendasRelatorioTable({
                 </td>
               )
 
-            // JP-Class derivado via getJpClass
+            // JP-Class derivado via getJpClass sobre o Grupo (grupo_item)
             case 'jp_class': {
-              const jpClassVal = item.jp_class || getJpClass(item.descricao_item)
+              const jpClassVal = getJpClass(item.grupo_item)
               const badgeStyle = getJpClassBadgeStyle(jpClassVal)
               return (
                 <td key={col.key} style={cellStyle} className="py-2 px-3 border-r border-slate-100">

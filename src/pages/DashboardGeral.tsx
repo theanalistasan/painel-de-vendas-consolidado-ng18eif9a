@@ -180,9 +180,7 @@ export default function DashboardGeral() {
 
   const displayedVendas = useMemo(() => {
     if (!filters.jpClass || filters.jpClass.length === 0) return paginatedVendas
-    return paginatedVendas.filter((item) =>
-      matchesJpClassFilter(item.jp_class, item.descricao_item, filters.jpClass),
-    )
+    return paginatedVendas.filter((item) => matchesJpClassFilter(item.grupo_item, filters.jpClass))
   }, [paginatedVendas, filters.jpClass])
   const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
 

@@ -97,15 +97,37 @@ export function getStandardJpClass(
  * Verifica se uma linha/item casa com a seleção de filtro JP-Class.
  * "Sem classe" casa com itens sem correspondência (jp_class vazio ou "Sem classe").
  */
+/**
+ * Verifica se uma linha/item casa com a seleção de filtro JP-Class.
+ * Suporta assinatura direta com (grupoItem, selectedClasses) ou legado (itemJpClass, grupoItem, selectedClasses).
+ * "Sem classe" casa com itens sem correspondência (grupo vazio ou "Sem classe").
+ */
 export function matchesJpClassFilter(
-  itemJpClass: string | null | undefined,
-  descricaoItem: string | null | undefined,
-  selectedClasses: string[] | undefined,
+  grupoOrJpClass: string | null | undefined,
+  grupoOrSelected?: string | null | undefined | string[],
+  selectedClasses?: string[],
 ): boolean {
-  if (!selectedClasses || selectedClasses.length === 0) return true
-  const raw = itemJpClass || getJpClass(descricaoItem)
-  const standard = getStandardJpClass(raw)
-  return selectedClasses.some((sel) => {
+  let targetGrupo: string | null | undefined
+  let targetClasses: string[] | undefined
+
+  if (Array.isArray(grupoOrSelected)) {
+    // Chamada direta: (grupoItem, selectedClasses)
+    targetGrupo = grupoOrJpClass
+    targetClasses = grupoOrSelected
+  } else {
+    // Chamada legada de 3 argumentos: (itemJpClass, grupoItem, selectedClasses)
+    targetGrupo =
+      grupoOrSelected !== undefined &&
+      grupoOrSelected !== null &&
+      String(grupoOrSelected).trim() !== ''
+        ? String(grupoOrSelected)
+        : grupoOrJpClass
+    targetClasses = selectedClasses
+  }
+
+  if (!targetClasses || targetClasses.length === 0) return true
+  const standard = getStandardJpClass(targetGrupo)
+  return targetClasses.some((sel) => {
     const s = (sel || '').trim().toLowerCase()
     if (s === 'sem classe' || s === 'sem_classe' || s === 'sem informação' || s === 'vazio') {
       return standard === 'Sem classe'
