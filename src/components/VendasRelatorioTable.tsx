@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import type { VendaConsolidada } from '@/types/sales'
 import { formatCurrency, formatNumber, formatDate, getGrupoColor } from '@/lib/formatters'
+import { getJpClass, getJpClassBadgeStyle } from '@/lib/jp-class'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -54,7 +55,8 @@ export const RELATORIO_COLUMNS: ColumnDef[] = [
   { key: 'nome_cliente', label: 'Cliente', type: 'text', sortKey: 'nome_cliente' },
   { key: 'tipo_cliente', label: 'Tipo de Cliente', type: 'badge', sortKey: 'tipo_cliente' },
   { key: 'vendedor_cliente', label: 'Vendedor', type: 'text', sortKey: 'vendedor_cliente' },
-  { key: 'descricao_item', label: 'Item', type: 'text', sortKey: 'descricao_item' },
+  { key: 'descricao_item', label: 'Descrição', type: 'text', sortKey: 'descricao_item' },
+  { key: 'jp_class', label: 'JP-Class', type: 'badge', sortKey: 'jp_class' },
   { key: 'quantidade', label: 'Qtde', type: 'number', sortKey: 'quantidade', align: 'center' },
   { key: 'grupo_item', label: 'Grupo', type: 'badge', sortKey: 'grupo_item' },
   {
@@ -131,6 +133,7 @@ export const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   tipo_pn: 130,
   vendedor_cliente: 220,
   descricao_item: 280,
+  jp_class: 120,
   quantidade: 90,
   grupo_item: 140,
   total_linha: 140,
@@ -761,6 +764,32 @@ export function VendasRelatorioTable({
                                       </div>
                                     </td>
                                   )
+
+                                // JP-Class derivado via getJpClass
+                                case 'jp_class': {
+                                  const jpClassVal =
+                                    item.jp_class || getJpClass(item.descricao_item)
+                                  const badgeStyle = getJpClassBadgeStyle(jpClassVal)
+                                  return (
+                                    <td
+                                      key={col.key}
+                                      style={cellStyle}
+                                      className="py-2 px-3 border-r border-slate-100"
+                                    >
+                                      {jpClassVal ? (
+                                        <Badge
+                                          variant="outline"
+                                          className={`text-[10px] px-2 py-0.5 truncate max-w-full ${badgeStyle.className}`}
+                                          title={jpClassVal}
+                                        >
+                                          {jpClassVal}
+                                        </Badge>
+                                      ) : (
+                                        <span className="text-slate-400">-</span>
+                                      )}
+                                    </td>
+                                  )
+                                }
 
                                 // 7. Qtde (Quantidade)
                                 case 'quantidade':
