@@ -46,6 +46,7 @@ export type JpClassOption = (typeof JP_CLASS_OPTIONS)[number]
 export function extractGrupoItem(
   source:
     | string
+    | Record<string, unknown>
     | {
         grupo_item?: string | null
         itms_grp_nam?: string | null
@@ -56,17 +57,17 @@ export function extractGrupoItem(
 ): string {
   if (!source) return ''
   if (typeof source === 'string') return source
-  return (
-    (source.grupo_item && source.grupo_item.trim()) ||
-    (source.grupo && source.grupo.trim()) ||
-    (source.itms_grp_nam && source.itms_grp_nam.trim()) ||
-    ''
-  )
+  const obj = source as Record<string, unknown>
+  const g1 = typeof obj.grupo_item === 'string' ? obj.grupo_item.trim() : ''
+  const g2 = typeof obj.grupo === 'string' ? obj.grupo.trim() : ''
+  const g3 = typeof obj.itms_grp_nam === 'string' ? obj.itms_grp_nam.trim() : ''
+  return g1 || g2 || g3 || ''
 }
 
 export function getJpClass(
   rawOrItem:
     | string
+    | Record<string, unknown>
     | {
         grupo_item?: string | null
         itms_grp_nam?: string | null

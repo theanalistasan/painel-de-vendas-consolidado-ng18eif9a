@@ -114,7 +114,7 @@ export function encontrarSemanaDaData(
   dataRaw: string | null | undefined,
   semanas: SemanaMes[],
 ): SemanaMes | null {
-  const dataIso = extrairDataISO(dataRaw)
+  const dataIso = normalizarParaDataISO(dataRaw)
   if (!dataIso || !semanas || semanas.length === 0) {
     return null
   }
@@ -125,5 +125,33 @@ export function encontrarSemanaDaData(
     }
   }
 
+  return null
+}
+
+/**
+ * Normaliza qualquer formato de data (ISO 'YYYY-MM-DD...' ou BR 'DD/MM/YYYY...') para 'YYYY-MM-DD'
+ */
+export function normalizarParaDataISO(dataRaw: string | null | undefined): string | null {
+  if (!dataRaw) return null
+  const str = String(dataRaw).trim()
+  if (!str) return null
+  // Já é ISO (começa com 4 dígitos)
+  const matchIso = str.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/)
+  if (matchIso) {
+    return `${matchIso[1]}-${matchIso[2]}-${matchIso[3]}`
+  }
+  // Formato brasileiro DD/MM/YYYY
+  const matchBr = str.match(/^(\d{2})[/\-.](\d{2})[/\-.](\d{4})/)
+  if (matchBr) {
+    return `${matchBr[3]}-${matchBr[2]}-${matchBr[1]}`
+  }
+  // Fallback via Date
+  const d = new Date(str)
+  if (!isNaN(d.getTime())) {
+    const y = d.getUTCFullYear()
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(d.getUTCDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
   return null
 }

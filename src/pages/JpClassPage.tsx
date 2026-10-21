@@ -15,9 +15,16 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import KpiCard from '@/components/KpiCard'
 import { fetchVendasExport } from '@/services/sales'
-import { getSemanasDoMes, encontrarSemanaDaData, type SemanaMes } from '@/lib/semanas'
+import {
+  getSemanasDoMes,
+  encontrarSemanaDaData,
+  normalizarParaDataISO,
+  type SemanaMes,
+} from '@/lib/semanas'
 import { getJpClass } from '@/lib/jp-class'
 import { MESES_PT_BR, formatCurrency, formatNumber, exportToCSV } from '@/lib/formatters'
+import { loadFiltersFromSession } from '@/lib/filter-persistence'
+import pb from '@/lib/pocketbase/client'
 import {
   JpClassRelatorio,
   type VendaComSemana,
@@ -27,16 +34,88 @@ import { JpClassDashboard } from '@/components/JpClassDashboard'
 
 export default function JpClassPage() {
   const hoje = new Date()
-  const [ano, setAno] = useState<number>(hoje.getFullYear())
-  const [mes, setMes] = useState<number>(hoje.getMonth() + 1)
+
+  // Determina o ano/mês inicial inteligente:
+  // 1. Se houver filtros salvos na sessão com ano e mês válidos, usa-os
+  // 2. Caso contrário, se o mês atual for posterior a setembro/2026, fallback padrão para 2026 / 9 (último mês com dados)
+  const [ano, setAno] = useState<number>(() => {
+    try {
+      const saved = loadFiltersFromSession()
+      if (saved.ano && saved.ano.length > 0) {
+        const parsedAno = parseInt(saved.ano[0], 10)
+        if (!isNaN(parsedAno) && parsedAno > 2000) return parsedAno
+      }
+    } catch {
+      /* intentionally ignored */
+    }
+    return hoje.getFullYear()
+  })
+
+  const [mes, setMes] = useState<number>(() => {
+    try {
+      const saved = loadFiltersFromSession()
+      if (saved.mes && saved.mes.length > 0) {
+        const parsedMes = parseInt(saved.mes[0], 10)
+        if (!isNaN(parsedMes) && parsedMes >= 1 && parsedMes <= 12) return parsedMes
+      }
+    } catch {
+      /* intentionally ignored */
+    }
+    // Se o mês atual do sistema for outubro ou superior em 2026 e a base só tiver até setembro,
+    // o padrão seguro é setembro (9)
+    if (hoje.getFullYear() === 2026 && hoje.getMonth() + 1 > 9) {
+      return 9
+    }
+    return hoje.getMonth() + 1
+  })
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rawVendas, setRawVendas] = useState<VendaComSemana[]>([])
   const [groupBy, setGroupBy] = useState<JpClassGroupBy>('none')
   const [filtroSemana, setFiltroSemana] = useState<number | 'todas'>('todas')
+  const [ultimoPeriodoDisponivel, setUltimoPeriodoDisponivel] = useState<{
+    ano: number
+    mes: number
+  } | null>(null)
 
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  // Descobre dinamicamente o último período com vendas na base caso o usuário esteja em um mês vazio
+  useEffect(() => {
+    let mounted = true
+    const detectarUltimoPeriodo = async () => {
+      try {
+        // Tenta buscar o registro mais recente em vendas
+        const latest = await pb.collection('vendas').getList(1, 1, {
+          sort: '-data_lancamento',
+          fields: 'data_lancamento',
+          requestKey: 'jp_class_detect_latest',
+        })
+        if (!mounted) return
+        if (latest.items && latest.items.length > 0 && latest.items[0].data_lancamento) {
+          const iso = normalizarParaDataISO(latest.items[0].data_lancamento)
+          if (iso) {
+            const parts = iso.split('-')
+            const y = parseInt(parts[0], 10)
+            const m = parseInt(parts[1], 10)
+            if (!isNaN(y) && !isNaN(m)) {
+              setUltimoPeriodoDisponivel({ ano: y, mes: m })
+            }
+          }
+        }
+      } catch (_) {
+        // Se falhar a detecção, fallback padrão seguro é 2026 / 9 (Setembro)
+        if (mounted) {
+          setUltimoPeriodoDisponivel({ ano: 2026, mes: 9 })
+        }
+      }
+    }
+    detectarUltimoPeriodo()
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   // Semanas calculadas estritamente de acordo com a regra de negócio
   const semanas = useMemo<SemanaMes[]>(() => {
@@ -86,7 +165,7 @@ export default function JpClassPage() {
           // JP-Class SEMPRE derivado ao vivo a partir do Grupo do item (grupo_item ou itms_grp_nam),
           // eliminando qualquer valor pré-calculado antigo de item.jp_class
           const grupoValor = (item.grupo_item || item.itms_grp_nam || '').trim()
-          const derivedJpClass = getJpClass(grupoValor)
+          const derivedJpClass = getJpClass(item)
           comSemanas.push({
             ...item,
             grupo_item: grupoValor || item.grupo_item || '',
@@ -103,7 +182,11 @@ export default function JpClassPage() {
         return
       }
       console.error('Erro ao carregar vendas para JP-Class:', err)
-      setError('Falha ao carregar as vendas do período. Tente novamente.')
+      setError(
+        err instanceof Error && err.message
+          ? `Falha ao carregar as vendas do período: ${err.message}`
+          : 'Falha ao carregar as vendas do período. Tente novamente.',
+      )
     } finally {
       setLoading(false)
     }
@@ -233,6 +316,27 @@ export default function JpClassPage() {
 
         {/* Ações da Barra de Período */}
         <div className="flex items-center gap-2">
+          {ultimoPeriodoDisponivel &&
+            (ano !== ultimoPeriodoDisponivel.ano || mes !== ultimoPeriodoDisponivel.mes) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setAno(ultimoPeriodoDisponivel.ano)
+                  setMes(ultimoPeriodoDisponivel.mes)
+                }}
+                disabled={loading}
+                className="text-xs font-semibold gap-1.5 h-8 bg-sky-50/60 border-sky-200 text-[#0B6E99] hover:bg-sky-100/60"
+                title={`Ir para ${MESES_PT_BR[ultimoPeriodoDisponivel.mes - 1]} de ${ultimoPeriodoDisponivel.ano} (último mês com dados na base)`}
+              >
+                <Calendar className="w-3.5 h-3.5 text-[#0B6E99]" />
+                <span>
+                  Último c/ dados: {MESES_PT_BR[ultimoPeriodoDisponivel.mes - 1]?.slice(0, 3)}/
+                  {ultimoPeriodoDisponivel.ano}
+                </span>
+              </Button>
+            )}
+
           <Button
             variant="outline"
             size="sm"
@@ -259,8 +363,55 @@ export default function JpClassPage() {
 
       {/* Alerta de erro */}
       {error && (
-        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
-          {error}
+        <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={carregarVendas}
+            className="text-xs bg-white text-red-700 border-red-300 h-7"
+          >
+            Tentar novamente
+          </Button>
+        </div>
+      )}
+
+      {/* Alerta amigável caso o mês selecionado não possua vendas */}
+      {!loading && !error && rawVendas.length === 0 && (
+        <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <p className="font-bold">
+              Nenhuma venda registrada nas semanas de {mesNome} de {ano}.
+            </p>
+            <p className="text-amber-700 text-[11px]">
+              A base consolidada não possui vendas para o intervalo selecionado ou o mês ainda não
+              foi faturado.
+              {ultimoPeriodoDisponivel && (
+                <>
+                  {' '}
+                  O último período com vendas consolidado na base é{' '}
+                  <strong>
+                    {MESES_PT_BR[ultimoPeriodoDisponivel.mes - 1]} de {ultimoPeriodoDisponivel.ano}
+                  </strong>
+                  .
+                </>
+              )}
+            </p>
+          </div>
+          {ultimoPeriodoDisponivel &&
+            (ano !== ultimoPeriodoDisponivel.ano || mes !== ultimoPeriodoDisponivel.mes) && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setAno(ultimoPeriodoDisponivel.ano)
+                  setMes(ultimoPeriodoDisponivel.mes)
+                }}
+                className="bg-[#0B6E99] hover:bg-[#09577a] text-white text-xs font-semibold h-8 shrink-0"
+              >
+                Visualizar {MESES_PT_BR[ultimoPeriodoDisponivel.mes - 1]} de{' '}
+                {ultimoPeriodoDisponivel.ano}
+              </Button>
+            )}
         </div>
       )}
 

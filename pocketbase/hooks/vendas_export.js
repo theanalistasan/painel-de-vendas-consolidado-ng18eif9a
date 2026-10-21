@@ -204,10 +204,14 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
     }
 
     if (f.dataDe) {
-      sqlParts.push("data_lancamento >= '" + sqlEsc(f.dataDe) + " 00:00:00'")
+      const deStr = String(f.dataDe).trim()
+      const deFormatted = deStr.indexOf(' ') >= 0 ? deStr : deStr + ' 00:00:00'
+      sqlParts.push("data_lancamento >= '" + sqlEsc(deFormatted) + "'")
     }
     if (f.dataAte) {
-      sqlParts.push("data_lancamento <= '" + sqlEsc(f.dataAte) + " 23:59:59'")
+      const ateStr = String(f.dataAte).trim()
+      const ateFormatted = ateStr.indexOf(' ') >= 0 ? ateStr : ateStr + ' 23:59:59'
+      sqlParts.push("data_lancamento <= '" + sqlEsc(ateFormatted) + "'")
     }
     const anosFilter = Array.isArray(f.ano) ? f.ano : f.ano ? [f.ano] : []
     if (anosFilter.length > 0) {

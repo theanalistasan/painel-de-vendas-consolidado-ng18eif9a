@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getSemanasDoMes, encontrarSemanaDaData } from '@/lib/semanas'
+import { getSemanasDoMes, encontrarSemanaDaData, normalizarParaDataISO } from '@/lib/semanas'
 
 describe('Cálculo de Semanas do Mês (JP-Class)', () => {
   it('deve calcular exatamente o exemplo do usuário para Outubro de 2026', () => {
@@ -72,5 +72,22 @@ describe('Cálculo de Semanas do Mês (JP-Class)', () => {
     const semanas = getSemanasDoMes(2025, 9)
     expect(semanas[0].inicioStr).toBe('2025-09-01')
     expect(semanas[0].fimStr).toBe('2025-09-07')
+  })
+
+  it('normalizarParaDataISO deve suportar formatos ISO com hora e formato brasileiro DD/MM/YYYY', () => {
+    expect(normalizarParaDataISO('2026-09-15 14:30:00')).toBe('2026-09-15')
+    expect(normalizarParaDataISO('2026-09-15T00:00:00.000Z')).toBe('2026-09-15')
+    expect(normalizarParaDataISO('15/09/2026')).toBe('2026-09-15')
+    expect(normalizarParaDataISO('15/09/2026 10:00:00')).toBe('2026-09-15')
+    expect(normalizarParaDataISO('')).toBeNull()
+    expect(normalizarParaDataISO(null)).toBeNull()
+  })
+
+  it('encontrarSemanaDaData deve encontrar a semana mesmo se data_lancamento vier com hora ou formato BR', () => {
+    const semanas = getSemanasDoMes(2026, 10)
+    // 05/10/2026 com hora
+    expect(encontrarSemanaDaData('2026-10-05 15:00:00', semanas)?.numero).toBe(1)
+    // 05/10/2026 formato BR
+    expect(encontrarSemanaDaData('05/10/2026', semanas)?.numero).toBe(1)
   })
 })
