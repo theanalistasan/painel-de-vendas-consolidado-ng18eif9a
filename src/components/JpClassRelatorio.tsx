@@ -346,8 +346,8 @@ export function JpClassRelatorio({
       </div>
 
       {/* Conteúdo da Tabela */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs border-collapse">
+      <div className="overflow-auto max-h-[72vh] custom-scrollbar scrollbar-always-visible border-b border-slate-200">
+        <table className="w-full text-left text-xs border-collapse min-w-[980px]">
           <thead className="bg-slate-50/90 text-slate-700 font-semibold border-b border-slate-200 sticky top-0 z-10">
             <tr>
               <th
