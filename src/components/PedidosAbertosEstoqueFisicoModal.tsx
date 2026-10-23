@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,13 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Search,
   Download,
   Mail,
@@ -18,11 +25,12 @@ import {
   Building2,
   PackageCheck,
   FileText,
-  DollarSign,
   ChevronRight,
   ChevronDown,
-  Layers,
-  ExternalLink,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  UserCheck,
 } from 'lucide-react'
 import { formatCurrency, formatNumber, formatDate } from '@/lib/formatters'
 import { PedidoAberto } from '@/types/sales'
@@ -44,6 +52,17 @@ export interface ClienteRelatorioItem {
   pedidos: PedidoItemComEstoqueFisico[]
 }
 
+export type RelatorioSortField =
+  | 'nomeCliente'
+  | 'email'
+  | 'contato'
+  | 'telefone'
+  | 'pedidosCount'
+  | 'linhasCount'
+  | 'valorTotal'
+
+export type RelatorioSortDir = 'asc' | 'desc'
+
 interface PedidosAbertosEstoqueFisicoModalProps {
   isOpen: boolean
   onClose: () => void
@@ -60,7 +79,21 @@ export function PedidosAbertosEstoqueFisicoModal({
   loadingContatos = false,
 }: PedidosAbertosEstoqueFisicoModalProps) {
   const [searchTerm, setSearchTerm] = useState('')
+  const [selectedInside, setSelectedInside] = useState<string>('todos')
+  const [sortField, setSortField] = useState<RelatorioSortField>('nomeCliente')
+  const [sortDir, setSortDir] = useState<RelatorioSortDir>('asc')
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
+
+  // Restaura estado inicial de filtros e ordenação ao abrir/fechar modal
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchTerm('')
+      setSelectedInside('todos')
+      setSortField('nomeCliente')
+      setSortDir('asc')
+      setExpandedClients(new Set())
+    }
+  }, [isOpen])
 
   // Filtra itens com Status Linha 'Aberta' e Estoque Físico > 0 (desconsiderando estoque em trânsito)
   const itensElegiveis: PedidoItemComEstoqueFisico[] = useMemo(() => {
@@ -73,7 +106,8 @@ export function PedidosAbertosEstoqueFisicoModal({
         const estoqueFisico =
           item.em_estoque !== undefined && item.em_estoque !== null
             ? Number(item.em_estoque)
-            : Number(item.estoque_atual || 0) - Number(item.em_transito || 0)
+            : Number((item as unknown as { estoque_atual?: number }).estoque_atual || 0) -
+              Number(item.em_transito || 0)
 
         return estoqueFisico > 0
       })
@@ -81,7 +115,8 @@ export function PedidosAbertosEstoqueFisicoModal({
         const estoqueFisico =
           item.em_estoque !== undefined && item.em_estoque !== null
             ? Number(item.em_estoque)
-            : Number(item.estoque_atual || 0) - Number(item.em_transito || 0)
+            : Number((item as unknown as { estoque_atual?: number }).estoque_atual || 0) -
+              Number(item.em_transito || 0)
         return {
           ...item,
           estoqueFisico,
@@ -89,7 +124,43 @@ export function PedidosAbertosEstoqueFisicoModal({
       })
   }, [pedidos])
 
-  // Agrupa por cliente e ordena em ORDEM ALFABÉTICA POR CLIENTE
+  // Extrai lista única de insides presentes nos pedidos elegíveis
+  const { insideOptions, hasSemInside } = useMemo(() => {
+    const set = new Set<string>()
+    let semInside = false
+
+    for (const item of itensElegiveis) {
+      const ins = (item.inside || '').trim()
+      if (ins && ins.toUpperCase() !== 'SEM INSIDE' && ins !== '-') {
+        set.add(ins.toUpperCase())
+      } else {
+        semInside = true
+      }
+    }
+
+    return {
+      insideOptions: Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      hasSemInside: semInside,
+    }
+  }, [itensElegiveis])
+
+  // Recorta apenas os pedidos do Inside selecionado
+  const itensFiltradosPorInside = useMemo(() => {
+    if (!selectedInside || selectedInside === 'todos') {
+      return itensElegiveis
+    }
+    if (selectedInside === 'SEM_INSIDE') {
+      return itensElegiveis.filter((it) => {
+        const ins = (it.inside || '').trim().toUpperCase()
+        return !ins || ins === 'SEM INSIDE' || ins === '-'
+      })
+    }
+    return itensElegiveis.filter(
+      (it) => (it.inside || '').trim().toUpperCase() === selectedInside.toUpperCase(),
+    )
+  }, [itensElegiveis, selectedInside])
+
+  // Agrupa por cliente a partir dos pedidos filtrados por Inside
   const clientesRelatorio: ClienteRelatorioItem[] = useMemo(() => {
     const map = new Map<
       string,
@@ -101,7 +172,7 @@ export function PedidosAbertosEstoqueFisicoModal({
       }
     >()
 
-    for (const item of itensElegiveis) {
+    for (const item of itensFiltradosPorInside) {
       const nomeCliente = (item.nome_cliente || 'Cliente não identificado').trim()
       const codigoCliente = (item.codigo_cliente || '').trim()
       const groupKey = nomeCliente.toLowerCase()
@@ -155,13 +226,8 @@ export function PedidosAbertosEstoqueFisicoModal({
       })
     }
 
-    // Regra obrigatória do usuário: Ordenado em ORDEM ALFABÉTICA POR CLIENTE
-    result.sort((a, b) =>
-      a.nomeCliente.localeCompare(b.nomeCliente, 'pt-BR', { sensitivity: 'base' }),
-    )
-
     return result
-  }, [itensElegiveis, contatosMap])
+  }, [itensFiltradosPorInside, contatosMap])
 
   // Filtragem local por termo de busca (cliente, email, contato, telefone, pedido, item)
   const filteredClientes = useMemo(() => {
@@ -188,20 +254,97 @@ export function PedidosAbertosEstoqueFisicoModal({
     })
   }, [clientesRelatorio, searchTerm])
 
+  // Ordenação de TODAS as colunas com direção asc/desc (padrão inicial: nomeCliente asc A-Z)
+  const sortedClientes = useMemo(() => {
+    const list = [...filteredClientes]
+    list.sort((a, b) => {
+      let cmp = 0
+      switch (sortField) {
+        case 'nomeCliente':
+          cmp = a.nomeCliente.localeCompare(b.nomeCliente, 'pt-BR', { sensitivity: 'base' })
+          break
+        case 'email': {
+          const valA = a.email === '-' ? '' : a.email
+          const valB = b.email === '-' ? '' : b.email
+          cmp = valA.localeCompare(valB, 'pt-BR', { sensitivity: 'base' })
+          break
+        }
+        case 'contato': {
+          const valA = a.contato === '-' ? '' : a.contato
+          const valB = b.contato === '-' ? '' : b.contato
+          cmp = valA.localeCompare(valB, 'pt-BR', { sensitivity: 'base' })
+          break
+        }
+        case 'telefone': {
+          const valA = a.telefone === '-' ? '' : a.telefone
+          const valB = b.telefone === '-' ? '' : b.telefone
+          cmp = valA.localeCompare(valB, 'pt-BR', { sensitivity: 'base' })
+          break
+        }
+        case 'pedidosCount':
+          cmp = a.pedidosCount - b.pedidosCount
+          break
+        case 'linhasCount':
+          cmp = a.linhasCount - b.linhasCount
+          break
+        case 'valorTotal':
+          cmp = a.valorTotal - b.valorTotal
+          break
+        default:
+          cmp = 0
+      }
+
+      if (cmp !== 0) {
+        return sortDir === 'asc' ? cmp : -cmp
+      }
+
+      // Desempate estável por nome do cliente asc
+      return a.nomeCliente.localeCompare(b.nomeCliente, 'pt-BR', { sensitivity: 'base' })
+    })
+    return list
+  }, [filteredClientes, sortField, sortDir])
+
+  // Totalizadores calculados sobre o recorte ativo filtrado
   const totalPedidosDistintos = useMemo(() => {
     const set = new Set<string>()
-    for (const c of clientesRelatorio) {
+    for (const c of sortedClientes) {
       for (const p of c.pedidos) {
         const num = (p.numero_pedido || p.id || '').trim()
         if (num) set.add(num)
       }
     }
     return set.size
-  }, [clientesRelatorio])
+  }, [sortedClientes])
 
   const valorTotalGeral = useMemo(() => {
-    return clientesRelatorio.reduce((acc, c) => acc + c.valorTotal, 0)
-  }, [clientesRelatorio])
+    return sortedClientes.reduce((acc, c) => acc + c.valorTotal, 0)
+  }, [sortedClientes])
+
+  const handleSort = (field: RelatorioSortField) => {
+    if (sortField === field) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDir(
+        field === 'pedidosCount' || field === 'linhasCount' || field === 'valorTotal'
+          ? 'desc'
+          : 'asc',
+      )
+    }
+  }
+
+  const renderSortIcon = (field: RelatorioSortField) => {
+    if (sortField === field) {
+      return sortDir === 'asc' ? (
+        <ArrowUp className="w-3.5 h-3.5 text-teal-700 shrink-0" />
+      ) : (
+        <ArrowDown className="w-3.5 h-3.5 text-teal-700 shrink-0" />
+      )
+    }
+    return (
+      <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
+    )
+  }
 
   const toggleExpand = (nomeCliente: string) => {
     setExpandedClients((prev) => {
@@ -216,16 +359,16 @@ export function PedidosAbertosEstoqueFisicoModal({
   }
 
   const expandAll = () => {
-    setExpandedClients(new Set(filteredClientes.map((c) => c.nomeCliente)))
+    setExpandedClients(new Set(sortedClientes.map((c) => c.nomeCliente)))
   }
 
   const collapseAll = () => {
     setExpandedClients(new Set())
   }
 
-  // Exportar para CSV com as colunas exigidas + resumo
+  // Exportar para CSV com as colunas exigidas + recorte ativo
   const handleExportCsv = () => {
-    if (filteredClientes.length === 0) return
+    if (sortedClientes.length === 0) return
 
     const header = [
       'Nome do Cliente',
@@ -238,7 +381,7 @@ export function PedidosAbertosEstoqueFisicoModal({
       'Valor Total em Aberto (R$)',
     ]
 
-    const rows = filteredClientes.map((c) => [
+    const rows = sortedClientes.map((c) => [
       `"${c.nomeCliente.replace(/"/g, '""')}"`,
       `"${c.codigoCliente.replace(/"/g, '""')}"`,
       `"${c.email.replace(/"/g, '""')}"`,
@@ -254,9 +397,10 @@ export function PedidosAbertosEstoqueFisicoModal({
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.setAttribute('href', url)
+    const suffix = selectedInside !== 'todos' ? `_inside_${selectedInside.toLowerCase()}` : ''
     link.setAttribute(
       'download',
-      `relatorio_pedidos_linha_aberta_estoque_fisico_${new Date().toISOString().slice(0, 10)}.csv`,
+      `relatorio_pedidos_linha_aberta_estoque_fisico${suffix}_${new Date().toISOString().slice(0, 10)}.csv`,
     )
     document.body.appendChild(link)
     link.click()
@@ -284,8 +428,8 @@ export function PedidosAbertosEstoqueFisicoModal({
                   </Badge>
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-500 mt-0.5">
-                  Lista ordenada alfabeticamente por cliente com dados de contato (E-mail, Contato e
-                  Telefone) para contato imediato pelo vendedor
+                  Lista com dados de contato (E-mail, Contato e Telefone) para contato imediato pelo
+                  vendedor. Clique no cabeçalho de qualquer coluna para ordenar.
                 </DialogDescription>
               </div>
             </div>
@@ -295,7 +439,7 @@ export function PedidosAbertosEstoqueFisicoModal({
               <div className="bg-white border border-slate-200/80 rounded-lg px-3 py-1.5 shadow-2xs text-right">
                 <p className="text-[10px] text-slate-400 font-semibold uppercase">Clientes</p>
                 <p className="text-sm font-black text-slate-800">
-                  {formatNumber(filteredClientes.length)}
+                  {formatNumber(sortedClientes.length)}
                 </p>
               </div>
               <div className="bg-white border border-slate-200/80 rounded-lg px-3 py-1.5 shadow-2xs text-right">
@@ -316,10 +460,11 @@ export function PedidosAbertosEstoqueFisicoModal({
           </div>
         </DialogHeader>
 
-        {/* Barra de Filtros e Ações */}
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-2 flex-1 max-w-md">
-            <div className="relative w-full">
+        {/* Barra de Filtros (Busca + Filtro por Inside) e Ações */}
+        <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 flex-1 max-w-xl">
+            {/* Campo de Busca */}
+            <div className="relative flex-1">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <Input
                 type="text"
@@ -329,15 +474,45 @@ export function PedidosAbertosEstoqueFisicoModal({
                 className="pl-9 h-9 text-xs bg-white border-slate-200 focus-visible:ring-teal-500"
               />
             </div>
+
+            {/* Seletor de Inside */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <div className="min-w-[170px]">
+                <Select
+                  value={selectedInside}
+                  onValueChange={(val) => {
+                    setSelectedInside(val)
+                    setExpandedClients(new Set())
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-xs bg-white border-slate-200 focus:ring-teal-500 font-medium">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <UserCheck className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                      <span className="text-slate-500 text-[11px]">Inside:</span>
+                      <SelectValue placeholder="Todos os Inside" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos os Inside</SelectItem>
+                    {insideOptions.map((inside) => (
+                      <SelectItem key={inside} value={inside}>
+                        {inside}
+                      </SelectItem>
+                    ))}
+                    {hasSemInside && <SelectItem value="SEM_INSIDE">Sem Inside</SelectItem>}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+          <div className="flex items-center gap-2 self-end md:self-auto flex-wrap">
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={expandAll}
-              disabled={filteredClientes.length === 0}
+              disabled={sortedClientes.length === 0}
               className="h-8 text-xs font-semibold border-slate-200 text-slate-700 hover:bg-slate-100"
             >
               Expandir Todos
@@ -357,7 +532,7 @@ export function PedidosAbertosEstoqueFisicoModal({
               variant="secondary"
               size="sm"
               onClick={handleExportCsv}
-              disabled={filteredClientes.length === 0}
+              disabled={sortedClientes.length === 0}
               className="h-8 text-xs font-bold gap-1.5 bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200"
             >
               <Download className="w-3.5 h-3.5" />
@@ -366,7 +541,7 @@ export function PedidosAbertosEstoqueFisicoModal({
           </div>
         </div>
 
-        {/* Tabela do Relatório com Rolagem */}
+        {/* Tabela do Relatório com Rolagem e Cabeçalhos Classificáveis */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {loadingContatos && (
             <div className="p-2.5 rounded-lg bg-teal-50/80 border border-teal-100 text-teal-800 text-xs flex items-center gap-2">
@@ -375,13 +550,14 @@ export function PedidosAbertosEstoqueFisicoModal({
             </div>
           )}
 
-          {filteredClientes.length === 0 ? (
+          {sortedClientes.length === 0 ? (
             <div className="py-12 text-center text-slate-400">
               <PackageCheck className="w-12 h-12 mx-auto text-slate-300 stroke-[1.5] mb-2" />
               <p className="text-sm font-bold text-slate-600">Nenhum pedido encontrado</p>
               <p className="text-xs text-slate-400 mt-1">
-                Não há pedidos com Status Linha 'Aberta' e estoque físico disponível &gt; 0 no
-                momento.
+                {selectedInside !== 'todos'
+                  ? `Não há pedidos com Status Linha 'Aberta' e estoque físico &gt; 0 para o Inside '${selectedInside}'.`
+                  : "Não há pedidos com Status Linha 'Aberta' e estoque físico disponível &gt; 0 no momento."}
               </p>
             </div>
           ) : (
@@ -390,22 +566,92 @@ export function PedidosAbertosEstoqueFisicoModal({
                 <thead className="bg-slate-100/80 text-slate-700 uppercase font-bold text-[11px] tracking-wider border-b border-slate-200">
                   <tr>
                     <th className="py-3 px-3 w-8"></th>
-                    <th className="py-3 px-3">Nome do Cliente</th>
-                    <th className="py-3 px-3">E-mail</th>
-                    <th className="py-3 px-3">Contato</th>
-                    <th className="py-3 px-3">Telefone</th>
-                    <th className="py-3 px-3 text-center">Pedidos</th>
-                    <th className="py-3 px-3 text-center">Linhas</th>
-                    <th className="py-3 px-3 text-right">Valor em Aberto</th>
+                    {/* 1. Nome do Cliente */}
+                    <th
+                      onClick={() => handleSort('nomeCliente')}
+                      className="py-3 px-3 cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                      title="Clique para ordenar por Nome do Cliente"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>Nome do Cliente</span>
+                        {renderSortIcon('nomeCliente')}
+                      </div>
+                    </th>
+                    {/* 2. E-mail */}
+                    <th
+                      onClick={() => handleSort('email')}
+                      className="py-3 px-3 cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                      title="Clique para ordenar por E-mail"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>E-mail</span>
+                        {renderSortIcon('email')}
+                      </div>
+                    </th>
+                    {/* 3. Contato */}
+                    <th
+                      onClick={() => handleSort('contato')}
+                      className="py-3 px-3 cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                      title="Clique para ordenar por Contato"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>Contato</span>
+                        {renderSortIcon('contato')}
+                      </div>
+                    </th>
+                    {/* 4. Telefone */}
+                    <th
+                      onClick={() => handleSort('telefone')}
+                      className="py-3 px-3 cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                      title="Clique para ordenar por Telefone"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>Telefone</span>
+                        {renderSortIcon('telefone')}
+                      </div>
+                    </th>
+                    {/* 5. Pedidos */}
+                    <th
+                      onClick={() => handleSort('pedidosCount')}
+                      className="py-3 px-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                      title="Clique para ordenar por Quantidade de Pedidos"
+                    >
+                      <div className="flex items-center justify-center gap-1.5">
+                        <span>Pedidos</span>
+                        {renderSortIcon('pedidosCount')}
+                      </div>
+                    </th>
+                    {/* 6. Linhas */}
+                    <th
+                      onClick={() => handleSort('linhasCount')}
+                      className="py-3 px-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                      title="Clique para ordenar por Quantidade de Linhas"
+                    >
+                      <div className="flex items-center justify-center gap-1.5">
+                        <span>Linhas</span>
+                        {renderSortIcon('linhasCount')}
+                      </div>
+                    </th>
+                    {/* 7. Valor em Aberto */}
+                    <th
+                      onClick={() => handleSort('valorTotal')}
+                      className="py-3 px-3 text-right cursor-pointer hover:bg-slate-200/70 transition-colors select-none group"
+                      title="Clique para ordenar por Valor em Aberto"
+                    >
+                      <div className="flex items-center justify-end gap-1.5">
+                        <span>Valor em Aberto</span>
+                        {renderSortIcon('valorTotal')}
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredClientes.map((cliente) => {
+                  {sortedClientes.map((cliente) => {
                     const isExpanded = expandedClients.has(cliente.nomeCliente)
 
                     return (
                       <React.Fragment key={cliente.nomeCliente}>
-                        {/* Linha Principal do Cliente com as 4 colunas exigidas */}
+                        {/* Linha Principal do Cliente */}
                         <tr
                           onClick={() => toggleExpand(cliente.nomeCliente)}
                           className="hover:bg-teal-50/40 transition-colors cursor-pointer group"
@@ -503,10 +749,17 @@ export function PedidosAbertosEstoqueFisicoModal({
                                       )
                                     </span>
                                   </div>
-                                  <span className="text-[11px] text-slate-500">
-                                    Status da Linha:{' '}
-                                    <strong className="text-amber-600">Aberta</strong>
-                                  </span>
+                                  <div className="flex items-center gap-3 text-[11px]">
+                                    {selectedInside !== 'todos' && (
+                                      <span className="text-teal-800 font-semibold bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                                        Inside: {selectedInside}
+                                      </span>
+                                    )}
+                                    <span className="text-slate-500">
+                                      Status da Linha:{' '}
+                                      <strong className="text-amber-600">Aberta</strong>
+                                    </span>
+                                  </div>
                                 </div>
 
                                 <div className="overflow-x-auto">
@@ -517,6 +770,7 @@ export function PedidosAbertosEstoqueFisicoModal({
                                         <th className="py-1.5 px-2">Data</th>
                                         <th className="py-1.5 px-2">Item / Código</th>
                                         <th className="py-1.5 px-2">Descrição</th>
+                                        <th className="py-1.5 px-2">Inside</th>
                                         <th className="py-1.5 px-2 text-center">Qtd Aberta</th>
                                         <th className="py-1.5 px-2 text-center">Estoque Físico</th>
                                         <th className="py-1.5 px-2 text-right">Valor em Aberto</th>
@@ -539,6 +793,20 @@ export function PedidosAbertosEstoqueFisicoModal({
                                             title={item.descricao_item}
                                           >
                                             {item.descricao_item || '-'}
+                                          </td>
+                                          <td className="py-1.5 px-2 text-slate-600 font-medium">
+                                            {item.inside ? (
+                                              <Badge
+                                                variant="outline"
+                                                className="text-[9px] py-0 h-4 bg-slate-50 border-slate-200 text-slate-700 font-semibold"
+                                              >
+                                                {item.inside}
+                                              </Badge>
+                                            ) : (
+                                              <span className="text-slate-400 italic text-[10px]">
+                                                -
+                                              </span>
+                                            )}
                                           </td>
                                           <td className="py-1.5 px-2 text-center font-bold text-slate-800">
                                             {formatNumber(
@@ -574,11 +842,33 @@ export function PedidosAbertosEstoqueFisicoModal({
           )}
         </div>
 
-        {/* Rodapé do Modal */}
+        {/* Rodapé do Modal com Informação da Ordenação e Filtro Ativos */}
         <div className="p-3 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between text-xs">
           <p className="text-slate-500 text-[11px]">
-            Exibindo <strong>{formatNumber(filteredClientes.length)}</strong> cliente(s) ordenados
-            de A a Z.
+            Exibindo <strong>{formatNumber(sortedClientes.length)}</strong> cliente(s)
+            {selectedInside !== 'todos' ? (
+              <span>
+                {' '}
+                filtrado(s) pelo Inside <strong>{selectedInside}</strong>
+              </span>
+            ) : null}
+            {sortField === 'nomeCliente'
+              ? sortDir === 'asc'
+                ? ' ordenados de A a Z.'
+                : ' ordenados de Z a A.'
+              : ` ordenados por ${
+                  sortField === 'valorTotal'
+                    ? 'valor em aberto'
+                    : sortField === 'pedidosCount'
+                      ? 'quantidade de pedidos'
+                      : sortField === 'linhasCount'
+                        ? 'quantidade de linhas'
+                        : sortField === 'email'
+                          ? 'e-mail'
+                          : sortField === 'contato'
+                            ? 'contato'
+                            : 'telefone'
+                } (${sortDir === 'asc' ? 'crescente' : 'decrescente'}).`}
           </p>
           <Button
             type="button"
