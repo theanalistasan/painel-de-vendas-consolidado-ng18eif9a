@@ -120,6 +120,74 @@ export interface ResumoPedidosAbertosCliente {
 
 export type PedidosAbertosClienteMap = Record<string, ResumoPedidosAbertosCliente>
 
+export interface ClienteContatoInfo {
+  codigo_cliente: string
+  nome_cliente: string
+  email: string
+  contato: string
+  telefone: string
+}
+
+/**
+ * Busca dados de contato (email, contato, telefone) dos clientes na coleção canais_clientes.
+ * Retorna um Map com chaves em maiúsculas (código do cliente e nome do cliente) para rápido acesso.
+ */
+export async function fetchClientesContatosMap(): Promise<Map<string, ClienteContatoInfo>> {
+  await ensureAuthToken()
+
+  const runQuery = async () => {
+    return Promise.race([
+      pb.collection('canais_clientes').getFullList({
+        fields: 'codigo_cliente,nome_cliente,email,contato,telefone',
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Tempo limite excedido ao buscar contatos.')), 15000),
+      ),
+    ])
+  }
+
+  let records: Array<{
+    codigo_cliente?: string
+    nome_cliente?: string
+    email?: string
+    contato?: string
+    telefone?: string
+  }> = []
+
+  try {
+    records = (await runQuery()) as typeof records
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 401 || status === 403) {
+      const refreshed = await safeAuthRefresh()
+      if (refreshed && pb.authStore.isValid) {
+        records = (await runQuery()) as typeof records
+      }
+    }
+  }
+
+  const map = new Map<string, ClienteContatoInfo>()
+
+  for (const r of records) {
+    const info: ClienteContatoInfo = {
+      codigo_cliente: (r.codigo_cliente || '').trim(),
+      nome_cliente: (r.nome_cliente || '').trim(),
+      email: (r.email || '').trim(),
+      contato: (r.contato || '').trim(),
+      telefone: (r.telefone || '').trim(),
+    }
+
+    if (info.codigo_cliente) {
+      map.set(info.codigo_cliente.toUpperCase(), info)
+    }
+    if (info.nome_cliente) {
+      map.set(info.nome_cliente.toUpperCase(), info)
+    }
+  }
+
+  return map
+}
+
 /**
  * Busca todos os registros da coleção pedidos_abertos e agrega por cliente:
  * - Mapa indexado por codigo_cliente.trim().toUpperCase()
