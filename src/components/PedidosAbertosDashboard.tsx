@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import {
   PackageCheck,
   PackageX,
@@ -9,6 +9,8 @@ import {
   HelpCircle,
   Clock,
   Layers,
+  ArrowRight,
+  Boxes,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -27,6 +29,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import ChartCard from '@/components/ChartCard'
+import { PedidosAbertosEstoqueFisicoModal } from '@/components/PedidosAbertosEstoqueFisicoModal'
+import { fetchClientesContatosMap, ClienteContatoInfo } from '@/services/pedidosAbertos'
 import type { PedidosAbertosFilters } from '@/components/PedidosAbertosFilterBar'
 
 const ROLAND_BLUE = '#0B6E99'
@@ -333,6 +337,95 @@ export default function PedidosAbertosDashboard({
     })
   }, [pedidos])
 
+  // Estado e carregamento para o Modal de Relatório com Estoque Físico
+  const [modalOpen, setModalOpen] = useState(false)
+  const [contatosMap, setContatosMap] = useState<Map<string, ClienteContatoInfo>>(new Map())
+  const [loadingContatos, setLoadingContatos] = useState(false)
+  const [contatosLoaded, setContatosLoaded] = useState(false)
+
+  const handleOpenRelatorioEstoqueFisico = async () => {
+    setModalOpen(true)
+    if (!contatosLoaded && !loadingContatos) {
+      setLoadingContatos(true)
+      try {
+        const map = await fetchClientesContatosMap()
+        setContatosMap(map)
+        setContatosLoaded(true)
+      } catch (err) {
+        console.warn('Erro ao carregar contatos de clientes para relatório:', err)
+      } finally {
+        setLoadingContatos(false)
+      }
+    }
+  }
+
+  // Estatísticas específicas de pedidos com Status Linha 'Aberta' e Estoque Físico > 0 (desconsiderando em_transito)
+  const estoqueFisicoAbertaStats = useMemo(() => {
+    const ordersMap = new Map<
+      string,
+      {
+        hasEstoqueFisicoAberta: boolean
+        valorTotal: number
+        itensCount: number
+      }
+    >()
+
+    for (const item of pedidos) {
+      const orderNum = (item.numero_pedido || item.id || '').trim()
+      if (!orderNum) continue
+
+      const status = (item.status_linha || '').trim().toLowerCase()
+      const isAberta = status === 'aberta'
+
+      // Estoque físico direto (campo em_estoque). Se não existir, deduz estoque_atual - em_transito
+      const estoqueFisico =
+        item.em_estoque !== undefined && item.em_estoque !== null
+          ? Number(item.em_estoque)
+          : Number(item.estoque_atual || 0) - Number(item.em_transito || 0)
+
+      const hasFisico = isAberta && estoqueFisico > 0
+      const valor = Number(item.valor_em_aberto) || 0
+
+      let existing = ordersMap.get(orderNum)
+      if (!existing) {
+        existing = {
+          hasEstoqueFisicoAberta: false,
+          valorTotal: 0,
+          itensCount: 0,
+        }
+        ordersMap.set(orderNum, existing)
+      }
+
+      if (hasFisico) {
+        existing.hasEstoqueFisicoAberta = true
+        existing.valorTotal += valor
+        existing.itensCount += 1
+      }
+    }
+
+    let pedidosCount = 0
+    let valorTotal = 0
+    let itensCount = 0
+
+    for (const order of ordersMap.values()) {
+      if (order.hasEstoqueFisicoAberta) {
+        pedidosCount += 1
+        valorTotal += order.valorTotal
+        itensCount += order.itensCount
+      }
+    }
+
+    return {
+      pedidos: pedidosCount,
+      valor: valorTotal,
+      itens: itensCount,
+      pctPedidos:
+        estoqueStats.totalPedidos > 0
+          ? Math.round((pedidosCount / estoqueStats.totalPedidos) * 100)
+          : 0,
+    }
+  }, [pedidos, estoqueStats.totalPedidos])
+
   const hasData = pedidos.length > 0
 
   return (
@@ -363,80 +456,169 @@ export default function PedidosAbertosDashboard({
         </div>
       </div>
 
-      {/* Grid Superior: Cards de Estoque (com estoque vs. sem estoque) */}
+      {/* Grid Superior: Coluna Esquerda (Cards de Estoque com Estoque + Novo Indicador Linha Aberta Estoque Físico) e Coluna Direita (Pedidos sem Itens no Estoque) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Card 1: Pedidos com Itens em Estoque */}
-        <Card className="border border-emerald-200/80 bg-gradient-to-br from-white via-white to-emerald-50/40 shadow-xs rounded-xl overflow-hidden hover:border-emerald-300 transition-all">
-          <CardHeader className="p-4 pb-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-lg bg-emerald-100/70 text-emerald-700">
-                  <PackageCheck className="w-5 h-5" />
+        {/* Coluna 1: Card 1 (Pedidos com Itens em Estoque) e NOVO Card Indicador ABAIXO */}
+        <div className="space-y-4 flex flex-col">
+          {/* Card 1: Pedidos com Itens em Estoque */}
+          <Card className="border border-emerald-200/80 bg-gradient-to-br from-white via-white to-emerald-50/40 shadow-xs rounded-xl overflow-hidden hover:border-emerald-300 transition-all flex-1">
+            <CardHeader className="p-4 pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-emerald-100/70 text-emerald-700">
+                    <PackageCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-sm font-bold text-slate-900">
+                      Pedidos com Itens em Estoque
+                    </CardTitle>
+                    <CardDescription className="text-xs text-slate-500">
+                      Ao menos uma linha com estoque disponível imediato
+                    </CardDescription>
+                  </div>
                 </div>
+                <Badge
+                  variant="secondary"
+                  className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold"
+                >
+                  {estoqueStats.comEstoque.pctPedidos}% dos pedidos
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 pt-2">
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-emerald-100/60">
                 <div>
-                  <CardTitle className="text-sm font-bold text-slate-900">
-                    Pedidos com Itens em Estoque
-                  </CardTitle>
-                  <CardDescription className="text-xs text-slate-500">
-                    Ao menos uma linha com estoque disponível imediato
-                  </CardDescription>
+                  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    Pedidos
+                  </p>
+                  <div className="flex items-baseline gap-1.5 mt-0.5">
+                    <span className="text-2xl font-black text-emerald-700">
+                      {formatNumber(estoqueStats.comEstoque.pedidos)}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      / {formatNumber(estoqueStats.totalPedidos)}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {formatNumber(estoqueStats.comEstoque.itens)} linha(s) de item
+                  </p>
                 </div>
-              </div>
-              <Badge
-                variant="secondary"
-                className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold"
-              >
-                {estoqueStats.comEstoque.pctPedidos}% dos pedidos
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-2">
-            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-emerald-100/60">
-              <div>
-                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                  Pedidos
-                </p>
-                <div className="flex items-baseline gap-1.5 mt-0.5">
-                  <span className="text-2xl font-black text-emerald-700">
-                    {formatNumber(estoqueStats.comEstoque.pedidos)}
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    / {formatNumber(estoqueStats.totalPedidos)}
-                  </span>
+
+                <div className="border-l border-emerald-100/80 pl-3">
+                  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    Valor em Aberto
+                  </p>
+                  <div className="mt-0.5">
+                    <span className="text-lg sm:text-xl font-black text-slate-900 block truncate">
+                      {formatCurrency(estoqueStats.comEstoque.valor)}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">
+                    {estoqueStats.comEstoque.pctValor}% do valor total em carteira
+                  </p>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  {formatNumber(estoqueStats.comEstoque.itens)} linha(s) de item
-                </p>
               </div>
 
-              <div className="border-l border-emerald-100/80 pl-3">
-                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                  Valor em Aberto
-                </p>
-                <div className="mt-0.5">
-                  <span className="text-lg sm:text-xl font-black text-slate-900 block truncate">
-                    {formatCurrency(estoqueStats.comEstoque.valor)}
-                  </span>
+              {/* Barra de progresso visual */}
+              <div className="mt-3 pt-2">
+                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden flex">
+                  <div
+                    className="bg-emerald-500 h-full transition-all duration-500 rounded-full"
+                    style={{
+                      width: `${Math.min(100, Math.max(0, estoqueStats.comEstoque.pctValor))}%`,
+                    }}
+                  />
                 </div>
-                <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">
-                  {estoqueStats.comEstoque.pctValor}% do valor total em carteira
-                </p>
               </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            {/* Barra de progresso visual */}
-            <div className="mt-3 pt-2">
-              <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden flex">
-                <div
-                  className="bg-emerald-500 h-full transition-all duration-500 rounded-full"
-                  style={{
-                    width: `${Math.min(100, Math.max(0, estoqueStats.comEstoque.pctValor))}%`,
-                  }}
-                />
+          {/* NOVO Indicador ABAIXO de Pedidos com Itens em Estoque:
+              Linhas com Status 'Aberta' e Estoque Físico > 0 (sem considerar em trânsito)
+              com botão "Ver pedidos" para abrir o relatório em ordem alfabética por cliente com Nome, E-mail, Contato e Telefone */}
+          <Card className="border border-teal-200/90 bg-gradient-to-br from-white via-teal-50/20 to-teal-50/50 shadow-xs rounded-xl overflow-hidden hover:border-teal-300 transition-all">
+            <CardHeader className="p-4 pb-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-teal-600 text-white shadow-2xs">
+                    <Boxes className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <span>Linha Aberta com Estoque Físico</span>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] bg-teal-50 text-teal-800 border-teal-300 font-bold py-0"
+                      >
+                        Pronto p/ Faturar
+                      </Badge>
+                    </CardTitle>
+                    <CardDescription className="text-xs text-slate-500">
+                      Status Linha 'Aberta' com estoque físico atual &gt; 0 (desconsidera em
+                      trânsito)
+                    </CardDescription>
+                  </div>
+                </div>
+                <Badge
+                  variant="secondary"
+                  className="bg-teal-100 text-teal-900 border border-teal-200 text-xs font-bold"
+                >
+                  {estoqueFisicoAbertaStats.pctPedidos}% dos pedidos
+                </Badge>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="p-4 pt-2">
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-teal-100">
+                <div>
+                  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    Pedidos Aptos
+                  </p>
+                  <div className="flex items-baseline gap-1.5 mt-0.5">
+                    <span className="text-2xl font-black text-teal-700">
+                      {formatNumber(estoqueFisicoAbertaStats.pedidos)}
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      / {formatNumber(estoqueStats.totalPedidos)}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {formatNumber(estoqueFisicoAbertaStats.itens)} linha(s) aberta(s)
+                  </p>
+                </div>
+
+                <div className="border-l border-teal-100 pl-3">
+                  <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                    Valor Realizável
+                  </p>
+                  <div className="mt-0.5">
+                    <span className="text-lg sm:text-xl font-black text-slate-900 block truncate">
+                      {formatCurrency(estoqueFisicoAbertaStats.valor)}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-teal-700 font-semibold mt-0.5">
+                    Estoque físico disponível imediato
+                  </p>
+                </div>
+              </div>
+
+              {/* Botão de Ação: "Ver pedidos" abre relatório alfabético por cliente com contatos */}
+              <div className="mt-3 pt-2.5 border-t border-teal-100/70 flex items-center justify-between gap-2">
+                <span className="text-[11px] text-slate-500 hidden sm:inline">
+                  Relatório com e-mail, contato e telefone p/ vendedor
+                </span>
+                <Button
+                  size="sm"
+                  type="button"
+                  onClick={handleOpenRelatorioEstoqueFisico}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs h-8 px-3 gap-1.5 shadow-xs ml-auto"
+                >
+                  <span>Ver pedidos</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Card 2: Pedidos sem Itens no Estoque */}
         <Card className="border border-amber-200/80 bg-gradient-to-br from-white via-white to-amber-50/40 shadow-xs rounded-xl overflow-hidden hover:border-amber-300 transition-all">
@@ -735,6 +917,15 @@ export default function PedidosAbertosDashboard({
           )}
         </ChartCard>
       </div>
+
+      {/* Modal do Relatório: Pedidos com Status Linha 'Aberta' e Estoque Físico > 0 ordenado por cliente A-Z com Nome, E-mail, Contato e Telefone */}
+      <PedidosAbertosEstoqueFisicoModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        pedidos={pedidos}
+        contatosMap={contatosMap}
+        loadingContatos={loadingContatos}
+      />
     </div>
   )
 }

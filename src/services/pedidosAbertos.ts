@@ -1,5 +1,5 @@
 import pb from '@/lib/pocketbase/client'
-import { safeAuthRefresh } from '@/lib/pocketbase/auth-session'
+import { safeAuthRefresh, ensureAuthToken } from '@/lib/pocketbase/auth-session'
 import type {
   ImportResult,
   PedidoAberto,
