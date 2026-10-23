@@ -11,6 +11,7 @@ import {
   Layers,
   ArrowRight,
   Boxes,
+  Truck,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -30,6 +31,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import ChartCard from '@/components/ChartCard'
 import { PedidosAbertosEstoqueFisicoModal } from '@/components/PedidosAbertosEstoqueFisicoModal'
+import { PedidosAbertosTransitoModal } from '@/components/PedidosAbertosTransitoModal'
 import { fetchClientesContatosMap, ClienteContatoInfo } from '@/services/pedidosAbertos'
 import type { PedidosAbertosFilters } from '@/components/PedidosAbertosFilterBar'
 
@@ -89,16 +91,88 @@ export default function PedidosAbertosDashboard({
     navigate(qs ? `/estoque-faltante?${qs}` : '/estoque-faltante')
   }
   // 1. Agrupamento por Nº Pedido e cálculo das visões de Estoque
-  const estoqueStats = useMemo(() => {
-    // Mapa: numero_pedido -> { valorTotal: number, hasEstoque: boolean, itemsCount: number }
+  // Totalizadores gerais de carteira
+  const carteiraGeral = useMemo(() => {
+    const ordersMap = new Map<string, number>()
+    for (const item of pedidos) {
+      const orderNum = (item.numero_pedido || item.id || '').trim()
+      if (!orderNum) continue
+      const valor = Number(item.valor_em_aberto) || 0
+      ordersMap.set(orderNum, (ordersMap.get(orderNum) || 0) + valor)
+    }
+    const totalPedidos = ordersMap.size
+    let totalValor = 0
+    for (const val of ordersMap.values()) {
+      totalValor += val
+    }
+    return { totalPedidos, totalValor }
+  }, [pedidos])
+
+  // Indicador 1: Pedidos com Itens em Trânsito (campo em_transito > 0)
+  // Recorte reflete APENAS pedidos/linhas com estoque em trânsito
+  const transitoStats = useMemo(() => {
+    const ordersMap = new Map<
+      string,
+      {
+        valorTransito: number
+        itensCount: number
+        qtdTransito: number
+      }
+    >()
+
+    for (const item of pedidos) {
+      const transito = Number(item.em_transito) || 0
+      if (transito <= 0) continue
+
+      const orderNum = (item.numero_pedido || item.id || '').trim()
+      if (!orderNum) continue
+
+      const valor = Number(item.valor_em_aberto) || 0
+
+      let existing = ordersMap.get(orderNum)
+      if (!existing) {
+        existing = {
+          valorTransito: 0,
+          itensCount: 0,
+          qtdTransito: 0,
+        }
+        ordersMap.set(orderNum, existing)
+      }
+
+      existing.valorTransito += valor
+      existing.itensCount += 1
+      existing.qtdTransito += transito
+    }
+
+    let comTransitoPedidos = 0
+    let comTransitoValor = 0
+    let comTransitoItens = 0
+
+    for (const order of ordersMap.values()) {
+      comTransitoPedidos += 1
+      comTransitoValor += order.valorTransito
+      comTransitoItens += order.itensCount
+    }
+
+    const { totalPedidos, totalValor } = carteiraGeral
+
+    return {
+      pedidos: comTransitoPedidos,
+      valor: comTransitoValor,
+      itens: comTransitoItens,
+      pctPedidos: totalPedidos > 0 ? Math.round((comTransitoPedidos / totalPedidos) * 100) : 0,
+      pctValor: totalValor > 0 ? Math.round((comTransitoValor / totalValor) * 100) : 0,
+    }
+  }, [pedidos, carteiraGeral])
+
+  // Indicador Card 2: Pedidos sem Itens no Estoque (mantido)
+  const semEstoqueStats = useMemo(() => {
     const ordersMap = new Map<
       string,
       {
         valorTotal: number
         hasEstoque: boolean
         itemsCount: number
-        emEstoqueTotal: number
-        emTransitoTotal: number
       }
     >()
 
@@ -108,7 +182,6 @@ export default function PedidosAbertosDashboard({
 
       const valor = Number(item.valor_em_aberto) || 0
       const estoque = Number(item.em_estoque) || 0
-      const transito = Number(item.em_transito) || 0
 
       let existing = ordersMap.get(orderNum)
       if (!existing) {
@@ -116,63 +189,39 @@ export default function PedidosAbertosDashboard({
           valorTotal: 0,
           hasEstoque: false,
           itemsCount: 0,
-          emEstoqueTotal: 0,
-          emTransitoTotal: 0,
         }
         ordersMap.set(orderNum, existing)
       }
 
       existing.valorTotal += valor
       existing.itemsCount += 1
-      existing.emEstoqueTotal += estoque
-      existing.emTransitoTotal += transito
       if (estoque > 0) {
         existing.hasEstoque = true
       }
     }
-
-    let comEstoquePedidos = 0
-    let comEstoqueValor = 0
-    let comEstoqueItens = 0
 
     let semEstoquePedidos = 0
     let semEstoqueValor = 0
     let semEstoqueItens = 0
 
     for (const order of ordersMap.values()) {
-      if (order.hasEstoque) {
-        comEstoquePedidos += 1
-        comEstoqueValor += order.valorTotal
-        comEstoqueItens += order.itemsCount
-      } else {
+      if (!order.hasEstoque) {
         semEstoquePedidos += 1
         semEstoqueValor += order.valorTotal
         semEstoqueItens += order.itemsCount
       }
     }
 
-    const totalPedidos = comEstoquePedidos + semEstoquePedidos
-    const totalValor = comEstoqueValor + semEstoqueValor
+    const { totalPedidos, totalValor } = carteiraGeral
 
     return {
-      comEstoque: {
-        pedidos: comEstoquePedidos,
-        valor: comEstoqueValor,
-        itens: comEstoqueItens,
-        pctPedidos: totalPedidos > 0 ? Math.round((comEstoquePedidos / totalPedidos) * 100) : 0,
-        pctValor: totalValor > 0 ? Math.round((comEstoqueValor / totalValor) * 100) : 0,
-      },
-      semEstoque: {
-        pedidos: semEstoquePedidos,
-        valor: semEstoqueValor,
-        itens: semEstoqueItens,
-        pctPedidos: totalPedidos > 0 ? Math.round((semEstoquePedidos / totalPedidos) * 100) : 0,
-        pctValor: totalValor > 0 ? Math.round((semEstoqueValor / totalValor) * 100) : 0,
-      },
-      totalPedidos,
-      totalValor,
+      pedidos: semEstoquePedidos,
+      valor: semEstoqueValor,
+      itens: semEstoqueItens,
+      pctPedidos: totalPedidos > 0 ? Math.round((semEstoquePedidos / totalPedidos) * 100) : 0,
+      pctValor: totalValor > 0 ? Math.round((semEstoqueValor / totalValor) * 100) : 0,
     }
-  }, [pedidos])
+  }, [pedidos, carteiraGeral])
 
   // 2. Visão "Valor por Canal" e valor total das revendas sem canal
   const { canaisData, totalValorCanais, valorSemCanal, pctSemCanal } = useMemo(() => {
@@ -337,14 +386,14 @@ export default function PedidosAbertosDashboard({
     })
   }, [pedidos])
 
-  // Estado e carregamento para o Modal de Relatório com Estoque Físico
-  const [modalOpen, setModalOpen] = useState(false)
+  // Estado e carregamento para os modais (Estoque Físico e Trânsito)
+  const [modalEstoqueFisicoOpen, setModalEstoqueFisicoOpen] = useState(false)
+  const [modalTransitoOpen, setModalTransitoOpen] = useState(false)
   const [contatosMap, setContatosMap] = useState<Map<string, ClienteContatoInfo>>(new Map())
   const [loadingContatos, setLoadingContatos] = useState(false)
   const [contatosLoaded, setContatosLoaded] = useState(false)
 
-  const handleOpenRelatorioEstoqueFisico = async () => {
-    setModalOpen(true)
+  const ensureContatosLoaded = async () => {
     if (!contatosLoaded && !loadingContatos) {
       setLoadingContatos(true)
       try {
@@ -359,7 +408,18 @@ export default function PedidosAbertosDashboard({
     }
   }
 
-  // Estatísticas específicas de pedidos com Status Linha 'Aberta' e Estoque Físico > 0 (desconsiderando em_transito)
+  const handleOpenRelatorioEstoqueFisico = async () => {
+    setModalEstoqueFisicoOpen(true)
+    await ensureContatosLoaded()
+  }
+
+  const handleOpenRelatorioTransito = async () => {
+    setModalTransitoOpen(true)
+    await ensureContatosLoaded()
+  }
+
+  // Estatísticas específicas de "Pedidos com itens em Estoque Físico":
+  // Status Linha 'Aberta' e Estoque Físico > 0 (desconsiderando em_transito)
   const estoqueFisicoAbertaStats = useMemo(() => {
     const ordersMap = new Map<
       string,
@@ -420,11 +480,15 @@ export default function PedidosAbertosDashboard({
       valor: valorTotal,
       itens: itensCount,
       pctPedidos:
-        estoqueStats.totalPedidos > 0
-          ? Math.round((pedidosCount / estoqueStats.totalPedidos) * 100)
+        carteiraGeral.totalPedidos > 0
+          ? Math.round((pedidosCount / carteiraGeral.totalPedidos) * 100)
+          : 0,
+      pctValor:
+        carteiraGeral.totalValor > 0
+          ? Math.round((valorTotal / carteiraGeral.totalValor) * 100)
           : 0,
     }
-  }, [pedidos, estoqueStats.totalPedidos])
+  }, [pedidos, carteiraGeral])
 
   const hasData = pedidos.length > 0
 
@@ -445,7 +509,7 @@ export default function PedidosAbertosDashboard({
               >
                 {isLoading
                   ? 'Calculando...'
-                  : `${formatNumber(estoqueStats.totalPedidos)} pedidos • ${formatCurrency(estoqueStats.totalValor)}`}
+                  : `${formatNumber(carteiraGeral.totalPedidos)} pedidos • ${formatCurrency(carteiraGeral.totalValor)}`}
               </Badge>
             </h3>
             <p className="text-xs text-slate-500">
@@ -456,65 +520,65 @@ export default function PedidosAbertosDashboard({
         </div>
       </div>
 
-      {/* Grid Superior: Coluna Esquerda (Cards de Estoque com Estoque + Novo Indicador Linha Aberta Estoque Físico) e Coluna Direita (Pedidos sem Itens no Estoque) */}
+      {/* Grid Superior: Coluna Esquerda (Card 1: Pedidos com Itens em Transito + Card Indicador ABAIXO: Pedidos com itens em Estoque Físico) e Coluna Direita (Card 2: Pedidos sem Itens no Estoque) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Coluna 1: Card 1 (Pedidos com Itens em Estoque) e NOVO Card Indicador ABAIXO */}
+        {/* Coluna 1: Card 1 (Pedidos com Itens em Transito) e Card Indicador ABAIXO (Pedidos com itens em Estoque Físico) */}
         <div className="space-y-4 flex flex-col">
-          {/* Card 1: Pedidos com Itens em Estoque */}
-          <Card className="border border-emerald-200/80 bg-gradient-to-br from-white via-white to-emerald-50/40 shadow-xs rounded-xl overflow-hidden hover:border-emerald-300 transition-all flex-1">
+          {/* Card 1: Pedidos com Itens em Transito */}
+          <Card className="border border-sky-200/90 bg-gradient-to-br from-white via-white to-sky-50/40 shadow-xs rounded-xl overflow-hidden hover:border-sky-300 transition-all flex-1">
             <CardHeader className="p-4 pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="p-2 rounded-lg bg-emerald-100/70 text-emerald-700">
-                    <PackageCheck className="w-5 h-5" />
+                  <div className="p-2 rounded-lg bg-sky-100/80 text-sky-700">
+                    <Truck className="w-5 h-5" />
                   </div>
                   <div>
                     <CardTitle className="text-sm font-bold text-slate-900">
-                      Pedidos com Itens em Estoque
+                      Pedidos com Itens em Transito
                     </CardTitle>
                     <CardDescription className="text-xs text-slate-500">
-                      Ao menos uma linha com estoque disponível imediato
+                      Ao menos uma linha com estoque em trânsito (em_transito &gt; 0)
                     </CardDescription>
                   </div>
                 </div>
                 <Badge
                   variant="secondary"
-                  className="bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-bold"
+                  className="bg-sky-100 text-sky-800 border border-sky-200 text-xs font-bold"
                 >
-                  {estoqueStats.comEstoque.pctPedidos}% dos pedidos
+                  {transitoStats.pctPedidos}% dos pedidos
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="p-4 pt-2">
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-emerald-100/60">
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-sky-100/70">
                 <div>
                   <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                     Pedidos
                   </p>
                   <div className="flex items-baseline gap-1.5 mt-0.5">
-                    <span className="text-2xl font-black text-emerald-700">
-                      {formatNumber(estoqueStats.comEstoque.pedidos)}
+                    <span className="text-2xl font-black text-sky-700">
+                      {formatNumber(transitoStats.pedidos)}
                     </span>
                     <span className="text-xs text-slate-400">
-                      / {formatNumber(estoqueStats.totalPedidos)}
+                      / {formatNumber(carteiraGeral.totalPedidos)}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    {formatNumber(estoqueStats.comEstoque.itens)} linha(s) de item
+                    {formatNumber(transitoStats.itens)} linha(s) em trânsito
                   </p>
                 </div>
 
-                <div className="border-l border-emerald-100/80 pl-3">
+                <div className="border-l border-sky-100/90 pl-3">
                   <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                     Valor em Aberto
                   </p>
                   <div className="mt-0.5">
                     <span className="text-lg sm:text-xl font-black text-slate-900 block truncate">
-                      {formatCurrency(estoqueStats.comEstoque.valor)}
+                      {formatCurrency(transitoStats.valor)}
                     </span>
                   </div>
-                  <p className="text-[11px] text-emerald-700 font-semibold mt-0.5">
-                    {estoqueStats.comEstoque.pctValor}% do valor total em carteira
+                  <p className="text-[11px] text-sky-700 font-semibold mt-0.5">
+                    {transitoStats.pctValor}% do valor total em carteira
                   </p>
                 </div>
               </div>
@@ -523,17 +587,34 @@ export default function PedidosAbertosDashboard({
               <div className="mt-3 pt-2">
                 <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden flex">
                   <div
-                    className="bg-emerald-500 h-full transition-all duration-500 rounded-full"
+                    className="bg-sky-500 h-full transition-all duration-500 rounded-full"
                     style={{
-                      width: `${Math.min(100, Math.max(0, estoqueStats.comEstoque.pctValor))}%`,
+                      width: `${Math.min(100, Math.max(0, transitoStats.pctValor))}%`,
                     }}
                   />
                 </div>
               </div>
+
+              {/* Botão de Ação: "Ver pedidos" abre relatório de trânsito em ordem alfabética */}
+              <div className="mt-3 pt-2.5 border-t border-sky-100/70 flex items-center justify-between gap-2">
+                <span className="text-[11px] text-slate-500 hidden sm:inline">
+                  Relatório com e-mail, contato e telefone p/ acompanhamento
+                </span>
+                <Button
+                  size="sm"
+                  type="button"
+                  onClick={handleOpenRelatorioTransito}
+                  className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-8 px-3 gap-1.5 shadow-xs ml-auto"
+                >
+                  <span>Ver pedidos</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
-          {/* NOVO Indicador ABAIXO de Pedidos com Itens em Estoque:
+          {/* Indicador ABAIXO de Pedidos com Itens em Transito:
+              Pedidos com itens em Estoque Físico:
               Linhas com Status 'Aberta' e Estoque Físico > 0 (sem considerar em trânsito)
               com botão "Ver pedidos" para abrir o relatório em ordem alfabética por cliente com Nome, E-mail, Contato e Telefone */}
           <Card className="border border-teal-200/90 bg-gradient-to-br from-white via-teal-50/20 to-teal-50/50 shadow-xs rounded-xl overflow-hidden hover:border-teal-300 transition-all">
@@ -545,7 +626,7 @@ export default function PedidosAbertosDashboard({
                   </div>
                   <div>
                     <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <span>Linha Aberta com Estoque Físico</span>
+                      <span>Pedidos com itens em Estoque Físico</span>
                       <Badge
                         variant="outline"
                         className="text-[10px] bg-teal-50 text-teal-800 border-teal-300 font-bold py-0"
@@ -578,7 +659,7 @@ export default function PedidosAbertosDashboard({
                       {formatNumber(estoqueFisicoAbertaStats.pedidos)}
                     </span>
                     <span className="text-xs text-slate-400">
-                      / {formatNumber(estoqueStats.totalPedidos)}
+                      / {formatNumber(carteiraGeral.totalPedidos)}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-0.5">
@@ -641,7 +722,7 @@ export default function PedidosAbertosDashboard({
                 variant="secondary"
                 className="bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold"
               >
-                {estoqueStats.semEstoque.pctPedidos}% dos pedidos
+                {semEstoqueStats.pctPedidos}% dos pedidos
               </Badge>
             </div>
           </CardHeader>
@@ -653,14 +734,14 @@ export default function PedidosAbertosDashboard({
                 </p>
                 <div className="flex items-baseline gap-1.5 mt-0.5">
                   <span className="text-2xl font-black text-amber-700">
-                    {formatNumber(estoqueStats.semEstoque.pedidos)}
+                    {formatNumber(semEstoqueStats.pedidos)}
                   </span>
                   <span className="text-xs text-slate-400">
-                    / {formatNumber(estoqueStats.totalPedidos)}
+                    / {formatNumber(carteiraGeral.totalPedidos)}
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  {formatNumber(estoqueStats.semEstoque.itens)} linha(s) pendente(s)
+                  {formatNumber(semEstoqueStats.itens)} linha(s) pendente(s)
                 </p>
               </div>
 
@@ -670,11 +751,11 @@ export default function PedidosAbertosDashboard({
                 </p>
                 <div className="mt-0.5">
                   <span className="text-lg sm:text-xl font-black text-slate-900 block truncate">
-                    {formatCurrency(estoqueStats.semEstoque.valor)}
+                    {formatCurrency(semEstoqueStats.valor)}
                   </span>
                 </div>
                 <p className="text-[11px] text-amber-800 font-semibold mt-0.5">
-                  {estoqueStats.semEstoque.pctValor}% do valor total em carteira
+                  {semEstoqueStats.pctValor}% do valor total em carteira
                 </p>
               </div>
             </div>
@@ -685,7 +766,7 @@ export default function PedidosAbertosDashboard({
                 <div
                   className="bg-amber-500 h-full transition-all duration-500 rounded-full"
                   style={{
-                    width: `${Math.min(100, Math.max(0, estoqueStats.semEstoque.pctValor))}%`,
+                    width: `${Math.min(100, Math.max(0, semEstoqueStats.pctValor))}%`,
                   }}
                 />
               </div>
@@ -918,10 +999,19 @@ export default function PedidosAbertosDashboard({
         </ChartCard>
       </div>
 
-      {/* Modal do Relatório: Pedidos com Status Linha 'Aberta' e Estoque Físico > 0 ordenado por cliente A-Z com Nome, E-mail, Contato e Telefone */}
+      {/* Modal do Relatório: Pedidos com itens em Estoque Físico (Status Linha 'Aberta' e Estoque Físico > 0) */}
       <PedidosAbertosEstoqueFisicoModal
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
+        isOpen={modalEstoqueFisicoOpen}
+        onClose={() => setModalEstoqueFisicoOpen(false)}
+        pedidos={pedidos}
+        contatosMap={contatosMap}
+        loadingContatos={loadingContatos}
+      />
+
+      {/* Modal do Relatório: Pedidos com Itens em Transito (Estoque em Trânsito > 0) */}
+      <PedidosAbertosTransitoModal
+        isOpen={modalTransitoOpen}
+        onClose={() => setModalTransitoOpen(false)}
         pedidos={pedidos}
         contatosMap={contatosMap}
         loadingContatos={loadingContatos}

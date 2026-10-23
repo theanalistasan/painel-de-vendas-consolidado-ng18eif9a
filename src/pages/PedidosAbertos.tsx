@@ -1611,7 +1611,7 @@ export default function PedidosAbertos() {
       />
 
       {/* Dashboard de Pedidos em Aberto:
-          - Pedidos com Itens em Estoque vs. Sem Estoque
+          - Pedidos com Itens em Transito e Pedidos com itens em Estoque Físico vs. Sem Estoque
           - Valor por Canal com destaque para Revendas sem canal
           - Pedidos Abertos por Mês cronológico */}
       <PedidosAbertosDashboard

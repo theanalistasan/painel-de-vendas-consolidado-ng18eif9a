@@ -400,7 +400,7 @@ export function PedidosAbertosEstoqueFisicoModal({
     const suffix = selectedInside !== 'todos' ? `_inside_${selectedInside.toLowerCase()}` : ''
     link.setAttribute(
       'download',
-      `relatorio_pedidos_linha_aberta_estoque_fisico${suffix}_${new Date().toISOString().slice(0, 10)}.csv`,
+      `relatorio_pedidos_com_itens_em_estoque_fisico${suffix}_${new Date().toISOString().slice(0, 10)}.csv`,
     )
     document.body.appendChild(link)
     link.click()
@@ -419,17 +419,18 @@ export function PedidosAbertosEstoqueFisicoModal({
               </div>
               <div>
                 <DialogTitle className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <span>Relatório de Pedidos para Realização / Fechamento</span>
+                  <span>Relatório de Pedidos com itens em Estoque Físico</span>
                   <Badge
                     variant="outline"
                     className="bg-teal-50 text-teal-700 border-teal-200 text-xs font-bold"
                   >
-                    Linha Aberta + Estoque Físico &gt; 0
+                    Estoque Físico &gt; 0 (Linha Aberta)
                   </Badge>
                 </DialogTitle>
                 <DialogDescription className="text-xs text-slate-500 mt-0.5">
-                  Lista com dados de contato (E-mail, Contato e Telefone) para contato imediato pelo
-                  vendedor. Clique no cabeçalho de qualquer coluna para ordenar.
+                  Lista com dados de contato (E-mail, Contato e Telefone) para realização e
+                  faturamento imediato pelo vendedor. Clique no cabeçalho de qualquer coluna para
+                  ordenar.
                 </DialogDescription>
               </div>
             </div>
