@@ -1260,7 +1260,7 @@ export default function Importar() {
                 <span>Caminho do relatório no SAP:</span>
               </div>
               <ol className="text-[10px] leading-relaxed text-slate-600 space-y-0.5 list-none">
-                <li className="flex items-center gap-1">
+                <li className="flex items-center gap-1 flex-wrap">
                   <span className="font-semibold text-slate-700">SAP</span>
                   <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
                   <span className="font-semibold text-slate-700">Ferramentas</span>
@@ -1268,13 +1268,14 @@ export default function Importar() {
                   <span className="font-semibold text-slate-700">Consultas</span>
                   <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
                   <span className="font-semibold text-slate-700">Gerenciador de Consultas</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Depto de TI</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-medium text-slate-700">
+                    Pedidos de Venda em aberto - Revenda
+                  </span>
                 </li>
                 <li className="flex items-center gap-1">
-                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
-                  <span className="font-medium text-slate-700">Pedidos de Venda em aberto</span>
-                </li>
-                <li className="flex items-center gap-1">
-                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
                   <span>Botão direito no # da tabela</span>
                   <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
                   <span>Copiar Tabela</span>
@@ -1289,10 +1290,10 @@ export default function Importar() {
                 </li>
               </ol>
               <div className="pt-1 border-t border-slate-200/60 font-mono text-[9px] text-slate-500 break-words leading-tight select-all">
-                SAP &gt; Ferramentas &gt; Consultas &gt; Gerenciador de Consultas &gt; Pedidos de
-                Venda em aberto &gt; Botão direito no # da tabela &gt; Copiar Tabela &gt; Colar no
-                Excel &gt; Salve em um local e realize a importação do arquivo: Pedidos em Aberto
-                (SAP)
+                SAP &gt; Ferramentas &gt; Consultas &gt; Gerenciador de Consultas &gt; Depto de TI
+                &gt; Pedidos de Venda em aberto - Revenda &gt; Botão direito no # da tabela &gt;
+                Copiar Tabela &gt; Colar no Excel &gt; Salve em um local e realize a importação do
+                arquivo: Pedidos em Aberto (SAP)
               </div>
             </div>
           }
