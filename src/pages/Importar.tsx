@@ -1301,6 +1301,8 @@ export default function Importar() {
             'Data do Pedido',
             'Código Cliente',
             'Nome Cliente',
+            'Código Vendedor',
+            'Nome Vendedor',
             'Usuário Emitente',
             'Linha',
             'Código Item',

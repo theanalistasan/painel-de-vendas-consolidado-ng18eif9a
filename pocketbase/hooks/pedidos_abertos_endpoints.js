@@ -324,6 +324,8 @@ routerAdd(
     const allowedSortCols = {
       numero_pedido: 'numero_pedido',
       data_pedido: 'data_pedido',
+      codigo_vendedor: 'codigo_vendedor',
+      nome_vendedor: 'nome_vendedor',
       nome_cliente: 'nome_cliente',
       codigo_cliente: 'codigo_cliente',
       nome_canal: 'nome_canal',
@@ -394,7 +396,9 @@ routerAdd(
         'CAST(COALESCE(preco_apos_desconto, 0.0) AS REAL) AS preco_apos_desconto, ' +
         'status, ' +
         'CAST(COALESCE(valor_em_aberto, 0.0) AS REAL) AS valor_em_aberto, ' +
-        'nome_canal, deploy, inside, status_cadastro, tipo_pn, tipo_cliente, origem, data_carga ' +
+        'nome_canal, deploy, inside, status_cadastro, tipo_pn, tipo_cliente, origem, data_carga, ' +
+        "COALESCE(codigo_vendedor, '') AS codigo_vendedor, " +
+        "COALESCE(nome_vendedor, '') AS nome_vendedor " +
         'FROM pedidos_abertos' +
         whereSql +
         orderSql +
@@ -408,6 +412,8 @@ routerAdd(
           id: '',
           numero_pedido: '',
           data_pedido: '',
+          codigo_vendedor: '',
+          nome_vendedor: '',
           codigo_cliente: '',
           nome_cliente: '',
           usuario_emitente: '',
@@ -444,6 +450,8 @@ routerAdd(
           id: r.id || '',
           numero_pedido: r.numero_pedido || '',
           data_pedido: r.data_pedido || '',
+          codigo_vendedor: r.codigo_vendedor || '',
+          nome_vendedor: r.nome_vendedor || '',
           codigo_cliente: r.codigo_cliente || '',
           nome_cliente: r.nome_cliente || '',
           usuario_emitente: r.usuario_emitente || '',

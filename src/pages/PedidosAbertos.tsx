@@ -55,6 +55,8 @@ type PedidosAbertosSortColumn =
   | 'nome_canal'
   | 'numero_pedido'
   | 'data_pedido'
+  | 'codigo_vendedor'
+  | 'nome_vendedor'
   | 'tipo_cliente'
   | 'nome_cliente'
   | 'status_cadastro'
@@ -348,7 +350,7 @@ export default function PedidosAbertos() {
    * Função de comparação robusta para todas as colunas de Pedidos em Aberto.
    * - Datas: cronologicamente por 'data_pedido' (ISO AAAA-MM-DD)
    * - Números: qtd_aberto, preco_apos_desconto (fallback preco_unitario), valor_em_aberto, em_estoque (Number(x)||0)
-   * - Textos: nome_canal, nome_cliente, status_cadastro, tipo_pn, status_linha, codigo_item, numero_pedido (localeCompare pt-BR)
+   * - Textos: nome_canal, codigo_vendedor, nome_vendedor, nome_cliente, status_cadastro, tipo_pn, status_linha, codigo_item, numero_pedido (localeCompare pt-BR)
    * - tipo_cliente: obtido via resolveClienteInfo(item).tipo_cliente (localeCompare pt-BR)
    * - Desempate estável sempre por: data_pedido asc + numero_pedido asc
    */
@@ -367,6 +369,18 @@ export default function PedidosAbertos() {
             const dataA = (a.data_pedido || '').trim()
             const dataB = (b.data_pedido || '').trim()
             cmp = dataA.localeCompare(dataB)
+            break
+          }
+          case 'codigo_vendedor': {
+            const strA = String(a.codigo_vendedor || '').trim()
+            const strB = String(b.codigo_vendedor || '').trim()
+            cmp = strA.localeCompare(strB, 'pt-BR', { numeric: true, sensitivity: 'base' })
+            break
+          }
+          case 'nome_vendedor': {
+            const strA = (a.nome_vendedor || '').trim()
+            const strB = (b.nome_vendedor || '').trim()
+            cmp = strA.localeCompare(strB, 'pt-BR', { sensitivity: 'base' })
             break
           }
           case 'qtd_aberto': {
@@ -1463,6 +1477,8 @@ export default function PedidosAbertos() {
         { key: 'numero_pedido', label: 'Nº Pedido' },
         { key: 'linha', label: 'Linha' },
         { key: 'data_pedido', label: 'Data do Pedido' },
+        { key: 'codigo_vendedor', label: 'Código Vendedor' },
+        { key: 'nome_vendedor', label: 'Nome Vendedor' },
         { key: 'codigo_cliente', label: 'Código Cliente' },
         { key: 'nome_cliente', label: 'Nome Cliente' },
         { key: 'tipo_cliente', label: 'Tipo de Cliente' },
@@ -1495,6 +1511,8 @@ export default function PedidosAbertos() {
 
         return {
           ...r,
+          codigo_vendedor: r.codigo_vendedor || '-',
+          nome_vendedor: r.nome_vendedor || '-',
           tipo_cliente: directTipo || mapped?.tipo_cliente?.trim() || '-',
           status_cadastro: directStatus || mapped?.status_cadastro?.trim() || '-',
           tipo_pn: directTipoPn || mapped?.tipo_pn?.trim() || '-',
@@ -2093,6 +2111,24 @@ export default function PedidosAbertos() {
                   </th>
                   <th
                     className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
+                    onClick={() => handleSort('nome_vendedor')}
+                    title="Ordenar por Vendedor"
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Vendedor (Código)</span>
+                      {sort.field === 'nome_vendedor' || sort.field === 'codigo_vendedor' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
                     onClick={() => handleSort('tipo_cliente')}
                     title="Ordenar por Tipo de Cliente"
                   >
@@ -2278,7 +2314,7 @@ export default function PedidosAbertos() {
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={viewMode !== 'none' && viewMode !== 'detalhado' ? 14 : 13}
+                      colSpan={viewMode !== 'none' && viewMode !== 'detalhado' ? 15 : 14}
                       className="p-8 text-center text-slate-400"
                     >
                       <div className="flex items-center justify-center gap-2">
@@ -2300,7 +2336,7 @@ export default function PedidosAbertos() {
                   ) ? (
                   <tr>
                     <td
-                      colSpan={viewMode !== 'none' && viewMode !== 'detalhado' ? 14 : 13}
+                      colSpan={viewMode !== 'none' && viewMode !== 'detalhado' ? 15 : 14}
                       className="p-12 text-center text-slate-400"
                     >
                       <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
@@ -2385,6 +2421,11 @@ export default function PedidosAbertos() {
                             {isExpanded ? 'Detalhamento ▼' : 'Consolidado ▲'}
                           </td>
 
+                          {/* Vendedor no consolidado por tipo de cliente */}
+                          <td className="p-3 text-center text-slate-300">-</td>
+
+                          {/* Colunas complementares no consolidado: Tipo de Cliente */}
+                          <td className="p-3 text-center text-slate-300">-</td>
                           {/* Colunas complementares no consolidado: Tipo de Cliente */}
                           <td className="p-3 text-center text-slate-300">-</td>
 
@@ -2493,6 +2534,21 @@ export default function PedidosAbertos() {
                               {/* Data */}
                               <td className="p-3 text-slate-600 whitespace-nowrap">
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
+                              </td>
+
+                              {/* Vendedor */}
+                              <td className="p-3 min-w-[170px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_vendedor}
+                                >
+                                  {item.nome_vendedor || '-'}
+                                </div>
+                                {item.codigo_vendedor && (
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {item.codigo_vendedor}
+                                  </div>
+                                )}
                               </td>
 
                               {/* Tipo de Cliente */}
@@ -2690,6 +2746,9 @@ export default function PedidosAbertos() {
                             {isExpanded ? 'Detalhamento ▼' : 'Consolidado ▲'}
                           </td>
 
+                          {/* Vendedor no consolidado de canal */}
+                          <td className="p-3 text-center text-slate-300">-</td>
+
                           {/* Colunas complementares no consolidado: Tipo de Cliente */}
                           <td className="p-3 text-center text-slate-300">-</td>
 
@@ -2798,6 +2857,21 @@ export default function PedidosAbertos() {
                               {/* Data */}
                               <td className="p-3 text-slate-600 whitespace-nowrap">
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
+                              </td>
+
+                              {/* Vendedor */}
+                              <td className="p-3 min-w-[170px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_vendedor}
+                                >
+                                  {item.nome_vendedor || '-'}
+                                </div>
+                                {item.codigo_vendedor && (
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {item.codigo_vendedor}
+                                  </div>
+                                )}
                               </td>
 
                               {/* Tipo de Cliente */}
@@ -2995,6 +3069,28 @@ export default function PedidosAbertos() {
                             {isExpanded ? 'Detalhamento ▼' : 'Consolidado ▲'}
                           </td>
 
+                          {/* Vendedor no consolidado por cliente */}
+                          <td className="p-3 min-w-[170px]">
+                            {(() => {
+                              const primeiroItem = group.items[0]
+                              const codV = primeiroItem?.codigo_vendedor
+                              const nomV = primeiroItem?.nome_vendedor
+                              if (!codV && !nomV) return <span className="text-slate-300">-</span>
+                              return (
+                                <div>
+                                  <div className="font-medium text-slate-800 truncate" title={nomV}>
+                                    {nomV || '-'}
+                                  </div>
+                                  {codV && (
+                                    <div className="text-[11px] text-slate-400 font-mono">
+                                      {codV}
+                                    </div>
+                                  )}
+                                </div>
+                              )
+                            })()}
+                          </td>
+
                           {/* Tipo de Cliente do grupo de cliente */}
                           <td className="p-3 whitespace-nowrap">
                             {(() => {
@@ -3128,6 +3224,21 @@ export default function PedidosAbertos() {
                               {/* Data */}
                               <td className="p-3 text-slate-600 whitespace-nowrap">
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
+                              </td>
+
+                              {/* Vendedor */}
+                              <td className="p-3 min-w-[170px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_vendedor}
+                                >
+                                  {item.nome_vendedor || '-'}
+                                </div>
+                                {item.codigo_vendedor && (
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {item.codigo_vendedor}
+                                  </div>
+                                )}
                               </td>
 
                               {/* Tipo de Cliente */}
@@ -3438,6 +3549,21 @@ export default function PedidosAbertos() {
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
                               </td>
 
+                              {/* Vendedor */}
+                              <td className="p-3 min-w-[170px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_vendedor}
+                                >
+                                  {item.nome_vendedor || '-'}
+                                </div>
+                                {item.codigo_vendedor && (
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {item.codigo_vendedor}
+                                  </div>
+                                )}
+                              </td>
+
                               {/* Tipo de Cliente */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
@@ -3599,6 +3725,21 @@ export default function PedidosAbertos() {
                       {/* Data */}
                       <td className="p-3 text-slate-600 whitespace-nowrap">
                         {item.data_pedido ? formatDate(item.data_pedido) : '-'}
+                      </td>
+
+                      {/* Vendedor */}
+                      <td className="p-3 min-w-[170px]">
+                        <div
+                          className="font-medium text-slate-800 truncate"
+                          title={item.nome_vendedor}
+                        >
+                          {item.nome_vendedor || '-'}
+                        </div>
+                        {item.codigo_vendedor && (
+                          <div className="text-[11px] text-slate-400 font-mono">
+                            {item.codigo_vendedor}
+                          </div>
+                        )}
                       </td>
 
                       {/* Tipo de Cliente */}

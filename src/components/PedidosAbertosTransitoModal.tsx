@@ -349,27 +349,35 @@ export function PedidosAbertosTransitoModal({
     if (sortedClientes.length === 0) return
 
     const header = [
-      'Nome do Cliente',
+      'Código Vendedor',
+      'Nome Vendedor',
       'Código Cliente',
+      'Nome do Cliente',
       'E-mail',
       'Contato',
       'Telefone',
       'Qtd Pedidos',
-      'Qtd Linhas em Trânsito',
+      'Qtd Linhas',
       'Valor Total em Aberto (R$)',
     ]
 
-    const rows = sortedClientes.map((c) => [
-      `"${c.nomeCliente.replace(/"/g, '""')}"`,
-      `"${c.codigoCliente.replace(/"/g, '""')}"`,
-      `"${c.email.replace(/"/g, '""')}"`,
-      `"${c.contato.replace(/"/g, '""')}"`,
-      `"${c.telefone.replace(/"/g, '""')}"`,
-      c.pedidosCount,
-      c.linhasCount,
-      c.valorTotal.toFixed(2),
-    ])
-
+    const rows = sortedClientes.map((c) => {
+      const primeiroItem = c.pedidos[0]
+      const codVend = primeiroItem?.codigo_vendedor || ''
+      const nomeVend = primeiroItem?.nome_vendedor || ''
+      return [
+        `"${codVend.replace(/"/g, '""')}"`,
+        `"${nomeVend.replace(/"/g, '""')}"`,
+        `"${c.codigoCliente.replace(/"/g, '""')}"`,
+        `"${c.nomeCliente.replace(/"/g, '""')}"`,
+        `"${c.email.replace(/"/g, '""')}"`,
+        `"${c.contato.replace(/"/g, '""')}"`,
+        `"${c.telefone.replace(/"/g, '""')}"`,
+        c.pedidosCount,
+        c.linhasCount,
+        c.valorTotal.toFixed(2),
+      ]
+    })
     const csvContent = '\uFEFF' + [header.join(';'), ...rows.map((r) => r.join(';'))].join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -753,6 +761,10 @@ export function PedidosAbertosTransitoModal({
                                       <tr>
                                         <th className="py-1.5 px-2">Nº Pedido</th>
                                         <th className="py-1.5 px-2">Data</th>
+                                        <th className="py-1.5 px-2">Cód. Vendedor</th>
+                                        <th className="py-1.5 px-2">Nome Vendedor</th>
+                                        <th className="py-1.5 px-2">Cód. Cliente</th>
+                                        <th className="py-1.5 px-2">Nome Cliente</th>
                                         <th className="py-1.5 px-2">Item / Código</th>
                                         <th className="py-1.5 px-2">Descrição</th>
                                         <th className="py-1.5 px-2">Inside</th>
@@ -769,6 +781,24 @@ export function PedidosAbertosTransitoModal({
                                           </td>
                                           <td className="py-1.5 px-2 text-slate-600">
                                             {formatDate(item.data_pedido)}
+                                          </td>
+                                          <td className="py-1.5 px-2 font-mono text-slate-700">
+                                            {item.codigo_vendedor || '-'}
+                                          </td>
+                                          <td
+                                            className="py-1.5 px-2 text-slate-800 max-w-[140px] truncate"
+                                            title={item.nome_vendedor}
+                                          >
+                                            {item.nome_vendedor || '-'}
+                                          </td>
+                                          <td className="py-1.5 px-2 font-mono text-slate-700">
+                                            {item.codigo_cliente || '-'}
+                                          </td>
+                                          <td
+                                            className="py-1.5 px-2 text-slate-800 max-w-[150px] truncate font-medium"
+                                            title={item.nome_cliente}
+                                          >
+                                            {item.nome_cliente || '-'}
                                           </td>
                                           <td className="py-1.5 px-2 font-mono text-slate-800">
                                             {item.codigo_item || '-'}

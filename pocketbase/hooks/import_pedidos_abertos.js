@@ -78,11 +78,16 @@ routerAdd(
     }
 
     // Parse de valores numéricos tolerante ao formato pt-BR "1.000,00" ou internacional 1000.00
+    // Trata datas basilares (ex: 00/01/1900 ou 1900-01-00) como zero/sem estoque
     const parseNumber = (val) => {
       if (val === undefined || val === null) return 0
       if (typeof val === 'number') return isNaN(val) ? 0 : val
       let s = String(val).trim()
       if (!s) return 0
+      // Tratamento especial para data basilar 00/01/1900 em colunas numéricas de saldo de estoque
+      if (s.includes('1900') || s.startsWith('00/01/') || s.startsWith('01/00/')) {
+        return 0
+      }
       s = s.replace(/R\$/gi, '').replace(/\s+/g, '')
       if (s.indexOf('.') >= 0 && s.indexOf(',') >= 0) {
         s = s.replace(/\./g, '').replace(',', '.')
@@ -175,6 +180,15 @@ routerAdd(
       'docdate',
       'data emissao',
     ]
+    const COD_VEND_KEYS = [
+      'codigo vendedor',
+      'codigo do vendedor',
+      'cod vendedor',
+      'slpcode',
+      'id vendedor',
+      'codigo vend',
+    ]
+    const NOME_VEND_KEYS = ['nome vendedor', 'nome do vendedor', 'slpname', 'vendedor nome']
     const COD_CLI_KEYS = [
       'codigo cliente',
       'cod cliente',
@@ -195,7 +209,6 @@ routerAdd(
       'usuario emitente',
       'usuario emissor',
       'emitente',
-      'vendedor',
       'criado por',
       'usuario',
     ]
@@ -404,6 +417,8 @@ routerAdd(
       }
 
       const dataPedido = parseDateIso(getRowVal(normRow, DATA_KEYS))
+      const codVend = getRowVal(normRow, COD_VEND_KEYS)
+      const nomeVend = getRowVal(normRow, NOME_VEND_KEYS)
       const codCli = getRowVal(normRow, COD_CLI_KEYS)
       const nomeCli = getRowVal(normRow, NOME_CLI_KEYS)
       const usuario = getRowVal(normRow, USUARIO_KEYS)
@@ -459,6 +474,8 @@ routerAdd(
         lineNum,
         numero_pedido: numPedido,
         data_pedido: dataPedido,
+        codigo_vendedor: codVend,
+        nome_vendedor: nomeVend,
         codigo_cliente: codCli,
         nome_cliente: nomeCli,
         usuario_emitente: usuario,
@@ -526,6 +543,8 @@ routerAdd(
 
         record.set('numero_pedido', item.numero_pedido)
         if (item.data_pedido) record.set('data_pedido', item.data_pedido)
+        record.set('codigo_vendedor', item.codigo_vendedor || '')
+        record.set('nome_vendedor', item.nome_vendedor || '')
         record.set('codigo_cliente', item.codigo_cliente)
         record.set('nome_cliente', item.nome_cliente)
         record.set('usuario_emitente', item.usuario_emitente)

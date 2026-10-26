@@ -307,6 +307,8 @@ export interface CanalMetaPayload {
 export interface PedidoAberto extends RecordModel {
   numero_pedido: string
   data_pedido: string
+  codigo_vendedor?: string
+  nome_vendedor?: string
   codigo_cliente: string
   nome_cliente: string
   usuario_emitente: string
