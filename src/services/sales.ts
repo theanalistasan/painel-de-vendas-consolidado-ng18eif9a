@@ -74,11 +74,92 @@ export async function importCanaisClientesApi(
   })
 }
 
-export async function consolidarVendasApi(): Promise<ConsolidarResult> {
-  return pb.send<ConsolidarResult>('/backend/v1/vendas/consolidar', {
-    method: 'POST',
-    body: {},
-  })
+export async function consolidarVendasApi(options?: {
+  timeoutMs?: number
+  signal?: AbortSignal
+}): Promise<ConsolidarResult> {
+  const timeoutMs = options?.timeoutMs || 180000 // 3 minutos para consolidar bases grandes (~310k+ linhas)
+  const internalController = new AbortController()
+  let isTimeoutAbort = false
+
+  const timer = setTimeout(() => {
+    isTimeoutAbort = true
+    internalController.abort(
+      new Error('Tempo limite excedido durante a consolidação de vendas no servidor.'),
+    )
+  }, timeoutMs)
+
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      clearTimeout(timer)
+      internalController.abort(options.signal.reason)
+    } else {
+      options.signal.addEventListener(
+        'abort',
+        () => {
+          clearTimeout(timer)
+          internalController.abort(options.signal?.reason)
+        },
+        { once: true },
+      )
+    }
+  }
+
+  const run = () =>
+    pb.send<ConsolidarResult>('/backend/v1/vendas/consolidar', {
+      method: 'POST',
+      body: {},
+      signal: internalController.signal,
+    })
+
+  try {
+    return await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if ((status === 401 || status === 403) && !internalController.signal.aborted) {
+      try {
+        const refreshed = await safeAuthRefresh()
+        if (refreshed && pb.authStore.isValid) {
+          return await run()
+        }
+      } catch {
+        throw err
+      }
+    }
+
+    const isAbort =
+      (err as Error)?.name === 'AbortError' ||
+      String(err).includes('aborted') ||
+      String(err).includes('autocancelled') ||
+      internalController.signal.aborted
+
+    if (isAbort) {
+      if (isTimeoutAbort) {
+        throw new Error(
+          'A consolidação de vendas demorou mais de 3 minutos no servidor e atingiu o limite de tempo.',
+        )
+      }
+      const abortError = new Error('Consolidação cancelada.')
+      abortError.name = 'AbortError'
+      throw abortError
+    }
+
+    // Se o backend retornou JSON com mensagem específica de erro (data.error ou response.error)
+    const backendData =
+      (err as { data?: { error?: string; message?: string; stage?: string } })?.data ||
+      (err as { response?: { error?: string; message?: string; stage?: string } })?.response
+
+    if (backendData?.error) {
+      throw new Error(backendData.error)
+    }
+    if (backendData?.message) {
+      throw new Error(backendData.message)
+    }
+
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export async function reconstruirResumosApi(): Promise<

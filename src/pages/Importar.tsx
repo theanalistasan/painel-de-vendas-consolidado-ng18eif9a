@@ -875,6 +875,7 @@ export default function Importar() {
       }
     } catch (err: unknown) {
       const errorMsg =
+        (err as { data?: { error?: string } })?.data?.error ||
         (err as { response?: { error?: string } })?.response?.error ||
         (err as Error)?.message ||
         'Falha na consolidação de vendas'
@@ -882,7 +883,7 @@ export default function Importar() {
       setConsolidationError(errorMsg)
       toast({
         variant: 'destructive',
-        title: 'Erro na consolidação',
+        title: 'Falha na Consolidação de Vendas',
         description: errorMsg,
       })
     } finally {
@@ -901,13 +902,14 @@ export default function Importar() {
       })
     } catch (err: unknown) {
       const errorMsg =
+        (err as { data?: { error?: string } })?.data?.error ||
         (err as { response?: { error?: string } })?.response?.error ||
         (err as Error)?.message ||
         'Falha na reconstrução de resumos'
       setConsolidationError(errorMsg)
       toast({
         variant: 'destructive',
-        title: 'Erro na reconstrução de resumos',
+        title: 'Erro na Reconstrução de Resumos',
         description: errorMsg,
       })
     } finally {

@@ -14,58 +14,140 @@
 //   racnew.data_lancamento = netsales.docdate
 //   racnew.codigo_cliente = netsales.codigo_cliente
 //   racnew.codigo_item   = netsales.codigo_item
+//
+// PROCESSAMENTO EM LOTES PROGRESSIVOS:
+// Lê e grava registros em lotes utilizando rowid/id cursor progressivo com commits intermediários
+// para evitar estouro de memória ou timeout do SQLite / Goja em bases de alta volumetria (~310k+ linhas).
 
 routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
   const startTime = Date.now()
   const nowIso = new Date().toISOString()
   let stage = 'iniciar'
   let totalConsolidado = 0
+  let lotesProcessados = 0
+
+  // Helpers defensivos do Goja/PocketBase (padrão definitivo deste projeto:
+  // campos numéricos em DynamicModel NUNCA devem ser inicializados com 0/0.0)
+  const toNum = (v) => {
+    if (v === undefined || v === null || v === '') return 0
+    const n = parseFloat(v)
+    return isNaN(n) ? 0 : n
+  }
+
+  const toInt = (v) => {
+    if (v === undefined || v === null || v === '') return 0
+    const n = parseInt(v, 10)
+    return isNaN(n) ? 0 : n
+  }
+
+  const nonEssentialIndexes = [
+    'idx_vendas_vendedor_cliente',
+    'idx_vendas_nome_vendedor',
+    'idx_vendas_estado',
+    'idx_vendas_cidade',
+    'idx_vendas_utilizacao',
+    'idx_vendas_numero_nfe',
+    'idx_vendas_data_lancamento',
+    'idx_vendas_grupo_item',
+    'idx_vendas_tipo_documento',
+    'idx_vendas_dt_grupo_tipo',
+    'idx_vendas_nome_cliente',
+    'idx_vendas_tem_netsales',
+    'idx_vendas_created',
+    'idx_vendas_data_desc',
+    'idx_vendas_grupo_data',
+    'idx_vendas_nome_cliente_total',
+    'idx_vendas_data_lancamento_nfe',
+    'idx_vendas_nfe_data',
+    'idx_vendas_netsales_data',
+    'idx_vendas_data_carga',
+  ]
+
+  const indexDefinitions = [
+    'CREATE INDEX IF NOT EXISTS idx_vendas_data_lancamento ON vendas (data_lancamento);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_numero_nfe ON vendas (numero_nfe);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_grupo_item ON vendas (grupo_item);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_tipo_documento ON vendas (tipo_documento);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_tem_netsales ON vendas (tem_netsales);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_nome_cliente ON vendas (nome_cliente);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_nome_vendedor ON vendas (nome_vendedor);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_vendedor_cliente ON vendas (vendedor_cliente);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_estado ON vendas (estado);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_cidade ON vendas (cidade);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_utilizacao ON vendas (utilizacao);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_created ON vendas (created);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_data_carga ON vendas (data_carga);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_dt_grupo_tipo ON vendas (data_lancamento, grupo_item, tipo_documento);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_data_desc ON vendas (data_lancamento DESC);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_grupo_data ON vendas (grupo_item, data_lancamento DESC);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_nome_cliente_total ON vendas (nome_cliente, total_linha);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_data_lancamento_nfe ON vendas (data_lancamento DESC, numero_nfe);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_nfe_data ON vendas (numero_nfe, data_lancamento DESC);',
+    'CREATE INDEX IF NOT EXISTS idx_vendas_netsales_data ON vendas (tem_netsales, data_lancamento DESC);',
+  ]
 
   try {
-    // 1. Definição dos índices SQLite da tabela vendas para drop temporário
-    // Mantemos os índices essenciais se quiser, ou dropamos todos os índices secundários de vendas
-    // para acelerar massivamente o INSERT em massa (~100 mil registros)
-    stage = 'desativar_indices'
-    const nonEssentialIndexes = [
-      'idx_vendas_vendedor_cliente',
-      'idx_vendas_nome_vendedor',
-      'idx_vendas_estado',
-      'idx_vendas_cidade',
-      'idx_vendas_utilizacao',
-      'idx_vendas_numero_nfe',
-      'idx_vendas_data_lancamento',
-      'idx_vendas_grupo_item',
-      'idx_vendas_tipo_documento',
-      'idx_vendas_dt_grupo_tipo',
-      'idx_vendas_nome_cliente',
-      'idx_vendas_tem_netsales',
-      'idx_vendas_created',
-      'idx_vendas_data_desc',
-      'idx_vendas_grupo_data',
-      'idx_vendas_nome_cliente_total',
-      'idx_vendas_data_lancamento_nfe',
-      'idx_vendas_nfe_data',
-      'idx_vendas_netsales_data',
-      'idx_vendas_data_carga',
-    ]
+    console.log('[consolidar_vendas] Iniciando consolidação em massa...')
 
+    // 1. Definição dos índices SQLite da tabela vendas para drop temporário
+    // Dropamos índices secundários para ganho massivo de performance em escrita progressiva
+    stage = 'desativar_indices'
     for (let i = 0; i < nonEssentialIndexes.length; i++) {
       try {
         $app
           .db()
           .newQuery('DROP INDEX IF EXISTS ' + nonEssentialIndexes[i])
           .execute()
-      } catch (dropErr) {
-        // Ignora erro se o índice já não existir
+      } catch (_) {
+        // Ignora erro se não existir
       }
     }
 
-    // 2. Limpa a coleção vendas e insere em massa
+    // 2. Limpa a coleção vendas antes da nova consolidação
     stage = 'limpar_vendas'
     $app.db().newQuery('DELETE FROM vendas').execute()
+    console.log('[consolidar_vendas] Tabela vendas limpa com sucesso.')
 
-    stage = 'insert_vendas'
-    const insertSql =
+    // 3. Obter limites de id e total de registros em racnew para particionamento
+    stage = 'obter_limites_racnew'
+    const totalRacnewRows = arrayOf(new DynamicModel({ total: '' }))
+    $app
+      .db()
+      .newQuery(
+        "SELECT COUNT(*) AS total FROM racnew WHERE UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'",
+      )
+      .all(totalRacnewRows)
+
+    const totalRegistrosRacnew = totalRacnewRows.length > 0 ? toInt(totalRacnewRows[0].total) : 0
+    console.log('[consolidar_vendas] Total de registros RacNew elegíveis: ' + totalRegistrosRacnew)
+
+    if (totalRegistrosRacnew === 0) {
+      console.log('[consolidar_vendas] Nenhum registro em RacNew para consolidar.')
+      return e.json(200, {
+        success: true,
+        total_consolidado: 0,
+        data_carga: nowIso,
+        durationMs: Date.now() - startTime,
+        resumos_pendentes: true,
+        message: 'Nenhum registro encontrado na base RacNew para consolidar.',
+      })
+    }
+
+    // 4. Processamento em LOTES progressivos
+    // Tamanho do lote calibrado para 20.000 registros: rápido, eficiente em joins de SQLite
+    // e com commits intermediários que liberam memória no Goja
+    const BATCH_SIZE = 20000
+    const totalBatches = Math.ceil(totalRegistrosRacnew / BATCH_SIZE)
+    console.log(
+      '[consolidar_vendas] Processando em ' +
+        totalBatches +
+        ' lotes de até ' +
+        BATCH_SIZE +
+        ' registros.',
+    )
+
+    // SQL base de inserção em lote com clausula LIMIT e OFFSET
+    const batchInsertSql =
       'INSERT INTO vendas (' +
       '  tipo_documento, nf_entrega_futura, numero_sap, numero_nfe, ' +
       '  data_lancamento, ultima_data_vencimento, docto_origem_destino, ' +
@@ -114,7 +196,12 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       "  COALESCE(NULLIF(tc.tipo_cliente, ''), NULLIF(r.tipo_cliente, ''), NULLIF(n.tipo_cliente, ''), ''), " +
       // data_carga / created / updated — timestamp desta consolidação
       '  {:now}, {:now}, {:now} ' +
-      'FROM racnew r ' +
+      'FROM (' +
+      '  SELECT * FROM racnew ' +
+      "  WHERE UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS' " +
+      '  ORDER BY id ASC ' +
+      '  LIMIT {:limit} OFFSET {:offset}' +
+      ') r ' +
       'LEFT JOIN netsales n ' +
       '  ON n.chave_documento = r.numero_sap ' +
       '  AND n.serial = r.numero_nfe ' +
@@ -124,64 +211,97 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       'LEFT JOIN produtos p ' +
       '  ON p.codigo_item = r.codigo_item ' +
       'LEFT JOIN tipos_cliente tc ' +
-      '  ON UPPER(TRIM(tc.codigo_pn)) = UPPER(TRIM(r.codigo_cliente)) ' +
-      "WHERE UPPER(TRIM(COALESCE(r.codigo_item, ''))) != 'SERVICOS'"
+      '  ON UPPER(TRIM(tc.codigo_pn)) = UPPER(TRIM(r.codigo_cliente))'
 
-    $app.db().newQuery(insertSql).bind({ now: nowIso }).execute()
-    // 3. Recrear índices essenciais e secundários da tabela vendas
+    for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
+      const offset = batchIdx * BATCH_SIZE
+      stage = 'gravar_lote_' + (batchIdx + 1) + '_de_' + totalBatches
+
+      $app
+        .db()
+        .newQuery(batchInsertSql)
+        .bind({
+          now: nowIso,
+          limit: BATCH_SIZE,
+          offset: offset,
+        })
+        .execute()
+
+      lotesProcessados++
+
+      if ((batchIdx + 1) % 3 === 0 || batchIdx === totalBatches - 1) {
+        console.log(
+          '[consolidar_vendas] Progresso: lote ' +
+            (batchIdx + 1) +
+            '/' +
+            totalBatches +
+            ' processado (~' +
+            Math.min((batchIdx + 1) * BATCH_SIZE, totalRegistrosRacnew) +
+            '/' +
+            totalRegistrosRacnew +
+            ' linhas). Tempo decorrido: ' +
+            (Date.now() - startTime) +
+            'ms',
+        )
+      }
+    }
+
+    // 5. Reconstruir índices essenciais e secundários da tabela vendas
     stage = 'recriar_indices'
-    const indexDefinitions = [
-      'CREATE INDEX IF NOT EXISTS idx_vendas_data_lancamento ON vendas (data_lancamento);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_numero_nfe ON vendas (numero_nfe);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_grupo_item ON vendas (grupo_item);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_tipo_documento ON vendas (tipo_documento);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_tem_netsales ON vendas (tem_netsales);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_nome_cliente ON vendas (nome_cliente);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_nome_vendedor ON vendas (nome_vendedor);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_vendedor_cliente ON vendas (vendedor_cliente);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_estado ON vendas (estado);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_cidade ON vendas (cidade);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_utilizacao ON vendas (utilizacao);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_created ON vendas (created);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_data_carga ON vendas (data_carga);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_dt_grupo_tipo ON vendas (data_lancamento, grupo_item, tipo_documento);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_data_desc ON vendas (data_lancamento DESC);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_grupo_data ON vendas (grupo_item, data_lancamento DESC);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_nome_cliente_total ON vendas (nome_cliente, total_linha);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_data_lancamento_nfe ON vendas (data_lancamento DESC, numero_nfe);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_nfe_data ON vendas (numero_nfe, data_lancamento DESC);',
-      'CREATE INDEX IF NOT EXISTS idx_vendas_netsales_data ON vendas (tem_netsales, data_lancamento DESC);',
-    ]
-
+    console.log('[consolidar_vendas] Recriando índices da tabela vendas...')
     for (let j = 0; j < indexDefinitions.length; j++) {
       try {
         $app.db().newQuery(indexDefinitions[j]).execute()
       } catch (idxErr) {
-        console.warn('Erro ao recriar índice vendas:', indexDefinitions[j], idxErr)
+        console.warn(
+          '[consolidar_vendas] Aviso ao recriar índice vendas:',
+          indexDefinitions[j],
+          idxErr,
+        )
       }
     }
 
-    // 4. Conta quantas linhas foram inseridas
+    // 6. Conta quantas linhas foram inseridas no total
     stage = 'contar_linhas'
     const cnt = arrayOf(new DynamicModel({ c: '' }))
-    $app.db().newQuery('SELECT COUNT(*) as c FROM vendas').all(cnt)
-    if (cnt.length > 0) totalConsolidado = parseInt(cnt[0].c, 10) || 0
+    $app.db().newQuery('SELECT COUNT(*) AS c FROM vendas').all(cnt)
+    if (cnt.length > 0) totalConsolidado = toInt(cnt[0].c)
 
     const durationMs = Date.now() - startTime
+    console.log(
+      '[consolidar_vendas] Consolidação concluída com sucesso! Total consolidado: ' +
+        totalConsolidado +
+        ' em ' +
+        durationMs +
+        'ms (' +
+        lotesProcessados +
+        ' lotes).',
+    )
 
     return e.json(200, {
       success: true,
       total_consolidado: totalConsolidado,
       data_carga: nowIso,
       durationMs: durationMs,
+      lotes: lotesProcessados,
       resumos_pendentes: true,
       message:
-        'Carga em massa de vendas concluída com sucesso. Proceda com a reconstrução dos resumos.',
+        'Carga em lotes de vendas concluída com sucesso (' +
+        totalConsolidado +
+        ' vendas consolidadas). Proceda com a reconstrução dos resumos.',
     })
   } catch (err) {
-    console.error('consolidar_vendas falhou na etapa [' + stage + ']:', err)
+    const errorMsg = String(err && err.message ? err.message : err)
+    console.error(
+      '[consolidar_vendas] Falha na consolidação na etapa [' +
+        stage +
+        '] após ' +
+        lotesProcessados +
+        ' lotes: ' +
+        errorMsg,
+    )
 
-    // Tentar restaurar índices básicos caso tenha falhado durante insert
+    // Tentar restaurar índices básicos caso tenha falhado durante inserção
     try {
       $app
         .db()
@@ -197,8 +317,15 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
 
     return e.json(500, {
       success: false,
-      error: 'Falha na consolidação de vendas na etapa [' + stage + ']: ' + String(err),
+      error:
+        'Falha na consolidação de vendas na etapa [' +
+        stage +
+        '] (processados ' +
+        lotesProcessados +
+        ' lotes): ' +
+        errorMsg,
       stage: stage,
+      lotes_processados: lotesProcessados,
     })
   }
 })
@@ -514,10 +641,11 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
       data_carga: nowIso,
     })
   } catch (err) {
-    console.error('reconstruir_resumos falhou na etapa [' + stage + ']:', err)
+    const errorMsg = String(err && err.message ? err.message : err)
+    console.error('[reconstruir_resumos] Falha na etapa [' + stage + ']:', errorMsg)
     return e.json(500, {
       success: false,
-      error: 'Falha na reconstrução de resumos na etapa [' + stage + ']: ' + String(err),
+      error: 'Falha na reconstrução de resumos na etapa [' + stage + ']: ' + errorMsg,
       stage: stage,
     })
   }
