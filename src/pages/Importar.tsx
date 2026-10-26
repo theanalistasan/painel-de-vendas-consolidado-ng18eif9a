@@ -1147,6 +1147,48 @@ export default function Importar() {
           subtitle="Dados fiscais e financeiros oficiais"
           badgeLabel="RacNew (Mestre)"
           badgeColor="bg-indigo-600"
+          customGuide={
+            <div className="rounded-lg bg-slate-50 border border-slate-200/80 p-2.5 text-[11px] text-slate-600 space-y-1.5 shadow-2xs">
+              <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-[11px]">
+                <Info className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                <span>Caminho do relatório no SAP:</span>
+              </div>
+              <ol className="text-[10px] leading-relaxed text-slate-600 space-y-0.5 list-none">
+                <li className="flex items-center gap-1 flex-wrap">
+                  <span className="font-semibold text-slate-700">SAP</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Ferramentas</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Consultas</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">Gerenciador de Consultas</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-semibold text-slate-700">03-Vendas</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span className="font-medium text-slate-700">
+                    Faturamento de Vendas RAC - New 2
+                  </span>
+                </li>
+                <li className="flex items-center gap-1">
+                  <span>Botão direito no # da tabela</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span>Copiar Tabela</span>
+                </li>
+                <li className="flex items-center gap-1">
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span>Colar no Excel</span>
+                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
+                  <span>Salve em um local e realize a importação do arquivo: RacNew (SAP)</span>
+                </li>
+              </ol>
+              <div className="pt-1 border-t border-slate-200/60 font-mono text-[9px] text-slate-500 break-words leading-tight select-all">
+                SAP &gt; Ferramentas &gt; Consultas &gt; Gerenciador de Consultas &gt; 03-Vendas
+                &gt; Faturamento de Vendas RAC - New 2 &gt; Botão direito no # da tabela &gt; Copiar
+                Tabela &gt; Colar no Excel &gt; Salve em um local e realize a importação do arquivo:
+                RacNew (SAP)
+              </div>
+            </div>
+          }
           expectedColumns={[
             'numero_sap',
             'numero_nfe',
@@ -1180,7 +1222,7 @@ export default function Importar() {
               </div>
               <ol className="text-[10px] leading-relaxed text-slate-600 space-y-0.5 list-none">
                 <li className="flex items-center gap-1 flex-wrap">
-                  <span className="font-semibold text-slate-700">AP</span>
+                  <span className="font-semibold text-slate-700">SAP</span>
                   <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
                   <span className="font-semibold text-slate-700">Ferramentas</span>
                   <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
@@ -1207,7 +1249,7 @@ export default function Importar() {
                 </li>
               </ol>
               <div className="pt-1 border-t border-slate-200/60 font-mono text-[9px] text-slate-500 break-words leading-tight select-all">
-                AP &gt; Ferramentas &gt; Consultas &gt; Gerenciador de Consultas &gt; Financeiro
+                SAP &gt; Ferramentas &gt; Consultas &gt; Gerenciador de Consultas &gt; Financeiro
                 &gt; Consultas Net Sales_v4 - Revenda &gt; Botão direito no # da tabela &gt; Copiar
                 Tabela &gt; Colar no Excel &gt; Salve em um local e realize a importação do arquivo:
                 NetSales (SAP)
