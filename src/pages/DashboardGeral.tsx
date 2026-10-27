@@ -394,7 +394,9 @@ export default function DashboardGeral() {
   const chartVendasInsumosRaw =
     data?.charts?.vendasInsumosHistorico || data?.charts?.vendasInsumosPorAno || []
   const chartClientesAtivosEquipamentos = data?.charts?.clientesAtivosEquipamentos || []
-  const chartClientesAtivosInsumos = data?.charts?.clientesAtivosInsumos || []
+  const chartClientesAtivosTintas = data?.charts?.clientesAtivosTintas || []
+  const chartClientesAtivosAcessorios = data?.charts?.clientesAtivosAcessorios || []
+  const chartClientesAtivosPecas = data?.charts?.clientesAtivosPecas || []
   const chartVendasPorCanal = data?.charts?.vendasPorCanal || []
   const chartVendasPorDeploy = data?.charts?.vendasPorDeploy || []
   const canaisSummary = data?.charts?.canaisSummary || {
@@ -1265,7 +1267,7 @@ export default function DashboardGeral() {
             </ChartCard>
           </div>
 
-          {/* Linha 2: Clientes Ativos — Equipamentos & Clientes Ativos — Insumos */}
+          {/* Linha 2: Clientes Ativos — Equipamentos, Tintas, Acessórios e Peças */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Indicador 3: Clientes Ativos — Equipamentos */}
             <ChartCard
@@ -1332,21 +1334,21 @@ export default function DashboardGeral() {
               )}
             </ChartCard>
 
-            {/* Indicador 4: Clientes Ativos — Insumos */}
+            {/* Clientes Ativos — Tintas */}
             <ChartCard
-              title="Clientes Ativos — Insumos"
-              description="Comparativo de clientes ativos de insumos nos últimos 6 meses vs. ano anterior"
+              title="Clientes Ativos — Tintas"
+              description="Comparativo de clientes ativos de tintas nos últimos 6 meses vs. ano anterior"
               icon={Users}
-              iconColor="text-[#1895A8]"
+              iconColor="text-[#0B6E99]"
             >
-              {chartClientesAtivosInsumos.length === 0 ? (
+              {chartClientesAtivosTintas.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
                   Nenhum dado disponível
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={chartClientesAtivosInsumos}
+                    data={chartClientesAtivosTintas}
                     margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
@@ -1388,7 +1390,137 @@ export default function DashboardGeral() {
                     <Bar
                       dataKey="clientes"
                       name="Atual"
-                      fill={COLOR_CYAN}
+                      fill={COLOR_BLUE}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={32}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </ChartCard>
+
+            {/* Clientes Ativos — Acessórios */}
+            <ChartCard
+              title="Clientes Ativos — Acessórios"
+              description="Comparativo de clientes ativos de acessórios nos últimos 6 meses vs. ano anterior"
+              icon={Users}
+              iconColor="text-[#0B6E99]"
+            >
+              {chartClientesAtivosAcessorios.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                  Nenhum dado disponível
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={chartClientesAtivosAcessorios}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                    <XAxis
+                      dataKey="mes"
+                      tickLine={false}
+                      axisLine={{ stroke: '#E2E8F0' }}
+                      tick={{ fill: '#64748B', fontSize: 12 }}
+                      tickFormatter={(val) => formatMesAnoCurto(String(val))}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: '#64748B', fontSize: 11 }}
+                      allowDecimals={false}
+                    />
+                    <Tooltip
+                      formatter={(val: number | string | undefined, name: string) => {
+                        const n = typeof val === 'number' ? val : Number(val)
+                        return [formatNumber(n), name]
+                      }}
+                      labelFormatter={(label) => formatMesAnoCurto(String(label))}
+                      contentStyle={tooltipContentStyle}
+                    />
+                    <Legend
+                      verticalAlign="top"
+                      height={36}
+                      formatter={(value) => (
+                        <span className="text-xs font-bold text-slate-700">{value}</span>
+                      )}
+                    />
+                    <Bar
+                      dataKey="clientesAnoAnterior"
+                      name="Ano Anterior"
+                      fill="#67D2E2"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={32}
+                    />
+                    <Bar
+                      dataKey="clientes"
+                      name="Atual"
+                      fill={COLOR_BLUE}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={32}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </ChartCard>
+
+            {/* Clientes Ativos — Peças */}
+            <ChartCard
+              title="Clientes Ativos — Peças"
+              description="Comparativo de clientes ativos de peças nos últimos 6 meses vs. ano anterior"
+              icon={Users}
+              iconColor="text-[#0B6E99]"
+            >
+              {chartClientesAtivosPecas.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                  Nenhum dado disponível
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={chartClientesAtivosPecas}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                    <XAxis
+                      dataKey="mes"
+                      tickLine={false}
+                      axisLine={{ stroke: '#E2E8F0' }}
+                      tick={{ fill: '#64748B', fontSize: 12 }}
+                      tickFormatter={(val) => formatMesAnoCurto(String(val))}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: '#64748B', fontSize: 11 }}
+                      allowDecimals={false}
+                    />
+                    <Tooltip
+                      formatter={(val: number | string | undefined, name: string) => {
+                        const n = typeof val === 'number' ? val : Number(val)
+                        return [formatNumber(n), name]
+                      }}
+                      labelFormatter={(label) => formatMesAnoCurto(String(label))}
+                      contentStyle={tooltipContentStyle}
+                    />
+                    <Legend
+                      verticalAlign="top"
+                      height={36}
+                      formatter={(value) => (
+                        <span className="text-xs font-bold text-slate-700">{value}</span>
+                      )}
+                    />
+                    <Bar
+                      dataKey="clientesAnoAnterior"
+                      name="Ano Anterior"
+                      fill="#67D2E2"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={32}
+                    />
+                    <Bar
+                      dataKey="clientes"
+                      name="Atual"
+                      fill={COLOR_BLUE}
                       radius={[4, 4, 0, 0]}
                       maxBarSize={32}
                     />

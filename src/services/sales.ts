@@ -307,6 +307,9 @@ export interface DashboardStatsResult {
     vendasInsumosHistorico?: VendaHistoricoPeriodo[]
     clientesAtivosEquipamentos?: ClientesAtivosEquipamentos[]
     clientesAtivosInsumos?: ClientesAtivosInsumos[]
+    clientesAtivosTintas?: ClientesAtivosInsumos[]
+    clientesAtivosAcessorios?: ClientesAtivosInsumos[]
+    clientesAtivosPecas?: ClientesAtivosInsumos[]
     topVendedores: Array<{ name: string; total: number }>
     topClientes: Array<{ name: string; total: number }>
     estado: Array<{ uf: string; total: number }>

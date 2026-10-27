@@ -1293,12 +1293,15 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       console.error('dashboard_stats: vendasInsumosHistorico falhou:', err)
     }
 
-    // 5.3) clientesAtivosEquipamentos e 5.4) clientesAtivosInsumos
+    // 5.3) clientesAtivosEquipamentos, clientesAtivosInsumos e segregados (Tintas, Acessórios, Peças)
     // REGRA DE NEGÓCIO: Mostra SEMPRE os últimos 6 meses da base (terminando no último mês disponível, ex: Ago-2026),
     // comparados com o mesmo mês do ano anterior, independente do filtro de período ativo.
     // Respeita APENAS a seleção de base (sqlWhereHistorical).
     const clientesAtivosEquipamentos = []
     const clientesAtivosInsumos = []
+    const clientesAtivosTintas = []
+    const clientesAtivosAcessorios = []
+    const clientesAtivosPecas = []
 
     try {
       const mesesAlvoClientes = ultimos6MesesAlvo
@@ -1362,6 +1365,76 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           clientesAnoAnterior: cliInsumosMap[prevM] || 0,
         })
       }
+
+      // Helper para montar série comparativa dos últimos 6 meses vs ano anterior a partir de mapa de contagens
+      const buildSeriesFromMap = (mapData) => {
+        const series = []
+        for (let i = 0; i < mesesAlvoClientes.length; i++) {
+          const m = mesesAlvoClientes[i]
+          const p = m.split('-')
+          const prevM = String(parseInt(p[0], 10) - 1) + '-' + p[1]
+          series.push({
+            mes: m,
+            clientes: mapData[m] || 0,
+            clientesAnoAnterior: mapData[prevM] || 0,
+          })
+        }
+        return series
+      }
+
+      // Query resumo_vendas_mensal para TINTAS
+      const cliTintasSql =
+        'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+        'FROM resumo_vendas_mensal WHERE ' +
+        sqlWhereHistorical +
+        " AND UPPER(TRIM(grupo_item)) = 'TINTAS' " +
+        "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+        'AND ano_mes IN (' +
+        inMesesList +
+        ') GROUP BY ano_mes'
+      const cliTintasRows = runAgg(cliTintasSql)
+      const cliTintasMap = {}
+      for (let i = 0; i < cliTintasRows.length; i++) {
+        cliTintasMap[cliTintasRows[i].a] = parseInt(cliTintasRows[i].b, 10) || 0
+      }
+      const sTintas = buildSeriesFromMap(cliTintasMap)
+      for (let i = 0; i < sTintas.length; i++) clientesAtivosTintas.push(sTintas[i])
+
+      // Query resumo_vendas_mensal para ACESSORIOS
+      const cliAcesSql =
+        'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+        'FROM resumo_vendas_mensal WHERE ' +
+        sqlWhereHistorical +
+        " AND UPPER(TRIM(grupo_item)) IN ('ACESSÓRIOS', 'ACESSORIOS') " +
+        "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+        'AND ano_mes IN (' +
+        inMesesList +
+        ') GROUP BY ano_mes'
+      const cliAcesRows = runAgg(cliAcesSql)
+      const cliAcesMap = {}
+      for (let i = 0; i < cliAcesRows.length; i++) {
+        cliAcesMap[cliAcesRows[i].a] = parseInt(cliAcesRows[i].b, 10) || 0
+      }
+      const sAces = buildSeriesFromMap(cliAcesMap)
+      for (let i = 0; i < sAces.length; i++) clientesAtivosAcessorios.push(sAces[i])
+
+      // Query resumo_vendas_mensal para PECAS
+      const cliPecasSql =
+        'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+        'FROM resumo_vendas_mensal WHERE ' +
+        sqlWhereHistorical +
+        " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS') " +
+        "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+        'AND ano_mes IN (' +
+        inMesesList +
+        ') GROUP BY ano_mes'
+      const cliPecasRows = runAgg(cliPecasSql)
+      const cliPecasMap = {}
+      for (let i = 0; i < cliPecasRows.length; i++) {
+        cliPecasMap[cliPecasRows[i].a] = parseInt(cliPecasRows[i].b, 10) || 0
+      }
+      const sPecas = buildSeriesFromMap(cliPecasMap)
+      for (let i = 0; i < sPecas.length; i++) clientesAtivosPecas.push(sPecas[i])
     } catch (err) {
       console.error('dashboard_stats: clientesAtivos queries falharam:', err)
     }
@@ -1569,6 +1642,9 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         vendasInsumosHistorico: vendasInsumosHistorico,
         clientesAtivosEquipamentos: clientesAtivosEquipamentos,
         clientesAtivosInsumos: clientesAtivosInsumos,
+        clientesAtivosTintas: clientesAtivosTintas,
+        clientesAtivosAcessorios: clientesAtivosAcessorios,
+        clientesAtivosPecas: clientesAtivosPecas,
         topVendedores: topVendedores,
         topClientes: topClientes,
         estado: estado,
