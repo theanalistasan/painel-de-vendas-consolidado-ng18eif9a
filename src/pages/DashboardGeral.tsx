@@ -765,32 +765,12 @@ export default function DashboardGeral() {
     return sum / chartVendasPorMes.length
   }, [chartVendasPorMes])
 
+  // Relatório "Venda Mensal por Grupo do Item":
+  // Mostra SEMPRE as 4 categorias completas (Equipamentos, Peças, Tintas e Acessórios)
+  // independente dos filtros aplicados na página.
   const mensalGrupos = useMemo(() => {
-    const backendGrupos = new Set<string>()
-    for (const m of chartVendasPorGrupoItemMensal) {
-      for (const g of m.grupos) {
-        if (g.grupo) backendGrupos.add(g.grupo)
-      }
-    }
-
-    const matchFixedGroup = (grupoName: string): string | null => {
-      const upper = (grupoName || '').toUpperCase().trim()
-      if (upper === 'EQUIPAMENTOS') return 'EQUIPAMENTOS'
-      if (upper === 'PEÇAS' || upper === 'PECAS') return 'PEÇAS'
-      if (upper === 'TINTAS') return 'TINTAS'
-      if (upper === 'ACESSÓRIOS' || upper === 'ACESSORIOS') return 'ACESSÓRIOS'
-      return null
-    }
-
-    const list: string[] = [...MENSAL_GRUPOS_ORDEM]
-    for (const bg of backendGrupos) {
-      const fixed = matchFixedGroup(bg)
-      if (!fixed && !list.includes(bg)) {
-        list.push(bg)
-      }
-    }
-    return list
-  }, [chartVendasPorGrupoItemMensal])
+    return [...MENSAL_GRUPOS_ORDEM]
+  }, [])
 
   const mensalGrupoData = useMemo(() => {
     return chartVendasPorGrupoItemMensal.map((m) => {
@@ -799,17 +779,19 @@ export default function DashboardGeral() {
         row[g] = 0
       }
       for (const g of m.grupos) {
-        const upper = (g.grupo || '').toUpperCase().trim()
-        if (upper === 'PEÇAS' || upper === 'PECAS') {
+        const upper = (g.grupo || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toUpperCase()
+          .trim()
+        if (upper === 'PECAS') {
           row['PEÇAS'] = (Number(row['PEÇAS']) || 0) + g.total
-        } else if (upper === 'ACESSÓRIOS' || upper === 'ACESSORIOS') {
+        } else if (upper === 'ACESSORIOS') {
           row['ACESSÓRIOS'] = (Number(row['ACESSÓRIOS']) || 0) + g.total
         } else if (upper === 'EQUIPAMENTOS') {
           row['EQUIPAMENTOS'] = (Number(row['EQUIPAMENTOS']) || 0) + g.total
         } else if (upper === 'TINTAS') {
           row['TINTAS'] = (Number(row['TINTAS']) || 0) + g.total
-        } else {
-          row[g.grupo] = g.total
         }
       }
       return row

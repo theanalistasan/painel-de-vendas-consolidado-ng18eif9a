@@ -937,7 +937,9 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
 
     // 2.8) vendasPorGrupoItemMensal — últimos 6 meses
     // REGRA DE NEGÓCIO: Mostra SEMPRE os últimos 6 meses da base (terminando no último mês disponível, ex: Ago-2026),
-    // independente do filtro de período, respeitando dimensões e seleção de base (sqlWhereBase).
+    // SEMPRE com as quatro categorias completas (Equipamentos, Peças, Tintas e Acessórios),
+    // INDEPENDENTE de qualquer filtro aplicado na página (inclusive filtro de grupo_item ou dimensões).
+    // Respeita APENAS a seleção de base racnew/netsales (sqlWhereHistorical), como os outros relatórios históricos.
     const vendasPorGrupoItemMensal = []
     try {
       const mesesAlvoGrupo = ultimos6MesesAlvo
@@ -948,7 +950,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         "COALESCE(NULLIF(grupo_item,''),'Sem informação') AS b, " +
         'COALESCE(SUM(total_linha),0) AS c ' +
         'FROM resumo_vendas_mensal WHERE ' +
-        sqlWhereBase +
+        sqlWhereHistorical +
         " AND ano_mes >= '" +
         minMesTarget +
         "' AND ano_mes <= '" +
