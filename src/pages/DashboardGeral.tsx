@@ -543,6 +543,53 @@ export default function DashboardGeral() {
 
   const isJpClassFilterActive = Boolean(filters.jpClass && filters.jpClass.length > 0)
 
+  // Cálculo dos Clientes Ativos segregados por categoria (Tintas, Acessórios, Peças)
+  const { clientesAtivosTintas, clientesAtivosAcessorios, clientesAtivosPecas } = useMemo(() => {
+    const tintasClientes = new Set<string>()
+    const acessoriosClientes = new Set<string>()
+    const pecasClientes = new Set<string>()
+
+    const normalizeGrupoName = (val?: string | null): string => {
+      if (!val) return ''
+      return val
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+        .toUpperCase()
+    }
+
+    const source = displayedVendas.length > 0 ? displayedVendas : paginatedVendas
+
+    for (const item of source) {
+      if (isDevolucao(item.tipo_documento)) continue
+
+      const clienteId = (item.codigo_cliente || item.nome_cliente || '').trim()
+      if (!clienteId) continue
+
+      const rawGrupo =
+        item.grupo_item ||
+        (item as unknown as { itms_grp_nam?: string }).itms_grp_nam ||
+        (item as unknown as { grupo?: string }).grupo ||
+        ''
+
+      const grupo = normalizeGrupoName(rawGrupo)
+
+      if (grupo === 'TINTAS') {
+        tintasClientes.add(clienteId)
+      } else if (grupo === 'ACESSORIOS') {
+        acessoriosClientes.add(clienteId)
+      } else if (grupo === 'PECAS') {
+        pecasClientes.add(clienteId)
+      }
+    }
+
+    return {
+      clientesAtivosTintas: tintasClientes.size,
+      clientesAtivosAcessorios: acessoriosClientes.size,
+      clientesAtivosPecas: pecasClientes.size,
+    }
+  }, [displayedVendas, paginatedVendas])
+
   const reportKpis = useMemo(() => {
     if (!isJpClassFilterActive) {
       return {
@@ -1986,8 +2033,8 @@ export default function DashboardGeral() {
 
           {/* Seção: Relatório Consolidado de Vendas (incorporado de Vendas) */}
           <div className="space-y-4 pt-4 border-t border-slate-200">
-            {/* 5 KPIs do Relatório de Vendas */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            {/* KPIs do Relatório de Vendas e Clientes Ativos por Categoria */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <KpiCard
                 title="Faturamento Total"
                 value={reportKpis.faturamento}
@@ -2027,6 +2074,30 @@ export default function DashboardGeral() {
                 icon={RotateCcw}
                 iconBgColor="bg-rose-50"
                 iconColor="text-rose-600"
+              />
+              <KpiCard
+                title="Clientes Ativos - Tintas"
+                value={clientesAtivosTintas}
+                decimals={0}
+                icon={Users}
+                iconBgColor="bg-cyan-50"
+                iconColor="text-[#106A82]"
+              />
+              <KpiCard
+                title="Clientes Ativos - Acessórios"
+                value={clientesAtivosAcessorios}
+                decimals={0}
+                icon={Users}
+                iconBgColor="bg-sky-50"
+                iconColor="text-[#0B6E99]"
+              />
+              <KpiCard
+                title="Clientes Ativos - Peças"
+                value={clientesAtivosPecas}
+                decimals={0}
+                icon={Users}
+                iconBgColor="bg-teal-50"
+                iconColor="text-[#1895A8]"
               />
             </div>
 
