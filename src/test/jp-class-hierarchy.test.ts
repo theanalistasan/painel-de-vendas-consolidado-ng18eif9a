@@ -218,6 +218,78 @@ describe('Hierarquia em Cascata JP-Class (4 Níveis)', () => {
     expect(allKeys.has('L4::INKS::1::TINTAS::INK-001')).toBe(true)
   })
 
+  it('deve gerar corretamente o conjunto de chaves colapsadas para o estado inicial "Nível 1 e 2"', () => {
+    // No carregamento inicial: Nível 1 (JP-Class) expandido, Nível 2 (Semana) com filhos ocultos (L2, L3, L4 colapsados)
+    const hierarchyMock = [
+      {
+        key: 'L1::HARD',
+        subNodes: [
+          {
+            key: 'L2::HARD::2',
+            subNodes: [
+              {
+                key: 'L3::HARD::2::EQUIPAMENTOS',
+                subNodes: [
+                  {
+                    key: 'L4::HARD::2::EQUIPAMENTOS::EQP-500',
+                    subNodes: [],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        key: 'L1::INKS',
+        subNodes: [
+          {
+            key: 'L2::INKS::1',
+            subNodes: [
+              {
+                key: 'L3::INKS::1::TINTAS',
+                subNodes: [
+                  {
+                    key: 'L4::INKS::1::TINTAS::INK-001',
+                    subNodes: [],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]
+
+    const initialCollapsed = new Set<string>()
+    for (const l1 of hierarchyMock) {
+      // L1 fica expandido (não adicionado)
+      for (const l2 of l1.subNodes) {
+        initialCollapsed.add(l2.key)
+        for (const l3 of l2.subNodes) {
+          initialCollapsed.add(l3.key)
+          for (const l4 of l3.subNodes) {
+            initialCollapsed.add(l4.key)
+          }
+        }
+      }
+    }
+
+    // L1 deve estar EXPANDIDO (não está em initialCollapsed)
+    expect(initialCollapsed.has('L1::HARD')).toBe(false)
+    expect(initialCollapsed.has('L1::INKS')).toBe(false)
+
+    // L2 (Semana) deve estar COLAPSADO (ocultando L3 Grupo)
+    expect(initialCollapsed.has('L2::HARD::2')).toBe(true)
+    expect(initialCollapsed.has('L2::INKS::1')).toBe(true)
+
+    // L3 e L4 também devem estar COLAPSADOS
+    expect(initialCollapsed.has('L3::HARD::2::EQUIPAMENTOS')).toBe(true)
+    expect(initialCollapsed.has('L4::HARD::2::EQUIPAMENTOS::EQP-500')).toBe(true)
+    expect(initialCollapsed.has('L3::INKS::1::TINTAS')).toBe(true)
+    expect(initialCollapsed.has('L4::INKS::1::TINTAS::INK-001')).toBe(true)
+  })
+
   it('deve ordenar cada nível da hierarquia em ordem alfabética crescente (A→Z com normalização e numeric pt-BR)', () => {
     // Teste dos 4 níveis de ordenação alfabética exigidos pelo usuário:
     // 1. JP-Class: HARD, INKS, OTHERS, Sem classe (ordem alfabética A→Z)

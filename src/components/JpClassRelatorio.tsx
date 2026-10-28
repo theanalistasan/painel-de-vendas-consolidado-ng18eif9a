@@ -99,6 +99,8 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
   const [sortField, setSortField] = useState<SortField>('nome')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [search, setSearch] = useState('')
+  // Controla se o estado inicial (Nível 1 e 2 expandidos, Níveis 3 e 4 colapsados) já foi aplicado
+  const [initialCollapseApplied, setInitialCollapseApplied] = useState(false)
   // Controla o estado de colapso de nós da árvore
   const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set())
 
@@ -484,6 +486,33 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
     }
     setCollapsedKeys(allKeys)
   }
+
+  // Estado inicial padrão: "Nível 1 e 2"
+  // Nós de JP-Class (L1) EXPANDIDOS (não incluídos em collapsedKeys)
+  // Nós de Semana (L2), Grupo (L3) e Item (L4) COLAPSADOS (incluídos em collapsedKeys)
+  // Aplica automaticamente na primeira vez que a hierarquia carregar dados.
+  React.useEffect(() => {
+    if (!initialCollapseApplied && hierarchy.length > 0 && !loading) {
+      const defaultCollapsed = new Set<string>()
+      for (const l1 of hierarchy) {
+        // L1 (JP-Class) permanece EXPANDIDO (não entra em defaultCollapsed)
+        for (const l2 of l1.subNodes) {
+          // L2 (Semana) começa COLAPSADO para ocultar L3 (Grupo)
+          defaultCollapsed.add(l2.key)
+          for (const l3 of l2.subNodes) {
+            // L3 (Grupo) começa COLAPSADO para ocultar L4 (Item)
+            defaultCollapsed.add(l3.key)
+            for (const l4 of l3.subNodes) {
+              // L4 (Item) começa COLAPSADO para ocultar as linhas de vendas
+              defaultCollapsed.add(l4.key)
+            }
+          }
+        }
+      }
+      setCollapsedKeys(defaultCollapsed)
+      setInitialCollapseApplied(true)
+    }
+  }, [hierarchy, loading, initialCollapseApplied])
 
   // Retorna true se a ordenação atual é por valores numéricos (total_linha, valor_liquido, quantidade)
   const isNumericSort =
