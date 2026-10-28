@@ -51,6 +51,16 @@ export const DEFAULT_GRUPOS_ITEM_JP_CLASS: string[] = [
 ]
 
 /**
+ * Detecta se uma seleção salva de grupos de item corresponde ao padrão legado pré-0.0.234
+ * (seleção única contendo apenas 'PEÇAS' / 'PECAS').
+ */
+export function isLegacySinglePecasSelection(grupos: string[] | null | undefined): boolean {
+  if (!Array.isArray(grupos) || grupos.length !== 1) return false
+  const norm = normalizeText(grupos[0])
+  return norm === 'PECAS' || norm === 'PECA'
+}
+
+/**
  * Formas normalizadas (sem acento, maiúsculas) que casam com os 4 grupos padrão,
  * incluindo as variações de grafia encontradas na base (singular/plural e o
  * erro de digitação 'ASSESSÓRIOS'), alinhadas com isMatchedJpClassRule.

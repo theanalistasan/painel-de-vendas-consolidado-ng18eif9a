@@ -21,7 +21,13 @@ import {
   normalizarParaDataISO,
   type SemanaMes,
 } from '@/lib/semanas'
-import { getJpClass, normalizeText, resolveDefaultGrupoItemSelection } from '@/lib/jp-class'
+import {
+  getJpClass,
+  normalizeText,
+  resolveDefaultGrupoItemSelection,
+  isLegacySinglePecasSelection,
+  DEFAULT_GRUPOS_ITEM_JP_CLASS,
+} from '@/lib/jp-class'
 import { MESES_PT_BR, formatCurrency, formatNumber, exportToCSV } from '@/lib/formatters'
 import { loadFiltersFromSession, hasSavedFiltersInSession } from '@/lib/filter-persistence'
 import pb from '@/lib/pocketbase/client'
@@ -92,18 +98,43 @@ export default function JpClassPage() {
 
   // 7 filtros multi-select + JP-Class
   // Interação com persistência de sessão:
-  // - Se houver filtros salvos na sessão (hasSavedFiltersInSession = true), preserva exatamente o que está salvo;
-  // - Se não houver preferência salva, aplica o DEFAULT INICIAL:
-  //   Grupo do Item pré-selecionado com os 4 grupos (Equipamentos, Peças, Tintas e Acessórios),
-  //   tipoDocumento ['NF de Saída'], utilizacao ['VENDA DE MERCADORIA', 'VENDA CONSUMO'].
-  const [hasSessionSavedAtMount] = useState(() => hasSavedFiltersInSession())
+  // - Se não houver preferência salva: aplica o DEFAULT INICIAL com os 4 grupos
+  //   (EQUIPAMENTOS, PEÇAS, TINTAS, ACESSÓRIOS);
+  // - Se houver preferência salva em sessão: preserva as escolhas do usuário, MAS
+  //   trata a seleção legada pré-0.0.234 (apenas "PEÇAS") corrigindo para os 4 grupos,
+  //   garantindo que o usuário veja os 4 grupos ao abrir a página agora;
+  // - Se o usuário salvou uma seleção explícita que NÃO é a legada "só PEÇAS",
+  //   essa preferência é mantida fielmente.
+  const [hasSessionSavedAtMount] = useState(() => {
+    if (!hasSavedFiltersInSession()) return false
+    try {
+      const saved = loadFiltersFromSession()
+      // Se a sessão continha a seleção legada só-PEÇAS, não bloqueia a auto-resolução
+      // dinâmica com os 4 grupos contra as opções da base
+      if (isLegacySinglePecasSelection(saved.grupoItem)) {
+        return false
+      }
+      return true
+    } catch {
+      return false
+    }
+  })
 
   const [filters, setFilters] = useState<JpClassFilterState>(() => {
     try {
       if (hasSavedFiltersInSession()) {
         const saved = loadFiltersFromSession()
+        const savedGrupos = saved.grupoItem
+
+        // Se a sessão carregar o valor legado pré-0.0.234 (apenas PEÇAS/PECAS)
+        // ou não tiver grupoItem, sobrepõe com os 4 grupos padrão
+        const shouldUpgradeLegacy = !savedGrupos || isLegacySinglePecasSelection(savedGrupos)
+        const initialGrupoItem = shouldUpgradeLegacy
+          ? [...DEFAULT_GRUPOS_ITEM_JP_CLASS]
+          : savedGrupos
+
         return {
-          grupoItem: saved.grupoItem ?? DEFAULT_JP_CLASS_FILTERS.grupoItem,
+          grupoItem: initialGrupoItem,
           tipoDocumento: saved.tipoDocumento ?? DEFAULT_JP_CLASS_FILTERS.tipoDocumento,
           tipoCliente: saved.tipoCliente || [],
           canal: saved.canal || [],
@@ -389,7 +420,8 @@ export default function JpClassPage() {
   }, [rawVendas, tiposClienteMap, tipoClienteOptions, loadingTiposCliente])
 
   // Quando as opções de grupoItem ficarem disponíveis na base (via rawVendas),
-  // se o usuário não tiver preferência salva em sessão e ainda estiver usando o default canônico,
+  // se o usuário não tiver preferência salva em sessão (ou tinha a seleção legada "só PEÇAS"),
+  // e ainda estiver usando o default canônico (ou resquício da seleção legada),
   // ajusta o filtro de grupoItem para incluir as variações exatas encontradas na base
   // (ex.: se a base tiver 'ACESSORIOS' e 'ACESSÓRIOS', ambas ficam marcadas).
   const autoResolvedOptionsRef = useRef(false)
@@ -400,12 +432,14 @@ export default function JpClassPage() {
     autoResolvedOptionsRef.current = true
     const resolved = resolveDefaultGrupoItemSelection(filterOptions.grupoItem)
     setFilters((prev) => {
-      // Se o usuário já alterou o grupoItem para algo diferente do default canônico, não sobrescreve
+      // Verifica se a seleção atual ainda representa o default canônico dos 4 grupos
+      // ou uma seleção legada só-PEÇAS
       const isStillDefaultCanonical =
         prev.grupoItem.length === DEFAULT_JP_CLASS_FILTERS.grupoItem.length &&
         DEFAULT_JP_CLASS_FILTERS.grupoItem.every((g) => prev.grupoItem.includes(g))
+      const isLegacySinglePecas = isLegacySinglePecasSelection(prev.grupoItem)
 
-      if (!isStillDefaultCanonical) return prev
+      if (!isStillDefaultCanonical && !isLegacySinglePecas) return prev
 
       // Se a resolução for idêntica, mantém
       if (

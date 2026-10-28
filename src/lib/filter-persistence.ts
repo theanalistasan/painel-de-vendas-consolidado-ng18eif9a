@@ -259,6 +259,18 @@ export function loadFiltersFromSession(): FilterState {
       return g
     })
 
+    // Caso a sessão carregue a seleção legada pré-0.0.234 de grupoItem contendo apenas PEÇAS/PECAS,
+    // atualiza para os 4 grupos padrão (DEFAULT_GRUPOS_ITEM: EQUIPAMENTOS, ACESSÓRIOS, TINTAS, PEÇAS).
+    // Isso garante que tanto Visão Geral/Canais quanto JP-Class não fiquem travados na seleção antiga
+    // e o usuário veja os 4 grupos ao abrir qualquer painel.
+    const isLegacySinglePecas =
+      grupoItemMapped.length === 1 &&
+      (grupoItemMapped[0] === 'PEÇAS' ||
+        grupoItemMapped[0].toUpperCase().trim() === 'PECAS' ||
+        grupoItemMapped[0].toUpperCase().trim() === 'PECA')
+
+    const finalGrupoItem = isLegacySinglePecas ? [...DEFAULT_GRUPOS_ITEM] : grupoItemMapped
+
     const merged: FilterState = {
       ...EMPTY_FILTERS,
       ...parsed,
@@ -268,7 +280,7 @@ export function loadFiltersFromSession(): FilterState {
       dia: normalizeArray(parsed.dia),
       vendedorCliente: normalizeArray(parsed.vendedorCliente),
       vendedor: normalizeArray(parsed.vendedor),
-      grupoItem: grupoItemMapped,
+      grupoItem: finalGrupoItem,
       estado: normalizeArray(parsed.estado),
       utilizacao: parsedUtilizacao,
       tipoDocumento: parsedTipoDoc,

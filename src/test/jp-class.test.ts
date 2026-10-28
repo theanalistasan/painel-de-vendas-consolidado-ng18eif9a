@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import {
   getJpClass,
   getJpClassGroup,
@@ -8,7 +8,14 @@ import {
   JP_CLASS_OPTIONS,
   DEFAULT_GRUPOS_ITEM_JP_CLASS,
   resolveDefaultGrupoItemSelection,
+  isLegacySinglePecasSelection,
 } from '@/lib/jp-class'
+import {
+  loadFiltersFromSession,
+  saveFiltersToSession,
+  clearFiltersFromSession,
+  DEFAULT_GRUPOS_ITEM,
+} from '@/lib/filter-persistence'
 
 describe('Regra de De/Para JP-Class', () => {
   describe('getJpClass', () => {
@@ -164,6 +171,85 @@ describe('Regra de De/Para JP-Class', () => {
 
     it('resolveDefaultGrupoItemSelection deve retornar fallback canônico quando lista for vazia', () => {
       expect(resolveDefaultGrupoItemSelection([])).toEqual(DEFAULT_GRUPOS_ITEM_JP_CLASS)
+    })
+
+    it('isLegacySinglePecasSelection deve identificar corretamente seleção legada de apenas PEÇAS', () => {
+      expect(isLegacySinglePecasSelection(['PEÇAS'])).toBe(true)
+      expect(isLegacySinglePecasSelection(['PECAS'])).toBe(true)
+      expect(isLegacySinglePecasSelection(['Peças'])).toBe(true)
+      expect(isLegacySinglePecasSelection(['Peca'])).toBe(true)
+      expect(isLegacySinglePecasSelection(['PEÇAS', 'TINTAS'])).toBe(false)
+      expect(isLegacySinglePecasSelection(['TINTAS'])).toBe(false)
+      expect(isLegacySinglePecasSelection([])).toBe(false)
+      expect(isLegacySinglePecasSelection(null)).toBe(false)
+      expect(isLegacySinglePecasSelection(undefined)).toBe(false)
+    })
+  })
+
+  describe('Correção de seleção legada em sessão (filter-persistence)', () => {
+    beforeEach(() => {
+      clearFiltersFromSession()
+    })
+
+    it('quando sessão tem apenas PEÇAS, loadFiltersFromSession deve promover para os 4 grupos padrão', () => {
+      // Simula sessão legada salva antes do 0.0.234
+      saveFiltersToSession({
+        base: 'ambos',
+        dataDe: '',
+        dataAte: '',
+        vendedorCliente: [],
+        vendedor: [],
+        grupoItem: ['PEÇAS'],
+        estado: [],
+        utilizacao: ['VENDA DE MERCADORIA'],
+        tipoDocumento: ['NF de Saída'],
+        canal: [],
+        canalClientes: [],
+        deploy: [],
+        inside: [],
+        tipoCliente: [],
+        jpClass: [],
+        search: '',
+        ano: ['2026'],
+        mes: ['9'],
+        dia: [],
+        tipoDevolucao: '',
+      })
+
+      const loaded = loadFiltersFromSession()
+      expect(loaded.grupoItem).toEqual(DEFAULT_GRUPOS_ITEM)
+      expect(loaded.grupoItem).toContain('EQUIPAMENTOS')
+      expect(loaded.grupoItem).toContain('ACESSÓRIOS')
+      expect(loaded.grupoItem).toContain('TINTAS')
+      expect(loaded.grupoItem).toContain('PEÇAS')
+    })
+
+    it('quando sessão tem escolha explícita legítima (ex: apenas TINTAS), deve ser respeitada', () => {
+      saveFiltersToSession({
+        base: 'ambos',
+        dataDe: '',
+        dataAte: '',
+        vendedorCliente: [],
+        vendedor: [],
+        grupoItem: ['TINTAS'],
+        estado: [],
+        utilizacao: [],
+        tipoDocumento: [],
+        canal: [],
+        canalClientes: [],
+        deploy: [],
+        inside: [],
+        tipoCliente: [],
+        jpClass: [],
+        search: '',
+        ano: [],
+        mes: [],
+        dia: [],
+        tipoDevolucao: '',
+      })
+
+      const loaded = loadFiltersFromSession()
+      expect(loaded.grupoItem).toEqual(['TINTAS'])
     })
   })
 })
