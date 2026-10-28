@@ -31,7 +31,10 @@ import {
   fetchVendasList,
   fetchVendasExport,
   type DashboardStatsResult,
+  fetchCanaisComparativo,
+  type CanaisComparativoResult,
 } from '@/services/sales'
+import { ComparativoCanaisMesCard } from '@/components/ComparativoCanaisMesCard'
 import { useRealtime } from '@/hooks/use-realtime'
 import type { FilterState, VendaConsolidada } from '@/types/sales'
 import {
@@ -93,6 +96,8 @@ export default function DashboardCanais() {
   const [data, setData] = useState<DashboardStatsResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [comparativoData, setComparativoData] = useState<CanaisComparativoResult | null>(null)
+  const [loadingComparativo, setLoadingComparativo] = useState(false)
   const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
   const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
   const [loadingTiposCliente, setLoadingTiposCliente] = useState(false)
@@ -149,6 +154,23 @@ export default function DashboardCanais() {
 
   const requestSeqRef = useRef<number>(0)
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  // Carrega comparativo Mês Atual x Mês Ano Anterior por canal
+  const loadComparativoData = async (activeFilters = filters) => {
+    setLoadingComparativo(true)
+    try {
+      const res = await fetchCanaisComparativo({
+        filters: activeFilters as unknown as Record<string, unknown>,
+        ano: activeFilters.ano?.[0] ? parseInt(activeFilters.ano[0], 10) : undefined,
+        mes: activeFilters.mes?.[0] ? parseInt(activeFilters.mes[0], 10) : undefined,
+      })
+      setComparativoData(res)
+    } catch (err) {
+      console.warn('[DashboardCanais] Erro ao carregar comparativo canais:', err)
+    } finally {
+      setLoadingComparativo(false)
+    }
+  }
 
   // Load aggregated dashboard stats from server
   const loadData = async (activeFilters = filters) => {
@@ -259,6 +281,7 @@ export default function DashboardCanais() {
 
   useEffect(() => {
     loadData(filters)
+    loadComparativoData(filters)
     loadReportData(filters, 1, sort.field, sort.dir, isGroupedByNfe)
     setReportPage(1)
     return () => {
@@ -295,6 +318,7 @@ export default function DashboardCanais() {
 
   useRealtime('vendas', () => {
     loadData()
+    loadComparativoData(filters)
   })
 
   const filterOptions = useMemo(() => {
@@ -735,6 +759,9 @@ export default function DashboardCanais() {
             filterMes={filters.mes?.[0] || null}
             filterAno={filters.ano?.[0] || null}
           />
+
+          {/* Comparativo Mês Atual × Mês do Ano Anterior por Canal (MUDANÇA 1) */}
+          <ComparativoCanaisMesCard data={comparativoData} loading={loadingComparativo} />
 
           {/* Charts Grid: Top Vendedores & Top Clientes */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

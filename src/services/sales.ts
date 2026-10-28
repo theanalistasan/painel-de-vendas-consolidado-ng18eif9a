@@ -359,6 +359,86 @@ let pendingStatsPromise: {
   promise: Promise<DashboardStatsResult>
 } | null = null
 
+export interface CanalComparativoItem {
+  canal: string
+  faturamentoAtual: number
+  faturamentoAnterior: number
+  diff: number
+  variacaoPercentual: number | null
+  clientesAtual: number
+  clientesAnterior: number
+}
+
+export interface CanaisComparativoResult {
+  anoAtual: number
+  mesAtual: number
+  anoAnterior: number
+  mesAnterior: number
+  ymAtual: string
+  ymAnterior: string
+  mesLabelAtual: string
+  mesLabelAnterior: string
+  mesNomeCompletoAtual: string
+  mesNomeCompletoAnterior: string
+  totalAtual: number
+  totalAnterior: number
+  diffTotal: number
+  variacaoTotal: number | null
+  canais: CanalComparativoItem[]
+}
+
+export async function fetchCanaisComparativo(params?: {
+  filters?: Record<string, unknown>
+  ano?: number
+  mes?: number
+  signal?: AbortSignal
+}): Promise<CanaisComparativoResult> {
+  const internalController = new AbortController()
+  const timer = setTimeout(() => {
+    internalController.abort(new Error('Tempo limite esgotado ao buscar comparativo de canais.'))
+  }, 40000)
+
+  if (params?.signal) {
+    if (params.signal.aborted) {
+      clearTimeout(timer)
+      const err = new Error('Requisição cancelada.')
+      err.name = 'AbortError'
+      throw err
+    }
+    params.signal.addEventListener('abort', () => internalController.abort(), { once: true })
+  }
+
+  const run = () =>
+    pb.send<CanaisComparativoResult>('/backend/v1/canais/comparativo-mes', {
+      method: 'POST',
+      body: {
+        filters: params?.filters || {},
+        ano: params?.ano,
+        mes: params?.mes,
+      },
+      signal: internalController.signal,
+    })
+
+  try {
+    return await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if ((status === 401 || status === 403) && !internalController.signal.aborted) {
+      try {
+        const refreshed = await safeAuthRefresh()
+        if (refreshed && pb.authStore.isValid) {
+          return await run()
+        }
+      } catch {
+        throw err
+      }
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function fetchDashboardStats(
   filters?: Record<string, unknown>,
   options?: { timeoutMs?: number; signal?: AbortSignal },
