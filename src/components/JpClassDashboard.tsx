@@ -273,6 +273,8 @@ export function JpClassDashboard({ items, tiposClienteMap = {} }: JpClassDashboa
                       color: '#fff',
                       fontSize: '12px',
                     }}
+                    labelStyle={{ color: '#FFFFFF', fontWeight: 700 }}
+                    itemStyle={{ color: '#F1F5F9' }}
                   />
                   <Legend
                     verticalAlign="bottom"
@@ -568,6 +570,8 @@ export function JpClassDashboard({ items, tiposClienteMap = {} }: JpClassDashboa
                       color: '#fff',
                       fontSize: '12px',
                     }}
+                    labelStyle={{ color: '#FFFFFF', fontWeight: 700 }}
+                    itemStyle={{ color: '#F1F5F9' }}
                   />
                   <Bar dataKey="faturamento" radius={[4, 4, 0, 0]}>
                     {dataGrupo.map((entry) => (
@@ -627,6 +631,8 @@ export function JpClassDashboard({ items, tiposClienteMap = {} }: JpClassDashboa
                       color: '#fff',
                       fontSize: '12px',
                     }}
+                    labelStyle={{ color: '#FFFFFF', fontWeight: 700 }}
+                    itemStyle={{ color: '#F1F5F9' }}
                   />
                   <Bar dataKey="faturamento" fill="#0B6E99" radius={[0, 4, 4, 0]} />
                 </BarChart>
