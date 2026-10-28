@@ -142,7 +142,23 @@ export const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
 
 const MIN_COLUMN_WIDTH = 60
 
-export type RelatorioGroupByMode = 'none' | 'jp_class'
+export type RelatorioGroupByMode = 'none' | 'jp_class' | 'comissao'
+
+export const PREFIXO_NAO_COMISSIONADO = 'Roland DG Brasil > '
+
+/**
+ * Classifica a venda entre Comissionado e Não Comissionado.
+ * Regra do Silvio:
+ * - Não Comissionados: Vendedor inicia com "Roland DG Brasil > " (case-insensitive, tolerante a espaços)
+ * - Comissionados: todos os demais (vendedores que não iniciam com esse prefixo, vazios, sem vendedor)
+ */
+export function isVendedorNaoComissionado(venda: {
+  vendedor_cliente?: string | null
+  nome_vendedor?: string | null
+}): boolean {
+  const rawVendedor = (venda.vendedor_cliente || venda.nome_vendedor || '').trim()
+  return rawVendedor.toLowerCase().startsWith('roland dg brasil >')
+}
 
 export interface VendasRelatorioTableProps {
   items: (VendaConsolidada & { itens_qtd?: number })[]
@@ -166,6 +182,8 @@ export interface VendasRelatorioTableProps {
   titleRightActions?: React.ReactNode
   groupByMode?: RelatorioGroupByMode
   onGroupByModeChange?: (mode: RelatorioGroupByMode) => void
+  defaultGroupByMode?: RelatorioGroupByMode
+  allowedGroupByModes?: RelatorioGroupByMode[]
 }
 
 export function VendasRelatorioTable({
@@ -190,8 +208,13 @@ export function VendasRelatorioTable({
   titleRightActions,
   groupByMode: propGroupByMode,
   onGroupByModeChange,
+  defaultGroupByMode = 'none',
+  allowedGroupByModes = ['none', 'jp_class', 'comissao'],
 }: VendasRelatorioTableProps) {
   const { toast } = useToast()
+
+  // Se comissao for o padrão e permitido, e storageKeyPrefix indicar canais, usamos fallback inteligente
+  const effectiveDefaultMode: RelatorioGroupByMode = defaultGroupByMode
 
   const storageKeyWidths = `${storageKeyPrefix}_col_widths_v2`
   const storageKeyExpanded = `${storageKeyPrefix}_col_expanded_v2`
@@ -297,18 +320,21 @@ export function VendasRelatorioTable({
     })
   }
 
-  // Agrupamento por JP-Class
-  const storageKeyGroupBy = `${storageKeyPrefix}_group_by_v1`
+  // Agrupamento selecionado (Persistido por prefixo de storage)
+  const storageKeyGroupBy = `${storageKeyPrefix}_group_by_v2`
   const [internalGroupByMode, setInternalGroupByMode] = useState<RelatorioGroupByMode>(() => {
     try {
       const saved = localStorage.getItem(storageKeyGroupBy)
-      if (saved === 'none' || saved === 'jp_class') {
+      if (
+        (saved === 'none' || saved === 'jp_class' || saved === 'comissao') &&
+        allowedGroupByModes.includes(saved as RelatorioGroupByMode)
+      ) {
         return saved as RelatorioGroupByMode
       }
     } catch (_) {
       // ignore
     }
-    return 'none'
+    return effectiveDefaultMode
   })
 
   const groupByMode: RelatorioGroupByMode =
@@ -368,6 +394,30 @@ export function VendasRelatorioTable({
 
   const expandAllJpGroups = () => {
     setCollapsedJpGroups(new Set())
+  }
+
+  // Grupos colapsados do modo Comissionados / Não Comissionados (chaves 'comissionados' e 'nao_comissionados')
+  // Padrão: grupos ABERTOS (expandidos) para o usuário ver os dados imediatamente, mas colapsáveis com chevron
+  const [collapsedComissaoGroups, setCollapsedComissaoGroups] = useState<Set<string>>(new Set())
+
+  const toggleCollapseComissaoGroup = (groupKey: string) => {
+    setCollapsedComissaoGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(groupKey)) {
+        next.delete(groupKey)
+      } else {
+        next.add(groupKey)
+      }
+      return next
+    })
+  }
+
+  const collapseAllComissaoGroups = () => {
+    setCollapsedComissaoGroups(new Set(['comissionados', 'nao_comissionados']))
+  }
+
+  const expandAllComissaoGroups = () => {
+    setCollapsedComissaoGroups(new Set())
   }
 
   // Agrupamento por Nº NFe localmente para visualização de linhas repetidas na mesma página
@@ -484,6 +534,92 @@ export function VendasRelatorioTable({
     }
 
     return result
+  }, [items, groupByMode])
+
+  // Estrutura de grupos: Comissionados e Não Comissionados
+  interface ComissaoGroupInfo {
+    key: 'comissionados' | 'nao_comissionados'
+    title: string
+    descricao: string
+    items: (VendaConsolidada & { itens_qtd?: number })[]
+    nfeGroups: Array<{
+      nfeKey: string
+      displayNfe: string
+      items: (VendaConsolidada & { itens_qtd?: number })[]
+      hasMultiple: boolean
+    }>
+    count: number
+    vendedoresCount: number
+    subtotal: number
+    subtotalLiquido: number
+    totalQuantidade: number
+  }
+
+  const comissaoGroups = useMemo<ComissaoGroupInfo[]>(() => {
+    if (groupByMode !== 'comissao') return []
+
+    const comissionadosItems: (VendaConsolidada & { itens_qtd?: number })[] = []
+    const naoComissionadosItems: (VendaConsolidada & { itens_qtd?: number })[] = []
+
+    for (const item of items) {
+      if (isVendedorNaoComissionado(item)) {
+        naoComissionadosItems.push(item)
+      } else {
+        comissionadosItems.push(item)
+      }
+    }
+
+    const calcGroup = (
+      key: 'comissionados' | 'nao_comissionados',
+      title: string,
+      descricao: string,
+      gItems: (VendaConsolidada & { itens_qtd?: number })[],
+    ): ComissaoGroupInfo => {
+      let subtotal = 0
+      let subtotalLiquido = 0
+      let totalQuantidade = 0
+      const vendedoresSet = new Set<string>()
+
+      for (const it of gItems) {
+        subtotal += Number(it.total_linha) || 0
+        subtotalLiquido += Number(it.valor_liquido) || 0
+        totalQuantidade += Number(it.quantidade) || 0
+        const vend = (it.vendedor_cliente || it.nome_vendedor || '').trim()
+        if (vend) {
+          vendedoresSet.add(vend)
+        }
+      }
+
+      return {
+        key,
+        title,
+        descricao,
+        items: gItems,
+        nfeGroups: buildNfeGroups(gItems),
+        count: gItems.length,
+        vendedoresCount: vendedoresSet.size,
+        subtotal,
+        subtotalLiquido,
+        totalQuantidade,
+      }
+    }
+
+    // Grupo 1: Comissionados (vendedores não iniciados com 'Roland DG Brasil > ')
+    // Grupo 2: Não Comissionados (vendedores iniciados com 'Roland DG Brasil > ')
+    return [
+      calcGroup(
+        'comissionados',
+        'Comissionados',
+        'Vendedores e canais externos',
+        comissionadosItems,
+      ),
+      calcGroup(
+        'nao_comissionados',
+        'Não Comissionados',
+        'Vendas diretas Roland DG Brasil',
+        naoComissionadosItems,
+      ),
+    ]
   }, [items, groupByMode])
 
   const toggleCollapseNfe = (nfeKey: string) => {
@@ -1086,34 +1222,81 @@ export function VendasRelatorioTable({
               <Layers className="w-3.5 h-3.5 text-[#0B6E99]" />
               Agrupar:
             </span>
-            <button
-              type="button"
-              onClick={() => setGroupByMode('none')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
-                groupByMode === 'none'
-                  ? 'bg-slate-800 text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              Sem Agrupamento
-            </button>
-            <button
-              type="button"
-              onClick={() => setGroupByMode('jp_class')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${
-                groupByMode === 'jp_class'
-                  ? 'bg-[#0B6E99] text-white shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              JP-Class
-              {groupByMode === 'jp_class' && (
-                <span className="text-[10px] bg-white/20 px-1 rounded-sm">
-                  {jpClassGroups.length}
-                </span>
-              )}
-            </button>
+            {allowedGroupByModes.includes('comissao') && (
+              <button
+                type="button"
+                onClick={() => setGroupByMode('comissao')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${
+                  groupByMode === 'comissao'
+                    ? 'bg-[#0B6E99] text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+                title="Agrupar em 1. Comissionados e 2. Não Comissionados"
+              >
+                Comissão
+                {groupByMode === 'comissao' && (
+                  <span className="text-[10px] bg-white/20 px-1 rounded-sm">2</span>
+                )}
+              </button>
+            )}
+            {allowedGroupByModes.includes('none') && (
+              <button
+                type="button"
+                onClick={() => setGroupByMode('none')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                  groupByMode === 'none'
+                    ? 'bg-slate-800 text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                Sem Agrupamento
+              </button>
+            )}
+            {allowedGroupByModes.includes('jp_class') && (
+              <button
+                type="button"
+                onClick={() => setGroupByMode('jp_class')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors flex items-center gap-1 ${
+                  groupByMode === 'jp_class'
+                    ? 'bg-[#0B6E99] text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                JP-Class
+                {groupByMode === 'jp_class' && (
+                  <span className="text-[10px] bg-white/20 px-1 rounded-sm">
+                    {jpClassGroups.length}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
+
+          {/* Botões Expandir Todos / Colapsar Todos para Comissão */}
+          {groupByMode === 'comissao' && (
+            <div className="inline-flex items-center gap-1 ml-1">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={expandAllComissaoGroups}
+                className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 hover:text-[#0B6E99] text-xs font-semibold gap-1 h-8"
+                title="Expandir Comissionados e Não Comissionados"
+              >
+                <ChevronsUpDown className="w-3.5 h-3.5" />
+                Expandir Grupos
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={collapseAllComissaoGroups}
+                className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 hover:text-[#0B6E99] text-xs font-semibold gap-1 h-8"
+                title="Colapsar Comissionados e Não Comissionados"
+              >
+                <ChevronsDownUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                Colapsar Grupos
+              </Button>
+            </div>
+          )}
 
           {/* Botões Expandir Todos / Colapsar Todos para JP-Class */}
           {groupByMode === 'jp_class' && (
@@ -1361,109 +1544,121 @@ export function VendasRelatorioTable({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {groupByMode === 'jp_class'
-                  ? /* MODO AGRUPADO POR JP-CLASS */
-                    jpClassGroups.map((jpGroup) => {
-                      const isCollapsed = collapsedJpGroups.has(jpGroup.key)
-                      const badgeStyle = getJpClassBadgeStyle(jpGroup.key)
+                {groupByMode === 'comissao'
+                  ? /* MODO AGRUPADO: 1. COMISSIONADOS e 2. NÃO COMISSIONADOS */
+                    comissaoGroups.map((cGroup, gIndex) => {
+                      const isCollapsed = collapsedComissaoGroups.has(cGroup.key)
+                      const isComissionado = cGroup.key === 'comissionados'
 
                       return (
-                        <React.Fragment key={jpGroup.key}>
-                          {/* Cabeçalho do Grupo JP-Class */}
+                        <React.Fragment key={cGroup.key}>
+                          {/* Cabeçalho do Grupo (Nunca é escondido ao colapsar) */}
                           <tr
-                            onClick={() => toggleCollapseJpGroup(jpGroup.key)}
-                            className={`cursor-pointer transition-colors border-y border-slate-200/80 font-semibold select-none ${
+                            onClick={() => toggleCollapseComissaoGroup(cGroup.key)}
+                            className={`cursor-pointer transition-colors border-y-2 select-none font-bold ${
                               isCollapsed
-                                ? 'bg-slate-50/90 hover:bg-slate-100/80 text-slate-800'
-                                : 'bg-cyan-50/60 hover:bg-cyan-100/50 text-slate-900'
+                                ? 'bg-slate-100/90 hover:bg-slate-200/80 border-slate-300 text-slate-800'
+                                : isComissionado
+                                  ? 'bg-sky-50/90 hover:bg-sky-100/80 border-sky-300 text-slate-900'
+                                  : 'bg-amber-50/80 hover:bg-amber-100/70 border-amber-300 text-slate-900'
                             }`}
                             title={
                               isCollapsed
-                                ? `Clique para expandir o grupo ${jpGroup.title}`
-                                : `Clique para recolher o grupo ${jpGroup.title}`
+                                ? `Clique para expandir ${cGroup.title}`
+                                : `Clique para colapsar ${cGroup.title}`
                             }
                           >
                             {/* Toggle chevron */}
-                            <td className="py-2 px-2 text-center align-middle border-r border-slate-200/60 w-9 min-w-[36px]">
+                            <td className="py-2.5 px-2 text-center align-middle border-r border-slate-200/80 w-9 min-w-[36px]">
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  toggleCollapseJpGroup(jpGroup.key)
+                                  toggleCollapseComissaoGroup(cGroup.key)
                                 }}
-                                className="p-1 rounded hover:bg-cyan-200/60 text-[#0B6E99] focus:outline-hidden transition-colors"
+                                className="p-1 rounded hover:bg-black/5 text-[#0B6E99] focus:outline-hidden transition-colors"
                                 title={
                                   isCollapsed
-                                    ? `Expandir grupo ${jpGroup.title}`
-                                    : `Recolher grupo ${jpGroup.title}`
+                                    ? `Expandir grupo ${cGroup.title}`
+                                    : `Recolher grupo ${cGroup.title}`
                                 }
                               >
                                 {isCollapsed ? (
-                                  <ChevronRightIcon className="w-4 h-4 text-slate-500" />
+                                  <ChevronRightIcon className="w-4 h-4 text-slate-600" />
                                 ) : (
                                   <ChevronDown className="w-4 h-4 text-[#0B6E99]" />
                                 )}
                               </button>
                             </td>
 
-                            {/* Conteúdo consolidado do Grupo JP-Class */}
+                            {/* Conteúdo consolidado com métricas acumuladas no padrão JP-Class */}
                             <td colSpan={columns.length} className="py-2.5 px-3">
                               <div className="flex items-center justify-between gap-3 flex-wrap">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  {/* Badge da categoria JP-Class */}
+                                <div className="flex items-center gap-2.5 flex-wrap">
+                                  {/* Indicador Numérico e Nome do Grupo */}
+                                  <span className="text-[11px] font-mono uppercase tracking-wider text-slate-500 bg-white/80 px-1.5 py-0.5 rounded border border-slate-200">
+                                    Grupo {gIndex + 1}
+                                  </span>
+
                                   <Badge
                                     variant="outline"
-                                    className={`text-xs px-2.5 py-0.5 font-bold tracking-wide ${badgeStyle.className}`}
+                                    className={`text-xs px-2.5 py-0.5 font-extrabold shadow-2xs ${
+                                      isComissionado
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                        : 'bg-indigo-50 text-indigo-800 border-indigo-300'
+                                    }`}
                                   >
-                                    {jpGroup.title}
+                                    {cGroup.title}
                                   </Badge>
 
-                                  <span className="text-[11px] text-slate-400 font-normal">•</span>
-
-                                  {/* Contagem de linhas */}
+                                  {/* Contagem de linhas e vendedores */}
                                   <Badge
                                     variant="secondary"
-                                    className="text-[11px] bg-slate-200/80 text-slate-700 font-bold px-2 py-0.5"
+                                    className="text-[11px] bg-slate-200/90 text-slate-700 font-bold px-2 py-0.5"
                                   >
-                                    {jpGroup.count} {jpGroup.count === 1 ? 'linha' : 'linhas'}
+                                    {cGroup.count} {cGroup.count === 1 ? 'linha' : 'linhas'}
+                                    {cGroup.vendedoresCount > 0 &&
+                                      ` • ${cGroup.vendedoresCount} ${
+                                        cGroup.vendedoresCount === 1 ? 'vendedor' : 'vendedores'
+                                      }`}
                                   </Badge>
-
-                                  {/* Quantidade total de itens */}
-                                  {jpGroup.totalQuantidade > 0 && (
-                                    <Badge
-                                      variant="outline"
-                                      className="text-[11px] bg-white text-slate-700 border-slate-300 font-semibold px-2 py-0.5"
-                                      title="Quantidade total de peças/itens neste grupo"
-                                    >
-                                      Qtde total: {formatNumber(jpGroup.totalQuantidade)}
-                                    </Badge>
-                                  )}
 
                                   <span className="text-[11px] text-slate-400 font-normal">•</span>
 
-                                  {/* Subtotal Total da Linha */}
-                                  <span className="text-xs text-slate-600 font-medium">
-                                    Subtotal:
+                                  {/* Somatório de Quantidade */}
+                                  <Badge
+                                    variant="outline"
+                                    className="text-[11px] bg-white text-slate-700 border-slate-300 font-semibold px-2 py-0.5"
+                                    title="Quantidade total de peças/itens neste grupo"
+                                  >
+                                    Qtde: {formatNumber(cGroup.totalQuantidade)}
+                                  </Badge>
+
+                                  <span className="text-[11px] text-slate-400 font-normal">•</span>
+
+                                  {/* Somatório de Total da Linha (Total Vendas) */}
+                                  <span className="text-xs text-slate-600 font-semibold">
+                                    Total de Vendas:
                                   </span>
                                   <Badge
                                     variant="outline"
-                                    className="text-xs bg-emerald-50 text-emerald-800 border-emerald-300 font-extrabold px-2.5 py-0.5"
-                                    title={`Subtotal (Total da Linha) do grupo ${jpGroup.title}: ${formatCurrency(jpGroup.subtotal)}`}
+                                    className="text-xs bg-emerald-50 text-emerald-800 border-emerald-300 font-black px-2.5 py-0.5"
+                                    title={`Total de Vendas do grupo ${cGroup.title}: ${formatCurrency(cGroup.subtotal)}`}
                                   >
-                                    {formatCurrency(jpGroup.subtotal)}
+                                    {formatCurrency(cGroup.subtotal)}
                                   </Badge>
 
-                                  {/* Subtotal Líquido se houver */}
-                                  {jpGroup.subtotalLiquido > 0 &&
-                                    jpGroup.subtotalLiquido !== jpGroup.subtotal && (
-                                      <Badge
-                                        variant="outline"
-                                        className="text-[11px] bg-teal-50 text-teal-800 border-teal-200 font-semibold px-2 py-0.5"
-                                        title={`Valor Líquido do grupo: ${formatCurrency(jpGroup.subtotalLiquido)}`}
-                                      >
-                                        Líq: {formatCurrency(jpGroup.subtotalLiquido)}
-                                      </Badge>
-                                    )}
+                                  {/* Somatório de Valor Líquido */}
+                                  <span className="text-xs text-slate-600 font-semibold">
+                                    Valor Líquido:
+                                  </span>
+                                  <Badge
+                                    variant="outline"
+                                    className="text-xs bg-teal-50 text-teal-800 border-teal-300 font-black px-2.5 py-0.5"
+                                    title={`Valor Líquido do grupo ${cGroup.title}: ${formatCurrency(cGroup.subtotalLiquido)}`}
+                                  >
+                                    {formatCurrency(cGroup.subtotalLiquido)}
+                                  </Badge>
                                 </div>
 
                                 <div className="flex items-center gap-2">
@@ -1478,36 +1673,189 @@ export function VendasRelatorioTable({
                             </td>
                           </tr>
 
-                          {/* Linhas detalhadas quando o grupo JP-Class estiver expandido */}
+                          {/* Linhas filhas (Apenas exibidas se o grupo NÃO estiver colapsado) */}
                           {!isCollapsed &&
-                            jpGroup.nfeGroups.map((nfeGroup) => {
-                              const isNfeCollapsed = collapsedNfes.has(nfeGroup.nfeKey)
-                              const visibleItems = isNfeCollapsed
-                                ? [nfeGroup.items[0]]
-                                : nfeGroup.items
+                            (cGroup.items.length === 0 ? (
+                              <tr>
+                                <td
+                                  colSpan={columns.length + 1}
+                                  className="py-4 px-6 text-center text-xs text-slate-400 italic bg-slate-50/40"
+                                >
+                                  Nenhum registro para {cGroup.title} nos filtros atuais.
+                                </td>
+                              </tr>
+                            ) : (
+                              cGroup.nfeGroups.map((nfeGroup) => {
+                                const isNfeCollapsed = collapsedNfes.has(nfeGroup.nfeKey)
+                                const visibleItems = isNfeCollapsed
+                                  ? [nfeGroup.items[0]]
+                                  : nfeGroup.items
 
-                              return (
-                                <React.Fragment key={`${jpGroup.key}_${nfeGroup.nfeKey}`}>
-                                  {visibleItems.map((item, itemIdx) =>
-                                    renderItemRow(item, itemIdx, nfeGroup),
-                                  )}
-                                </React.Fragment>
-                              )
-                            })}
+                                return (
+                                  <React.Fragment key={`${cGroup.key}_${nfeGroup.nfeKey}`}>
+                                    {visibleItems.map((item, itemIdx) =>
+                                      renderItemRow(item, itemIdx, nfeGroup),
+                                    )}
+                                  </React.Fragment>
+                                )
+                              })
+                            ))}
                         </React.Fragment>
                       )
                     })
-                  : /* MODO SEM AGRUPAMENTO (FLAT / AGRUPADO POR NFE) */
-                    groupedRows.map((group) => {
-                      const isCollapsed = collapsedNfes.has(group.nfeKey)
-                      const visibleItems = isCollapsed ? [group.items[0]] : group.items
+                  : groupByMode === 'jp_class'
+                    ? /* MODO AGRUPADO POR JP-CLASS */
+                      jpClassGroups.map((jpGroup) => {
+                        const isCollapsed = collapsedJpGroups.has(jpGroup.key)
+                        const badgeStyle = getJpClassBadgeStyle(jpGroup.key)
 
-                      return (
-                        <React.Fragment key={group.nfeKey}>
-                          {visibleItems.map((item, itemIdx) => renderItemRow(item, itemIdx, group))}
-                        </React.Fragment>
-                      )
-                    })}
+                        return (
+                          <React.Fragment key={jpGroup.key}>
+                            {/* Cabeçalho do Grupo JP-Class */}
+                            <tr
+                              onClick={() => toggleCollapseJpGroup(jpGroup.key)}
+                              className={`cursor-pointer transition-colors border-y border-slate-200/80 font-semibold select-none ${
+                                isCollapsed
+                                  ? 'bg-slate-50/90 hover:bg-slate-100/80 text-slate-800'
+                                  : 'bg-cyan-50/60 hover:bg-cyan-100/50 text-slate-900'
+                              }`}
+                              title={
+                                isCollapsed
+                                  ? `Clique para expandir o grupo ${jpGroup.title}`
+                                  : `Clique para recolher o grupo ${jpGroup.title}`
+                              }
+                            >
+                              {/* Toggle chevron */}
+                              <td className="py-2 px-2 text-center align-middle border-r border-slate-200/60 w-9 min-w-[36px]">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    toggleCollapseJpGroup(jpGroup.key)
+                                  }}
+                                  className="p-1 rounded hover:bg-cyan-200/60 text-[#0B6E99] focus:outline-hidden transition-colors"
+                                  title={
+                                    isCollapsed
+                                      ? `Expandir grupo ${jpGroup.title}`
+                                      : `Recolher grupo ${jpGroup.title}`
+                                  }
+                                >
+                                  {isCollapsed ? (
+                                    <ChevronRightIcon className="w-4 h-4 text-slate-500" />
+                                  ) : (
+                                    <ChevronDown className="w-4 h-4 text-[#0B6E99]" />
+                                  )}
+                                </button>
+                              </td>
+
+                              {/* Conteúdo consolidado do Grupo JP-Class */}
+                              <td colSpan={columns.length} className="py-2.5 px-3">
+                                <div className="flex items-center justify-between gap-3 flex-wrap">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    {/* Badge da categoria JP-Class */}
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-xs px-2.5 py-0.5 font-bold tracking-wide ${badgeStyle.className}`}
+                                    >
+                                      {jpGroup.title}
+                                    </Badge>
+
+                                    <span className="text-[11px] text-slate-400 font-normal">
+                                      •
+                                    </span>
+
+                                    {/* Contagem de linhas */}
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-[11px] bg-slate-200/80 text-slate-700 font-bold px-2 py-0.5"
+                                    >
+                                      {jpGroup.count} {jpGroup.count === 1 ? 'linha' : 'linhas'}
+                                    </Badge>
+
+                                    {/* Quantidade total de itens */}
+                                    {jpGroup.totalQuantidade > 0 && (
+                                      <Badge
+                                        variant="outline"
+                                        className="text-[11px] bg-white text-slate-700 border-slate-300 font-semibold px-2 py-0.5"
+                                        title="Quantidade total de peças/itens neste grupo"
+                                      >
+                                        Qtde total: {formatNumber(jpGroup.totalQuantidade)}
+                                      </Badge>
+                                    )}
+
+                                    <span className="text-[11px] text-slate-400 font-normal">
+                                      •
+                                    </span>
+
+                                    {/* Subtotal Total da Linha */}
+                                    <span className="text-xs text-slate-600 font-medium">
+                                      Subtotal:
+                                    </span>
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs bg-emerald-50 text-emerald-800 border-emerald-300 font-extrabold px-2.5 py-0.5"
+                                      title={`Subtotal (Total da Linha) do grupo ${jpGroup.title}: ${formatCurrency(jpGroup.subtotal)}`}
+                                    >
+                                      {formatCurrency(jpGroup.subtotal)}
+                                    </Badge>
+
+                                    {/* Subtotal Líquido se houver */}
+                                    {jpGroup.subtotalLiquido > 0 &&
+                                      jpGroup.subtotalLiquido !== jpGroup.subtotal && (
+                                        <Badge
+                                          variant="outline"
+                                          className="text-[11px] bg-teal-50 text-teal-800 border-teal-200 font-semibold px-2 py-0.5"
+                                          title={`Valor Líquido do grupo: ${formatCurrency(jpGroup.subtotalLiquido)}`}
+                                        >
+                                          Líq: {formatCurrency(jpGroup.subtotalLiquido)}
+                                        </Badge>
+                                      )}
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-bold text-[#0B6E99]">
+                                      {isCollapsed ? 'Colapsado' : 'Expandido'}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-medium">
+                                      {isCollapsed ? 'Expandir ▼' : 'Recolher ▲'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+
+                            {/* Linhas detalhadas quando o grupo JP-Class estiver expandido */}
+                            {!isCollapsed &&
+                              jpGroup.nfeGroups.map((nfeGroup) => {
+                                const isNfeCollapsed = collapsedNfes.has(nfeGroup.nfeKey)
+                                const visibleItems = isNfeCollapsed
+                                  ? [nfeGroup.items[0]]
+                                  : nfeGroup.items
+
+                                return (
+                                  <React.Fragment key={`${jpGroup.key}_${nfeGroup.nfeKey}`}>
+                                    {visibleItems.map((item, itemIdx) =>
+                                      renderItemRow(item, itemIdx, nfeGroup),
+                                    )}
+                                  </React.Fragment>
+                                )
+                              })}
+                          </React.Fragment>
+                        )
+                      })
+                    : /* MODO SEM AGRUPAMENTO (FLAT / AGRUPADO POR NFE) */
+                      groupedRows.map((group) => {
+                        const isCollapsed = collapsedNfes.has(group.nfeKey)
+                        const visibleItems = isCollapsed ? [group.items[0]] : group.items
+
+                        return (
+                          <React.Fragment key={group.nfeKey}>
+                            {visibleItems.map((item, itemIdx) =>
+                              renderItemRow(item, itemIdx, group),
+                            )}
+                          </React.Fragment>
+                        )
+                      })}
               </tbody>
             </table>
           </div>

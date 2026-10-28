@@ -934,6 +934,8 @@ export default function DashboardCanais() {
               exporting={exportingReport}
               onExport={handleExportDashboardReport}
               showOriginSummary={true}
+              defaultGroupByMode="comissao"
+              allowedGroupByModes={['comissao', 'none']}
             />
           </Card>
 
