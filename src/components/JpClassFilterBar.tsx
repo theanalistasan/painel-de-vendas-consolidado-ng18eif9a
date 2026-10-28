@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { MultiSelectDropdown } from '@/components/FilterBar'
 import { cn } from '@/lib/utils'
+import { DEFAULT_GRUPOS_ITEM_JP_CLASS } from '@/lib/jp-class'
 
 export interface JpClassFilterState {
   grupoItem: string[]
@@ -29,9 +30,9 @@ export const EMPTY_JP_CLASS_FILTERS: JpClassFilterState = {
   jpClass: [],
 }
 
-/** Padrão inicial de filtragem idêntico ao Visão Geral e Visão Canais */
+/** Padrão inicial de filtragem com os 4 grupos pré-selecionados */
 export const DEFAULT_JP_CLASS_FILTERS: JpClassFilterState = {
-  grupoItem: ['EQUIPAMENTOS', 'ACESSÓRIOS', 'TINTAS', 'PEÇAS'],
+  grupoItem: [...DEFAULT_GRUPOS_ITEM_JP_CLASS],
   tipoDocumento: ['NF de Saída'],
   tipoCliente: [],
   canal: [],

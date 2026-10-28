@@ -21,9 +21,9 @@ import {
   normalizarParaDataISO,
   type SemanaMes,
 } from '@/lib/semanas'
-import { getJpClass } from '@/lib/jp-class'
+import { getJpClass, normalizeText, resolveDefaultGrupoItemSelection } from '@/lib/jp-class'
 import { MESES_PT_BR, formatCurrency, formatNumber, exportToCSV } from '@/lib/formatters'
-import { loadFiltersFromSession } from '@/lib/filter-persistence'
+import { loadFiltersFromSession, hasSavedFiltersInSession } from '@/lib/filter-persistence'
 import pb from '@/lib/pocketbase/client'
 import {
   JpClassRelatorio,
@@ -90,29 +90,30 @@ export default function JpClassPage() {
     mes: number
   } | null>(null)
 
-  // 7 filtros multi-select + JP-Class com critério de padrão inicial idêntico ao Visão Geral e Visão Canais
+  // 7 filtros multi-select + JP-Class
+  // Interação com persistência de sessão:
+  // - Se houver filtros salvos na sessão (hasSavedFiltersInSession = true), preserva exatamente o que está salvo;
+  // - Se não houver preferência salva, aplica o DEFAULT INICIAL:
+  //   Grupo do Item pré-selecionado com os 4 grupos (Equipamentos, Peças, Tintas e Acessórios),
+  //   tipoDocumento ['NF de Saída'], utilizacao ['VENDA DE MERCADORIA', 'VENDA CONSUMO'].
+  const [hasSessionSavedAtMount] = useState(() => hasSavedFiltersInSession())
+
   const [filters, setFilters] = useState<JpClassFilterState>(() => {
     try {
-      const saved = loadFiltersFromSession()
-      return {
-        grupoItem:
-          saved.grupoItem && saved.grupoItem.length > 0
-            ? saved.grupoItem
-            : DEFAULT_JP_CLASS_FILTERS.grupoItem,
-        tipoDocumento:
-          saved.tipoDocumento && saved.tipoDocumento.length > 0
-            ? saved.tipoDocumento
-            : DEFAULT_JP_CLASS_FILTERS.tipoDocumento,
-        tipoCliente: saved.tipoCliente || [],
-        canal: saved.canal || [],
-        deploy: saved.deploy || [],
-        utilizacao:
-          saved.utilizacao && saved.utilizacao.length > 0
-            ? saved.utilizacao
-            : DEFAULT_JP_CLASS_FILTERS.utilizacao,
-        tipoDevolucao: saved.tipoDevolucao ? [saved.tipoDevolucao] : [],
-        jpClass: saved.jpClass || [],
+      if (hasSavedFiltersInSession()) {
+        const saved = loadFiltersFromSession()
+        return {
+          grupoItem: saved.grupoItem ?? DEFAULT_JP_CLASS_FILTERS.grupoItem,
+          tipoDocumento: saved.tipoDocumento ?? DEFAULT_JP_CLASS_FILTERS.tipoDocumento,
+          tipoCliente: saved.tipoCliente || [],
+          canal: saved.canal || [],
+          deploy: saved.deploy || [],
+          utilizacao: saved.utilizacao ?? DEFAULT_JP_CLASS_FILTERS.utilizacao,
+          tipoDevolucao: saved.tipoDevolucao ? [saved.tipoDevolucao] : [],
+          jpClass: saved.jpClass || [],
+        }
       }
+      return DEFAULT_JP_CLASS_FILTERS
     } catch {
       return DEFAULT_JP_CLASS_FILTERS
     }
@@ -387,13 +388,59 @@ export default function JpClassPage() {
     }
   }, [rawVendas, tiposClienteMap, tipoClienteOptions, loadingTiposCliente])
 
+  // Quando as opções de grupoItem ficarem disponíveis na base (via rawVendas),
+  // se o usuário não tiver preferência salva em sessão e ainda estiver usando o default canônico,
+  // ajusta o filtro de grupoItem para incluir as variações exatas encontradas na base
+  // (ex.: se a base tiver 'ACESSORIOS' e 'ACESSÓRIOS', ambas ficam marcadas).
+  const autoResolvedOptionsRef = useRef(false)
+  useEffect(() => {
+    if (hasSessionSavedAtMount || autoResolvedOptionsRef.current) return
+    if (filterOptions.grupoItem.length === 0) return
+
+    autoResolvedOptionsRef.current = true
+    const resolved = resolveDefaultGrupoItemSelection(filterOptions.grupoItem)
+    setFilters((prev) => {
+      // Se o usuário já alterou o grupoItem para algo diferente do default canônico, não sobrescreve
+      const isStillDefaultCanonical =
+        prev.grupoItem.length === DEFAULT_JP_CLASS_FILTERS.grupoItem.length &&
+        DEFAULT_JP_CLASS_FILTERS.grupoItem.every((g) => prev.grupoItem.includes(g))
+
+      if (!isStillDefaultCanonical) return prev
+
+      // Se a resolução for idêntica, mantém
+      if (
+        resolved.length === prev.grupoItem.length &&
+        resolved.every((g) => prev.grupoItem.includes(g))
+      ) {
+        return prev
+      }
+
+      return {
+        ...prev,
+        grupoItem: resolved,
+      }
+    })
+  }, [filterOptions.grupoItem, hasSessionSavedAtMount])
+
+  // Cache com os valores normalizados dos grupos selecionados no filtro para casamento
+  // resiliente a variações de acentuação ('ACESSÓRIOS' vs 'ACESSORIOS', 'PEÇAS' vs 'PECAS')
+  const grupoItemFilterNormalized = useMemo(() => {
+    if (filters.grupoItem.length === 0) return null
+    return new Set(filters.grupoItem.map((g) => normalizeText(g)))
+  }, [filters.grupoItem])
+
   // Aplicação dos 7 filtros multi-select + JP-Class (mesmo critério de Visão Geral / Canais)
   const vendasFiltradasPorCriterios = useMemo(() => {
     return rawVendas.filter((v) => {
-      // (1) Grupo do Item
+      // (1) Grupo do Item: casamento exato ou por normalização de texto sem acentos
       if (filters.grupoItem.length > 0) {
         const grp = (v.grupo_item || v.itms_grp_nam || '').trim()
-        if (!filters.grupoItem.includes(grp)) return false
+        const exactMatch = filters.grupoItem.includes(grp)
+        const normMatch =
+          !exactMatch &&
+          grupoItemFilterNormalized !== null &&
+          grupoItemFilterNormalized.has(normalizeText(grp))
+        if (!exactMatch && !normMatch) return false
       }
 
       // (2) Tipo de Documento
@@ -623,7 +670,13 @@ export default function JpClassPage() {
         filters={filters}
         setFilters={setFilters}
         options={filterOptions}
-        onResetToDefault={() => setFilters(DEFAULT_JP_CLASS_FILTERS)}
+        onResetToDefault={() => {
+          const resolvedGrupos = resolveDefaultGrupoItemSelection(filterOptions.grupoItem)
+          setFilters({
+            ...DEFAULT_JP_CLASS_FILTERS,
+            grupoItem: resolvedGrupos,
+          })
+        }}
         isLoading={loading}
       />
 

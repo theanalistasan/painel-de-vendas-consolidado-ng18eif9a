@@ -40,6 +40,51 @@ export const JP_CLASS_OPTIONS = ['HARD', 'INKS', 'OTHERS', 'Sem classe'] as cons
 export type JpClassOption = (typeof JP_CLASS_OPTIONS)[number]
 
 /**
+ * Grupos do Item que compõem o padrão inicial do filtro no módulo JP-Class:
+ * Equipamentos, Peças, Tintas e Acessórios (grafia canônica em maiúsculas com acento).
+ */
+export const DEFAULT_GRUPOS_ITEM_JP_CLASS: string[] = [
+  'EQUIPAMENTOS',
+  'PEÇAS',
+  'TINTAS',
+  'ACESSÓRIOS',
+]
+
+/**
+ * Formas normalizadas (sem acento, maiúsculas) que casam com os 4 grupos padrão,
+ * incluindo as variações de grafia encontradas na base (singular/plural e o
+ * erro de digitação 'ASSESSÓRIOS'), alinhadas com isMatchedJpClassRule.
+ */
+const DEFAULT_GRUPOS_ITEM_NORM = new Set(
+  [
+    'EQUIPAMENTOS',
+    'EQUIPAMENTO',
+    'PECAS',
+    'PECA',
+    'TINTAS',
+    'TINTA',
+    'ACESSORIOS',
+    'ACESSORIO',
+    'ASSESSORIOS',
+    'ASSESSORIO',
+  ].map((g) => normalizeText(g)),
+)
+
+/**
+ * Resolve a seleção padrão do filtro "Grupo do Item" contra os valores reais da base:
+ * retorna TODAS as variações presentes nas opções cuja forma normalizada corresponde a
+ * Equipamentos, Peças, Tintas ou Acessórios (ex.: 'ACESSÓRIOS' e 'ACESSORIOS' entram juntas),
+ * garantindo que o default inicial case com os valores reais dos dados.
+ * Sem opções disponíveis, devolve a grafia canônica dos 4 grupos.
+ */
+export function resolveDefaultGrupoItemSelection(options: string[]): string[] {
+  const matched = (options || []).filter(
+    (g) => !!g && !!g.trim() && DEFAULT_GRUPOS_ITEM_NORM.has(normalizeText(g)),
+  )
+  return matched.length > 0 ? Array.from(new Set(matched)) : [...DEFAULT_GRUPOS_ITEM_JP_CLASS]
+}
+
+/**
  * Extrai o campo Grupo do item a partir de qualquer uma das propriedades conhecidas
  * (grupo_item, grupo ou itms_grp_nam), sem considerar valores pré-calculados de jp_class.
  */

@@ -6,6 +6,8 @@ import {
   matchesJpClassFilter,
   getJpClassBadgeStyle,
   JP_CLASS_OPTIONS,
+  DEFAULT_GRUPOS_ITEM_JP_CLASS,
+  resolveDefaultGrupoItemSelection,
 } from '@/lib/jp-class'
 
 describe('Regra de De/Para JP-Class', () => {
@@ -125,6 +127,43 @@ describe('Regra de De/Para JP-Class', () => {
   describe('JP_CLASS_OPTIONS', () => {
     it('deve conter as 4 opções padronizadas', () => {
       expect(JP_CLASS_OPTIONS).toEqual(['HARD', 'INKS', 'OTHERS', 'Sem classe'])
+    })
+  })
+
+  describe('Padrão inicial do filtro Grupo do Item no JP-Class', () => {
+    it('deve exportar os 4 grupos canônicos: Equipamentos, Peças, Tintas e Acessórios', () => {
+      expect(DEFAULT_GRUPOS_ITEM_JP_CLASS).toEqual([
+        'EQUIPAMENTOS',
+        'PEÇAS',
+        'TINTAS',
+        'ACESSÓRIOS',
+      ])
+    })
+
+    it('resolveDefaultGrupoItemSelection deve casar variações com e sem acento da base', () => {
+      const opcoesBase = [
+        'EQUIPAMENTOS',
+        'ACESSORIOS',
+        'ACESSÓRIOS',
+        'TINTAS',
+        'PECAS',
+        'PEÇAS',
+        'SERVIÇOS',
+        'BRINDES',
+      ]
+      const resolved = resolveDefaultGrupoItemSelection(opcoesBase)
+      expect(resolved).toContain('EQUIPAMENTOS')
+      expect(resolved).toContain('ACESSORIOS')
+      expect(resolved).toContain('ACESSÓRIOS')
+      expect(resolved).toContain('TINTAS')
+      expect(resolved).toContain('PECAS')
+      expect(resolved).toContain('PEÇAS')
+      expect(resolved).not.toContain('SERVIÇOS')
+      expect(resolved).not.toContain('BRINDES')
+    })
+
+    it('resolveDefaultGrupoItemSelection deve retornar fallback canônico quando lista for vazia', () => {
+      expect(resolveDefaultGrupoItemSelection([])).toEqual(DEFAULT_GRUPOS_ITEM_JP_CLASS)
     })
   })
 })
