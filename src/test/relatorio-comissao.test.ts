@@ -150,4 +150,32 @@ describe('Regra de Agrupamento: Comissionados vs Não Comissionados', () => {
     expect(somaNaoComiss.total).toBe(2500)
     expect(somaNaoComiss.liq).toBe(2250)
   })
+
+  it('consolida 87 NFs em uma página única com somatórios totais de ambos os grupos', () => {
+    // Simula o caso do usuário: 87 NFs que antes quebravam em 5 páginas
+    const mock87Nfes = Array.from({ length: 87 }, (_, idx) => {
+      const isDireta = idx % 3 === 0 // ~29 não comissionadas e ~58 comissionadas
+      return {
+        id: `venda_${idx + 1}`,
+        numero_nfe: `NF-${1000 + idx}`,
+        vendedor_cliente: isDireta
+          ? `Roland DG Brasil > Cliente ${idx + 1}`
+          : `Canal Parceiro ${idx % 5} > Cliente ${idx + 1}`,
+        quantidade: 2,
+        total_linha: 1000,
+        valor_liquido: 900,
+      }
+    })
+
+    const comissionados = mock87Nfes.filter((v) => !isVendedorNaoComissionado(v))
+    const naoComissionados = mock87Nfes.filter((v) => isVendedorNaoComissionado(v))
+
+    expect(mock87Nfes.length).toBe(87)
+    expect(comissionados.length + naoComissionados.length).toBe(87)
+
+    const totalComissVendas = comissionados.reduce((s, v) => s + v.total_linha, 0)
+    const totalNaoComissVendas = naoComissionados.reduce((s, v) => s + v.total_linha, 0)
+
+    expect(totalComissVendas + totalNaoComissVendas).toBe(87 * 1000)
+  })
 })

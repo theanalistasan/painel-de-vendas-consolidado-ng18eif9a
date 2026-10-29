@@ -184,6 +184,7 @@ export interface VendasRelatorioTableProps {
   onGroupByModeChange?: (mode: RelatorioGroupByMode) => void
   defaultGroupByMode?: RelatorioGroupByMode
   allowedGroupByModes?: RelatorioGroupByMode[]
+  hidePagination?: boolean
 }
 
 export function VendasRelatorioTable({
@@ -210,6 +211,7 @@ export function VendasRelatorioTable({
   onGroupByModeChange,
   defaultGroupByMode = 'none',
   allowedGroupByModes = ['none', 'jp_class', 'comissao'],
+  hidePagination = false,
 }: VendasRelatorioTableProps) {
   const { toast } = useToast()
 
@@ -1862,47 +1864,49 @@ export function VendasRelatorioTable({
         )}
       </div>
 
-      {/* Paginação da Tabela */}
-      <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-        <div>
-          Mostrando{' '}
-          <span className="font-semibold text-slate-800">
-            {totalItems === 0 ? 0 : (page - 1) * pageSize + 1}
-          </span>{' '}
-          a{' '}
-          <span className="font-semibold text-slate-800">
-            {Math.min(page * pageSize, totalItems)}
-          </span>{' '}
-          de <span className="font-semibold text-slate-800">{totalItems}</span>{' '}
-          {isGroupedByNfe ? 'notas fiscais' : 'registros'}
-        </div>
-
-        {totalPages > 1 && (
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onPageChange(Math.max(1, page - 1))}
-              disabled={page === 1}
-              className="h-8 w-8 p-0"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <span className="px-3 py-1 font-medium text-slate-700">
-              Página {page} de {totalPages}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-              disabled={page === totalPages}
-              className="h-8 w-8 p-0"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
+      {/* Paginação da Tabela (no modo Comissão opera em página única consolidada sem quebra de paginação) */}
+      {!hidePagination && groupByMode !== 'comissao' && (
+        <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+          <div>
+            Mostrando{' '}
+            <span className="font-semibold text-slate-800">
+              {totalItems === 0 ? 0 : (page - 1) * pageSize + 1}
+            </span>{' '}
+            a{' '}
+            <span className="font-semibold text-slate-800">
+              {Math.min(page * pageSize, totalItems)}
+            </span>{' '}
+            de <span className="font-semibold text-slate-800">{totalItems}</span>{' '}
+            {isGroupedByNfe ? 'notas fiscais' : 'registros'}
           </div>
-        )}
-      </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange(Math.max(1, page - 1))}
+                disabled={page === 1}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="px-3 py-1 font-medium text-slate-700">
+                Página {page} de {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+                disabled={page === totalPages}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -70,7 +70,11 @@ import {
   enrichVendaTipoCliente,
   resolveTipoCliente,
 } from '@/services/tiposCliente'
-import { VendasRelatorioTable, RELATORIO_COLUMNS } from '@/components/VendasRelatorioTable'
+import {
+  VendasRelatorioTable,
+  RELATORIO_COLUMNS,
+  type RelatorioGroupByMode,
+} from '@/components/VendasRelatorioTable'
 import { JP_CLASS_OPTIONS, matchesJpClassFilter } from '@/lib/jp-class'
 import { isDevolucao } from '@/types/sales'
 
@@ -224,31 +228,78 @@ export default function DashboardCanais() {
     }
   }
 
-  // Carrega relatório paginado com suporte a ordenação server-side e colapsado por NF
+  // Modo de agrupamento da Visão Canais (padrão comissao)
+  const storageKeyCanaisGroupBy = 'relatorio_canais_group_by_v2'
+  const [reportGroupByMode, setReportGroupByMode] = useState<RelatorioGroupByMode>(() => {
+    try {
+      const saved = localStorage.getItem(storageKeyCanaisGroupBy)
+      if (saved === 'none' || saved === 'comissao') {
+        return saved as RelatorioGroupByMode
+      }
+    } catch (_) {
+      // fallback
+    }
+    return 'comissao'
+  })
+
+  // Carrega relatório:
+  // - Se reportGroupByMode === 'comissao', opera em MODO CONSOLIDADO DE PÁGINA ÚNICA:
+  //   usa fetchVendasExport com groupByNfe (ou detalhado se expandido) trazendo TODAS as NFs do recorte
+  // - Se reportGroupByMode === 'none', opera com paginação server-side padrão (20 por página)
   const loadReportData = async (
     activeFilters = filters,
     targetPage = reportPage,
     sortField = sort.field,
     sortDir = sort.dir,
     grouped = isGroupedByNfe,
+    mode = reportGroupByMode,
   ) => {
     setReportLoading(true)
     try {
-      const res = await fetchVendasList({
-        page: targetPage,
-        perPage: RELATORIO_PAGE_SIZE,
-        sortField: sortField || undefined,
-        sortDirection: sortField ? sortDir : undefined,
-        sort: sortField ? undefined : '-data_lancamento',
-        groupByNfe: grouped,
-        filters: activeFilters as unknown as Record<string, unknown>,
-      })
+      if (mode === 'comissao') {
+        // MODO CONSOLIDADO: busca todas as notas fiscais do filtro numa única consulta sem corte de página
+        const res = await fetchVendasExport({
+          sortField: sortField || undefined,
+          sortDirection: sortField ? sortDir : undefined,
+          sort: sortField ? undefined : '-data_lancamento',
+          groupByNfe: grouped,
+          collapsed: grouped,
+          filters: activeFilters as unknown as Record<string, unknown>,
+        })
 
-      setReportVendas(res.items || [])
-      setReportTotalItems(res.totalItems || 0)
-      setReportTotalPages(res.totalPages || 1)
-      setReportTotalNetsales(res.totalNetsales || 0)
-      setReportTotalRacnew(res.totalRacnew || 0)
+        const allItems = res.items || []
+        let netsalesCount = 0
+        let racnewCount = 0
+        for (const it of allItems) {
+          if (it.tem_netsales) {
+            netsalesCount++
+          } else {
+            racnewCount++
+          }
+        }
+
+        setReportVendas(allItems)
+        setReportTotalItems(allItems.length)
+        setReportTotalPages(1)
+        setReportTotalNetsales(netsalesCount)
+        setReportTotalRacnew(racnewCount)
+      } else {
+        const res = await fetchVendasList({
+          page: targetPage,
+          perPage: RELATORIO_PAGE_SIZE,
+          sortField: sortField || undefined,
+          sortDirection: sortField ? sortDir : undefined,
+          sort: sortField ? undefined : '-data_lancamento',
+          groupByNfe: grouped,
+          filters: activeFilters as unknown as Record<string, unknown>,
+        })
+
+        setReportVendas(res.items || [])
+        setReportTotalItems(res.totalItems || 0)
+        setReportTotalPages(res.totalPages || 1)
+        setReportTotalNetsales(res.totalNetsales || 0)
+        setReportTotalRacnew(res.totalRacnew || 0)
+      }
     } catch (err) {
       console.error('[DashboardCanais] Erro ao carregar relatório:', err)
     } finally {
@@ -282,38 +333,49 @@ export default function DashboardCanais() {
   useEffect(() => {
     loadData(filters)
     loadComparativoData(filters)
-    loadReportData(filters, 1, sort.field, sort.dir, isGroupedByNfe)
+    loadReportData(filters, 1, sort.field, sort.dir, isGroupedByNfe, reportGroupByMode)
     setReportPage(1)
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
     }
-  }, [filters])
+  }, [filters, reportGroupByMode])
 
   const handleReportPageChange = (newPage: number) => {
     setReportPage(newPage)
-    loadReportData(filters, newPage, sort.field, sort.dir, isGroupedByNfe)
+    loadReportData(filters, newPage, sort.field, sort.dir, isGroupedByNfe, reportGroupByMode)
   }
 
   const handleReportSort = (field: string) => {
     sort.toggle(field as SortField)
     const nextDir = sort.field === field && sort.dir === 'asc' ? 'desc' : 'asc'
     setReportPage(1)
-    loadReportData(filters, 1, field as SortField, nextDir, isGroupedByNfe)
+    loadReportData(filters, 1, field as SortField, nextDir, isGroupedByNfe, reportGroupByMode)
   }
 
   const handleToggleGroupByNfe = () => {
     const nextGrouped = !isGroupedByNfe
     setIsGroupedByNfe(nextGrouped)
     setReportPage(1)
-    loadReportData(filters, 1, sort.field, sort.dir, nextGrouped)
+    loadReportData(filters, 1, sort.field, sort.dir, nextGrouped, reportGroupByMode)
     toast({
       title: nextGrouped ? 'Relatório colapsado por NF' : 'Relatório expandido',
       description: nextGrouped
         ? 'Exibindo 1 linha consolidada por Nota Fiscal para todos os dados do filtro.'
         : 'Exibindo todos os itens detalhados de cada Nota Fiscal.',
     })
+  }
+
+  const handleGroupByModeChange = (mode: RelatorioGroupByMode) => {
+    setReportGroupByMode(mode)
+    try {
+      localStorage.setItem(storageKeyCanaisGroupBy, mode)
+    } catch (_) {
+      // ignore
+    }
+    setReportPage(1)
+    loadReportData(filters, 1, sort.field, sort.dir, isGroupedByNfe, mode)
   }
 
   useRealtime('vendas', () => {
@@ -896,8 +958,12 @@ export default function DashboardCanais() {
                   Relatório de Vendas — Visão Canais
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500 font-medium">
-                  {reportTotalItems} registros encontrados • Base RacNew + NetSales • Ordenação
-                  server-side, colunas ajustáveis e colapso por NF
+                  {reportTotalItems}{' '}
+                  {isGroupedByNfe ? 'notas fiscais encontradas' : 'linhas encontradas'} • Base
+                  mestre RacNew com enriquecimento NetSales •{' '}
+                  {reportGroupByMode === 'comissao'
+                    ? 'Página única consolidada'
+                    : 'Ordenação server-side ativa'}
                 </CardDescription>
               </div>
               <div className="flex items-center flex-wrap gap-2">
@@ -936,6 +1002,9 @@ export default function DashboardCanais() {
               showOriginSummary={true}
               defaultGroupByMode="comissao"
               allowedGroupByModes={['comissao', 'none']}
+              groupByMode={reportGroupByMode}
+              onGroupByModeChange={handleGroupByModeChange}
+              hidePagination={reportGroupByMode === 'comissao'}
             />
           </Card>
 
@@ -946,8 +1015,13 @@ export default function DashboardCanais() {
               Sincronização em tempo real ativa
             </span>
             <span className="font-medium">
-              Exibindo {displayedReportVendas.length} de {reportTotalItems}{' '}
-              {isGroupedByNfe ? 'notas fiscais' : 'registros'} consolidados
+              {reportGroupByMode === 'comissao'
+                ? `Exibindo ${displayedReportVendas.length} ${
+                    isGroupedByNfe ? 'notas fiscais consolidadas' : 'itens'
+                  } (página única)`
+                : `Exibindo ${displayedReportVendas.length} de ${reportTotalItems} ${
+                    isGroupedByNfe ? 'notas fiscais' : 'registros'
+                  } consolidados`}
             </span>
           </div>
         </>
