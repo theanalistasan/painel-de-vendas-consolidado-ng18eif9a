@@ -60,7 +60,11 @@ import {
   resolveTipoCliente,
 } from '@/services/tiposCliente'
 import { useTableSort } from '@/hooks/use-table-sort'
-import { VendasRelatorioTable, RELATORIO_COLUMNS } from '@/components/VendasRelatorioTable'
+import {
+  VendasRelatorioTable,
+  RELATORIO_COLUMNS,
+  type RelatorioGroupByMode,
+} from '@/components/VendasRelatorioTable'
 import { JP_CLASS_OPTIONS, matchesJpClassFilter } from '@/lib/jp-class'
 import { isDevolucao } from '@/types/sales'
 import { FileSpreadsheet, Package, FileText, DollarSign } from 'lucide-react'
@@ -183,6 +187,20 @@ export default function DashboardGeral() {
   const [hasMoreVendas, setHasMoreVendas] = useState(false)
   const sort = useTableSort<SortField>()
 
+  // Modo de agrupamento da Visão Geral (padrão comissao para espelhar a Visão Canais)
+  const storageKeyGeralGroupBy = 'relatorio_vendas_group_by_v2'
+  const [reportGroupByMode, setReportGroupByMode] = useState<RelatorioGroupByMode>(() => {
+    try {
+      const saved = localStorage.getItem(storageKeyGeralGroupBy)
+      if (saved === 'none' || saved === 'jp_class' || saved === 'comissao') {
+        return saved as RelatorioGroupByMode
+      }
+    } catch (_) {
+      // fallback
+    }
+    return 'comissao'
+  })
+
   const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
 
@@ -269,40 +287,75 @@ export default function DashboardGeral() {
     }
   }
 
-  // Carrega listagem de vendas consolidada paginada
+  // Carrega listagem de vendas consolidada:
+  // - Se reportGroupByMode === 'comissao', opera em MODO CONSOLIDADO DE PÁGINA ÚNICA:
+  //   usa fetchVendasExport com groupByNfe (ou detalhado se expandido) trazendo TODAS as NFs do recorte
+  // - Se reportGroupByMode !== 'comissao', opera com paginação server-side padrão (20 por página)
   const loadVendasData = async (
     activeFilters = filters,
     targetPage = vendasPage,
     sortField = sort.field,
     sortDir = sort.dir,
     groupedNfe = isAllGroupedNfe,
+    mode = reportGroupByMode,
   ) => {
     setVendasLoading(true)
     try {
-      const res = await fetchVendasList({
-        page: targetPage,
-        perPage: VENDAS_PAGE_SIZE,
-        sortField: sortField || undefined,
-        sortDirection: sortField ? sortDir : undefined,
-        sort: sortField ? undefined : '-data_lancamento',
-        groupByNfe: groupedNfe,
-        filters: activeFilters as unknown as Record<string, unknown>,
-      })
-      setPaginatedVendas(res.items || [])
-      setTotalVendasItems(res.totalItems || 0)
-      setHasMoreVendas(!!res.hasMore)
-      setTotalNetsales(
-        res.totalNetsales !== undefined
-          ? res.totalNetsales
-          : (res.items || []).filter((i) => i.tem_netsales).length,
-      )
-      setTotalRacnew(
-        res.totalRacnew !== undefined
-          ? res.totalRacnew
-          : (res.items || []).filter((i) => !i.tem_netsales).length,
-      )
-      setTotalVendasPages(res.totalPages || 1)
-      return true
+      if (mode === 'comissao') {
+        // MODO CONSOLIDADO: busca todas as notas fiscais do filtro numa única consulta sem corte de página
+        const res = await fetchVendasExport({
+          sortField: sortField || undefined,
+          sortDirection: sortField ? sortDir : undefined,
+          sort: sortField ? undefined : '-data_lancamento',
+          groupByNfe: groupedNfe,
+          collapsed: groupedNfe,
+          filters: activeFilters as unknown as Record<string, unknown>,
+        })
+
+        const allItems = res.items || []
+        let netsalesCount = 0
+        let racnewCount = 0
+        for (const it of allItems) {
+          if (it.tem_netsales) {
+            netsalesCount++
+          } else {
+            racnewCount++
+          }
+        }
+
+        setPaginatedVendas(allItems)
+        setTotalVendasItems(allItems.length)
+        setHasMoreVendas(false)
+        setTotalNetsales(netsalesCount)
+        setTotalRacnew(racnewCount)
+        setTotalVendasPages(1)
+        return true
+      } else {
+        const res = await fetchVendasList({
+          page: targetPage,
+          perPage: VENDAS_PAGE_SIZE,
+          sortField: sortField || undefined,
+          sortDirection: sortField ? sortDir : undefined,
+          sort: sortField ? undefined : '-data_lancamento',
+          groupByNfe: groupedNfe,
+          filters: activeFilters as unknown as Record<string, unknown>,
+        })
+        setPaginatedVendas(res.items || [])
+        setTotalVendasItems(res.totalItems || 0)
+        setHasMoreVendas(!!res.hasMore)
+        setTotalNetsales(
+          res.totalNetsales !== undefined
+            ? res.totalNetsales
+            : (res.items || []).filter((i) => i.tem_netsales).length,
+        )
+        setTotalRacnew(
+          res.totalRacnew !== undefined
+            ? res.totalRacnew
+            : (res.items || []).filter((i) => !i.tem_netsales).length,
+        )
+        setTotalVendasPages(res.totalPages || 1)
+        return true
+      }
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
         return false
@@ -339,17 +392,23 @@ export default function DashboardGeral() {
 
   useEffect(() => {
     loadData(filters)
-    loadVendasData(filters, vendasPage, sort.field, sort.dir, isAllGroupedNfe)
+    loadVendasData(filters, 1, sort.field, sort.dir, isAllGroupedNfe, reportGroupByMode)
+    setVendasPage(1)
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
     }
-  }, [filters, vendasPage, sort.field, sort.dir, isAllGroupedNfe])
+  }, [filters, reportGroupByMode])
+
+  const handleVendasPageChange = (newPage: number) => {
+    setVendasPage(newPage)
+    loadVendasData(filters, newPage, sort.field, sort.dir, isAllGroupedNfe, reportGroupByMode)
+  }
 
   useRealtime('vendas', () => {
     loadData()
-    loadVendasData()
+    loadVendasData(filters, vendasPage, sort.field, sort.dir, isAllGroupedNfe, reportGroupByMode)
   })
 
   const filterOptions = useMemo(() => {
@@ -800,25 +859,33 @@ export default function DashboardGeral() {
 
   const handleSort = (field: SortField) => {
     sort.toggle(field)
+    const nextDir = sort.field === field && sort.dir === 'asc' ? 'desc' : 'asc'
     setVendasPage(1)
+    loadVendasData(filters, 1, field, nextDir, isAllGroupedNfe, reportGroupByMode)
   }
 
   const handleCollapseAll = () => {
-    if (isAllGroupedNfe) {
-      setIsAllGroupedNfe(false)
-      setVendasPage(1)
-      toast({
-        title: 'Relatório expandido',
-        description: 'Exibindo todos os itens detalhados de cada Nota Fiscal.',
-      })
-    } else {
-      setIsAllGroupedNfe(true)
-      setVendasPage(1)
-      toast({
-        title: 'Relatório colapsado por NF',
-        description: 'Exibindo 1 linha consolidada por Nota Fiscal para todos os dados do filtro.',
-      })
+    const nextGrouped = !isAllGroupedNfe
+    setIsAllGroupedNfe(nextGrouped)
+    setVendasPage(1)
+    loadVendasData(filters, 1, sort.field, sort.dir, nextGrouped, reportGroupByMode)
+    toast({
+      title: nextGrouped ? 'Relatório colapsado por NF' : 'Relatório expandido',
+      description: nextGrouped
+        ? 'Exibindo 1 linha consolidada por Nota Fiscal para todos os dados do filtro.'
+        : 'Exibindo todos os itens detalhados de cada Nota Fiscal.',
+    })
+  }
+
+  const handleGroupByModeChange = (mode: RelatorioGroupByMode) => {
+    setReportGroupByMode(mode)
+    try {
+      localStorage.setItem(storageKeyGeralGroupBy, mode)
+    } catch (_) {
+      // ignore
     }
+    setVendasPage(1)
+    loadVendasData(filters, 1, sort.field, sort.dir, isAllGroupedNfe, mode)
   }
 
   const handleClearFilters = () => {
@@ -845,7 +912,6 @@ export default function DashboardGeral() {
       tipoDevolucao: '',
     }
     setFilters(cleared)
-    setVendasPage(1)
   }
 
   // Exportação de relatórios respeitando filtros ativos
@@ -2226,7 +2292,10 @@ export default function DashboardGeral() {
                     </CardTitle>
                     <CardDescription className="text-xs text-slate-500 font-medium">
                       {totalVendasItems} {hasMoreVendas ? '+' : ''} linhas encontradas • Base mestre
-                      RacNew com enriquecimento NetSales • Ordenação server-side ativa
+                      RacNew com enriquecimento NetSales •{' '}
+                      {reportGroupByMode === 'comissao'
+                        ? 'Página única consolidada'
+                        : 'Ordenação server-side ativa'}
                     </CardDescription>
                   </div>
                 </div>
@@ -2241,7 +2310,7 @@ export default function DashboardGeral() {
                 page={vendasPage}
                 pageSize={VENDAS_PAGE_SIZE}
                 totalPages={totalVendasPages}
-                onPageChange={setVendasPage}
+                onPageChange={handleVendasPageChange}
                 sortField={sort.field}
                 sortDir={sort.dir}
                 onSort={(f) => handleSort(f as SortField)}
@@ -2253,6 +2322,11 @@ export default function DashboardGeral() {
                   handleExportReport(forceGrouped !== undefined ? forceGrouped : isAllGroupedNfe)
                 }
                 showOriginSummary={true}
+                defaultGroupByMode="comissao"
+                allowedGroupByModes={['comissao', 'none', 'jp_class']}
+                groupByMode={reportGroupByMode}
+                onGroupByModeChange={handleGroupByModeChange}
+                hidePagination={reportGroupByMode === 'comissao'}
               />
             </Card>
           </div>
