@@ -119,7 +119,7 @@ export async function consolidarVendasApi(options?: {
   const startTime = Date.now()
 
   // 1. Dispara o início da consolidação
-  const initRes = await pb.send<{
+  let initRes: {
     success: boolean
     started: boolean
     already_running?: boolean
@@ -129,10 +129,36 @@ export async function consolidarVendasApi(options?: {
     data_carga: string
     status: import('@/types/sales').ConsolidacaoStatus
     message?: string
-  }>('/backend/v1/vendas/consolidar', {
-    method: 'POST',
-    body: {},
-  })
+  }
+
+  try {
+    initRes = await pb.send<{
+      success: boolean
+      started: boolean
+      already_running?: boolean
+      total_batches?: number
+      batch_size?: number
+      total_registros?: number
+      data_carga: string
+      status: import('@/types/sales').ConsolidacaoStatus
+      message?: string
+    }>('/backend/v1/vendas/consolidar', {
+      method: 'POST',
+      body: {},
+    })
+  } catch (initErr: unknown) {
+    const backendData =
+      (initErr as { data?: { error?: string; stage?: string; message?: string } })?.data ||
+      (initErr as { response?: { error?: string; stage?: string; message?: string } })?.response
+
+    const msg =
+      backendData?.error ||
+      backendData?.message ||
+      (initErr as Error)?.message ||
+      'Falha ao iniciar consolidação'
+    const stage = backendData?.stage || 'iniciar'
+    throw new Error(`Falha na consolidação na etapa [${stage}] (início): ${msg}`)
+  }
 
   let currentStatus = initRes.status
   if (options?.onProgress && currentStatus) {
@@ -178,10 +204,18 @@ export async function consolidarVendasApi(options?: {
         (stepErr as { data?: { error?: string; stage?: string; lote?: number } })?.data ||
         (stepErr as { response?: { error?: string; stage?: string; lote?: number } })?.response
 
-      const specificMsg =
+      const stage = backendData?.stage || currentStatus?.etapa || 'processamento'
+      const lote = backendData?.lote || (currentStatus ? currentStatus.lote_atual + 1 : 1)
+      const rawMsg =
         backendData?.error ||
         (stepErr as Error)?.message ||
         'Erro inesperado durante processamento de lote na consolidação'
+
+      const specificMsg =
+        rawMsg.includes(`[${stage}]`) || rawMsg.includes(`Lote`)
+          ? rawMsg
+          : `Falha na etapa [${stage}] (Lote ${lote}): ${rawMsg}`
+
       throw new Error(specificMsg)
     }
   }

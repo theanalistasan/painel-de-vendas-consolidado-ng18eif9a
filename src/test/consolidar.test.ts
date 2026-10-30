@@ -9,19 +9,40 @@ describe('Consolidação e Endpoints de Vendas/Pedidos Abertos', () => {
       .authWithPassword('rodrigo.machado@rolanddg.com.br', 'Roland@1234')
     expect(authData.record.id).toBeDefined()
 
-    // 1. Executar consolidação de vendas de verdade
+    // 1. Testar consulta de status e início da consolidação
+    const resStatus = await pb.send<{
+      success: boolean
+      status: {
+        status: string
+        etapa: string
+        finished_at: string
+      }
+    }>('/backend/v1/vendas/consolidar/status', {
+      method: 'GET',
+    })
+    expect(resStatus.success).toBe(true)
+    expect(resStatus.status).toBeDefined()
+    expect(typeof resStatus.status.finished_at).toBe('string')
+    console.log('Status inicial da consolidação:', resStatus.status)
+
+    // Iniciar consolidação (deve rodar sem erro de finished_at Scan error)
     const resConsolidar = await pb.send<{
       success: boolean
-      total_consolidado: number
+      started: boolean
+      total_batches?: number
+      total_registros?: number
       data_carga: string
+      status: {
+        status: string
+        etapa: string
+      }
     }>('/backend/v1/vendas/consolidar', {
       method: 'POST',
       body: {},
     })
 
     expect(resConsolidar.success).toBe(true)
-    expect(resConsolidar.total_consolidado).toBeGreaterThan(0)
-    console.log('Total consolidado:', resConsolidar.total_consolidado)
+    console.log('Consolidar init response:', resConsolidar)
 
     // 2. Testar vendas_list detalhado (deve retornar sem scan error float64 to int64)
     const resList = await pb.send<{

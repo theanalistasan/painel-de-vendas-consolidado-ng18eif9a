@@ -882,11 +882,28 @@ export default function Importar() {
         setRebuildingSummaries(false)
       }
     } catch (err: unknown) {
-      const errorMsg =
-        (err as { data?: { error?: string } })?.data?.error ||
-        (err as { response?: { error?: string } })?.response?.error ||
+      const backendData =
+        (err as { data?: { error?: string; message?: string; stage?: string; lote?: number } })
+          ?.data ||
+        (err as { response?: { error?: string; message?: string; stage?: string; lote?: number } })
+          ?.response
+
+      const rawMsg =
+        backendData?.error ||
+        backendData?.message ||
         (err as Error)?.message ||
         'Falha na consolidação de vendas'
+
+      const stage = backendData?.stage || consolidationProgress?.etapa
+      const lote =
+        backendData?.lote ||
+        (consolidationProgress?.lote_atual ? consolidationProgress.lote_atual + 1 : undefined)
+
+      let errorMsg = rawMsg
+      if (rawMsg.includes('Something went wrong') || rawMsg === 'Falha na consolidação de vendas') {
+        errorMsg = `Falha na consolidação${stage ? ` na etapa [${stage}]` : ''}${lote ? ` (Lote ${lote})` : ''}: ${rawMsg}`
+      }
+
       console.error('Erro na consolidação:', err)
       setConsolidationError(errorMsg)
       toast({

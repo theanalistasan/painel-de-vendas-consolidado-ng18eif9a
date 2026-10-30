@@ -157,7 +157,26 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
         finished_at: '',
       }),
     )
-    $app.db().newQuery('SELECT * FROM vendas_consolidacao_status WHERE id = 1').all(rows)
+    $app
+      .db()
+      .newQuery(
+        `SELECT
+          id,
+          COALESCE(status, '') AS status,
+          COALESCE(etapa, '') AS etapa,
+          COALESCE(lote_atual, 0) AS lote_atual,
+          COALESCE(total_lotes, 0) AS total_lotes,
+          COALESCE(registros_processados, 0) AS registros_processados,
+          COALESCE(total_registros, 0) AS total_registros,
+          COALESCE(mensagem, '') AS mensagem,
+          COALESCE(erro, '') AS erro,
+          COALESCE(data_carga, '') AS data_carga,
+          COALESCE(started_at, '') AS started_at,
+          COALESCE(updated_at, '') AS updated_at,
+          COALESCE(finished_at, '') AS finished_at
+        FROM vendas_consolidacao_status WHERE id = 1`,
+      )
+      .all(rows)
     if (rows.length === 0) {
       return {
         status: 'idle',
@@ -218,7 +237,11 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
     // Se já estiver em andamento há menos de 5 minutos, retorna o status existente sem resetar
     if (statusRecord.status === 'in_progress' && statusRecord.started_at) {
       const elapsedMs = Date.now() - new Date(statusRecord.started_at).getTime()
-      if (elapsedMs < 300000) {
+      if (
+        elapsedMs < 300000 &&
+        statusRecord.total_lotes > 0 &&
+        statusRecord.lote_atual < statusRecord.total_lotes
+      ) {
         return e.json(200, {
           success: true,
           started: false,
@@ -299,15 +322,19 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
     })
   } catch (err) {
     const errorMsg = String(err && err.message ? err.message : err)
-    setStatus({
-      status: 'error',
-      erro: errorMsg,
-      mensagem: 'Falha ao iniciar consolidação: ' + errorMsg,
-    })
+    try {
+      setStatus({
+        status: 'error',
+        erro: errorMsg,
+        mensagem: 'Falha ao iniciar consolidação: ' + errorMsg,
+      })
+    } catch (_) {}
 
     return e.json(500, {
       success: false,
-      error: 'Falha ao iniciar consolidação: ' + errorMsg,
+      error: 'Falha ao iniciar consolidação [iniciar]: ' + errorMsg,
+      stage: 'iniciar',
+      lote: 0,
       status: getStatus(),
     })
   }
@@ -361,7 +388,26 @@ routerAdd('GET', '/backend/v1/vendas/consolidar/status', (e) => {
         finished_at: '',
       }),
     )
-    $app.db().newQuery('SELECT * FROM vendas_consolidacao_status WHERE id = 1').all(rows)
+    $app
+      .db()
+      .newQuery(
+        `SELECT
+          id,
+          COALESCE(status, '') AS status,
+          COALESCE(etapa, '') AS etapa,
+          COALESCE(lote_atual, 0) AS lote_atual,
+          COALESCE(total_lotes, 0) AS total_lotes,
+          COALESCE(registros_processados, 0) AS registros_processados,
+          COALESCE(total_registros, 0) AS total_registros,
+          COALESCE(mensagem, '') AS mensagem,
+          COALESCE(erro, '') AS erro,
+          COALESCE(data_carga, '') AS data_carga,
+          COALESCE(started_at, '') AS started_at,
+          COALESCE(updated_at, '') AS updated_at,
+          COALESCE(finished_at, '') AS finished_at
+        FROM vendas_consolidacao_status WHERE id = 1`,
+      )
+      .all(rows)
 
     let status
     if (rows.length === 0) {
@@ -402,9 +448,11 @@ routerAdd('GET', '/backend/v1/vendas/consolidar/status', (e) => {
       status: status,
     })
   } catch (err) {
+    const msg = String(err && err.message ? err.message : err)
     return e.json(500, {
       success: false,
-      error: 'Erro ao consultar status da consolidação: ' + (err.message || err),
+      error: 'Erro ao consultar status da consolidação [status]: ' + msg,
+      stage: 'status',
     })
   }
 })
@@ -455,7 +503,26 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
         finished_at: '',
       }),
     )
-    $app.db().newQuery('SELECT * FROM vendas_consolidacao_status WHERE id = 1').all(rows)
+    $app
+      .db()
+      .newQuery(
+        `SELECT
+          id,
+          COALESCE(status, '') AS status,
+          COALESCE(etapa, '') AS etapa,
+          COALESCE(lote_atual, 0) AS lote_atual,
+          COALESCE(total_lotes, 0) AS total_lotes,
+          COALESCE(registros_processados, 0) AS registros_processados,
+          COALESCE(total_registros, 0) AS total_registros,
+          COALESCE(mensagem, '') AS mensagem,
+          COALESCE(erro, '') AS erro,
+          COALESCE(data_carga, '') AS data_carga,
+          COALESCE(started_at, '') AS started_at,
+          COALESCE(updated_at, '') AS updated_at,
+          COALESCE(finished_at, '') AS finished_at
+        FROM vendas_consolidacao_status WHERE id = 1`,
+      )
+      .all(rows)
     if (rows.length === 0) {
       return {
         status: 'idle',
