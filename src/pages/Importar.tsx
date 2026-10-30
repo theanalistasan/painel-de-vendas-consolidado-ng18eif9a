@@ -21,6 +21,7 @@ import {
   importCanaisClientesApi,
   consolidarVendasApi,
   reconstruirResumosApi,
+  getConsolidacaoStatusApi,
   getCountsSummary,
 } from '@/services/sales'
 import { importPedidosAbertosApi, fetchUltimaCargaPedidosAbertos } from '@/services/pedidosAbertos'
@@ -888,7 +889,7 @@ export default function Importar() {
         (err as { response?: { error?: string; message?: string; stage?: string; lote?: number } })
           ?.response
 
-      const rawMsg =
+      let rawMsg =
         backendData?.error ||
         backendData?.message ||
         (err as Error)?.message ||
@@ -899,9 +900,29 @@ export default function Importar() {
         backendData?.lote ||
         (consolidationProgress?.lote_atual ? consolidationProgress.lote_atual + 1 : undefined)
 
+      // Se a mensagem vier como genérica "Something went wrong", tenta buscar do backend o status gravado
+      if (rawMsg.includes('Something went wrong')) {
+        try {
+          const freshStatus = await getConsolidacaoStatusApi()
+          if (
+            freshStatus.status?.erro &&
+            !freshStatus.status.erro.includes('Something went wrong')
+          ) {
+            rawMsg = freshStatus.status.erro
+          } else if (
+            freshStatus.status?.mensagem &&
+            !freshStatus.status.mensagem.includes('Something went wrong')
+          ) {
+            rawMsg = freshStatus.status.mensagem
+          }
+        } catch {
+          /* intentionally ignored */
+        }
+      }
+
       let errorMsg = rawMsg
-      if (rawMsg.includes('Something went wrong') || rawMsg === 'Falha na consolidação de vendas') {
-        errorMsg = `Falha na consolidação${stage ? ` na etapa [${stage}]` : ''}${lote ? ` (Lote ${lote})` : ''}: ${rawMsg}`
+      if (!errorMsg.includes('Falha na') && !errorMsg.includes('Falha ao')) {
+        errorMsg = `Falha na consolidação${stage ? ` na etapa [${stage}]` : ''}${lote ? ` (Lote ${lote})` : ''}: ${errorMsg}`
       }
 
       console.error('Erro na consolidação:', err)

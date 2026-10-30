@@ -147,16 +147,31 @@ export async function consolidarVendasApi(options?: {
       body: {},
     })
   } catch (initErr: unknown) {
-    const backendData =
-      (initErr as { data?: { error?: string; stage?: string; message?: string } })?.data ||
-      (initErr as { response?: { error?: string; stage?: string; message?: string } })?.response
+    const errObj = initErr as {
+      data?: { error?: string; stage?: string; message?: string }
+      response?: { error?: string; stage?: string; message?: string }
+      message?: string
+    }
+    const backendData = errObj?.data || errObj?.response
 
-    const msg =
+    let msg =
       backendData?.error ||
       backendData?.message ||
-      (initErr as Error)?.message ||
+      errObj?.message ||
       'Falha ao iniciar consolidação'
     const stage = backendData?.stage || 'iniciar'
+
+    if (!msg || msg.includes('Something went wrong')) {
+      try {
+        const freshStatus = await getConsolidacaoStatusApi()
+        if (freshStatus.status?.erro && !freshStatus.status.erro.includes('Something went wrong')) {
+          msg = freshStatus.status.erro
+        }
+      } catch {
+        /* intentionally ignored */
+      }
+    }
+
     throw new Error(`Falha na consolidação na etapa [${stage}] (início): ${msg}`)
   }
 
@@ -200,16 +215,42 @@ export async function consolidarVendasApi(options?: {
         break
       }
     } catch (stepErr: unknown) {
-      const backendData =
-        (stepErr as { data?: { error?: string; stage?: string; lote?: number } })?.data ||
-        (stepErr as { response?: { error?: string; stage?: string; lote?: number } })?.response
+      // Extrai a resposta de erro detalhada do PocketBase / fetch
+      const errObj = stepErr as {
+        data?: { error?: string; message?: string; stage?: string; lote?: number }
+        response?: { error?: string; message?: string; stage?: string; lote?: number }
+        message?: string
+      }
+      const backendData = errObj?.data || errObj?.response
 
       const stage = backendData?.stage || currentStatus?.etapa || 'processamento'
       const lote = backendData?.lote || (currentStatus ? currentStatus.lote_atual + 1 : 1)
-      const rawMsg =
+
+      let rawMsg =
         backendData?.error ||
-        (stepErr as Error)?.message ||
-        'Erro inesperado durante processamento de lote na consolidação'
+        backendData?.message ||
+        errObj?.message ||
+        'Erro desconhecido no servidor'
+
+      // Se a mensagem for genérica como "Something went wrong.", tenta consultar o status do backend
+      if (!rawMsg || rawMsg.includes('Something went wrong')) {
+        try {
+          const freshStatus = await getConsolidacaoStatusApi()
+          if (
+            freshStatus.status?.erro &&
+            !freshStatus.status.erro.includes('Something went wrong')
+          ) {
+            rawMsg = freshStatus.status.erro
+          } else if (
+            freshStatus.status?.mensagem &&
+            !freshStatus.status.mensagem.includes('Something went wrong')
+          ) {
+            rawMsg = freshStatus.status.mensagem
+          }
+        } catch {
+          /* intentionally ignored */
+        }
+      }
 
       const specificMsg =
         rawMsg.includes(`[${stage}]`) || rawMsg.includes(`Lote`)

@@ -229,18 +229,18 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
     }
     const r = rows[0]
     return {
-      status: r.status || 'idle',
-      etapa: r.etapa || '',
+      status: String(r.status || 'idle'),
+      etapa: String(r.etapa || ''),
       lote_atual: toInt(r.lote_atual),
       total_lotes: toInt(r.total_lotes),
       registros_processados: toInt(r.registros_processados),
       total_registros: toInt(r.total_registros),
-      mensagem: r.mensagem || '',
-      erro: r.erro || '',
-      data_carga: r.data_carga || '',
-      started_at: r.started_at || '',
-      updated_at: r.updated_at || '',
-      finished_at: r.finished_at || '',
+      mensagem: String(r.mensagem || ''),
+      erro: String(r.erro || ''),
+      data_carga: String(r.data_carga || ''),
+      started_at: String(r.started_at || ''),
+      updated_at: String(r.updated_at || ''),
+      finished_at: String(r.finished_at || ''),
     }
   }
 
@@ -251,7 +251,8 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
     for (const k in fields) {
       if (Object.prototype.hasOwnProperty.call(fields, k)) {
         sets.push(k + ' = {:' + k + '}')
-        params[k] = fields[k]
+        // Garante que nunca inserimos NULL nos campos textuais
+        params[k] = fields[k] === null || fields[k] === undefined ? '' : fields[k]
       }
     }
     sets.push('updated_at = {:now}')
@@ -269,7 +270,14 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
     const statusRecord = getStatus()
 
     // Se já estiver em andamento há menos de 5 minutos, retorna o status existente sem resetar
-    if (statusRecord.status === 'in_progress' && statusRecord.started_at) {
+    // (a menos que o usuário tenha forçado ou a requisição venha com reset)
+    const reqBody = e.request ? e.request.body : null
+    let forceRestart = false
+    try {
+      if (reqBody && reqBody.force) forceRestart = true
+    } catch (_) {}
+
+    if (!forceRestart && statusRecord.status === 'in_progress' && statusRecord.started_at) {
       const elapsedMs = Date.now() - new Date(statusRecord.started_at).getTime()
       if (
         elapsedMs < 300000 &&
@@ -356,6 +364,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
     })
   } catch (err) {
     const errorMsg = String(err && err.message ? err.message : err)
+    console.error('[consolidar_iniciar] Falha ao iniciar:', errorMsg)
     try {
       setStatus({
         status: 'error',
@@ -364,12 +373,20 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       })
     } catch (_) {}
 
+    let currentStat
+    try {
+      currentStat = getStatus()
+    } catch (_) {
+      currentStat = null
+    }
+
     return e.json(500, {
       success: false,
       error: 'Falha ao iniciar consolidação [iniciar]: ' + errorMsg,
+      message: 'Falha ao iniciar consolidação [iniciar]: ' + errorMsg,
       stage: 'iniciar',
       lote: 0,
-      status: getStatus(),
+      status: currentStat,
     })
   }
 })
@@ -462,18 +479,18 @@ routerAdd('GET', '/backend/v1/vendas/consolidar/status', (e) => {
     } else {
       const r = rows[0]
       status = {
-        status: r.status || 'idle',
-        etapa: r.etapa || '',
+        status: String(r.status || 'idle'),
+        etapa: String(r.etapa || ''),
         lote_atual: toInt(r.lote_atual),
         total_lotes: toInt(r.total_lotes),
         registros_processados: toInt(r.registros_processados),
         total_registros: toInt(r.total_registros),
-        mensagem: r.mensagem || '',
-        erro: r.erro || '',
-        data_carga: r.data_carga || '',
-        started_at: r.started_at || '',
-        updated_at: r.updated_at || '',
-        finished_at: r.finished_at || '',
+        mensagem: String(r.mensagem || ''),
+        erro: String(r.erro || ''),
+        data_carga: String(r.data_carga || ''),
+        started_at: String(r.started_at || ''),
+        updated_at: String(r.updated_at || ''),
+        finished_at: String(r.finished_at || ''),
       }
     }
 
@@ -483,9 +500,11 @@ routerAdd('GET', '/backend/v1/vendas/consolidar/status', (e) => {
     })
   } catch (err) {
     const msg = String(err && err.message ? err.message : err)
+    console.error('[consolidar_status] Falha ao consultar status:', msg)
     return e.json(500, {
       success: false,
       error: 'Erro ao consultar status da consolidação [status]: ' + msg,
+      message: 'Erro ao consultar status da consolidação [status]: ' + msg,
       stage: 'status',
     })
   }
@@ -508,7 +527,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
     for (const k in fields) {
       if (Object.prototype.hasOwnProperty.call(fields, k)) {
         sets.push(k + ' = {:' + k + '}')
-        params[k] = fields[k]
+        params[k] = fields[k] === null || fields[k] === undefined ? '' : fields[k]
       }
     }
     sets.push('updated_at = {:now}')
@@ -575,18 +594,18 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
     }
     const r = rows[0]
     return {
-      status: r.status || 'idle',
-      etapa: r.etapa || '',
+      status: String(r.status || 'idle'),
+      etapa: String(r.etapa || ''),
       lote_atual: toInt(r.lote_atual),
       total_lotes: toInt(r.total_lotes),
       registros_processados: toInt(r.registros_processados),
       total_registros: toInt(r.total_registros),
-      mensagem: r.mensagem || '',
-      erro: r.erro || '',
-      data_carga: r.data_carga || '',
-      started_at: r.started_at || '',
-      updated_at: r.updated_at || '',
-      finished_at: r.finished_at || '',
+      mensagem: String(r.mensagem || ''),
+      erro: String(r.erro || ''),
+      data_carga: String(r.data_carga || ''),
+      started_at: String(r.started_at || ''),
+      updated_at: String(r.updated_at || ''),
+      finished_at: String(r.finished_at || ''),
     }
   }
 
@@ -608,11 +627,6 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
 
     // Se todos os lotes foram gravados no staging, executa a substituição final de vendas
     if (batchIdx >= totalBatches) {
-      setStatus({
-        etapa: 'troca_atomica_vendas',
-        mensagem: 'Substituindo base de vendas pelos dados consolidados íntegros...',
-      })
-
       const cntStaging = arrayOf(new DynamicModel({ c: '' }))
       $app.db().newQuery('SELECT COUNT(*) AS c FROM vendas_staging').all(cntStaging)
       const stagingCount = cntStaging.length > 0 ? toInt(cntStaging[0].c) : 0
@@ -621,48 +635,98 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
         throw new Error('Nenhum registro encontrado em staging para realizar a substituição.')
       }
 
-      // Substituição atômica de vendas
-      $app.db().newQuery('DELETE FROM vendas').execute()
-      $app
-        .db()
-        .newQuery(
-          `
-        INSERT INTO vendas (
-          id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe,
-          data_lancamento, ultima_data_vencimento, docto_origem_destino,
-          data_origem_destino, condicao_pagamento, codigo_cliente,
-          nome_cliente, numero_linha, codigo_item, descricao_item,
-          quantidade, qty_kg_lt, preco_item, desconto_linha, icms, pis,
-          cofins, ipi, icms_partilha, total_linha, utilizacao,
-          nome_vendedor, custo_item, nome_filial, conta, estado, cidade,
-          grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam,
-          numero_documento_netsales, preco_unitario, total_nf_sem_frete,
-          total_nf_novo, valor_liquido, custo_total, classificacao,
-          vendedor_revenda, grupo_item, vendedor_cliente, origem,
-          tem_racnew, tem_netsales,
-          status_cadastro, tipo_pn, tipo_cliente,
-          data_carga, created, updated
-        )
-        SELECT
-          id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe,
-          data_lancamento, ultima_data_vencimento, docto_origem_destino,
-          data_origem_destino, condicao_pagamento, codigo_cliente,
-          nome_cliente, numero_linha, codigo_item, descricao_item,
-          quantidade, qty_kg_lt, preco_item, desconto_linha, icms, pis,
-          cofins, ipi, icms_partilha, total_linha, utilizacao,
-          nome_vendedor, custo_item, nome_filial, conta, estado, cidade,
-          grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam,
-          numero_documento_netsales, preco_unitario, total_nf_sem_frete,
-          total_nf_novo, valor_liquido, custo_total, classificacao,
-          vendedor_revenda, grupo_item, vendedor_cliente, origem,
-          tem_racnew, tem_netsales,
-          status_cadastro, tipo_pn, tipo_cliente,
-          data_carga, created, updated
-        FROM vendas_staging;
-      `,
-        )
-        .execute()
+      const SWAP_CHUNK_SIZE = 25000
+      const totalSwapSteps = Math.max(1, Math.ceil(stagingCount / SWAP_CHUNK_SIZE))
+      // etapa_swap indica quantos blocos já foram copiados
+      // Exemplo no campo etapa: swap_bloco_X_de_Y
+      let swapStep = 0
+      if (current.etapa && current.etapa.startsWith('swap_bloco_')) {
+        const parts = current.etapa.split('_')
+        swapStep = toInt(parts[2])
+      }
 
+      if (swapStep === 0) {
+        setStatus({
+          etapa: 'swap_iniciando',
+          mensagem: 'Iniciando troca segura da base de vendas...',
+        })
+        $app.db().newQuery('DELETE FROM vendas').execute()
+      }
+
+      if (swapStep < totalSwapSteps) {
+        const swapOffset = swapStep * SWAP_CHUNK_SIZE
+        const currentSwapStepNum = swapStep + 1
+        const etapaSwap = 'swap_bloco_' + currentSwapStepNum + '_de_' + totalSwapSteps
+
+        $app
+          .db()
+          .newQuery(
+            `
+          INSERT INTO vendas (
+            id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe,
+            data_lancamento, ultima_data_vencimento, docto_origem_destino,
+            data_origem_destino, condicao_pagamento, codigo_cliente,
+            nome_cliente, numero_linha, codigo_item, descricao_item,
+            quantidade, qty_kg_lt, preco_item, desconto_linha, icms, pis,
+            cofins, ipi, icms_partilha, total_linha, utilizacao,
+            nome_vendedor, custo_item, nome_filial, conta, estado, cidade,
+            grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam,
+            numero_documento_netsales, preco_unitario, total_nf_sem_frete,
+            total_nf_novo, valor_liquido, custo_total, classificacao,
+            vendedor_revenda, grupo_item, vendedor_cliente, origem,
+            tem_racnew, tem_netsales,
+            status_cadastro, tipo_pn, tipo_cliente,
+            data_carga, created, updated
+          )
+          SELECT
+            id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe,
+            data_lancamento, ultima_data_vencimento, docto_origem_destino,
+            data_origem_destino, condicao_pagamento, codigo_cliente,
+            nome_cliente, numero_linha, codigo_item, descricao_item,
+            quantidade, qty_kg_lt, preco_item, desconto_linha, icms, pis,
+            cofins, ipi, icms_partilha, total_linha, utilizacao,
+            nome_vendedor, custo_item, nome_filial, conta, estado, cidade,
+            grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam,
+            numero_documento_netsales, preco_unitario, total_nf_sem_frete,
+            total_nf_novo, valor_liquido, custo_total, classificacao,
+            vendedor_revenda, grupo_item, vendedor_cliente, origem,
+            tem_racnew, tem_netsales,
+            status_cadastro, tipo_pn, tipo_cliente,
+            data_carga, created, updated
+          FROM vendas_staging
+          ORDER BY rowid ASC
+          LIMIT {:limit} OFFSET {:offset};
+        `,
+          )
+          .bind({
+            limit: SWAP_CHUNK_SIZE,
+            offset: swapOffset,
+          })
+          .execute()
+
+        setStatus({
+          etapa: etapaSwap,
+          mensagem:
+            'Transferindo staging para vendas (bloco ' +
+            currentSwapStepNum +
+            ' de ' +
+            totalSwapSteps +
+            ')...',
+        })
+
+        const isLastSwapStep = currentSwapStepNum >= totalSwapSteps
+        if (!isLastSwapStep) {
+          return e.json(200, {
+            success: true,
+            done: false,
+            swap_step: currentSwapStepNum,
+            total_swap_steps: totalSwapSteps,
+            status: getStatus(),
+          })
+        }
+      }
+
+      // Concluiu todos os blocos de swap
       $app.db().newQuery('DELETE FROM vendas_staging').execute()
 
       setStatus({
@@ -753,15 +817,37 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
       'LEFT JOIN tipos_cliente tc ' +
       '  ON UPPER(TRIM(tc.codigo_pn)) = UPPER(TRIM(r.codigo_cliente))'
 
-    $app
-      .db()
-      .newQuery(batchInsertSql)
-      .bind({
-        now: nowIso,
-        limit: BATCH_SIZE,
-        offset: offset,
-      })
-      .execute()
+    try {
+      $app
+        .db()
+        .newQuery(batchInsertSql)
+        .bind({
+          now: nowIso,
+          limit: BATCH_SIZE,
+          offset: offset,
+        })
+        .execute()
+    } catch (insertErr) {
+      const dbErrMsg = String(insertErr && insertErr.message ? insertErr.message : insertErr)
+      console.error(
+        '[consolidar_step] Erro ao gravar lote ' +
+          (batchIdx + 1) +
+          ' (offset ' +
+          offset +
+          ', limit ' +
+          BATCH_SIZE +
+          '): ' +
+          dbErrMsg,
+      )
+      throw new Error(
+        'Falha ao gravar lote ' +
+          (batchIdx + 1) +
+          ' no staging (offset ' +
+          offset +
+          '): ' +
+          dbErrMsg,
+      )
+    }
 
     const processedNow = Math.min((batchIdx + 1) * BATCH_SIZE, totalRegistros)
     const nextBatch = batchIdx + 1
@@ -790,20 +876,52 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
     })
   } catch (err) {
     const errorMsg = String(err && err.message ? err.message : err)
-    const current = getStatus()
-    setStatus({
-      status: 'error',
-      erro: errorMsg,
-      mensagem:
-        'Falha no lote ' + (current.lote_atual + 1) + ' [' + current.etapa + ']: ' + errorMsg,
-    })
+    console.error('[consolidar_step] Exceção capturada:', errorMsg)
+    let current
+    try {
+      current = getStatus()
+    } catch (_) {
+      current = {
+        status: 'error',
+        etapa: 'desconhecida',
+        lote_atual: 0,
+        total_lotes: 0,
+        registros_processados: 0,
+        total_registros: 0,
+        mensagem: '',
+        erro: '',
+      }
+    }
+
+    const currentEtapa = current.etapa || 'processamento'
+    const currentLote = (current.lote_atual || 0) + 1
+    const detailedError =
+      'Falha na etapa [' + currentEtapa + '] (Lote ' + currentLote + '): ' + errorMsg
+
+    try {
+      setStatus({
+        status: 'error',
+        erro: detailedError,
+        mensagem: detailedError,
+      })
+    } catch (saveErr) {
+      console.error('[consolidar_step] Não foi possível salvar status de erro:', saveErr)
+    }
+
+    let finalStatus
+    try {
+      finalStatus = getStatus()
+    } catch (_) {
+      finalStatus = current
+    }
 
     return e.json(500, {
       success: false,
-      error: 'Falha no lote ' + (current.lote_atual + 1) + ' [' + current.etapa + ']: ' + errorMsg,
-      stage: current.etapa,
-      lote: current.lote_atual + 1,
-      status: getStatus(),
+      error: detailedError,
+      message: detailedError,
+      stage: currentEtapa,
+      lote: currentLote,
+      status: finalStatus,
     })
   }
 })
