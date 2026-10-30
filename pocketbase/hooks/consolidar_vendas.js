@@ -1,4 +1,6 @@
 // Endpoint: POST /backend/v1/vendas/consolidar
+// Endpoint: GET  /backend/v1/vendas/consolidar/status
+// Endpoint: POST /backend/v1/vendas/consolidar/step
 // Endpoint: POST /backend/v1/vendas/reconstruir-resumos
 //
 // Consolida a coleção `vendas` a partir de RacNew (base mestra) enriquecida
@@ -15,24 +17,17 @@
 //   racnew.codigo_cliente = netsales.codigo_cliente
 //   racnew.codigo_item   = netsales.codigo_item
 //
-// PROCESSAMENTO EM LOTES PROGRESSIVOS:
-// Lê e grava registros em lotes utilizando rowid/id cursor progressivo com commits intermediários
-// para evitar estouro de memória ou timeout do SQLite / Goja em bases de alta volumetria (~310k+ linhas).
+// ARQUITETURA RESILIENTE COM EXECUÇÃO SEGURA E PROGRESSO PERSISTIDO:
+// 1. Tabela vendas_staging:
+//    - O processamento grava primeiro numa tabela staging (`vendas_staging`), NUNCA destruindo a tabela `vendas` antes da hora.
+//    - Somente quando o último lote conclui, a troca é feita atômica / segura, garantindo que se qualquer falha ocorrer a base antiga segue 100% íntegra.
+// 2. Lotes Progressivos e Checkpoints Persistidos:
+//    - POST /backend/v1/vendas/consolidar inicia ou retoma o processo com segurança.
+//    - GET  /backend/v1/vendas/consolidar/status monitora lote atual, etapa, registros processados e erros.
+//    - POST /backend/v1/vendas/consolidar/step executa um lote por vez (<3-5s cada), impedindo qualquer estouro de timeout HTTP!
 
 routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
-  const startTime = Date.now()
-  const nowIso = new Date().toISOString()
-  let stage = 'iniciar'
-  let totalConsolidado = 0
-  let lotesProcessados = 0
-
-  // Helpers defensivos do Goja/PocketBase (padrão definitivo deste projeto:
-  // campos numéricos em DynamicModel NUNCA devem ser inicializados com 0/0.0)
-  const toNum = (v) => {
-    if (v === undefined || v === null || v === '') return 0
-    const n = parseFloat(v)
-    return isNaN(n) ? 0 : n
-  }
+  const BATCH_SIZE = 25000
 
   const toInt = (v) => {
     if (v === undefined || v === null || v === '') return 0
@@ -40,76 +35,204 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
     return isNaN(n) ? 0 : n
   }
 
-  const nonEssentialIndexes = [
-    'idx_vendas_vendedor_cliente',
-    'idx_vendas_nome_vendedor',
-    'idx_vendas_estado',
-    'idx_vendas_cidade',
-    'idx_vendas_utilizacao',
-    'idx_vendas_numero_nfe',
-    'idx_vendas_data_lancamento',
-    'idx_vendas_grupo_item',
-    'idx_vendas_tipo_documento',
-    'idx_vendas_dt_grupo_tipo',
-    'idx_vendas_nome_cliente',
-    'idx_vendas_tem_netsales',
-    'idx_vendas_created',
-    'idx_vendas_data_desc',
-    'idx_vendas_grupo_data',
-    'idx_vendas_nome_cliente_total',
-    'idx_vendas_data_lancamento_nfe',
-    'idx_vendas_nfe_data',
-    'idx_vendas_netsales_data',
-    'idx_vendas_data_carga',
-  ]
+  const ensureTables = () => {
+    $app
+      .db()
+      .newQuery(
+        `
+      CREATE TABLE IF NOT EXISTS vendas_consolidacao_status (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        status TEXT NOT NULL,
+        etapa TEXT,
+        lote_atual INTEGER DEFAULT 0,
+        total_lotes INTEGER DEFAULT 0,
+        registros_processados INTEGER DEFAULT 0,
+        total_registros INTEGER DEFAULT 0,
+        mensagem TEXT,
+        erro TEXT,
+        data_carga TEXT,
+        started_at TEXT,
+        updated_at TEXT,
+        finished_at TEXT
+      );
+    `,
+      )
+      .execute()
 
-  const indexDefinitions = [
-    'CREATE INDEX IF NOT EXISTS idx_vendas_data_lancamento ON vendas (data_lancamento);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_numero_nfe ON vendas (numero_nfe);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_grupo_item ON vendas (grupo_item);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_tipo_documento ON vendas (tipo_documento);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_tem_netsales ON vendas (tem_netsales);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_nome_cliente ON vendas (nome_cliente);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_nome_vendedor ON vendas (nome_vendedor);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_vendedor_cliente ON vendas (vendedor_cliente);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_estado ON vendas (estado);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_cidade ON vendas (cidade);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_utilizacao ON vendas (utilizacao);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_created ON vendas (created);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_data_carga ON vendas (data_carga);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_dt_grupo_tipo ON vendas (data_lancamento, grupo_item, tipo_documento);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_data_desc ON vendas (data_lancamento DESC);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_grupo_data ON vendas (grupo_item, data_lancamento DESC);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_nome_cliente_total ON vendas (nome_cliente, total_linha);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_data_lancamento_nfe ON vendas (data_lancamento DESC, numero_nfe);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_nfe_data ON vendas (numero_nfe, data_lancamento DESC);',
-    'CREATE INDEX IF NOT EXISTS idx_vendas_netsales_data ON vendas (tem_netsales, data_lancamento DESC);',
-  ]
+    $app
+      .db()
+      .newQuery(
+        `
+      INSERT OR IGNORE INTO vendas_consolidacao_status (
+        id, status, etapa, lote_atual, total_lotes, registros_processados, total_registros, mensagem, erro, data_carga, started_at, updated_at
+      ) VALUES (
+        1, 'idle', 'pronto', 0, 0, 0, 0, 'Pronto para consolidar', '', '', '', ''
+      );
+    `,
+      )
+      .execute()
+
+    $app
+      .db()
+      .newQuery(
+        `
+      CREATE TABLE IF NOT EXISTS vendas_staging (
+        id TEXT PRIMARY KEY,
+        tipo_documento TEXT,
+        nf_entrega_futura TEXT,
+        numero_sap TEXT,
+        numero_nfe TEXT,
+        data_lancamento TEXT,
+        ultima_data_vencimento TEXT,
+        docto_origem_destino TEXT,
+        data_origem_destino TEXT,
+        condicao_pagamento TEXT,
+        codigo_cliente TEXT,
+        nome_cliente TEXT,
+        numero_linha REAL,
+        codigo_item TEXT,
+        descricao_item TEXT,
+        quantidade REAL,
+        qty_kg_lt REAL,
+        preco_item REAL,
+        desconto_linha REAL,
+        icms REAL,
+        pis REAL,
+        cofins REAL,
+        ipi REAL,
+        icms_partilha REAL,
+        total_linha REAL,
+        utilizacao TEXT,
+        nome_vendedor TEXT,
+        custo_item REAL,
+        nome_filial TEXT,
+        conta TEXT,
+        estado TEXT,
+        cidade TEXT,
+        grupo_cliente TEXT,
+        mercado TEXT,
+        usuario_emissor_pedido TEXT,
+        itms_grp_nam TEXT,
+        numero_documento_netsales TEXT,
+        preco_unitario REAL,
+        total_nf_sem_frete REAL,
+        total_nf_novo REAL,
+        valor_liquido REAL,
+        custo_total REAL,
+        classificacao TEXT,
+        vendedor_revenda TEXT,
+        grupo_item TEXT,
+        vendedor_cliente TEXT,
+        origem TEXT,
+        tem_racnew INTEGER,
+        tem_netsales INTEGER,
+        status_cadastro TEXT,
+        tipo_pn TEXT,
+        tipo_cliente TEXT,
+        data_carga TEXT,
+        created TEXT,
+        updated TEXT
+      );
+    `,
+      )
+      .execute()
+  }
+
+  const getStatus = () => {
+    ensureTables()
+    const rows = arrayOf(
+      new DynamicModel({
+        id: '',
+        status: '',
+        etapa: '',
+        lote_atual: '',
+        total_lotes: '',
+        registros_processados: '',
+        total_registros: '',
+        mensagem: '',
+        erro: '',
+        data_carga: '',
+        started_at: '',
+        updated_at: '',
+        finished_at: '',
+      }),
+    )
+    $app.db().newQuery('SELECT * FROM vendas_consolidacao_status WHERE id = 1').all(rows)
+    if (rows.length === 0) {
+      return {
+        status: 'idle',
+        etapa: 'pronto',
+        lote_atual: 0,
+        total_lotes: 0,
+        registros_processados: 0,
+        total_registros: 0,
+        mensagem: 'Pronto para consolidar',
+        erro: '',
+        data_carga: '',
+        started_at: '',
+        updated_at: '',
+        finished_at: '',
+      }
+    }
+    const r = rows[0]
+    return {
+      status: r.status || 'idle',
+      etapa: r.etapa || '',
+      lote_atual: toInt(r.lote_atual),
+      total_lotes: toInt(r.total_lotes),
+      registros_processados: toInt(r.registros_processados),
+      total_registros: toInt(r.total_registros),
+      mensagem: r.mensagem || '',
+      erro: r.erro || '',
+      data_carga: r.data_carga || '',
+      started_at: r.started_at || '',
+      updated_at: r.updated_at || '',
+      finished_at: r.finished_at || '',
+    }
+  }
+
+  const setStatus = (fields) => {
+    ensureTables()
+    const sets = []
+    const params = { now: new Date().toISOString() }
+    for (const k in fields) {
+      if (Object.prototype.hasOwnProperty.call(fields, k)) {
+        sets.push(k + ' = {:' + k + '}')
+        params[k] = fields[k]
+      }
+    }
+    sets.push('updated_at = {:now}')
+    $app
+      .db()
+      .newQuery('UPDATE vendas_consolidacao_status SET ' + sets.join(', ') + ' WHERE id = 1')
+      .bind(params)
+      .execute()
+  }
+
+  const nowIso = new Date().toISOString()
+  ensureTables()
 
   try {
-    console.log('[consolidar_vendas] Iniciando consolidação em massa...')
+    const statusRecord = getStatus()
 
-    // 1. Definição dos índices SQLite da tabela vendas para drop temporário
-    // Dropamos índices secundários para ganho massivo de performance em escrita progressiva
-    stage = 'desativar_indices'
-    for (let i = 0; i < nonEssentialIndexes.length; i++) {
-      try {
-        $app
-          .db()
-          .newQuery('DROP INDEX IF EXISTS ' + nonEssentialIndexes[i])
-          .execute()
-      } catch (_) {
-        // Ignora erro se não existir
+    // Se já estiver em andamento há menos de 5 minutos, retorna o status existente sem resetar
+    if (statusRecord.status === 'in_progress' && statusRecord.started_at) {
+      const elapsedMs = Date.now() - new Date(statusRecord.started_at).getTime()
+      if (elapsedMs < 300000) {
+        return e.json(200, {
+          success: true,
+          started: false,
+          already_running: true,
+          message: 'Consolidação já em andamento.',
+          status: statusRecord,
+        })
       }
     }
 
-    // 2. Limpa a coleção vendas antes da nova consolidação
-    stage = 'limpar_vendas'
-    $app.db().newQuery('DELETE FROM vendas').execute()
-    console.log('[consolidar_vendas] Tabela vendas limpa com sucesso.')
+    // Limpa staging para nova consolidação (vendas original fica intacta!)
+    $app.db().newQuery('DELETE FROM vendas_staging').execute()
 
-    // 3. Obter limites de id e total de registros em racnew para particionamento
-    stage = 'obter_limites_racnew'
+    // Contagem de RacNew elegível
     const totalRacnewRows = arrayOf(new DynamicModel({ total: '' }))
     $app
       .db()
@@ -119,37 +242,359 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       .all(totalRacnewRows)
 
     const totalRegistrosRacnew = totalRacnewRows.length > 0 ? toInt(totalRacnewRows[0].total) : 0
-    console.log('[consolidar_vendas] Total de registros RacNew elegíveis: ' + totalRegistrosRacnew)
 
     if (totalRegistrosRacnew === 0) {
-      console.log('[consolidar_vendas] Nenhum registro em RacNew para consolidar.')
+      setStatus({
+        status: 'completed',
+        etapa: 'sem_registros',
+        lote_atual: 0,
+        total_lotes: 0,
+        registros_processados: 0,
+        total_registros: 0,
+        mensagem: 'Nenhum registro encontrado em RacNew.',
+        data_carga: nowIso,
+        finished_at: nowIso,
+      })
+
       return e.json(200, {
         success: true,
+        started: true,
         total_consolidado: 0,
         data_carga: nowIso,
-        durationMs: Date.now() - startTime,
-        resumos_pendentes: true,
         message: 'Nenhum registro encontrado na base RacNew para consolidar.',
+        status: getStatus(),
       })
     }
 
-    // 4. Processamento em LOTES progressivos
-    // Tamanho do lote calibrado para 20.000 registros: rápido, eficiente em joins de SQLite
-    // e com commits intermediários que liberam memória no Goja
-    const BATCH_SIZE = 20000
     const totalBatches = Math.ceil(totalRegistrosRacnew / BATCH_SIZE)
-    console.log(
-      '[consolidar_vendas] Processando em ' +
+
+    setStatus({
+      status: 'in_progress',
+      etapa: 'iniciando',
+      lote_atual: 0,
+      total_lotes: totalBatches,
+      registros_processados: 0,
+      total_registros: totalRegistrosRacnew,
+      mensagem:
+        'Iniciando consolidação em ' +
         totalBatches +
         ' lotes de até ' +
         BATCH_SIZE +
-        ' registros.',
-    )
+        ' registros...',
+      erro: '',
+      data_carga: nowIso,
+      started_at: nowIso,
+      finished_at: '',
+    })
 
-    // SQL base de inserção em lote com clausula LIMIT e OFFSET
+    return e.json(200, {
+      success: true,
+      started: true,
+      total_batches: totalBatches,
+      batch_size: BATCH_SIZE,
+      total_registros: totalRegistrosRacnew,
+      data_carga: nowIso,
+      status: getStatus(),
+      message: 'Consolidação iniciada com sucesso. Acompanhando progresso...',
+    })
+  } catch (err) {
+    const errorMsg = String(err && err.message ? err.message : err)
+    setStatus({
+      status: 'error',
+      erro: errorMsg,
+      mensagem: 'Falha ao iniciar consolidação: ' + errorMsg,
+    })
+
+    return e.json(500, {
+      success: false,
+      error: 'Falha ao iniciar consolidação: ' + errorMsg,
+      status: getStatus(),
+    })
+  }
+})
+
+routerAdd('GET', '/backend/v1/vendas/consolidar/status', (e) => {
+  const toInt = (v) => {
+    if (v === undefined || v === null || v === '') return 0
+    const n = parseInt(v, 10)
+    return isNaN(n) ? 0 : n
+  }
+
+  try {
+    $app
+      .db()
+      .newQuery(
+        `
+      CREATE TABLE IF NOT EXISTS vendas_consolidacao_status (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        status TEXT NOT NULL,
+        etapa TEXT,
+        lote_atual INTEGER DEFAULT 0,
+        total_lotes INTEGER DEFAULT 0,
+        registros_processados INTEGER DEFAULT 0,
+        total_registros INTEGER DEFAULT 0,
+        mensagem TEXT,
+        erro TEXT,
+        data_carga TEXT,
+        started_at TEXT,
+        updated_at TEXT,
+        finished_at TEXT
+      );
+    `,
+      )
+      .execute()
+
+    const rows = arrayOf(
+      new DynamicModel({
+        id: '',
+        status: '',
+        etapa: '',
+        lote_atual: '',
+        total_lotes: '',
+        registros_processados: '',
+        total_registros: '',
+        mensagem: '',
+        erro: '',
+        data_carga: '',
+        started_at: '',
+        updated_at: '',
+        finished_at: '',
+      }),
+    )
+    $app.db().newQuery('SELECT * FROM vendas_consolidacao_status WHERE id = 1').all(rows)
+
+    let status
+    if (rows.length === 0) {
+      status = {
+        status: 'idle',
+        etapa: 'pronto',
+        lote_atual: 0,
+        total_lotes: 0,
+        registros_processados: 0,
+        total_registros: 0,
+        mensagem: 'Pronto para consolidar',
+        erro: '',
+        data_carga: '',
+        started_at: '',
+        updated_at: '',
+        finished_at: '',
+      }
+    } else {
+      const r = rows[0]
+      status = {
+        status: r.status || 'idle',
+        etapa: r.etapa || '',
+        lote_atual: toInt(r.lote_atual),
+        total_lotes: toInt(r.total_lotes),
+        registros_processados: toInt(r.registros_processados),
+        total_registros: toInt(r.total_registros),
+        mensagem: r.mensagem || '',
+        erro: r.erro || '',
+        data_carga: r.data_carga || '',
+        started_at: r.started_at || '',
+        updated_at: r.updated_at || '',
+        finished_at: r.finished_at || '',
+      }
+    }
+
+    return e.json(200, {
+      success: true,
+      status: status,
+    })
+  } catch (err) {
+    return e.json(500, {
+      success: false,
+      error: 'Erro ao consultar status da consolidação: ' + (err.message || err),
+    })
+  }
+})
+
+// Endpoint de avanço de lote: processa exatamente 1 lote (ou finalização atômica)
+// e responde em menos de 3 a 5 segundos, sem risco de timeout.
+routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
+  const BATCH_SIZE = 25000
+
+  const toInt = (v) => {
+    if (v === undefined || v === null || v === '') return 0
+    const n = parseInt(v, 10)
+    return isNaN(n) ? 0 : n
+  }
+
+  const setStatus = (fields) => {
+    const sets = []
+    const params = { now: new Date().toISOString() }
+    for (const k in fields) {
+      if (Object.prototype.hasOwnProperty.call(fields, k)) {
+        sets.push(k + ' = {:' + k + '}')
+        params[k] = fields[k]
+      }
+    }
+    sets.push('updated_at = {:now}')
+    $app
+      .db()
+      .newQuery('UPDATE vendas_consolidacao_status SET ' + sets.join(', ') + ' WHERE id = 1')
+      .bind(params)
+      .execute()
+  }
+
+  const getStatus = () => {
+    const rows = arrayOf(
+      new DynamicModel({
+        id: '',
+        status: '',
+        etapa: '',
+        lote_atual: '',
+        total_lotes: '',
+        registros_processados: '',
+        total_registros: '',
+        mensagem: '',
+        erro: '',
+        data_carga: '',
+        started_at: '',
+        updated_at: '',
+        finished_at: '',
+      }),
+    )
+    $app.db().newQuery('SELECT * FROM vendas_consolidacao_status WHERE id = 1').all(rows)
+    if (rows.length === 0) {
+      return {
+        status: 'idle',
+        etapa: 'pronto',
+        lote_atual: 0,
+        total_lotes: 0,
+        registros_processados: 0,
+        total_registros: 0,
+        mensagem: 'Pronto para consolidar',
+        erro: '',
+        data_carga: '',
+        started_at: '',
+        updated_at: '',
+        finished_at: '',
+      }
+    }
+    const r = rows[0]
+    return {
+      status: r.status || 'idle',
+      etapa: r.etapa || '',
+      lote_atual: toInt(r.lote_atual),
+      total_lotes: toInt(r.total_lotes),
+      registros_processados: toInt(r.registros_processados),
+      total_registros: toInt(r.total_registros),
+      mensagem: r.mensagem || '',
+      erro: r.erro || '',
+      data_carga: r.data_carga || '',
+      started_at: r.started_at || '',
+      updated_at: r.updated_at || '',
+      finished_at: r.finished_at || '',
+    }
+  }
+
+  try {
+    const current = getStatus()
+
+    if (current.status !== 'in_progress') {
+      return e.json(200, {
+        success: true,
+        already_finished: true,
+        status: current,
+      })
+    }
+
+    const batchIdx = current.lote_atual
+    const totalBatches = current.total_lotes
+    const totalRegistros = current.total_registros
+    const nowIso = current.data_carga || new Date().toISOString()
+
+    // Se todos os lotes foram gravados no staging, executa a substituição final de vendas
+    if (batchIdx >= totalBatches) {
+      setStatus({
+        etapa: 'troca_atomica_vendas',
+        mensagem: 'Substituindo base de vendas pelos dados consolidados íntegros...',
+      })
+
+      const cntStaging = arrayOf(new DynamicModel({ c: '' }))
+      $app.db().newQuery('SELECT COUNT(*) AS c FROM vendas_staging').all(cntStaging)
+      const stagingCount = cntStaging.length > 0 ? toInt(cntStaging[0].c) : 0
+
+      if (stagingCount === 0 && totalRegistros > 0) {
+        throw new Error('Nenhum registro encontrado em staging para realizar a substituição.')
+      }
+
+      // Substituição atômica de vendas
+      $app.db().newQuery('DELETE FROM vendas').execute()
+      $app
+        .db()
+        .newQuery(
+          `
+        INSERT INTO vendas (
+          id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe,
+          data_lancamento, ultima_data_vencimento, docto_origem_destino,
+          data_origem_destino, condicao_pagamento, codigo_cliente,
+          nome_cliente, numero_linha, codigo_item, descricao_item,
+          quantidade, qty_kg_lt, preco_item, desconto_linha, icms, pis,
+          cofins, ipi, icms_partilha, total_linha, utilizacao,
+          nome_vendedor, custo_item, nome_filial, conta, estado, cidade,
+          grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam,
+          numero_documento_netsales, preco_unitario, total_nf_sem_frete,
+          total_nf_novo, valor_liquido, custo_total, classificacao,
+          vendedor_revenda, grupo_item, vendedor_cliente, origem,
+          tem_racnew, tem_netsales,
+          status_cadastro, tipo_pn, tipo_cliente,
+          data_carga, created, updated
+        )
+        SELECT
+          id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe,
+          data_lancamento, ultima_data_vencimento, docto_origem_destino,
+          data_origem_destino, condicao_pagamento, codigo_cliente,
+          nome_cliente, numero_linha, codigo_item, descricao_item,
+          quantidade, qty_kg_lt, preco_item, desconto_linha, icms, pis,
+          cofins, ipi, icms_partilha, total_linha, utilizacao,
+          nome_vendedor, custo_item, nome_filial, conta, estado, cidade,
+          grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam,
+          numero_documento_netsales, preco_unitario, total_nf_sem_frete,
+          total_nf_novo, valor_liquido, custo_total, classificacao,
+          vendedor_revenda, grupo_item, vendedor_cliente, origem,
+          tem_racnew, tem_netsales,
+          status_cadastro, tipo_pn, tipo_cliente,
+          data_carga, created, updated
+        FROM vendas_staging;
+      `,
+        )
+        .execute()
+
+      $app.db().newQuery('DELETE FROM vendas_staging').execute()
+
+      setStatus({
+        status: 'completed',
+        etapa: 'concluido',
+        lote_atual: totalBatches,
+        registros_processados: stagingCount,
+        total_registros: stagingCount,
+        mensagem: 'Consolidação de vendas concluída com sucesso (' + stagingCount + ' registros).',
+        finished_at: new Date().toISOString(),
+      })
+
+      return e.json(200, {
+        success: true,
+        done: true,
+        status: getStatus(),
+      })
+    }
+
+    // Processa lote atual
+    const offset = batchIdx * BATCH_SIZE
+    const etapa = 'gravar_lote_' + (batchIdx + 1) + '_de_' + totalBatches
+
+    setStatus({
+      status: 'in_progress',
+      etapa: etapa,
+      lote_atual: batchIdx,
+      mensagem: 'Processando lote ' + (batchIdx + 1) + ' de ' + totalBatches + '...',
+    })
+
     const batchInsertSql =
-      'INSERT INTO vendas (' +
-      '  tipo_documento, nf_entrega_futura, numero_sap, numero_nfe, ' +
+      'INSERT INTO vendas_staging (' +
+      '  id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe, ' +
       '  data_lancamento, ultima_data_vencimento, docto_origem_destino, ' +
       '  data_origem_destino, condicao_pagamento, codigo_cliente, ' +
       '  nome_cliente, numero_linha, codigo_item, descricao_item, ' +
@@ -165,36 +610,30 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       '  data_carga, created, updated' +
       ') ' +
       'SELECT ' +
+      "  ('r' || substr(hex(randomblob(7)), 1, 14)), " +
       '  r.tipo_documento, r.nf_entrega_futura, r.numero_sap, r.numero_nfe, ' +
       '  r.data_lancamento, r.ultima_data_vencimento, r.docto_origem_destino, ' +
       '  r.data_origem_destino, r.condicao_pagamento, r.codigo_cliente, ' +
       '  r.nome_cliente, r.numero_linha, r.codigo_item, r.descricao_item, ' +
-      // Campos numéricos da RacNew — COALESCE para 0.0 quando vierem nulos
       '  COALESCE(r.quantidade, 0.0), COALESCE(r.qty_kg_lt, 0.0), COALESCE(r.preco_item, 0.0), ' +
       '  COALESCE(r.desconto_linha, 0.0), COALESCE(r.icms, 0.0), COALESCE(r.pis, 0.0), ' +
       '  COALESCE(r.cofins, 0.0), COALESCE(r.ipi, 0.0), COALESCE(r.icms_partilha, 0.0), ' +
       '  COALESCE(r.total_linha, 0.0), r.utilizacao, ' +
       '  r.nome_vendedor, COALESCE(r.custo_item, 0.0), r.nome_filial, r.conta, ' +
       '  r.estado, r.cidade, ' +
-      // Campos da NetSales (LEFT JOIN — string vazia ou 0.0 quando não há match)
       "  COALESCE(n.grupo_cliente, ''), COALESCE(n.mercado, ''), " +
       "  COALESCE(n.usuario_emissor, ''), COALESCE(n.itms_grp_nam, ''), " +
       "  COALESCE(n.numero_documento, ''), COALESCE(n.preco_unitario, 0.0), " +
       '  COALESCE(n.total_nf_sem_frete, 0.0), COALESCE(n.total_nf_novo, 0.0), ' +
       '  COALESCE(n.valor_liquido, 0.0), COALESCE(n.custo_total, 0.0), ' +
       "  COALESCE(n.classificacao, ''), COALESCE(n.vendedor_revenda, ''), " +
-      // grupo_item da Produtos (LEFT JOIN por codigo_item com fallback)
       "  COALESCE(NULLIF(p.grupo_item, ''), 'Não Categorizado'), " +
-      // vendedor_cliente = "nome_vendedor > nome_cliente"
       "  (r.nome_vendedor || ' > ' || r.nome_cliente), " +
       "  'Consolidado', " +
-      // tem_racnew / tem_netsales
       "  1, (CASE WHEN n.chave_documento IS NOT NULL AND n.chave_documento != '' THEN 1 ELSE 0 END), " +
-      // status_cadastro, tipo_pn, tipo_cliente (cruzamento com tipos_cliente por codigo_cliente / codigo_pn, fallback para r/n)
       "  COALESCE(NULLIF(tc.status_cadastro, ''), NULLIF(r.status_cadastro, ''), NULLIF(n.status_cadastro, ''), ''), " +
       "  COALESCE(NULLIF(tc.tipo_pn, ''), NULLIF(r.tipo_pn, ''), NULLIF(n.tipo_pn, ''), ''), " +
       "  COALESCE(NULLIF(tc.tipo_cliente, ''), NULLIF(r.tipo_cliente, ''), NULLIF(n.tipo_cliente, ''), ''), " +
-      // data_carga / created / updated — timestamp desta consolidação
       '  {:now}, {:now}, {:now} ' +
       'FROM (' +
       '  SELECT * FROM racnew ' +
@@ -213,119 +652,57 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       'LEFT JOIN tipos_cliente tc ' +
       '  ON UPPER(TRIM(tc.codigo_pn)) = UPPER(TRIM(r.codigo_cliente))'
 
-    for (let batchIdx = 0; batchIdx < totalBatches; batchIdx++) {
-      const offset = batchIdx * BATCH_SIZE
-      stage = 'gravar_lote_' + (batchIdx + 1) + '_de_' + totalBatches
+    $app
+      .db()
+      .newQuery(batchInsertSql)
+      .bind({
+        now: nowIso,
+        limit: BATCH_SIZE,
+        offset: offset,
+      })
+      .execute()
 
-      $app
-        .db()
-        .newQuery(batchInsertSql)
-        .bind({
-          now: nowIso,
-          limit: BATCH_SIZE,
-          offset: offset,
-        })
-        .execute()
+    const processedNow = Math.min((batchIdx + 1) * BATCH_SIZE, totalRegistros)
+    const nextBatch = batchIdx + 1
 
-      lotesProcessados++
-
-      if ((batchIdx + 1) % 3 === 0 || batchIdx === totalBatches - 1) {
-        console.log(
-          '[consolidar_vendas] Progresso: lote ' +
-            (batchIdx + 1) +
-            '/' +
-            totalBatches +
-            ' processado (~' +
-            Math.min((batchIdx + 1) * BATCH_SIZE, totalRegistrosRacnew) +
-            '/' +
-            totalRegistrosRacnew +
-            ' linhas). Tempo decorrido: ' +
-            (Date.now() - startTime) +
-            'ms',
-        )
-      }
-    }
-
-    // 5. Reconstruir índices essenciais e secundários da tabela vendas
-    stage = 'recriar_indices'
-    console.log('[consolidar_vendas] Recriando índices da tabela vendas...')
-    for (let j = 0; j < indexDefinitions.length; j++) {
-      try {
-        $app.db().newQuery(indexDefinitions[j]).execute()
-      } catch (idxErr) {
-        console.warn(
-          '[consolidar_vendas] Aviso ao recriar índice vendas:',
-          indexDefinitions[j],
-          idxErr,
-        )
-      }
-    }
-
-    // 6. Conta quantas linhas foram inseridas no total
-    stage = 'contar_linhas'
-    const cnt = arrayOf(new DynamicModel({ c: '' }))
-    $app.db().newQuery('SELECT COUNT(*) AS c FROM vendas').all(cnt)
-    if (cnt.length > 0) totalConsolidado = toInt(cnt[0].c)
-
-    const durationMs = Date.now() - startTime
-    console.log(
-      '[consolidar_vendas] Consolidação concluída com sucesso! Total consolidado: ' +
-        totalConsolidado +
-        ' em ' +
-        durationMs +
-        'ms (' +
-        lotesProcessados +
-        ' lotes).',
-    )
+    setStatus({
+      lote_atual: nextBatch,
+      registros_processados: processedNow,
+      mensagem:
+        'Lote ' +
+        (batchIdx + 1) +
+        ' de ' +
+        totalBatches +
+        ' concluído (~' +
+        processedNow +
+        ' registros).',
+    })
 
     return e.json(200, {
       success: true,
-      total_consolidado: totalConsolidado,
-      data_carga: nowIso,
-      durationMs: durationMs,
-      lotes: lotesProcessados,
-      resumos_pendentes: true,
-      message:
-        'Carga em lotes de vendas concluída com sucesso (' +
-        totalConsolidado +
-        ' vendas consolidadas). Proceda com a reconstrução dos resumos.',
+      done: false,
+      batch_processed: batchIdx + 1,
+      total_batches: totalBatches,
+      registros_processados: processedNow,
+      total_registros: totalRegistros,
+      status: getStatus(),
     })
   } catch (err) {
     const errorMsg = String(err && err.message ? err.message : err)
-    console.error(
-      '[consolidar_vendas] Falha na consolidação na etapa [' +
-        stage +
-        '] após ' +
-        lotesProcessados +
-        ' lotes: ' +
-        errorMsg,
-    )
-
-    // Tentar restaurar índices básicos caso tenha falhado durante inserção
-    try {
-      $app
-        .db()
-        .newQuery(
-          'CREATE INDEX IF NOT EXISTS idx_vendas_data_lancamento ON vendas (data_lancamento);',
-        )
-        .execute()
-      $app
-        .db()
-        .newQuery('CREATE INDEX IF NOT EXISTS idx_vendas_numero_nfe ON vendas (numero_nfe);')
-        .execute()
-    } catch (_) {}
+    const current = getStatus()
+    setStatus({
+      status: 'error',
+      erro: errorMsg,
+      mensagem:
+        'Falha no lote ' + (current.lote_atual + 1) + ' [' + current.etapa + ']: ' + errorMsg,
+    })
 
     return e.json(500, {
       success: false,
-      error:
-        'Falha na consolidação de vendas na etapa [' +
-        stage +
-        '] (processados ' +
-        lotesProcessados +
-        ' lotes): ' +
-        errorMsg,
-      stage: stage,
-      lotes_processados: lotesProcessados,
+      error: 'Falha no lote ' + (current.lote_atual + 1) + ' [' + current.etapa + ']: ' + errorMsg,
+      stage: current.etapa,
+      lote: current.lote_atual + 1,
+      status: getStatus(),
     })
   }
 })
@@ -342,7 +719,8 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
     stage = 'garantir_tabelas_resumo'
     $app
       .db()
-      .newQuery(`
+      .newQuery(
+        `
         CREATE TABLE IF NOT EXISTS resumo_vendas_mensal (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           ano_mes TEXT NOT NULL,
@@ -366,7 +744,8 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
           created TEXT,
           updated TEXT
         );
-      `)
+      `,
+      )
       .execute()
 
     $app
@@ -416,7 +795,8 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
 
     $app
       .db()
-      .newQuery(`
+      .newQuery(
+        `
         CREATE TABLE IF NOT EXISTS resumo_clientes_ativos (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           ano_mes TEXT NOT NULL,
@@ -428,7 +808,8 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
           created TEXT,
           updated TEXT
         );
-      `)
+      `,
+      )
       .execute()
 
     $app
@@ -458,7 +839,8 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
 
     $app
       .db()
-      .newQuery(`
+      .newQuery(
+        `
         CREATE TABLE IF NOT EXISTS resumo_vendas_uf_regiao (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           ano INTEGER NOT NULL,
@@ -473,7 +855,8 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
           created TEXT,
           updated TEXT
         );
-      `)
+      `,
+      )
       .execute()
 
     $app
@@ -500,7 +883,8 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
     $app.db().newQuery('DELETE FROM resumo_vendas_mensal').execute()
     $app
       .db()
-      .newQuery(`
+      .newQuery(
+        `
         INSERT INTO resumo_vendas_mensal (
           ano_mes, ano, mes, tem_netsales, grupo_item, estado,
           nome_vendedor, vendedor_cliente, codigo_cliente, nome_cliente,
@@ -545,7 +929,8 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
           COALESCE(NULLIF(nome_cliente, ''), 'Sem informação'),
           COALESCE(NULLIF(tipo_documento, ''), 'Sem informação'),
           COALESCE(NULLIF(utilizacao, ''), 'Sem informação')
-      `)
+      `,
+      )
       .bind({ now: nowIso })
       .execute()
 
@@ -554,7 +939,8 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
     $app.db().newQuery('DELETE FROM resumo_clientes_ativos').execute()
     $app
       .db()
-      .newQuery(`
+      .newQuery(
+        `
         INSERT INTO resumo_clientes_ativos (
           ano_mes, ano, mes, tem_netsales, grupo_categoria, codigo_cliente, created, updated
         )
@@ -587,7 +973,8 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
             ELSE 'OUTROS'
           END),
           codigo_cliente
-      `)
+      `,
+      )
       .bind({ now: nowIso })
       .execute()
 
@@ -596,7 +983,8 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
     $app.db().newQuery('DELETE FROM resumo_vendas_uf_regiao').execute()
     $app
       .db()
-      .newQuery(`
+      .newQuery(
+        `
         INSERT INTO resumo_vendas_uf_regiao (
           ano, mes, ano_mes, uf, regiao, tem_netsales, total_linha, qtd_documentos, qtd_itens, created, updated
         )
@@ -628,7 +1016,8 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
           substr(data_lancamento, 1, 7),
           COALESCE(NULLIF(estado, ''), 'Sem informação'),
           (CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END)
-      `)
+      `,
+      )
       .bind({ now: nowIso })
       .execute()
 

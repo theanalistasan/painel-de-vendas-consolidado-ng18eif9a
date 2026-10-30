@@ -781,6 +781,9 @@ export default function Importar() {
   const [consolidating, setConsolidating] = useState(false)
   const [rebuildingSummaries, setRebuildingSummaries] = useState(false)
   const [consolidationResult, setConsolidationResult] = useState<ConsolidarResult | null>(null)
+  const [consolidationProgress, setConsolidationProgress] = useState<
+    import('@/types/sales').ConsolidacaoStatus | null
+  >(null)
   const [consolidationError, setConsolidationError] = useState<string | null>(null)
   // Resultado de cada importação armazenado separadamente por base
   const [importResults, setImportResults] = useState<{
@@ -837,15 +840,20 @@ export default function Importar() {
   const handleConsolidar = async () => {
     setConsolidating(true)
     setConsolidationError(null)
+    setConsolidationProgress(null)
     try {
-      // Etapa 1: Carga em massa na tabela vendas
-      const res = await consolidarVendasApi()
+      // Etapa 1: Carga em lotes seguros e progressivos na tabela vendas
+      const res = await consolidarVendasApi({
+        onProgress: (status) => {
+          setConsolidationProgress(status)
+        },
+      })
       setConsolidationResult(res)
       await refreshCounts()
 
       toast({
         title: 'Carga de Vendas Concluída!',
-        description: `${res.total_consolidado} vendas consolidadas. Reconstruindo resumos analíticos...`,
+        description: `${formatNumber(res.total_consolidado)} vendas consolidadas. Reconstruindo resumos analíticos...`,
       })
 
       // Etapa 2: Reconstrução dos 3 resumos pré-calculados
@@ -854,7 +862,7 @@ export default function Importar() {
         const resumoRes = await reconstruirResumosApi()
         toast({
           title: 'Consolidação e Resumos Finalizados!',
-          description: `${res.total_consolidado} vendas consolidadas e resumos mensais atualizados (${resumoRes.durationMs}ms).`,
+          description: `${formatNumber(res.total_consolidado)} vendas consolidadas e resumos mensais atualizados (${resumoRes.durationMs}ms).`,
         })
       } catch (resumoErr: unknown) {
         const resumoMsg =
@@ -863,7 +871,7 @@ export default function Importar() {
           'Falha na reconstrução de resumos'
         console.error('Erro na etapa de reconstrução de resumos:', resumoErr)
         setConsolidationError(
-          `Carga concluída (${res.total_consolidado} registros), porém a reconstrução de resumos falhou: ${resumoMsg}`,
+          `Carga concluída (${formatNumber(res.total_consolidado)} registros), porém a reconstrução de resumos falhou: ${resumoMsg}`,
         )
         toast({
           variant: 'destructive',
@@ -1004,7 +1012,9 @@ export default function Importar() {
                 {consolidating ? (
                   <>
                     <RotateCw className="w-5 h-5 animate-spin" />
-                    Consolidando Vendas...
+                    {consolidationProgress?.total_lotes
+                      ? `Consolidando (Lote ${consolidationProgress.lote_atual}/${consolidationProgress.total_lotes})...`
+                      : 'Consolidação iniciada, aguarde...'}
                   </>
                 ) : rebuildingSummaries ? (
                   <>
@@ -1042,11 +1052,60 @@ export default function Importar() {
             </div>
           </div>
 
+          {/* Barra de Progresso / Status da Consolidação */}
+          {consolidating && consolidationProgress && (
+            <div className="mt-4 p-4 rounded-xl bg-indigo-950/80 border border-indigo-400/40 text-indigo-100 space-y-2">
+              <div className="flex items-center justify-between text-xs sm:text-sm font-semibold">
+                <span className="flex items-center gap-2">
+                  <RotateCw className="w-4 h-4 animate-spin text-indigo-400" />
+                  {consolidationProgress.mensagem || 'Processando lotes em segundo plano...'}
+                </span>
+                <span className="text-indigo-300 font-mono text-xs">
+                  {consolidationProgress.total_lotes > 0
+                    ? `${Math.round(
+                        (consolidationProgress.lote_atual / consolidationProgress.total_lotes) *
+                          100,
+                      )}%`
+                    : 'Iniciando...'}
+                </span>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className="bg-indigo-400 h-2.5 rounded-full transition-all duration-300 ease-out"
+                  style={{
+                    width: `${
+                      consolidationProgress.total_lotes > 0
+                        ? Math.min(
+                            100,
+                            Math.round(
+                              (consolidationProgress.lote_atual /
+                                consolidationProgress.total_lotes) *
+                                100,
+                            ),
+                          )
+                        : 5
+                    }%`,
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-slate-300 font-mono">
+                <span>
+                  Lote: {consolidationProgress.lote_atual} / {consolidationProgress.total_lotes} |
+                  Etapa: {consolidationProgress.etapa || 'iniciando'}
+                </span>
+                <span>
+                  {formatNumber(consolidationProgress.registros_processados)} /{' '}
+                  {formatNumber(consolidationProgress.total_registros)} registros
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Mensagem de Erro Real do Backend */}
           {consolidationError && (
             <div className="mt-4 p-4 rounded-lg bg-red-950/80 border border-red-500/60 text-red-200 text-xs sm:text-sm flex items-start gap-3">
               <span className="font-bold text-red-400 shrink-0 uppercase tracking-wide text-[11px] bg-red-900/80 px-2 py-0.5 rounded border border-red-700">
-                Erro Backend
+                Falha na Consolidação
               </span>
               <p className="flex-1 font-mono text-xs break-all leading-relaxed">
                 {consolidationError}

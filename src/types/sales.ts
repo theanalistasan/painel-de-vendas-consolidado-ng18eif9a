@@ -265,6 +265,21 @@ export interface ImportResult {
   message?: string
 }
 
+export interface ConsolidacaoStatus {
+  status: 'idle' | 'in_progress' | 'completed' | 'error'
+  etapa: string
+  lote_atual: number
+  total_lotes: number
+  registros_processados: number
+  total_registros: number
+  mensagem: string
+  erro?: string
+  data_carga?: string
+  started_at?: string
+  updated_at?: string
+  finished_at?: string
+}
+
 export interface ConsolidarResult {
   success: boolean
   total_consolidado: number
@@ -274,6 +289,7 @@ export interface ConsolidarResult {
   message?: string
   stage?: string
   error?: string
+  status?: ConsolidacaoStatus
 }
 
 export interface ReconstruirResumosResult {

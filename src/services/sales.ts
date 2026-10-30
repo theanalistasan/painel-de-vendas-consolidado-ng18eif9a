@@ -74,91 +74,126 @@ export async function importCanaisClientesApi(
   })
 }
 
+export async function getConsolidacaoStatusApi(): Promise<{
+  success: boolean
+  status: import('@/types/sales').ConsolidacaoStatus
+}> {
+  return pb.send<{ success: boolean; status: import('@/types/sales').ConsolidacaoStatus }>(
+    '/backend/v1/vendas/consolidar/status',
+    {
+      method: 'GET',
+    },
+  )
+}
+
+export async function stepConsolidarVendasApi(): Promise<{
+  success: boolean
+  done?: boolean
+  already_finished?: boolean
+  batch_processed?: number
+  total_batches?: number
+  registros_processados?: number
+  total_registros?: number
+  status: import('@/types/sales').ConsolidacaoStatus
+}> {
+  return pb.send<{
+    success: boolean
+    done?: boolean
+    already_finished?: boolean
+    batch_processed?: number
+    total_batches?: number
+    registros_processados?: number
+    total_registros?: number
+    status: import('@/types/sales').ConsolidacaoStatus
+  }>('/backend/v1/vendas/consolidar/step', {
+    method: 'POST',
+    body: {},
+  })
+}
+
 export async function consolidarVendasApi(options?: {
   timeoutMs?: number
   signal?: AbortSignal
+  onProgress?: (status: import('@/types/sales').ConsolidacaoStatus) => void
 }): Promise<ConsolidarResult> {
-  const timeoutMs = options?.timeoutMs || 180000 // 3 minutos para consolidar bases grandes (~310k+ linhas)
-  const internalController = new AbortController()
-  let isTimeoutAbort = false
+  const startTime = Date.now()
 
-  const timer = setTimeout(() => {
-    isTimeoutAbort = true
-    internalController.abort(
-      new Error('Tempo limite excedido durante a consolidação de vendas no servidor.'),
-    )
-  }, timeoutMs)
+  // 1. Dispara o início da consolidação
+  const initRes = await pb.send<{
+    success: boolean
+    started: boolean
+    already_running?: boolean
+    total_batches?: number
+    batch_size?: number
+    total_registros?: number
+    data_carga: string
+    status: import('@/types/sales').ConsolidacaoStatus
+    message?: string
+  }>('/backend/v1/vendas/consolidar', {
+    method: 'POST',
+    body: {},
+  })
 
-  if (options?.signal) {
-    if (options.signal.aborted) {
-      clearTimeout(timer)
-      internalController.abort(options.signal.reason)
-    } else {
-      options.signal.addEventListener(
-        'abort',
-        () => {
-          clearTimeout(timer)
-          internalController.abort(options.signal?.reason)
-        },
-        { once: true },
-      )
+  let currentStatus = initRes.status
+  if (options?.onProgress && currentStatus) {
+    options.onProgress(currentStatus)
+  }
+
+  // 2. Itera executando os lotes passo a passo (cada um leva <2-5 segundos)
+  // Isso impede que qualquer requisição única exceda o timeout de proxy HTTP.
+  const maxIterations = 100 // Teto de segurança
+  let iterations = 0
+
+  while (iterations < maxIterations) {
+    iterations++
+
+    if (options?.signal?.aborted) {
+      throw new Error('Consolidação cancelada pelo usuário.')
+    }
+
+    if (currentStatus.status === 'completed') {
+      break
+    }
+
+    if (currentStatus.status === 'error') {
+      const msg =
+        currentStatus.erro ||
+        currentStatus.mensagem ||
+        `Falha na consolidação na etapa [${currentStatus.etapa || 'desconhecida'}]`
+      throw new Error(msg)
+    }
+
+    try {
+      const stepRes = await stepConsolidarVendasApi()
+      currentStatus = stepRes.status
+      if (options?.onProgress && currentStatus) {
+        options.onProgress(currentStatus)
+      }
+
+      if (stepRes.done || stepRes.already_finished || currentStatus.status === 'completed') {
+        break
+      }
+    } catch (stepErr: unknown) {
+      const backendData =
+        (stepErr as { data?: { error?: string; stage?: string; lote?: number } })?.data ||
+        (stepErr as { response?: { error?: string; stage?: string; lote?: number } })?.response
+
+      const specificMsg =
+        backendData?.error ||
+        (stepErr as Error)?.message ||
+        'Erro inesperado durante processamento de lote na consolidação'
+      throw new Error(specificMsg)
     }
   }
 
-  const run = () =>
-    pb.send<ConsolidarResult>('/backend/v1/vendas/consolidar', {
-      method: 'POST',
-      body: {},
-      signal: internalController.signal,
-    })
-
-  try {
-    return await run()
-  } catch (err: unknown) {
-    const status = (err as { status?: number })?.status
-    if ((status === 401 || status === 403) && !internalController.signal.aborted) {
-      try {
-        const refreshed = await safeAuthRefresh()
-        if (refreshed && pb.authStore.isValid) {
-          return await run()
-        }
-      } catch {
-        throw err
-      }
-    }
-
-    const isAbort =
-      (err as Error)?.name === 'AbortError' ||
-      String(err).includes('aborted') ||
-      String(err).includes('autocancelled') ||
-      internalController.signal.aborted
-
-    if (isAbort) {
-      if (isTimeoutAbort) {
-        throw new Error(
-          'A consolidação de vendas demorou mais de 3 minutos no servidor e atingiu o limite de tempo.',
-        )
-      }
-      const abortError = new Error('Consolidação cancelada.')
-      abortError.name = 'AbortError'
-      throw abortError
-    }
-
-    // Se o backend retornou JSON com mensagem específica de erro (data.error ou response.error)
-    const backendData =
-      (err as { data?: { error?: string; message?: string; stage?: string } })?.data ||
-      (err as { response?: { error?: string; message?: string; stage?: string } })?.response
-
-    if (backendData?.error) {
-      throw new Error(backendData.error)
-    }
-    if (backendData?.message) {
-      throw new Error(backendData.message)
-    }
-
-    throw err
-  } finally {
-    clearTimeout(timer)
+  return {
+    success: true,
+    total_consolidado: currentStatus.registros_processados || currentStatus.total_registros || 0,
+    data_carga: currentStatus.data_carga || new Date().toISOString(),
+    durationMs: Date.now() - startTime,
+    resumos_pendentes: true,
+    message: currentStatus.mensagem || 'Consolidação concluída com sucesso.',
+    status: currentStatus,
   }
 }
 
