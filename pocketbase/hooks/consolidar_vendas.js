@@ -27,7 +27,7 @@
 //    - POST /backend/v1/vendas/consolidar/step executa um lote por vez (<3-5s cada), impedindo qualquer estouro de timeout HTTP!
 
 routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
-  const BATCH_SIZE = 25000
+  const BATCH_SIZE = 10000
 
   const toInt = (v) => {
     if (v === undefined || v === null || v === '') return 0
@@ -64,13 +64,47 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       .newQuery(
         `
       INSERT OR IGNORE INTO vendas_consolidacao_status (
-        id, status, etapa, lote_atual, total_lotes, registros_processados, total_registros, mensagem, erro, data_carga, started_at, updated_at
+        id, status, etapa, lote_atual, total_lotes, registros_processados, total_registros, mensagem, erro, data_carga, started_at, updated_at, finished_at
       ) VALUES (
-        1, 'idle', 'pronto', 0, 0, 0, 0, 'Pronto para consolidar', '', '', '', ''
+        1, 'idle', 'pronto', 0, 0, 0, 0, 'Pronto para consolidar', '', '', '', '', ''
       );
     `,
       )
       .execute()
+
+    // Criação idempotente dos índices de junção nas tabelas envolvidas
+    try {
+      $app
+        .db()
+        .newQuery(
+          'CREATE INDEX IF NOT EXISTS idx_netsales_join_racnew ON netsales (chave_documento, serial, docdate, codigo_cliente, codigo_item);',
+        )
+        .execute()
+    } catch (_) {}
+    try {
+      $app
+        .db()
+        .newQuery(
+          'CREATE INDEX IF NOT EXISTS idx_racnew_join_keys ON racnew (numero_sap, numero_nfe, data_lancamento, codigo_cliente, codigo_item);',
+        )
+        .execute()
+    } catch (_) {}
+    try {
+      $app
+        .db()
+        .newQuery(
+          'CREATE INDEX IF NOT EXISTS idx_produtos_codigo_item_join ON produtos (codigo_item);',
+        )
+        .execute()
+    } catch (_) {}
+    try {
+      $app
+        .db()
+        .newQuery(
+          'CREATE INDEX IF NOT EXISTS idx_tipos_cliente_codigo_pn_join ON tipos_cliente (codigo_pn);',
+        )
+        .execute()
+    } catch (_) {}
 
     $app
       .db()
@@ -460,7 +494,7 @@ routerAdd('GET', '/backend/v1/vendas/consolidar/status', (e) => {
 // Endpoint de avanço de lote: processa exatamente 1 lote (ou finalização atômica)
 // e responde em menos de 3 a 5 segundos, sem risco de timeout.
 routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
-  const BATCH_SIZE = 25000
+  const BATCH_SIZE = 10000
 
   const toInt = (v) => {
     if (v === undefined || v === null || v === '') return 0

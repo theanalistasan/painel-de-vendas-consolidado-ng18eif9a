@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-30T15:06:36.689Z",
+  "generatedAt": "2026-10-30T15:24:37.554Z",
   "collections": [
     {
       "name": "users",
@@ -119,7 +119,10 @@
           "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": ["CREATE UNIQUE INDEX idx_produtos_codigo_item ON produtos (codigo_item)"]
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_produtos_codigo_item ON produtos (codigo_item)",
+        "CREATE INDEX `idx_produtos_codigo_item_join` ON `produtos` (codigo_item)"
+      ]
     },
     {
       "name": "racnew",
@@ -368,7 +371,10 @@
         "CREATE INDEX idx_racnew_data_lancamento ON racnew (data_lancamento)",
         "CREATE INDEX idx_racnew_codigo_cliente ON racnew (codigo_cliente)",
         "CREATE INDEX idx_racnew_codigo_item ON racnew (codigo_item)",
-        "CREATE INDEX idx_racnew_nome_vendedor ON racnew (nome_vendedor)"
+        "CREATE INDEX idx_racnew_nome_vendedor ON racnew (nome_vendedor)",
+        "CREATE INDEX `idx_racnew_numero_sap` ON `racnew` (numero_sap)",
+        "CREATE INDEX `idx_racnew_numero_nfe` ON `racnew` (numero_nfe)",
+        "CREATE INDEX `idx_racnew_join_keys` ON `racnew` (numero_sap, numero_nfe, data_lancamento, codigo_cliente, codigo_item)"
       ]
     },
     {
@@ -587,7 +593,10 @@
         "CREATE UNIQUE INDEX idx_netsales_unique ON netsales (chave_documento, serial, docdate, codigo_cliente, codigo_item)",
         "CREATE INDEX idx_netsales_docdate ON netsales (docdate)",
         "CREATE INDEX idx_netsales_codigo_cliente ON netsales (codigo_cliente)",
-        "CREATE INDEX idx_netsales_codigo_item ON netsales (codigo_item)"
+        "CREATE INDEX idx_netsales_codigo_item ON netsales (codigo_item)",
+        "CREATE INDEX `idx_netsales_join_racnew` ON `netsales` (chave_documento, serial, docdate, codigo_cliente, codigo_item)",
+        "CREATE INDEX `idx_netsales_chave_documento` ON `netsales` (chave_documento)",
+        "CREATE INDEX `idx_netsales_serial` ON `netsales` (serial)"
       ]
     },
     {
@@ -1463,6 +1472,18 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "codigo_vendedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_vendedor",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -1474,7 +1495,9 @@
         "CREATE INDEX idx_pa_status_linha ON pedidos_abertos (status_linha)",
         "CREATE INDEX idx_pa_nome_canal ON pedidos_abertos (nome_canal)",
         "CREATE INDEX idx_pa_deploy ON pedidos_abertos (deploy)",
-        "CREATE INDEX idx_pa_inside ON pedidos_abertos (inside)"
+        "CREATE INDEX idx_pa_inside ON pedidos_abertos (inside)",
+        "CREATE INDEX `idx_pa_codigo_vendedor` ON `pedidos_abertos` (codigo_vendedor)",
+        "CREATE INDEX `idx_pa_nome_vendedor` ON `pedidos_abertos` (nome_vendedor)"
       ]
     },
     {
