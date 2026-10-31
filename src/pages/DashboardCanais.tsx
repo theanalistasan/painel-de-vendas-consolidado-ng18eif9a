@@ -1,20 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import {
   DollarSign,
   TrendingUp,
   Package,
   FileText,
-  ArrowRight,
   Sparkles,
-  BarChart2,
   RefreshCw,
   RotateCcw,
-  ArrowUpDown,
   Expand,
   MapPin,
-  Download,
-  FileSpreadsheet,
 } from 'lucide-react'
 import {
   XAxis,
@@ -28,28 +22,18 @@ import {
 } from 'recharts'
 import {
   fetchDashboardStats,
-  fetchVendasList,
-  fetchVendasExport,
   type DashboardStatsResult,
   fetchCanaisComparativo,
   type CanaisComparativoResult,
 } from '@/services/sales'
 import { ComparativoCanaisMesCard } from '@/components/ComparativoCanaisMesCard'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { FilterState, VendaConsolidada } from '@/types/sales'
-import {
-  formatCurrency,
-  formatNumber,
-  formatDate,
-  exportToCSV,
-  getGrupoColor,
-} from '@/lib/formatters'
-import { toast } from '@/hooks/use-toast'
+import type { FilterState } from '@/types/sales'
+import { formatCurrency } from '@/lib/formatters'
 import {
   saveFiltersToSession,
   loadFiltersFromSession,
   hasSavedFiltersInSession,
-  hasValidPeriodFilters,
   buildDynamicInitialFilters,
 } from '@/lib/filter-persistence'
 import FilterBar from '@/components/FilterBar'
@@ -62,26 +46,14 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useTableSort } from '@/hooks/use-table-sort'
 import {
   fetchTiposClienteOptions,
   fetchTiposClienteMap,
   buildTiposClienteStringMap,
-  enrichVendaTipoCliente,
-  resolveTipoCliente,
 } from '@/services/tiposCliente'
-import {
-  VendasRelatorioTable,
-  RELATORIO_COLUMNS,
-  type RelatorioGroupByMode,
-} from '@/components/VendasRelatorioTable'
-import { JP_CLASS_OPTIONS, matchesJpClassFilter } from '@/lib/jp-class'
-import { isDevolucao } from '@/types/sales'
+import { JP_CLASS_OPTIONS } from '@/lib/jp-class'
 
 const COLOR_BLUE = '#0B6E99'
-const RELATORIO_PAGE_SIZE = 15
-
-type SortField = Extract<keyof VendaConsolidada, string>
 
 const tooltipContentStyle = {
   backgroundColor: '#0F172A',
@@ -106,46 +78,8 @@ export default function DashboardCanais() {
   const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
   const [loadingTiposCliente, setLoadingTiposCliente] = useState(false)
 
-  // Relatório de Lançamentos/Vendas no modelo de Vendas.tsx
-  const [reportVendas, setReportVendas] = useState<(VendaConsolidada & { itens_qtd?: number })[]>(
-    [],
-  )
-  const [reportLoading, setReportLoading] = useState(false)
-  const [reportPage, setReportPage] = useState(1)
-  const [reportTotalItems, setReportTotalItems] = useState(0)
-  const [reportTotalPages, setReportTotalPages] = useState(1)
-  const [reportTotalNetsales, setReportTotalNetsales] = useState(0)
-  const [reportTotalRacnew, setReportTotalRacnew] = useState(0)
-  const [isGroupedByNfe, setIsGroupedByNfe] = useState(false)
-  const [exportingReport, setExportingReport] = useState(false)
-
-  // Ordenação server-side por clique nos cabeçalhos da tabela do relatório
-  const sort = useTableSort<SortField>()
-
   const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
-
-  const displayedReportVendas = useMemo(() => {
-    // 1. Enriquece com o mapa de tipos_cliente como fallback
-    let list = reportVendas.map((item) => enrichVendaTipoCliente(item, tiposClienteMap))
-
-    // 2. Fallback de filtro de tipoCliente no cliente (garante consistência mesmo se o backend estiver pendente de backfill)
-    if (
-      filters.tipoCliente &&
-      filters.tipoCliente.length > 0 &&
-      !filters.tipoCliente.includes('TODOS')
-    ) {
-      const selected = new Set(filters.tipoCliente.map((t) => t.trim()))
-      list = list.filter((item) => {
-        const tc = resolveTipoCliente(item.tipo_cliente, item.codigo_cliente, tiposClienteMap)
-        return selected.has(tc)
-      })
-    }
-
-    // 3. Filtro JP-Class
-    if (!filters.jpClass || filters.jpClass.length === 0) return list
-    return list.filter((item) => matchesJpClassFilter(item.grupo_item, filters.jpClass))
-  }, [reportVendas, tiposClienteMap, filters.tipoCliente, filters.jpClass])
   const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
   const [mapExpanded, setMapExpanded] = useState(false)
 
@@ -228,85 +162,6 @@ export default function DashboardCanais() {
     }
   }
 
-  // Modo de agrupamento da Visão Canais (padrão comissao)
-  const storageKeyCanaisGroupBy = 'relatorio_canais_group_by_v2'
-  const [reportGroupByMode, setReportGroupByMode] = useState<RelatorioGroupByMode>(() => {
-    try {
-      const saved = localStorage.getItem(storageKeyCanaisGroupBy)
-      if (saved === 'none' || saved === 'comissao') {
-        return saved as RelatorioGroupByMode
-      }
-    } catch (_) {
-      // fallback
-    }
-    return 'comissao'
-  })
-
-  // Carrega relatório:
-  // - Se reportGroupByMode === 'comissao' ou 'jp_class', opera em MODO CONSOLIDADO DE PÁGINA ÚNICA:
-  //   usa fetchVendasExport com groupByNfe (ou detalhado se expandido) trazendo TODAS as NFs do recorte
-  // - Se reportGroupByMode === 'none', opera com paginação server-side padrão (20 por página)
-  const loadReportData = async (
-    activeFilters = filters,
-    targetPage = reportPage,
-    sortField = sort.field,
-    sortDir = sort.dir,
-    grouped = isGroupedByNfe,
-    mode = reportGroupByMode,
-  ) => {
-    setReportLoading(true)
-    try {
-      if (mode === 'comissao' || mode === 'jp_class') {
-        // MODO CONSOLIDADO: busca todas as notas fiscais do filtro numa única consulta sem corte de página
-        const res = await fetchVendasExport({
-          sortField: sortField || undefined,
-          sortDirection: sortField ? sortDir : undefined,
-          sort: sortField ? undefined : '-data_lancamento',
-          groupByNfe: grouped,
-          collapsed: grouped,
-          filters: activeFilters as unknown as Record<string, unknown>,
-        })
-
-        const allItems = res.items || []
-        let netsalesCount = 0
-        let racnewCount = 0
-        for (const it of allItems) {
-          if (it.tem_netsales) {
-            netsalesCount++
-          } else {
-            racnewCount++
-          }
-        }
-
-        setReportVendas(allItems)
-        setReportTotalItems(allItems.length)
-        setReportTotalPages(1)
-        setReportTotalNetsales(netsalesCount)
-        setReportTotalRacnew(racnewCount)
-      } else {
-        const res = await fetchVendasList({
-          page: targetPage,
-          perPage: RELATORIO_PAGE_SIZE,
-          sortField: sortField || undefined,
-          sortDirection: sortField ? sortDir : undefined,
-          sort: sortField ? undefined : '-data_lancamento',
-          groupByNfe: grouped,
-          filters: activeFilters as unknown as Record<string, unknown>,
-        })
-
-        setReportVendas(res.items || [])
-        setReportTotalItems(res.totalItems || 0)
-        setReportTotalPages(res.totalPages || 1)
-        setReportTotalNetsales(res.totalNetsales || 0)
-        setReportTotalRacnew(res.totalRacnew || 0)
-      }
-    } catch (err) {
-      console.error('[DashboardCanais] Erro ao carregar relatório:', err)
-    } finally {
-      setReportLoading(false)
-    }
-  }
-
   useEffect(() => {
     let mounted = true
     setLoadingTiposCliente(true)
@@ -333,59 +188,12 @@ export default function DashboardCanais() {
   useEffect(() => {
     loadData(filters)
     loadComparativoData(filters)
-    loadReportData(filters, 1, sort.field, sort.dir, isGroupedByNfe, reportGroupByMode)
-    setReportPage(1)
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
     }
-  }, [filters, reportGroupByMode])
-
-  const handleReportPageChange = React.useCallback(
-    (newPage: number) => {
-      setReportPage(newPage)
-      loadReportData(filters, newPage, sort.field, sort.dir, isGroupedByNfe, reportGroupByMode)
-    },
-    [filters, sort.field, sort.dir, isGroupedByNfe, reportGroupByMode],
-  )
-
-  const handleReportSort = React.useCallback(
-    (field: string) => {
-      sort.toggle(field as SortField)
-      const nextDir = sort.field === field && sort.dir === 'asc' ? 'desc' : 'asc'
-      setReportPage(1)
-      loadReportData(filters, 1, field as SortField, nextDir, isGroupedByNfe, reportGroupByMode)
-    },
-    [sort, filters, isGroupedByNfe, reportGroupByMode],
-  )
-
-  const handleToggleGroupByNfe = React.useCallback(() => {
-    const nextGrouped = !isGroupedByNfe
-    setIsGroupedByNfe(nextGrouped)
-    setReportPage(1)
-    loadReportData(filters, 1, sort.field, sort.dir, nextGrouped, reportGroupByMode)
-    toast({
-      title: nextGrouped ? 'Relatório colapsado por NF' : 'Relatório expandido',
-      description: nextGrouped
-        ? 'Exibindo 1 linha consolidada por Nota Fiscal para todos os dados do filtro.'
-        : 'Exibindo todos os itens detalhados de cada Nota Fiscal.',
-    })
-  }, [isGroupedByNfe, filters, sort.field, sort.dir, reportGroupByMode])
-
-  const handleGroupByModeChange = React.useCallback(
-    (mode: RelatorioGroupByMode) => {
-      setReportGroupByMode(mode)
-      try {
-        localStorage.setItem(storageKeyCanaisGroupBy, mode)
-      } catch (_) {
-        // ignore
-      }
-      setReportPage(1)
-      loadReportData(filters, 1, sort.field, sort.dir, isGroupedByNfe, mode)
-    },
-    [filters, sort.field, sort.dir, isGroupedByNfe],
-  )
+  }, [filters])
 
   useRealtime('vendas', () => {
     loadData()
@@ -425,51 +233,15 @@ export default function DashboardCanais() {
     }
   }, [data, tipoClienteOptions, tiposClienteMap, loadingTiposCliente])
 
-  const isJpClassFilterActive = Boolean(filters.jpClass && filters.jpClass.length > 0)
-
   const kpis = useMemo(() => {
-    if (!isJpClassFilterActive) {
-      return {
-        faturamento: data?.kpis?.faturamento || 0,
-        valorLiquido: data?.kpis?.valorLiquido || 0,
-        itensVendidos: data?.kpis?.itensVendidos || 0,
-        documentos: data?.kpis?.documentos || 0,
-        devolucoes: data?.kpis?.devolucoes || 0,
-      }
-    }
-
-    let faturamento = 0
-    let valorLiquido = 0
-    let itensVendidos = 0
-    let devolucoes = 0
-    const nfes = new Set<string>()
-
-    for (const item of displayedReportVendas) {
-      const totalLinha = Number(item.total_linha) || 0
-      faturamento += totalLinha
-      valorLiquido += Number(item.valor_liquido) || 0
-      itensVendidos += Number(item.quantidade) || 0
-
-      const nfe = (item.numero_nfe || '').trim()
-      if (nfe) {
-        nfes.add(nfe)
-      } else if (item.id) {
-        nfes.add(`__item_${item.id}`)
-      }
-
-      if (isDevolucao(item.tipo_documento)) {
-        devolucoes += totalLinha
-      }
-    }
-
     return {
-      faturamento,
-      valorLiquido,
-      itensVendidos,
-      documentos: nfes.size,
-      devolucoes,
+      faturamento: data?.kpis?.faturamento || 0,
+      valorLiquido: data?.kpis?.valorLiquido || 0,
+      itensVendidos: data?.kpis?.itensVendidos || 0,
+      documentos: data?.kpis?.documentos || 0,
+      devolucoes: data?.kpis?.devolucoes || 0,
     }
-  }, [data, displayedReportVendas, isJpClassFilterActive])
+  }, [data])
 
   const chartVendasPorMes = data?.charts?.vendasPorMes || []
   const chartTopVendedores = data?.charts?.topVendedores || []
@@ -478,12 +250,7 @@ export default function DashboardCanais() {
   const revendasFaturamento = data?.charts?.revendasFaturamento
 
   const isNoData =
-    !loading &&
-    !error &&
-    data !== null &&
-    kpis.faturamento === 0 &&
-    kpis.documentos === 0 &&
-    reportTotalItems === 0
+    !loading && !error && data !== null && kpis.faturamento === 0 && kpis.documentos === 0
 
   const handleClearFilters = () => {
     const cleared: FilterState = {
@@ -511,82 +278,6 @@ export default function DashboardCanais() {
     setFilters(cleared)
   }
 
-  // Exportação de relatórios seguindo exatamente o modelo e colunas de Vendas
-  const handleExportDashboardReport = async (forceGrouped?: boolean) => {
-    const shouldGroup = forceGrouped !== undefined ? forceGrouped : isGroupedByNfe
-
-    setExportingReport(true)
-    toast({
-      title: shouldGroup
-        ? 'Gerando relatório consolidado por NF...'
-        : 'Gerando relatório completo de Canais...',
-      description: 'Buscando todos os registros filtrados no servidor...',
-    })
-
-    try {
-      const res = await fetchVendasExport({
-        sortField: sort.field || undefined,
-        sortDirection: sort.field ? sort.dir : undefined,
-        sort: sort.field ? undefined : '-data_lancamento',
-        groupByNfe: shouldGroup,
-        collapsed: shouldGroup,
-        filters: filters as unknown as Record<string, unknown>,
-      })
-
-      const rowsToExport = res.items || []
-
-      if (rowsToExport.length === 0) {
-        toast({
-          variant: 'destructive',
-          title: 'Nenhum dado encontrado',
-          description: 'Nenhum registro encontrado para exportar com os filtros atuais.',
-        })
-        return
-      }
-
-      // Ordem exata das 10 primeiras colunas + complementares (RELATORIO_COLUMNS)
-      const exportColumns = RELATORIO_COLUMNS.map((c) => ({
-        key: c.key,
-        label: c.label,
-      }))
-
-      const formattedRows = rowsToExport.map((row) => {
-        const enriched = enrichVendaTipoCliente(row, tiposClienteMap)
-        return {
-          ...enriched,
-          origem:
-            row.tem_netsales && row.tem_racnew
-              ? 'Consolidado'
-              : row.tem_netsales
-                ? 'NetSales'
-                : 'RacNew',
-        }
-      })
-
-      const dateStr = new Date().toISOString().slice(0, 10)
-      const filenameSuffix = shouldGroup ? 'por_nf' : 'detalhado'
-      const filename = `relatorio_canais_${filenameSuffix}_${dateStr}`
-
-      exportToCSV(filename, formattedRows as unknown as Record<string, unknown>[], exportColumns)
-
-      toast({
-        title: 'Relatório exportado com sucesso!',
-        description: shouldGroup
-          ? `${rowsToExport.length} Notas Fiscais consolidadas exportadas em formato Excel/CSV.`
-          : `Todos os ${rowsToExport.length} registros foram exportados em formato Excel/CSV (UTF-8 BOM).`,
-      })
-    } catch (err) {
-      console.error('Erro na exportação do relatório de canais:', err)
-      toast({
-        variant: 'destructive',
-        title: 'Falha na exportação',
-        description: 'Não foi possível exportar o relatório. Tente novamente.',
-      })
-    } finally {
-      setExportingReport(false)
-    }
-  }
-
   return (
     <div className="space-y-6 min-w-0 max-w-full">
       {/* Filters Bar */}
@@ -594,7 +285,7 @@ export default function DashboardCanais() {
         filters={filters}
         setFilters={setFilters}
         options={filterOptions}
-        isLoading={loading || reportLoading}
+        isLoading={loading}
         loadingMessage="Atualizando indicadores de canais..."
         onApplyFilters={(applied) => loadData(applied)}
       />
@@ -831,7 +522,7 @@ export default function DashboardCanais() {
             filterAno={filters.ano?.[0] || null}
           />
 
-          {/* Comparativo Mês Atual × Mês do Ano Anterior por Canal (MUDANÇA 1) */}
+          {/* Comparativo Mês Atual × Mês do Ano Anterior por Canal */}
           <ComparativoCanaisMesCard data={comparativoData} loading={loadingComparativo} />
 
           {/* Charts Grid: Top Vendedores & Top Clientes */}
@@ -958,79 +649,11 @@ export default function DashboardCanais() {
             </ChartCard>
           </div>
 
-          {/* Relatório de Vendas da Visão Canais (mesmo modelo estrutural e comportamental de Vendas) */}
-          <Card className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0 max-w-full">
-            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4">
-              <div>
-                <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                  <FileSpreadsheet className="w-4 h-4 text-[#0B6E99]" />
-                  Relatório de Vendas — Visão Canais
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-500 font-medium">
-                  {reportTotalItems}{' '}
-                  {isGroupedByNfe ? 'notas fiscais encontradas' : 'linhas encontradas'} • Base
-                  mestre RacNew com enriquecimento NetSales •{' '}
-                  {reportGroupByMode === 'comissao' || reportGroupByMode === 'jp_class'
-                    ? 'Página única consolidada'
-                    : 'Ordenação server-side ativa'}
-                </CardDescription>
-              </div>
-              <div className="flex items-center flex-wrap gap-2">
-                <Button
-                  asChild
-                  variant="ghost"
-                  size="sm"
-                  className="text-[#0B6E99] hover:text-[#084F6E] hover:bg-cyan-50 font-bold gap-1 text-xs h-8"
-                >
-                  <Link to="/dashboard/geral">
-                    Abrir na Visão Geral
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </Button>
-              </div>
-            </CardHeader>
-
-            <VendasRelatorioTable
-              items={displayedReportVendas}
-              loading={reportLoading}
-              totalItems={reportTotalItems}
-              totalNetsales={reportTotalNetsales}
-              totalRacnew={reportTotalRacnew}
-              page={reportPage}
-              pageSize={RELATORIO_PAGE_SIZE}
-              totalPages={reportTotalPages}
-              onPageChange={handleReportPageChange}
-              sortField={sort.field}
-              sortDir={sort.dir}
-              onSort={handleReportSort}
-              isGroupedByNfe={isGroupedByNfe}
-              onToggleGroupByNfe={handleToggleGroupByNfe}
-              storageKeyPrefix="relatorio_canais"
-              exporting={exportingReport}
-              onExport={handleExportDashboardReport}
-              showOriginSummary={true}
-              defaultGroupByMode="comissao"
-              allowedGroupByModes={['comissao', 'none', 'jp_class']}
-              groupByMode={reportGroupByMode}
-              onGroupByModeChange={handleGroupByModeChange}
-              hidePagination={reportGroupByMode === 'comissao' || reportGroupByMode === 'jp_class'}
-            />
-          </Card>
-
           {/* Footer note */}
           <div className="flex items-center justify-between text-xs text-slate-400 pt-2 pb-6">
             <span className="flex items-center gap-1.5 font-medium">
               <RefreshCw className="w-3.5 h-3.5 text-[#0B6E99]" />
               Sincronização em tempo real ativa
-            </span>
-            <span className="font-medium">
-              {reportGroupByMode === 'comissao' || reportGroupByMode === 'jp_class'
-                ? `Exibindo ${displayedReportVendas.length} ${
-                    isGroupedByNfe ? 'notas fiscais consolidadas' : 'itens'
-                  } (página única)`
-                : `Exibindo ${displayedReportVendas.length} de ${reportTotalItems} ${
-                    isGroupedByNfe ? 'notas fiscais' : 'registros'
-                  } consolidados`}
             </span>
           </div>
         </>
