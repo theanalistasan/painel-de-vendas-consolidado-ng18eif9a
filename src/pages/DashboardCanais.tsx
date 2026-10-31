@@ -243,7 +243,7 @@ export default function DashboardCanais() {
   })
 
   // Carrega relatório:
-  // - Se reportGroupByMode === 'comissao', opera em MODO CONSOLIDADO DE PÁGINA ÚNICA:
+  // - Se reportGroupByMode === 'comissao' ou 'jp_class', opera em MODO CONSOLIDADO DE PÁGINA ÚNICA:
   //   usa fetchVendasExport com groupByNfe (ou detalhado se expandido) trazendo TODAS as NFs do recorte
   // - Se reportGroupByMode === 'none', opera com paginação server-side padrão (20 por página)
   const loadReportData = async (
@@ -256,7 +256,7 @@ export default function DashboardCanais() {
   ) => {
     setReportLoading(true)
     try {
-      if (mode === 'comissao') {
+      if (mode === 'comissao' || mode === 'jp_class') {
         // MODO CONSOLIDADO: busca todas as notas fiscais do filtro numa única consulta sem corte de página
         const res = await fetchVendasExport({
           sortField: sortField || undefined,
@@ -970,7 +970,7 @@ export default function DashboardCanais() {
                   {reportTotalItems}{' '}
                   {isGroupedByNfe ? 'notas fiscais encontradas' : 'linhas encontradas'} • Base
                   mestre RacNew com enriquecimento NetSales •{' '}
-                  {reportGroupByMode === 'comissao'
+                  {reportGroupByMode === 'comissao' || reportGroupByMode === 'jp_class'
                     ? 'Página única consolidada'
                     : 'Ordenação server-side ativa'}
                 </CardDescription>
@@ -1010,10 +1010,10 @@ export default function DashboardCanais() {
               onExport={handleExportDashboardReport}
               showOriginSummary={true}
               defaultGroupByMode="comissao"
-              allowedGroupByModes={['comissao', 'none']}
+              allowedGroupByModes={['comissao', 'none', 'jp_class']}
               groupByMode={reportGroupByMode}
               onGroupByModeChange={handleGroupByModeChange}
-              hidePagination={reportGroupByMode === 'comissao'}
+              hidePagination={reportGroupByMode === 'comissao' || reportGroupByMode === 'jp_class'}
             />
           </Card>
 
@@ -1024,7 +1024,7 @@ export default function DashboardCanais() {
               Sincronização em tempo real ativa
             </span>
             <span className="font-medium">
-              {reportGroupByMode === 'comissao'
+              {reportGroupByMode === 'comissao' || reportGroupByMode === 'jp_class'
                 ? `Exibindo ${displayedReportVendas.length} ${
                     isGroupedByNfe ? 'notas fiscais consolidadas' : 'itens'
                   } (página única)`

@@ -1134,8 +1134,8 @@ export function VendasRelatorioTable({
         )}
       </div>
 
-      {/* Paginação da Tabela (no modo Comissão opera em página única consolidada sem quebra de paginação) */}
-      {!hidePagination && groupByMode !== 'comissao' && (
+      {/* Paginação da Tabela (nos modos Comissão e JP-Class opera em página única consolidada sem quebra de paginação) */}
+      {!hidePagination && groupByMode !== 'comissao' && groupByMode !== 'jp_class' && (
         <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
           <div>
             Mostrando{' '}

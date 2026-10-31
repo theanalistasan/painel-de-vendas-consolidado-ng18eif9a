@@ -288,9 +288,9 @@ export default function DashboardGeral() {
   }
 
   // Carrega listagem de vendas consolidada:
-  // - Se reportGroupByMode === 'comissao', opera em MODO CONSOLIDADO DE PÁGINA ÚNICA:
+  // - Se reportGroupByMode === 'comissao' ou 'jp_class', opera em MODO CONSOLIDADO DE PÁGINA ÚNICA:
   //   usa fetchVendasExport com groupByNfe (ou detalhado se expandido) trazendo TODAS as NFs do recorte
-  // - Se reportGroupByMode !== 'comissao', opera com paginação server-side padrão (20 por página)
+  // - Se reportGroupByMode !== 'comissao' e !== 'jp_class', opera com paginação server-side padrão (20 por página)
   const loadVendasData = async (
     activeFilters = filters,
     targetPage = vendasPage,
@@ -301,7 +301,7 @@ export default function DashboardGeral() {
   ) => {
     setVendasLoading(true)
     try {
-      if (mode === 'comissao') {
+      if (mode === 'comissao' || mode === 'jp_class') {
         // MODO CONSOLIDADO: busca todas as notas fiscais do filtro numa única consulta sem corte de página
         const res = await fetchVendasExport({
           sortField: sortField || undefined,
@@ -2302,7 +2302,7 @@ export default function DashboardGeral() {
                     <CardDescription className="text-xs text-slate-500 font-medium">
                       {totalVendasItems} {hasMoreVendas ? '+' : ''} linhas encontradas • Base mestre
                       RacNew com enriquecimento NetSales •{' '}
-                      {reportGroupByMode === 'comissao'
+                      {reportGroupByMode === 'comissao' || reportGroupByMode === 'jp_class'
                         ? 'Página única consolidada'
                         : 'Ordenação server-side ativa'}
                     </CardDescription>
@@ -2335,7 +2335,9 @@ export default function DashboardGeral() {
                 allowedGroupByModes={['comissao', 'none', 'jp_class']}
                 groupByMode={reportGroupByMode}
                 onGroupByModeChange={handleGroupByModeChange}
-                hidePagination={reportGroupByMode === 'comissao'}
+                hidePagination={
+                  reportGroupByMode === 'comissao' || reportGroupByMode === 'jp_class'
+                }
               />
             </Card>
           </div>
