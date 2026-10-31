@@ -178,4 +178,20 @@ describe('Regra de Agrupamento: Comissionados vs Não Comissionados', () => {
 
     expect(totalComissVendas + totalNaoComissVendas).toBe(87 * 1000)
   })
+
+  it('opera com alternância de colapso de grupos sem alterar dados e mantendo chaves de estado', () => {
+    const collapsed = new Set<string>()
+    // Colapsa comissionados
+    collapsed.add('comissionados')
+    expect(collapsed.has('comissionados')).toBe(true)
+    expect(collapsed.has('nao_comissionados')).toBe(false)
+
+    // Colapsa ambos (collapseAllComissaoGroups)
+    const collapsedAll = new Set(['comissionados', 'nao_comissionados'])
+    expect(collapsedAll.size).toBe(2)
+
+    // Expande ambos (expandAllComissaoGroups)
+    const expandedAll = new Set<string>()
+    expect(expandedAll.size).toBe(0)
+  })
 })

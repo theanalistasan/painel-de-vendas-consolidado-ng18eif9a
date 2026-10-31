@@ -401,10 +401,13 @@ export default function DashboardGeral() {
     }
   }, [filters, reportGroupByMode])
 
-  const handleVendasPageChange = (newPage: number) => {
-    setVendasPage(newPage)
-    loadVendasData(filters, newPage, sort.field, sort.dir, isAllGroupedNfe, reportGroupByMode)
-  }
+  const handleVendasPageChange = React.useCallback(
+    (newPage: number) => {
+      setVendasPage(newPage)
+      loadVendasData(filters, newPage, sort.field, sort.dir, isAllGroupedNfe, reportGroupByMode)
+    },
+    [filters, sort.field, sort.dir, isAllGroupedNfe, reportGroupByMode],
+  )
 
   useRealtime('vendas', () => {
     loadData()
@@ -857,14 +860,17 @@ export default function DashboardGeral() {
     })
   }, [chartVendasPorGrupoItemMensal])
 
-  const handleSort = (field: SortField) => {
-    sort.toggle(field)
-    const nextDir = sort.field === field && sort.dir === 'asc' ? 'desc' : 'asc'
-    setVendasPage(1)
-    loadVendasData(filters, 1, field, nextDir, isAllGroupedNfe, reportGroupByMode)
-  }
+  const handleSort = React.useCallback(
+    (field: SortField) => {
+      sort.toggle(field)
+      const nextDir = sort.field === field && sort.dir === 'asc' ? 'desc' : 'asc'
+      setVendasPage(1)
+      loadVendasData(filters, 1, field, nextDir, isAllGroupedNfe, reportGroupByMode)
+    },
+    [sort, filters, isAllGroupedNfe, reportGroupByMode],
+  )
 
-  const handleCollapseAll = () => {
+  const handleCollapseAll = React.useCallback(() => {
     const nextGrouped = !isAllGroupedNfe
     setIsAllGroupedNfe(nextGrouped)
     setVendasPage(1)
@@ -875,18 +881,21 @@ export default function DashboardGeral() {
         ? 'Exibindo 1 linha consolidada por Nota Fiscal para todos os dados do filtro.'
         : 'Exibindo todos os itens detalhados de cada Nota Fiscal.',
     })
-  }
+  }, [isAllGroupedNfe, filters, sort.field, sort.dir, reportGroupByMode])
 
-  const handleGroupByModeChange = (mode: RelatorioGroupByMode) => {
-    setReportGroupByMode(mode)
-    try {
-      localStorage.setItem(storageKeyGeralGroupBy, mode)
-    } catch (_) {
-      // ignore
-    }
-    setVendasPage(1)
-    loadVendasData(filters, 1, sort.field, sort.dir, isAllGroupedNfe, mode)
-  }
+  const handleGroupByModeChange = React.useCallback(
+    (mode: RelatorioGroupByMode) => {
+      setReportGroupByMode(mode)
+      try {
+        localStorage.setItem(storageKeyGeralGroupBy, mode)
+      } catch (_) {
+        // ignore
+      }
+      setVendasPage(1)
+      loadVendasData(filters, 1, sort.field, sort.dir, isAllGroupedNfe, mode)
+    },
+    [filters, sort.field, sort.dir, isAllGroupedNfe],
+  )
 
   const handleClearFilters = () => {
     const cleared: FilterState = {

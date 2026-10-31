@@ -25,6 +25,9 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useToast } from '@/hooks/use-toast'
+import { VendasRelatorioRow } from '@/components/VendasRelatorioRow'
+import { ComissaoGroupHeader } from '@/components/ComissaoGroupHeader'
+import { JpClassGroupHeader } from '@/components/JpClassGroupHeader'
 
 export type SortDirection = 'asc' | 'desc'
 
@@ -378,7 +381,7 @@ export function VendasRelatorioTable({
     }
   }, [groupByMode])
 
-  const toggleCollapseJpGroup = (groupKey: string) => {
+  const toggleCollapseJpGroup = React.useCallback((groupKey: string) => {
     setCollapsedJpGroups((prev) => {
       const next = new Set(prev)
       if (next.has(groupKey)) {
@@ -388,21 +391,21 @@ export function VendasRelatorioTable({
       }
       return next
     })
-  }
+  }, [])
 
-  const collapseAllJpGroups = () => {
+  const collapseAllJpGroups = React.useCallback(() => {
     setCollapsedJpGroups(new Set(JP_CLASS_OPTIONS))
-  }
+  }, [])
 
-  const expandAllJpGroups = () => {
+  const expandAllJpGroups = React.useCallback(() => {
     setCollapsedJpGroups(new Set())
-  }
+  }, [])
 
   // Grupos colapsados do modo Comissionados / Não Comissionados (chaves 'comissionados' e 'nao_comissionados')
   // Padrão: grupos ABERTOS (expandidos) para o usuário ver os dados imediatamente, mas colapsáveis com chevron
   const [collapsedComissaoGroups, setCollapsedComissaoGroups] = useState<Set<string>>(new Set())
 
-  const toggleCollapseComissaoGroup = (groupKey: string) => {
+  const toggleCollapseComissaoGroup = React.useCallback((groupKey: string) => {
     setCollapsedComissaoGroups((prev) => {
       const next = new Set(prev)
       if (next.has(groupKey)) {
@@ -412,53 +415,56 @@ export function VendasRelatorioTable({
       }
       return next
     })
-  }
+  }, [])
 
-  const collapseAllComissaoGroups = () => {
+  const collapseAllComissaoGroups = React.useCallback(() => {
     setCollapsedComissaoGroups(new Set(['comissionados', 'nao_comissionados']))
-  }
+  }, [])
 
-  const expandAllComissaoGroups = () => {
+  const expandAllComissaoGroups = React.useCallback(() => {
     setCollapsedComissaoGroups(new Set())
-  }
+  }, [])
 
   // Agrupamento por Nº NFe localmente para visualização de linhas repetidas na mesma página
   const [collapsedNfes, setCollapsedNfes] = useState<Set<string>>(new Set())
 
   // Função auxiliar para agrupar linhas por NFe
-  const buildNfeGroups = (itemList: (VendaConsolidada & { itens_qtd?: number })[]) => {
-    const groups: Array<{
-      nfeKey: string
-      displayNfe: string
-      items: (VendaConsolidada & { itens_qtd?: number })[]
-      hasMultiple: boolean
-    }> = []
+  const buildNfeGroups = React.useCallback(
+    (itemList: (VendaConsolidada & { itens_qtd?: number })[]) => {
+      const groups: Array<{
+        nfeKey: string
+        displayNfe: string
+        items: (VendaConsolidada & { itens_qtd?: number })[]
+        hasMultiple: boolean
+      }> = []
 
-    const map = new Map<string, (VendaConsolidada & { itens_qtd?: number })[]>()
-    const order: string[] = []
+      const map = new Map<string, (VendaConsolidada & { itens_qtd?: number })[]>()
+      const order: string[] = []
 
-    for (const item of itemList) {
-      const key = (item.numero_nfe || '').trim() || `__single_${item.id}`
-      if (!map.has(key)) {
-        map.set(key, [])
-        order.push(key)
+      for (const item of itemList) {
+        const key = (item.numero_nfe || '').trim() || `__single_${item.id}`
+        if (!map.has(key)) {
+          map.set(key, [])
+          order.push(key)
+        }
+        map.get(key)!.push(item)
       }
-      map.get(key)!.push(item)
-    }
 
-    for (const key of order) {
-      const groupItems = map.get(key)!
-      const displayNfe = key.startsWith('__single_') ? '-' : key
-      groups.push({
-        nfeKey: key,
-        displayNfe,
-        items: groupItems,
-        hasMultiple: groupItems.length > 1,
-      })
-    }
+      for (const key of order) {
+        const groupItems = map.get(key)!
+        const displayNfe = key.startsWith('__single_') ? '-' : key
+        groups.push({
+          nfeKey: key,
+          displayNfe,
+          items: groupItems,
+          hasMultiple: groupItems.length > 1,
+        })
+      }
 
-    return groups
-  }
+      return groups
+    },
+    [],
+  )
 
   const groupedRows = useMemo(() => {
     return buildNfeGroups(items)
@@ -622,595 +628,63 @@ export function VendasRelatorioTable({
         naoComissionadosItems,
       ),
     ]
-  }, [items, groupByMode])
+  }, [items, groupByMode, buildNfeGroups])
 
-  const toggleCollapseNfe = (nfeKey: string) => {
-    if (isGroupedByNfe) {
-      // Se estamos no modo colapsado global, alternar globalmente
-      onToggleGroupByNfe()
-      setCollapsedNfes(new Set())
-      return
-    }
-    setCollapsedNfes((prev) => {
-      const next = new Set(prev)
-      if (next.has(nfeKey)) {
-        next.delete(nfeKey)
-      } else {
-        next.add(nfeKey)
+  const toggleCollapseNfe = React.useCallback(
+    (nfeKey: string) => {
+      if (isGroupedByNfe) {
+        // Se estamos no modo colapsado global, alternar globalmente
+        onToggleGroupByNfe()
+        setCollapsedNfes(new Set())
+        return
       }
-      return next
-    })
-  }
+      setCollapsedNfes((prev) => {
+        const next = new Set(prev)
+        if (next.has(nfeKey)) {
+          next.delete(nfeKey)
+        } else {
+          next.add(nfeKey)
+        }
+        return next
+      })
+    },
+    [isGroupedByNfe, onToggleGroupByNfe],
+  )
 
   const columns = RELATORIO_COLUMNS
 
   // Renderizador de linha de item de venda (reutilizado tanto no modo flat quanto no modo agrupado por JP-Class)
-  const renderItemRow = (
-    item: VendaConsolidada & { itens_qtd?: number },
-    itemIdx: number,
-    group: {
-      nfeKey: string
-      displayNfe: string
-      items: (VendaConsolidada & { itens_qtd?: number })[]
-      hasMultiple: boolean
+  const renderItemRow = React.useCallback(
+    (
+      item: VendaConsolidada & { itens_qtd?: number },
+      itemIdx: number,
+      group: {
+        nfeKey: string
+        displayNfe: string
+        items: (VendaConsolidada & { itens_qtd?: number })[]
+        hasMultiple: boolean
+      },
+    ) => {
+      return (
+        <VendasRelatorioRow
+          key={item.id}
+          item={item}
+          itemIdx={itemIdx}
+          nfeKey={group.nfeKey}
+          displayNfe={group.displayNfe}
+          groupItemsLength={group.items.length}
+          hasMultiple={group.hasMultiple}
+          isCollapsed={collapsedNfes.has(group.nfeKey)}
+          isGroupedByNfe={isGroupedByNfe}
+          columns={columns}
+          columnWidths={columnWidths}
+          expandedCols={expandedCols}
+          onToggleCollapseNfe={toggleCollapseNfe}
+        />
+      )
     },
-  ) => {
-    const isFirstOfGroup = itemIdx === 0
-    const isGrouped = group.hasMultiple
-    const isCollapsed = collapsedNfes.has(group.nfeKey)
-
-    return (
-      <tr
-        key={item.id}
-        className={`transition-colors group ${
-          isGrouped && isFirstOfGroup && isCollapsed
-            ? 'bg-cyan-50/30 font-medium'
-            : isGrouped && !isCollapsed
-              ? 'hover:bg-slate-50/80'
-              : 'hover:bg-cyan-50/10'
-        }`}
-      >
-        {/* Botão de Expandir / Colapsar Grupo NFe */}
-        <td className="py-2 px-2 text-center align-middle border-r border-slate-100 w-9 min-w-[36px]">
-          {isGrouped && isFirstOfGroup ? (
-            <button
-              type="button"
-              onClick={() => toggleCollapseNfe(group.nfeKey)}
-              className="p-1 rounded hover:bg-cyan-100 text-[#0B6E99] focus:outline-hidden transition-colors"
-              title={
-                isCollapsed
-                  ? `Expandir NF ${group.displayNfe} (${group.items.length} itens)`
-                  : `Colapsar NF ${group.displayNfe}`
-              }
-            >
-              {isCollapsed ? (
-                <ChevronRightIcon className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5" />
-              )}
-            </button>
-          ) : isGrouped ? (
-            <span className="inline-block w-2 h-0.5 bg-slate-200 rounded-full mx-auto" />
-          ) : null}
-        </td>
-
-        {/* Renderização de cada coluna na ordem exata solicitada */}
-        {columns.map((col) => {
-          const isExpanded = !!expandedCols[col.key]
-          const width = columnWidths[col.key] || DEFAULT_COLUMN_WIDTHS[col.key] || 150
-          const cellStyle: React.CSSProperties = {
-            width: isExpanded ? 'auto' : `${width}px`,
-            minWidth: `${Math.min(width, 80)}px`,
-            maxWidth: isExpanded ? 'none' : `${Math.max(width, 260)}px`,
-          }
-
-          switch (col.key) {
-            // 1. Data de Lançamento
-            case 'data_lancamento':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 font-medium text-slate-700 border-r border-slate-100"
-                >
-                  <div
-                    className={isExpanded ? '' : 'truncate'}
-                    title={formatDate(item.data_lancamento)}
-                  >
-                    {formatDate(item.data_lancamento)}
-                  </div>
-                </td>
-              )
-
-            // 2. Nr. NF
-            case 'numero_nfe':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 font-mono font-semibold text-slate-900 border-r border-slate-100"
-                >
-                  <div
-                    className={`flex items-center gap-1.5 ${isExpanded ? '' : 'truncate'}`}
-                    title={item.numero_nfe || '-'}
-                  >
-                    <span className="truncate">{item.numero_nfe || '-'}</span>
-                    {isGrouped && isFirstOfGroup && isCollapsed && (
-                      <Badge
-                        variant="secondary"
-                        className="text-[9px] px-1.5 py-0 h-4 bg-cyan-100 text-cyan-900 hover:bg-cyan-100 border-none font-sans font-bold shrink-0"
-                      >
-                        +{group.items.length - 1}
-                      </Badge>
-                    )}
-                    {isGroupedByNfe && item.itens_qtd && item.itens_qtd > 1 ? (
-                      <Badge
-                        variant="secondary"
-                        className="text-[9px] px-1.5 py-0 h-4 bg-cyan-100 text-cyan-900 border-none font-sans font-bold shrink-0"
-                        title={`${item.itens_qtd} itens na Nota Fiscal`}
-                      >
-                        +{item.itens_qtd - 1}
-                      </Badge>
-                    ) : isGroupedByNfe ? (
-                      <Badge
-                        variant="outline"
-                        className="text-[8px] px-1 py-0 h-3.5 bg-slate-100 text-slate-600 border-slate-200 shrink-0 font-sans"
-                      >
-                        NF
-                      </Badge>
-                    ) : null}
-                  </div>
-                </td>
-              )
-
-            // 3. Tipo de Documento
-            case 'tipo_documento':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
-                >
-                  <div
-                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
-                    title={item.tipo_documento || '-'}
-                  >
-                    {item.tipo_documento || '-'}
-                  </div>
-                </td>
-              )
-
-            // 4. Cliente (Nome do Cliente)
-            case 'nome_cliente':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 font-semibold text-slate-900 border-r border-slate-100"
-                >
-                  <div
-                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
-                    title={item.nome_cliente || '-'}
-                  >
-                    {item.nome_cliente || '-'}
-                  </div>
-                </td>
-              )
-
-            // 5. Vendedor (Vendedor > Cliente ou Nome Vendedor)
-            case 'vendedor_cliente':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-slate-900 font-medium bg-slate-50/40 border-r border-slate-100"
-                >
-                  <div
-                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
-                    title={item.vendedor_cliente || item.nome_vendedor || '-'}
-                  >
-                    {item.vendedor_cliente || item.nome_vendedor || '-'}
-                  </div>
-                </td>
-              )
-
-            // 6. Item (Descrição do Item com Cód. opcional)
-            case 'descricao_item':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
-                >
-                  <div
-                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
-                    title={item.descricao_item || item.codigo_item || '-'}
-                  >
-                    {item.descricao_item || (item.codigo_item ? `Cód. ${item.codigo_item}` : '-')}
-                  </div>
-                </td>
-              )
-
-            // JP-Class derivado via getJpClass sobre o Grupo (grupo_item)
-            case 'jp_class': {
-              const jpClassVal = getJpClass(item.grupo_item)
-              const badgeStyle = getJpClassBadgeStyle(jpClassVal)
-              return (
-                <td key={col.key} style={cellStyle} className="py-2 px-3 border-r border-slate-100">
-                  {jpClassVal ? (
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] px-2 py-0.5 truncate max-w-full ${badgeStyle.className}`}
-                      title={jpClassVal}
-                    >
-                      {jpClassVal}
-                    </Badge>
-                  ) : (
-                    <span className="text-slate-400">-</span>
-                  )}
-                </td>
-              )
-            }
-
-            // 7. Qtde (Quantidade)
-            case 'quantidade':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-center font-medium text-slate-800 border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'}>
-                    {formatNumber(item.quantidade)}
-                  </div>
-                </td>
-              )
-
-            // 8. Grupo (Grupo do Item)
-            case 'grupo_item':
-              return (
-                <td key={col.key} style={cellStyle} className="py-2 px-3 border-r border-slate-100">
-                  {item.grupo_item ? (
-                    <Badge
-                      className="text-[10px] font-semibold text-white px-2 py-0.5 truncate max-w-full"
-                      style={{
-                        backgroundColor: getGrupoColor(item.grupo_item),
-                      }}
-                      title={item.grupo_item}
-                    >
-                      {item.grupo_item}
-                    </Badge>
-                  ) : (
-                    <span className="text-slate-400">-</span>
-                  )}
-                </td>
-              )
-
-            // 9. Total da Linha (Valor Mercadoria)
-            case 'total_linha':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-right font-bold text-slate-900 tabular-nums bg-cyan-50/20 border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'}>
-                    {formatCurrency(item.total_linha)}
-                  </div>
-                </td>
-              )
-
-            // 10. Utilização
-            case 'utilizacao':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
-                >
-                  <div
-                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
-                    title={item.utilizacao || '-'}
-                  >
-                    {item.utilizacao || '-'}
-                  </div>
-                </td>
-              )
-
-            // Colunas complementares
-            case 'numero_sap':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 font-mono text-slate-600 border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'} title={item.numero_sap || '-'}>
-                    {item.numero_sap || '-'}
-                  </div>
-                </td>
-              )
-            case 'codigo_cliente':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 font-mono text-slate-700 border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'} title={item.codigo_cliente || '-'}>
-                    {item.codigo_cliente || '-'}
-                  </div>
-                </td>
-              )
-            case 'nome_vendedor':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
-                >
-                  <div
-                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
-                    title={item.nome_vendedor || '-'}
-                  >
-                    {item.nome_vendedor || '-'}
-                  </div>
-                </td>
-              )
-            case 'codigo_item':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 font-mono font-semibold text-slate-900 border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'} title={item.codigo_item || '-'}>
-                    {item.codigo_item || '-'}
-                  </div>
-                </td>
-              )
-            case 'preco_item':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'}>
-                    {formatCurrency(item.preco_item)}
-                  </div>
-                </td>
-              )
-            case 'preco_unitario':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'}>
-                    {formatCurrency(item.preco_unitario)}
-                  </div>
-                </td>
-              )
-            case 'total_nf_sem_frete':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'}>
-                    {formatCurrency(item.total_nf_sem_frete)}
-                  </div>
-                </td>
-              )
-            case 'valor_liquido':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-right font-bold text-teal-700 tabular-nums border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'}>
-                    {formatCurrency(item.valor_liquido)}
-                  </div>
-                </td>
-              )
-            case 'cmv':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-right text-slate-700 tabular-nums border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'}>{formatCurrency(item.cmv)}</div>
-                </td>
-              )
-            case 'lucro_bruto':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-right font-semibold text-slate-900 tabular-nums border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'}>
-                    {formatCurrency(item.lucro_bruto)}
-                  </div>
-                </td>
-              )
-            case 'margem_lucro':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'}>
-                    {item.margem_lucro !== undefined && item.margem_lucro !== null
-                      ? `${item.margem_lucro.toFixed(2)}%`
-                      : '-'}
-                  </div>
-                </td>
-              )
-            case 'uf':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-center border-r border-slate-100"
-                >
-                  {item.uf ? (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-mono font-semibold bg-slate-50 text-slate-700 border-slate-200 px-1.5 py-0"
-                    >
-                      {item.uf}
-                    </Badge>
-                  ) : (
-                    <span className="text-slate-400">-</span>
-                  )}
-                </td>
-              )
-            case 'cidade':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
-                >
-                  <div
-                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
-                    title={item.cidade || '-'}
-                  >
-                    {item.cidade || '-'}
-                  </div>
-                </td>
-              )
-            case 'canal':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
-                >
-                  <div
-                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
-                    title={item.canal || '-'}
-                  >
-                    {item.canal || '-'}
-                  </div>
-                </td>
-              )
-            case 'status_cadastro':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
-                >
-                  <div className={isExpanded ? '' : 'truncate'} title={item.status_cadastro || '-'}>
-                    {item.status_cadastro ? (
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] font-medium bg-slate-50 text-slate-700 border-slate-200"
-                      >
-                        {item.status_cadastro}
-                      </Badge>
-                    ) : (
-                      '-'
-                    )}
-                  </div>
-                </td>
-              )
-            case 'tipo_cliente': {
-              const tc = (item.tipo_cliente || '').trim()
-              const displayVal = tc && tc !== '-' ? tc : '-'
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
-                >
-                  <div
-                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
-                    title={displayVal}
-                  >
-                    {displayVal !== '-' ? (
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] font-medium bg-indigo-50 text-indigo-700 border-indigo-200"
-                      >
-                        {displayVal}
-                      </Badge>
-                    ) : (
-                      <span className="text-slate-400">-</span>
-                    )}
-                  </div>
-                </td>
-              )
-            }
-            case 'tipo_pn':
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
-                >
-                  <div
-                    className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
-                    title={item.tipo_pn || '-'}
-                  >
-                    {item.tipo_pn || '-'}
-                  </div>
-                </td>
-              )
-            case 'origem':
-              return (
-                <td key={col.key} style={cellStyle} className="py-2 px-3 border-r border-slate-100">
-                  {item.tem_netsales && item.tem_racnew ? (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-0.5 inline-flex items-center gap-1"
-                    >
-                      Consolidado
-                    </Badge>
-                  ) : item.tem_netsales ? (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-semibold bg-indigo-50/70 text-indigo-700 border-indigo-200/80 px-2 py-0.5 inline-flex items-center gap-1"
-                    >
-                      <Database className="w-3 h-3 text-indigo-600" />
-                      <span>NetSales</span>
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] font-semibold bg-cyan-100 text-cyan-800 border-cyan-300 px-2 py-0.5 inline-flex items-center gap-1"
-                    >
-                      <FileText className="w-3 h-3 text-cyan-700" />
-                      <span>RacNew</span>
-                    </Badge>
-                  )}
-                </td>
-              )
-            default:
-              return (
-                <td
-                  key={col.key}
-                  style={cellStyle}
-                  className="py-2 px-3 text-slate-700 border-r border-slate-100"
-                >
-                  <div className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}>
-                    {String((item as unknown as Record<string, unknown>)[col.key] ?? '-')}
-                  </div>
-                </td>
-              )
-          }
-        })}
-      </tr>
-    )
-  }
+    [collapsedNfes, isGroupedByNfe, columns, columnWidths, expandedCols, toggleCollapseNfe],
+  )
 
   return (
     <div className="w-full min-w-0 max-w-full">
@@ -1555,125 +1029,20 @@ export function VendasRelatorioTable({
                       return (
                         <React.Fragment key={cGroup.key}>
                           {/* Cabeçalho do Grupo (Nunca é escondido ao colapsar) */}
-                          <tr
-                            onClick={() => toggleCollapseComissaoGroup(cGroup.key)}
-                            className={`cursor-pointer transition-colors border-y-2 select-none font-bold ${
-                              isCollapsed
-                                ? 'bg-slate-100/90 hover:bg-slate-200/80 border-slate-300 text-slate-800'
-                                : isComissionado
-                                  ? 'bg-sky-50/90 hover:bg-sky-100/80 border-sky-300 text-slate-900'
-                                  : 'bg-amber-50/80 hover:bg-amber-100/70 border-amber-300 text-slate-900'
-                            }`}
-                            title={
-                              isCollapsed
-                                ? `Clique para expandir ${cGroup.title}`
-                                : `Clique para colapsar ${cGroup.title}`
-                            }
-                          >
-                            {/* Toggle chevron */}
-                            <td className="py-2.5 px-2 text-center align-middle border-r border-slate-200/80 w-9 min-w-[36px]">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  toggleCollapseComissaoGroup(cGroup.key)
-                                }}
-                                className="p-1 rounded hover:bg-black/5 text-[#0B6E99] focus:outline-hidden transition-colors"
-                                title={
-                                  isCollapsed
-                                    ? `Expandir grupo ${cGroup.title}`
-                                    : `Recolher grupo ${cGroup.title}`
-                                }
-                              >
-                                {isCollapsed ? (
-                                  <ChevronRightIcon className="w-4 h-4 text-slate-600" />
-                                ) : (
-                                  <ChevronDown className="w-4 h-4 text-[#0B6E99]" />
-                                )}
-                              </button>
-                            </td>
-
-                            {/* Conteúdo consolidado com métricas acumuladas no padrão JP-Class */}
-                            <td colSpan={columns.length} className="py-2.5 px-3">
-                              <div className="flex items-center justify-between gap-3 flex-wrap">
-                                <div className="flex items-center gap-2.5 flex-wrap">
-                                  {/* Indicador Numérico e Nome do Grupo */}
-                                  <span className="text-[11px] font-mono uppercase tracking-wider text-slate-500 bg-white/80 px-1.5 py-0.5 rounded border border-slate-200">
-                                    Grupo {gIndex + 1}
-                                  </span>
-
-                                  <Badge
-                                    variant="outline"
-                                    className={`text-xs px-2.5 py-0.5 font-extrabold shadow-2xs ${
-                                      isComissionado
-                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                                        : 'bg-indigo-50 text-indigo-800 border-indigo-300'
-                                    }`}
-                                  >
-                                    {cGroup.title}
-                                  </Badge>
-
-                                  {/* Contagem de linhas e vendedores */}
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-[11px] bg-slate-200/90 text-slate-700 font-bold px-2 py-0.5"
-                                  >
-                                    {cGroup.count} {cGroup.count === 1 ? 'linha' : 'linhas'}
-                                    {cGroup.vendedoresCount > 0 &&
-                                      ` • ${cGroup.vendedoresCount} ${
-                                        cGroup.vendedoresCount === 1 ? 'vendedor' : 'vendedores'
-                                      }`}
-                                  </Badge>
-
-                                  <span className="text-[11px] text-slate-400 font-normal">•</span>
-
-                                  {/* Somatório de Quantidade */}
-                                  <Badge
-                                    variant="outline"
-                                    className="text-[11px] bg-white text-slate-700 border-slate-300 font-semibold px-2 py-0.5"
-                                    title="Quantidade total de peças/itens neste grupo"
-                                  >
-                                    Qtde: {formatNumber(cGroup.totalQuantidade)}
-                                  </Badge>
-
-                                  <span className="text-[11px] text-slate-400 font-normal">•</span>
-
-                                  {/* Somatório de Total da Linha (Total Vendas) */}
-                                  <span className="text-xs text-slate-600 font-semibold">
-                                    Total de Vendas:
-                                  </span>
-                                  <Badge
-                                    variant="outline"
-                                    className="text-xs bg-emerald-50 text-emerald-800 border-emerald-300 font-black px-2.5 py-0.5"
-                                    title={`Total de Vendas do grupo ${cGroup.title}: ${formatCurrency(cGroup.subtotal)}`}
-                                  >
-                                    {formatCurrency(cGroup.subtotal)}
-                                  </Badge>
-
-                                  {/* Somatório de Valor Líquido */}
-                                  <span className="text-xs text-slate-600 font-semibold">
-                                    Valor Líquido:
-                                  </span>
-                                  <Badge
-                                    variant="outline"
-                                    className="text-xs bg-teal-50 text-teal-800 border-teal-300 font-black px-2.5 py-0.5"
-                                    title={`Valor Líquido do grupo ${cGroup.title}: ${formatCurrency(cGroup.subtotalLiquido)}`}
-                                  >
-                                    {formatCurrency(cGroup.subtotalLiquido)}
-                                  </Badge>
-                                </div>
-
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[10px] font-bold text-[#0B6E99]">
-                                    {isCollapsed ? 'Colapsado' : 'Expandido'}
-                                  </span>
-                                  <span className="text-[10px] text-slate-400 font-medium">
-                                    {isCollapsed ? 'Expandir ▼' : 'Recolher ▲'}
-                                  </span>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
+                          <ComissaoGroupHeader
+                            groupKey={cGroup.key}
+                            title={cGroup.title}
+                            gIndex={gIndex}
+                            isCollapsed={isCollapsed}
+                            isComissionado={isComissionado}
+                            count={cGroup.count}
+                            vendedoresCount={cGroup.vendedoresCount}
+                            totalQuantidade={cGroup.totalQuantidade}
+                            subtotal={cGroup.subtotal}
+                            subtotalLiquido={cGroup.subtotalLiquido}
+                            columnsCount={columns.length}
+                            onToggleCollapse={toggleCollapseComissaoGroup}
+                          />
 
                           {/* Linhas filhas (Apenas exibidas se o grupo NÃO estiver colapsado) */}
                           {!isCollapsed &&
@@ -1714,117 +1083,18 @@ export function VendasRelatorioTable({
                         return (
                           <React.Fragment key={jpGroup.key}>
                             {/* Cabeçalho do Grupo JP-Class */}
-                            <tr
-                              onClick={() => toggleCollapseJpGroup(jpGroup.key)}
-                              className={`cursor-pointer transition-colors border-y border-slate-200/80 font-semibold select-none ${
-                                isCollapsed
-                                  ? 'bg-slate-50/90 hover:bg-slate-100/80 text-slate-800'
-                                  : 'bg-cyan-50/60 hover:bg-cyan-100/50 text-slate-900'
-                              }`}
-                              title={
-                                isCollapsed
-                                  ? `Clique para expandir o grupo ${jpGroup.title}`
-                                  : `Clique para recolher o grupo ${jpGroup.title}`
-                              }
-                            >
-                              {/* Toggle chevron */}
-                              <td className="py-2 px-2 text-center align-middle border-r border-slate-200/60 w-9 min-w-[36px]">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    toggleCollapseJpGroup(jpGroup.key)
-                                  }}
-                                  className="p-1 rounded hover:bg-cyan-200/60 text-[#0B6E99] focus:outline-hidden transition-colors"
-                                  title={
-                                    isCollapsed
-                                      ? `Expandir grupo ${jpGroup.title}`
-                                      : `Recolher grupo ${jpGroup.title}`
-                                  }
-                                >
-                                  {isCollapsed ? (
-                                    <ChevronRightIcon className="w-4 h-4 text-slate-500" />
-                                  ) : (
-                                    <ChevronDown className="w-4 h-4 text-[#0B6E99]" />
-                                  )}
-                                </button>
-                              </td>
-
-                              {/* Conteúdo consolidado do Grupo JP-Class */}
-                              <td colSpan={columns.length} className="py-2.5 px-3">
-                                <div className="flex items-center justify-between gap-3 flex-wrap">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    {/* Badge da categoria JP-Class */}
-                                    <Badge
-                                      variant="outline"
-                                      className={`text-xs px-2.5 py-0.5 font-bold tracking-wide ${badgeStyle.className}`}
-                                    >
-                                      {jpGroup.title}
-                                    </Badge>
-
-                                    <span className="text-[11px] text-slate-400 font-normal">
-                                      •
-                                    </span>
-
-                                    {/* Contagem de linhas */}
-                                    <Badge
-                                      variant="secondary"
-                                      className="text-[11px] bg-slate-200/80 text-slate-700 font-bold px-2 py-0.5"
-                                    >
-                                      {jpGroup.count} {jpGroup.count === 1 ? 'linha' : 'linhas'}
-                                    </Badge>
-
-                                    {/* Quantidade total de itens */}
-                                    {jpGroup.totalQuantidade > 0 && (
-                                      <Badge
-                                        variant="outline"
-                                        className="text-[11px] bg-white text-slate-700 border-slate-300 font-semibold px-2 py-0.5"
-                                        title="Quantidade total de peças/itens neste grupo"
-                                      >
-                                        Qtde total: {formatNumber(jpGroup.totalQuantidade)}
-                                      </Badge>
-                                    )}
-
-                                    <span className="text-[11px] text-slate-400 font-normal">
-                                      •
-                                    </span>
-
-                                    {/* Subtotal Total da Linha */}
-                                    <span className="text-xs text-slate-600 font-medium">
-                                      Subtotal:
-                                    </span>
-                                    <Badge
-                                      variant="outline"
-                                      className="text-xs bg-emerald-50 text-emerald-800 border-emerald-300 font-extrabold px-2.5 py-0.5"
-                                      title={`Subtotal (Total da Linha) do grupo ${jpGroup.title}: ${formatCurrency(jpGroup.subtotal)}`}
-                                    >
-                                      {formatCurrency(jpGroup.subtotal)}
-                                    </Badge>
-
-                                    {/* Subtotal Líquido se houver */}
-                                    {jpGroup.subtotalLiquido > 0 &&
-                                      jpGroup.subtotalLiquido !== jpGroup.subtotal && (
-                                        <Badge
-                                          variant="outline"
-                                          className="text-[11px] bg-teal-50 text-teal-800 border-teal-200 font-semibold px-2 py-0.5"
-                                          title={`Valor Líquido do grupo: ${formatCurrency(jpGroup.subtotalLiquido)}`}
-                                        >
-                                          Líq: {formatCurrency(jpGroup.subtotalLiquido)}
-                                        </Badge>
-                                      )}
-                                  </div>
-
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[10px] font-bold text-[#0B6E99]">
-                                      {isCollapsed ? 'Colapsado' : 'Expandido'}
-                                    </span>
-                                    <span className="text-[10px] text-slate-400 font-medium">
-                                      {isCollapsed ? 'Expandir ▼' : 'Recolher ▲'}
-                                    </span>
-                                  </div>
-                                </div>
-                              </td>
-                            </tr>
+                            <JpClassGroupHeader
+                              groupKey={jpGroup.key}
+                              title={jpGroup.title}
+                              isCollapsed={isCollapsed}
+                              badgeClassName={badgeStyle.className}
+                              count={jpGroup.count}
+                              totalQuantidade={jpGroup.totalQuantidade}
+                              subtotal={jpGroup.subtotal}
+                              subtotalLiquido={jpGroup.subtotalLiquido}
+                              columnsCount={columns.length}
+                              onToggleCollapse={toggleCollapseJpGroup}
+                            />
 
                             {/* Linhas detalhadas quando o grupo JP-Class estiver expandido */}
                             {!isCollapsed &&
