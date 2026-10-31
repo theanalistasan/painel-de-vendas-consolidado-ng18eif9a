@@ -272,16 +272,137 @@ export async function consolidarVendasApi(options?: {
   }
 }
 
-export async function reconstruirResumosApi(): Promise<
-  import('../types/sales').ReconstruirResumosResult
-> {
-  return pb.send<import('../types/sales').ReconstruirResumosResult>(
-    '/backend/v1/vendas/reconstruir-resumos',
-    {
-      method: 'POST',
-      body: {},
-    },
-  )
+export interface ReconstruirResumosStepOptions {
+  step?:
+    | 'setup'
+    | 'list_anos'
+    | 'vendas_mensal_init'
+    | 'vendas_mensal_ano'
+    | 'clientes_ativos'
+    | 'vendas_uf_regiao'
+    | 'all'
+  ano?: number
+}
+
+export async function reconstruirResumosStepApi(
+  options?: ReconstruirResumosStepOptions,
+): Promise<import('../types/sales').ReconstruirResumosResult & { anos?: number[]; step?: string }> {
+  const step = options?.step || 'all'
+  const body: Record<string, unknown> = { step }
+  if (options?.ano !== undefined) {
+    body.ano = options.ano
+  }
+
+  const run = () =>
+    pb.send<import('../types/sales').ReconstruirResumosResult & { anos?: number[]; step?: string }>(
+      '/backend/v1/vendas/reconstruir-resumos',
+      {
+        method: 'POST',
+        body,
+      },
+    )
+
+  try {
+    return await run()
+  } catch (err: unknown) {
+    const status = (err as { status?: number })?.status
+    if (status === 401 || status === 403) {
+      try {
+        const refreshed = await safeAuthRefresh()
+        if (refreshed && pb.authStore.isValid) {
+          return await run()
+        }
+      } catch {
+        // ignora erro no refresh e prossegue com tratamento abaixo
+      }
+    }
+
+    const errData =
+      (err as { data?: { error?: string; stage?: string } })?.data ||
+      (err as { response?: { error?: string; stage?: string } })?.response
+
+    const specificMsg =
+      errData?.error || (err as Error)?.message || 'Falha na etapa de reconstrução de resumos'
+
+    throw new Error(specificMsg)
+  }
+}
+
+export async function reconstruirResumosApi(
+  onProgress?: (progress: { etapa: string; percentual: number; detalhe: string }) => void,
+): Promise<import('../types/sales').ReconstruirResumosResult> {
+  const startTime = Date.now()
+
+  // Passo 1: Setup das tabelas
+  onProgress?.({
+    etapa: 'setup',
+    percentual: 5,
+    detalhe: 'Verificando tabelas e índices analíticos...',
+  })
+  await reconstruirResumosStepApi({ step: 'setup' })
+
+  // Passo 2: Descobrir lista de anos da tabela vendas
+  onProgress?.({
+    etapa: 'list_anos',
+    percentual: 10,
+    detalhe: 'Identificando períodos para agregação...',
+  })
+  const listRes = await reconstruirResumosStepApi({ step: 'list_anos' })
+  const anos =
+    listRes.anos && listRes.anos.length > 0
+      ? listRes.anos
+      : [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+
+  // Passo 3: Limpar resumo_vendas_mensal
+  onProgress?.({
+    etapa: 'vendas_mensal_init',
+    percentual: 15,
+    detalhe: 'Preparando resumo mensal...',
+  })
+  await reconstruirResumosStepApi({ step: 'vendas_mensal_init' })
+
+  // Passo 4: Processar cada ano individualmente
+  const totalAnos = anos.length
+  for (let idx = 0; idx < totalAnos; idx++) {
+    const ano = anos[idx]
+    const pct = Math.round(15 + ((idx + 1) / totalAnos) * 55) // de 15% até 70%
+    onProgress?.({
+      etapa: `vendas_mensal_ano_${ano}`,
+      percentual: pct,
+      detalhe: `Processando resumo mensal do ano ${ano} (${idx + 1}/${totalAnos})...`,
+    })
+    await reconstruirResumosStepApi({ step: 'vendas_mensal_ano', ano })
+  }
+
+  // Passo 5: Clientes ativos
+  onProgress?.({
+    etapa: 'clientes_ativos',
+    percentual: 80,
+    detalhe: 'Reconstruindo série histórica de clientes ativos...',
+  })
+  await reconstruirResumosStepApi({ step: 'clientes_ativos' })
+
+  // Passo 6: Vendas UF e Região
+  onProgress?.({
+    etapa: 'vendas_uf_regiao',
+    percentual: 95,
+    detalhe: 'Agrupando métricas geográficas por UF e Região...',
+  })
+  await reconstruirResumosStepApi({ step: 'vendas_uf_regiao' })
+
+  const totalDuration = Date.now() - startTime
+  onProgress?.({
+    etapa: 'concluido',
+    percentual: 100,
+    detalhe: `Resumos atualizados com sucesso em ${totalDuration}ms.`,
+  })
+
+  return {
+    success: true,
+    message: `Resumos reconstruídos com sucesso em ${totalDuration}ms.`,
+    durationMs: totalDuration,
+    data_carga: new Date().toISOString(),
+  }
 }
 
 export interface ResetBasesResult {

@@ -781,6 +781,11 @@ export default function Importar() {
   const [ultimaCargaTiposCliente, setUltimaCargaTiposCliente] = useState<string | null>(null)
   const [consolidating, setConsolidating] = useState(false)
   const [rebuildingSummaries, setRebuildingSummaries] = useState(false)
+  const [summariesProgress, setSummariesProgress] = useState<{
+    etapa: string
+    percentual: number
+    detalhe: string
+  } | null>(null)
   const [consolidationResult, setConsolidationResult] = useState<ConsolidarResult | null>(null)
   const [consolidationProgress, setConsolidationProgress] = useState<
     import('@/types/sales').ConsolidacaoStatus | null
@@ -857,19 +862,31 @@ export default function Importar() {
         description: `${formatNumber(res.total_consolidado)} vendas consolidadas. Reconstruindo resumos analíticos...`,
       })
 
-      // Etapa 2: Reconstrução dos 3 resumos pré-calculados
+      // Etapa 2: Reconstrução dos 3 resumos pré-calculados em etapas progressivas
       setRebuildingSummaries(true)
+      setSummariesProgress({
+        etapa: 'iniciar',
+        percentual: 2,
+        detalhe: 'Iniciando reconstrução de resumos analíticos...',
+      })
       try {
-        const resumoRes = await reconstruirResumosApi()
+        const resumoRes = await reconstruirResumosApi((p) => {
+          setSummariesProgress(p)
+        })
         toast({
           title: 'Consolidação e Resumos Finalizados!',
           description: `${formatNumber(res.total_consolidado)} vendas consolidadas e resumos mensais atualizados (${resumoRes.durationMs}ms).`,
         })
       } catch (resumoErr: unknown) {
-        const resumoMsg =
-          (resumoErr as { response?: { error?: string } })?.response?.error ||
-          (resumoErr as Error)?.message ||
-          'Falha na reconstrução de resumos'
+        const resumoData =
+          (resumoErr as { data?: { error?: string; stage?: string } })?.data ||
+          (resumoErr as { response?: { error?: string; stage?: string } })?.response
+        const rawResumoMsg =
+          resumoData?.error || (resumoErr as Error)?.message || 'Falha na reconstrução de resumos'
+        const stageResumo = resumoData?.stage || summariesProgress?.etapa
+
+        const resumoMsg = stageResumo ? `[Etapa: ${stageResumo}] ${rawResumoMsg}` : rawResumoMsg
+
         console.error('Erro na etapa de reconstrução de resumos:', resumoErr)
         setConsolidationError(
           `Carga concluída (${formatNumber(res.total_consolidado)} registros), porém a reconstrução de resumos falhou: ${resumoMsg}`,
@@ -881,6 +898,7 @@ export default function Importar() {
         })
       } finally {
         setRebuildingSummaries(false)
+        setSummariesProgress(null)
       }
     } catch (err: unknown) {
       const backendData =
@@ -940,18 +958,27 @@ export default function Importar() {
   const handleReconstruirResumosApenas = async () => {
     setRebuildingSummaries(true)
     setConsolidationError(null)
+    setSummariesProgress({
+      etapa: 'iniciar',
+      percentual: 2,
+      detalhe: 'Iniciando reconstrução de resumos analíticos...',
+    })
     try {
-      const resumoRes = await reconstruirResumosApi()
+      const resumoRes = await reconstruirResumosApi((p) => {
+        setSummariesProgress(p)
+      })
       toast({
         title: 'Resumos Reconstruídos!',
         description: `Tabelas analíticas de resumo atualizadas com sucesso (${resumoRes.durationMs}ms).`,
       })
     } catch (err: unknown) {
-      const errorMsg =
-        (err as { data?: { error?: string } })?.data?.error ||
-        (err as { response?: { error?: string } })?.response?.error ||
-        (err as Error)?.message ||
-        'Falha na reconstrução de resumos'
+      const errData =
+        (err as { data?: { error?: string; stage?: string } })?.data ||
+        (err as { response?: { error?: string; stage?: string } })?.response
+      const rawMsg = errData?.error || (err as Error)?.message || 'Falha na reconstrução de resumos'
+      const stage = errData?.stage || summariesProgress?.etapa
+      const errorMsg = stage ? `[Etapa: ${stage}] ${rawMsg}` : rawMsg
+
       setConsolidationError(errorMsg)
       toast({
         variant: 'destructive',
@@ -960,6 +987,7 @@ export default function Importar() {
       })
     } finally {
       setRebuildingSummaries(false)
+      setSummariesProgress(null)
     }
   }
 
@@ -1135,6 +1163,33 @@ export default function Importar() {
                   {formatNumber(consolidationProgress.registros_processados)} /{' '}
                   {formatNumber(consolidationProgress.total_registros)} registros
                 </span>
+              </div>
+            </div>
+          )}
+
+          {/* Barra de Progresso / Status da Reconstrução de Resumos */}
+          {rebuildingSummaries && summariesProgress && (
+            <div className="mt-4 p-4 rounded-xl bg-teal-950/80 border border-teal-400/40 text-teal-100 space-y-2">
+              <div className="flex items-center justify-between text-xs sm:text-sm font-semibold">
+                <span className="flex items-center gap-2">
+                  <RotateCw className="w-4 h-4 animate-spin text-teal-400" />
+                  {summariesProgress.detalhe || 'Atualizando resumos analíticos...'}
+                </span>
+                <span className="text-teal-300 font-mono text-xs">
+                  {summariesProgress.percentual}%
+                </span>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className="bg-teal-400 h-2.5 rounded-full transition-all duration-300 ease-out"
+                  style={{
+                    width: `${Math.min(100, Math.max(5, summariesProgress.percentual))}%`,
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-teal-200/80 font-mono">
+                <span>Etapa: {summariesProgress.etapa}</span>
+                <span>Pré-cálculo de alta performance</span>
               </div>
             </div>
           )}

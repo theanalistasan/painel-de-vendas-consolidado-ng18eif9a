@@ -139,5 +139,26 @@ describe('Consolidação e Endpoints de Vendas/Pedidos Abertos', () => {
       body: { filters: { base: 'ambos' } },
     })
     console.log('dashboard/stats resposta ok:', !!resDashStats)
+
+    // 7. Testar endpoint fatiado de reconstrução de resumos
+    const resSetup = await pb.send<{ success: boolean; step: string }>(
+      '/backend/v1/vendas/reconstruir-resumos',
+      {
+        method: 'POST',
+        body: { step: 'setup' },
+      },
+    )
+    expect(resSetup.success).toBe(true)
+    expect(resSetup.step).toBe('setup')
+
+    const resAnos = await pb.send<{ success: boolean; step: string; anos: number[] }>(
+      '/backend/v1/vendas/reconstruir-resumos',
+      {
+        method: 'POST',
+        body: { step: 'list_anos' },
+      },
+    )
+    expect(resAnos.success).toBe(true)
+    expect(Array.isArray(resAnos.anos)).toBe(true)
   }, 120000)
 })

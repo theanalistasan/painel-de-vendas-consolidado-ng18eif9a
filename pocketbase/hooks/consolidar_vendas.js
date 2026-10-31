@@ -928,13 +928,22 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
 
 // Endpoint: POST /backend/v1/vendas/reconstruir-resumos
 // Reconstrói as 3 tabelas de resumo SQLite (resumo_vendas_mensal, resumo_clientes_ativos, resumo_vendas_uf_regiao)
-// de forma idempotente e separada da carga para caber folgadamente no teto de tempo.
+// de forma modular por etapa, evitando timeouts HTTP de requisições monolíticas com centenas de milhares de linhas.
+//
+// Suporta:
+// - Sem parâmetro ou step='all': executa todo o fluxo (para rotinas de cron / cli)
+// - step='setup': cria tabelas e índices se não existirem
+// - step='vendas_mensal_init': limpa resumo_vendas_mensal
+// - step='vendas_mensal_ano': processa resumo_vendas_mensal para um ano específico (ex: ano=2026)
+// - step='clientes_ativos': processa resumo_clientes_ativos completo
+// - step='vendas_uf_regiao': processa resumo_vendas_uf_regiao completo
+// - step='list_anos': descobre anos presentes na tabela vendas
 routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
   const startTime = Date.now()
   const nowIso = new Date().toISOString()
   let stage = 'iniciar'
 
-  try {
+  const ensureTablesAndIndexes = () => {
     stage = 'garantir_tabelas_resumo'
     $app
       .db()
@@ -1096,10 +1105,22 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
         'CREATE INDEX IF NOT EXISTS idx_rvu_netsales ON resumo_vendas_uf_regiao (tem_netsales);',
       )
       .execute()
+  }
 
-    // 1. Reconstruir resumo_vendas_mensal
-    stage = 'resumo_vendas_mensal'
-    $app.db().newQuery('DELETE FROM resumo_vendas_mensal').execute()
+  const runVendasMensalAno = (ano) => {
+    stage = 'resumo_vendas_mensal_ano_' + ano
+    const anoInt = parseInt(ano, 10)
+    const anoStr = String(anoInt)
+    const startDate = anoStr + '-01-01'
+    const endDate = anoStr + '-12-31 23:59:59'
+
+    // Limpa registros do ano antes de inserir para idempotência
+    $app
+      .db()
+      .newQuery('DELETE FROM resumo_vendas_mensal WHERE ano = {:ano}')
+      .bind({ ano: anoInt })
+      .execute()
+
     $app
       .db()
       .newQuery(
@@ -1133,7 +1154,7 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
           {:now} AS created,
           {:now} AS updated
         FROM vendas
-        WHERE data_lancamento IS NOT NULL AND data_lancamento != '' AND data_lancamento >= '2015-01-01'
+        WHERE data_lancamento >= {:startDate} AND data_lancamento <= {:endDate}
           AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'
         GROUP BY
           substr(data_lancamento, 1, 7),
@@ -1150,10 +1171,15 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
           COALESCE(NULLIF(utilizacao, ''), 'Sem informação')
       `,
       )
-      .bind({ now: nowIso })
+      .bind({
+        now: nowIso,
+        startDate: startDate,
+        endDate: endDate,
+      })
       .execute()
+  }
 
-    // 2. Reconstruir resumo_clientes_ativos
+  const runClientesAtivos = () => {
     stage = 'resumo_clientes_ativos'
     $app.db().newQuery('DELETE FROM resumo_clientes_ativos').execute()
     $app
@@ -1196,8 +1222,9 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
       )
       .bind({ now: nowIso })
       .execute()
+  }
 
-    // 3. Reconstruir resumo_vendas_uf_regiao
+  const runVendasUfRegiao = () => {
     stage = 'resumo_vendas_uf_regiao'
     $app.db().newQuery('DELETE FROM resumo_vendas_uf_regiao').execute()
     $app
@@ -1239,11 +1266,131 @@ routerAdd('POST', '/backend/v1/vendas/reconstruir-resumos', (e) => {
       )
       .bind({ now: nowIso })
       .execute()
+  }
+
+  try {
+    let body = {}
+    try {
+      const parsed = e.requestInfo().body
+      if (parsed && typeof parsed === 'object') body = parsed
+    } catch (_) {}
+
+    const step = (body.step || e.request.url.query().get('step') || 'all').trim()
+    const targetAno = body.ano || e.request.url.query().get('ano')
+
+    if (step === 'setup') {
+      ensureTablesAndIndexes()
+      return e.json(200, {
+        success: true,
+        step: 'setup',
+        message: 'Tabelas e índices de resumo configurados com sucesso.',
+        durationMs: Date.now() - startTime,
+      })
+    }
+
+    if (step === 'list_anos') {
+      ensureTablesAndIndexes()
+      stage = 'descobrir_anos'
+      const rows = arrayOf(new DynamicModel({ ano: '' }))
+      $app
+        .db()
+        .newQuery(
+          "SELECT DISTINCT CAST(substr(data_lancamento, 1, 4) AS INTEGER) AS ano FROM vendas WHERE data_lancamento IS NOT NULL AND data_lancamento >= '2015-01-01' ORDER BY ano ASC",
+        )
+        .all(rows)
+      const anos = []
+      for (let i = 0; i < rows.length; i++) {
+        const a = parseInt(rows[i].ano, 10)
+        if (a && a >= 2015) anos.push(a)
+      }
+      return e.json(200, {
+        success: true,
+        step: 'list_anos',
+        anos: anos,
+        durationMs: Date.now() - startTime,
+      })
+    }
+
+    if (step === 'vendas_mensal_init') {
+      ensureTablesAndIndexes()
+      stage = 'vendas_mensal_init'
+      $app.db().newQuery('DELETE FROM resumo_vendas_mensal').execute()
+      return e.json(200, {
+        success: true,
+        step: 'vendas_mensal_init',
+        message: 'Tabela resumo_vendas_mensal limpa com sucesso.',
+        durationMs: Date.now() - startTime,
+      })
+    }
+
+    if (step === 'vendas_mensal_ano') {
+      ensureTablesAndIndexes()
+      const anoVal = parseInt(targetAno, 10)
+      if (!anoVal || isNaN(anoVal)) {
+        return e.json(400, {
+          success: false,
+          error: "O parâmetro 'ano' é obrigatório para step='vendas_mensal_ano'.",
+          stage: 'validar_ano',
+        })
+      }
+      runVendasMensalAno(anoVal)
+      return e.json(200, {
+        success: true,
+        step: 'vendas_mensal_ano',
+        ano: anoVal,
+        message: 'Resumo mensal do ano ' + anoVal + ' processado com sucesso.',
+        durationMs: Date.now() - startTime,
+      })
+    }
+
+    if (step === 'clientes_ativos') {
+      ensureTablesAndIndexes()
+      runClientesAtivos()
+      return e.json(200, {
+        success: true,
+        step: 'clientes_ativos',
+        message: 'Resumo de clientes ativos reconstruído com sucesso.',
+        durationMs: Date.now() - startTime,
+      })
+    }
+
+    if (step === 'vendas_uf_regiao') {
+      ensureTablesAndIndexes()
+      runVendasUfRegiao()
+      return e.json(200, {
+        success: true,
+        step: 'vendas_uf_regiao',
+        message: 'Resumo de vendas por UF e Região reconstruído com sucesso.',
+        durationMs: Date.now() - startTime,
+      })
+    }
+
+    // Fluxo monolítico legado (step === 'all')
+    ensureTablesAndIndexes()
+    stage = 'resumo_vendas_mensal'
+    $app.db().newQuery('DELETE FROM resumo_vendas_mensal').execute()
+    // Processa por anos sequencialmente no backend para não estourar locks
+    const rowsAnos = arrayOf(new DynamicModel({ ano: '' }))
+    $app
+      .db()
+      .newQuery(
+        "SELECT DISTINCT CAST(substr(data_lancamento, 1, 4) AS INTEGER) AS ano FROM vendas WHERE data_lancamento IS NOT NULL AND data_lancamento >= '2015-01-01' ORDER BY ano ASC",
+      )
+      .all(rowsAnos)
+    for (let i = 0; i < rowsAnos.length; i++) {
+      const a = parseInt(rowsAnos[i].ano, 10)
+      if (a && a >= 2015) {
+        runVendasMensalAno(a)
+      }
+    }
+    runClientesAtivos()
+    runVendasUfRegiao()
 
     const durationMs = Date.now() - startTime
 
     return e.json(200, {
       success: true,
+      step: 'all',
       message: 'Reconstrução de resumos concluída com sucesso em ' + durationMs + 'ms.',
       durationMs: durationMs,
       data_carga: nowIso,
