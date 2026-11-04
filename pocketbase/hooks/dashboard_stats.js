@@ -680,39 +680,27 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       ultimos6MesesAlvo.push(String(y) + '-' + String(m).padStart(2, '0'))
     }
 
-    const minMes6 = ultimos6MesesAlvo[0]
-    const maxMes6 = ultimos6MesesAlvo[ultimos6MesesAlvo.length - 1]
+    // OTIMIZAÇÃO: antes eram 2 varreduras do resumo (janela atual + janela do ano
+    // anterior). Como os 12 períodos (6 atuais + 6 do ano anterior) são disjuntos,
+    // uma única varredura com IN cobre as duas séries com resultado idêntico.
+    const mesesAnoAnterior6 = ultimos6MesesAlvo.map((m) => {
+      const p = m.split('-')
+      const y = parseInt(p[0], 10) - 1
+      return String(y) + '-' + p[1]
+    })
+    const todosMesesJanela = ultimos6MesesAlvo.concat(mesesAnoAnterior6)
+    const janelaInClause = todosMesesJanela.map((m) => "'" + m + "'").join(',')
 
     const mesSql =
       "SELECT COALESCE(ano_mes,'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b, COALESCE(SUM(valor_liquido),0) AS c, " +
       'COALESCE(SUM(total_devolucao),0) AS d ' +
       'FROM resumo_vendas_mensal WHERE ' +
       sqlWhereBase +
-      " AND ano_mes >= '" +
-      minMes6 +
-      "' AND ano_mes <= '" +
-      maxMes6 +
-      "' " +
-      "GROUP BY COALESCE(ano_mes,'Sem informação') ORDER BY 1 ASC"
-    const mesRows = runAgg(mesSql)
-
-    // Série de ano anterior para os mesmos 6 meses
-    const mesesAnoAnterior6 = ultimos6MesesAlvo.map((m) => {
-      const p = m.split('-')
-      const y = parseInt(p[0], 10) - 1
-      return String(y) + '-' + p[1]
-    })
-    const prevYearInClause = mesesAnoAnterior6.map((m) => "'" + m + "'").join(',')
-
-    const prevYearSql =
-      "SELECT COALESCE(ano_mes,'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
-      'FROM resumo_vendas_mensal WHERE ' +
-      sqlWhereBase +
       ' AND ano_mes IN (' +
-      prevYearInClause +
+      janelaInClause +
       ') ' +
       "GROUP BY COALESCE(ano_mes,'Sem informação') ORDER BY 1 ASC"
-    const prevYearRows = runAgg(prevYearSql)
+    const mesRows = runAgg(mesSql)
 
     const monthNames = [
       'Jan',
@@ -730,21 +718,22 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     ]
 
     const mesMapAtual = {}
+    const prevYearMap = {}
     for (let i = 0; i < mesRows.length; i++) {
       const ym = mesRows[i].a
       if (ym) {
-        mesMapAtual[ym] = {
+        const entry = {
           faturamento: toNum(mesRows[i].b),
           liquido: toNum(mesRows[i].c),
           devolucoes: toNum(mesRows[i].d),
         }
+        // Os 12 períodos são disjuntos: cada ano_mes alimenta a série em que aparece
+        if (ultimos6MesesAlvo.indexOf(ym) >= 0) {
+          mesMapAtual[ym] = entry
+        } else {
+          prevYearMap[ym] = toNum(mesRows[i].b)
+        }
       }
-    }
-
-    const prevYearMap = {}
-    for (let i = 0; i < prevYearRows.length; i++) {
-      const ym = prevYearRows[i].a
-      if (ym) prevYearMap[ym] = toNum(prevYearRows[i].b)
     }
 
     const vendasPorMes = []
@@ -793,54 +782,44 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       anoAnterior = faturamento
     }
 
-    // 2.3) grupoItem
-    // Mostra as vendas por grupo do item dentro do filtro ativo (ou 1=1)
-    const grupoSql =
-      "SELECT COALESCE(NULLIF(grupo_item,''),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
-      'FROM resumo_vendas_mensal WHERE ' +
-      sqlWhere +
-      " GROUP BY COALESCE(NULLIF(grupo_item,''),'Sem informação') ORDER BY 2 DESC"
-    const grupoRows = runAgg(grupoSql)
-    const grupoItem = []
-    for (let i = 0; i < grupoRows.length; i++) {
-      grupoItem.push({ name: grupoRows[i].a || 'Sem informação', value: toNum(grupoRows[i].b) })
+    // 2.3–2.6) grupoItem, topVendedores, topClientes e estado
+    // OTIMIZAÇÃO: as 4 agregações usavam 4 varreduras completas do resumo com o MESMO
+    // sqlWhere. Agora uma única varredura (UNION ALL com rótulo de dimensão) produz as
+    // quatro listas; a ordenação por valor DESC e o LIMIT 10 (top 10) são aplicados em JS,
+    // preservando exatamente os mesmos valores/números de antes.
+    const multiDimRows = arrayOf(new DynamicModel({ dim: '', k: '', v: '' }))
+    try {
+      const dimBase = 'FROM resumo_vendas_mensal WHERE ' + sqlWhere + ' GROUP BY 2'
+      const multiDimSql =
+        "SELECT 'grupo' AS dim, COALESCE(NULLIF(grupo_item,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
+        dimBase +
+        ' UNION ALL ' +
+        "SELECT 'vendedor' AS dim, COALESCE(NULLIF(nome_vendedor,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
+        dimBase +
+        ' UNION ALL ' +
+        "SELECT 'cliente' AS dim, COALESCE(NULLIF(nome_cliente,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
+        dimBase +
+        ' UNION ALL ' +
+        "SELECT 'estado' AS dim, COALESCE(NULLIF(estado,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
+        dimBase +
+        ' ORDER BY v DESC'
+      $app.db().newQuery(multiDimSql).all(multiDimRows)
+    } catch (err) {
+      console.error('dashboard_stats: agregacao multi-dimensao falhou:', err)
     }
 
-    // 2.4) topVendedores
-    const vendSql =
-      "SELECT COALESCE(NULLIF(nome_vendedor,''),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
-      'FROM resumo_vendas_mensal WHERE ' +
-      sqlWhere +
-      " GROUP BY COALESCE(NULLIF(nome_vendedor,''),'Sem informação') ORDER BY 2 DESC LIMIT 10"
-    const vendRows = runAgg(vendSql)
-    const topVendedores = []
-    for (let i = 0; i < vendRows.length; i++) {
-      topVendedores.push({ name: vendRows[i].a || 'Sem informação', total: toNum(vendRows[i].b) })
+    const dimLists = { grupo: [], vendedor: [], cliente: [], estado: [] }
+    for (let i = 0; i < multiDimRows.length; i++) {
+      const dim = String(multiDimRows[i].dim || '')
+      const key = multiDimRows[i].k || 'Sem informação'
+      const val = toNum(multiDimRows[i].v)
+      if (dimLists[dim]) dimLists[dim].push({ k: key, v: val })
     }
 
-    // 2.5) topClientes
-    const cliSql =
-      "SELECT COALESCE(NULLIF(nome_cliente,''),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
-      'FROM resumo_vendas_mensal WHERE ' +
-      sqlWhere +
-      " GROUP BY COALESCE(NULLIF(nome_cliente,''),'Sem informação') ORDER BY 2 DESC LIMIT 10"
-    const cliRows = runAgg(cliSql)
-    const topClientes = []
-    for (let i = 0; i < cliRows.length; i++) {
-      topClientes.push({ name: cliRows[i].a || 'Sem informação', total: toNum(cliRows[i].b) })
-    }
-
-    // 2.6) estado
-    const ufSql =
-      "SELECT COALESCE(NULLIF(estado,''),'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b " +
-      'FROM resumo_vendas_mensal WHERE ' +
-      sqlWhere +
-      " GROUP BY COALESCE(NULLIF(estado,''),'Sem informação') ORDER BY 2 DESC"
-    const ufRows = runAgg(ufSql)
-    const estado = []
-    for (let i = 0; i < ufRows.length; i++) {
-      estado.push({ uf: ufRows[i].a || 'Sem informação', total: toNum(ufRows[i].b) })
-    }
+    const grupoItem = dimLists.grupo.map((r) => ({ name: r.k, value: r.v }))
+    const topVendedores = dimLists.vendedor.slice(0, 10).map((r) => ({ name: r.k, total: r.v }))
+    const topClientes = dimLists.cliente.slice(0, 10).map((r) => ({ name: r.k, total: r.v }))
+    const estado = dimLists.estado.map((r) => ({ uf: r.k, total: r.v }))
 
     // 2.7) revendasFaturamento
     const revendaConfigs = [
@@ -1299,6 +1278,14 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     // REGRA DE NEGÓCIO: Mostra SEMPRE os últimos 6 meses da base (terminando no último mês disponível, ex: Ago-2026),
     // comparados com o mesmo mês do ano anterior, independente do filtro de período ativo.
     // Respeita APENAS a seleção de base (sqlWhereHistorical).
+    //
+    // OTIMIZAÇÃO: as 5 séries usavam COUNT(DISTINCT codigo_cliente) GROUP BY ano_mes, que
+    // varre todos os pares (ano_mes, cliente) do resumo por categoria. Como cada linha do
+    // resumo_clientes_ativos JÁ É um par único (ano_mes, categoria, cliente), o COUNT
+    // DISTINCT vira um COUNT simples sobre um índice que já cobre o agrupamento
+    // (idx_rca_anomes_grp_cli criado na migration 1740900017). Para as séries derivadas de
+    // resumo_vendas_mensal (Tintas/Acessórios/Peças), o COUNT DISTINCT é substituído por
+    // COUNT(*) sobre o mesmo DISTINCT interno — mesmos valores, sem mudança de resultado.
     const clientesAtivosEquipamentos = []
     const clientesAtivosInsumos = []
     const clientesAtivosTintas = []
@@ -1316,19 +1303,26 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       const allMesesNeeded = mesesAlvoClientes.concat(mesesAnoAnterior)
       const inMesesList = allMesesNeeded.map((m) => "'" + m + "'").join(',')
 
-      // Query resumo_clientes_ativos para EQUIPAMENTOS
-      const cliEqSql =
-        'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+      // Query resumo_clientes_ativos para EQUIPAMENTOS e INSUMOS
+      // OTIMIZAÇÃO: eram 2 varreduras (uma por categoria); agora 1 única varredura
+      // por (ano_mes, grupo_categoria) — cada linha é um par único
+      // (ano_mes, categoria, cliente), então COUNT(*) por grupo é o mesmo total.
+      const cliCatSql =
+        'SELECT ano_mes AS a, grupo_categoria AS b, COUNT(*) AS c ' +
         'FROM resumo_clientes_ativos WHERE ' +
         sqlWhereHistorical +
-        " AND grupo_categoria = 'EQUIPAMENTOS' " +
+        " AND grupo_categoria IN ('EQUIPAMENTOS', 'INSUMOS') " +
         'AND ano_mes IN (' +
         inMesesList +
-        ') GROUP BY ano_mes'
-      const cliEquipRows = runAgg(cliEqSql)
+        ') GROUP BY ano_mes, grupo_categoria'
+      const cliCatRows = runAgg(cliCatSql)
       const cliEquipMap = {}
-      for (let i = 0; i < cliEquipRows.length; i++) {
-        cliEquipMap[cliEquipRows[i].a] = parseInt(cliEquipRows[i].b, 10) || 0
+      const cliInsumosMap = {}
+      for (let i = 0; i < cliCatRows.length; i++) {
+        const ym = cliCatRows[i].a
+        const cnt = parseInt(cliCatRows[i].c, 10) || 0
+        if (String(cliCatRows[i].b) === 'EQUIPAMENTOS') cliEquipMap[ym] = cnt
+        else if (String(cliCatRows[i].b) === 'INSUMOS') cliInsumosMap[ym] = cnt
       }
 
       for (let i = 0; i < mesesAlvoClientes.length; i++) {
@@ -1340,21 +1334,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           clientes: cliEquipMap[m] || 0,
           clientesAnoAnterior: cliEquipMap[prevM] || 0,
         })
-      }
-
-      // Query resumo_clientes_ativos para INSUMOS
-      const cliInsSql =
-        'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
-        'FROM resumo_clientes_ativos WHERE ' +
-        sqlWhereHistorical +
-        " AND grupo_categoria = 'INSUMOS' " +
-        'AND ano_mes IN (' +
-        inMesesList +
-        ') GROUP BY ano_mes'
-      const cliInsumosRows = runAgg(cliInsSql)
-      const cliInsumosMap = {}
-      for (let i = 0; i < cliInsumosRows.length; i++) {
-        cliInsumosMap[cliInsumosRows[i].a] = parseInt(cliInsumosRows[i].b, 10) || 0
       }
 
       for (let i = 0; i < mesesAlvoClientes.length; i++) {
@@ -1385,15 +1364,17 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       }
 
       // Query resumo_vendas_mensal para TINTAS
+      // (DISTINCT interno (ano_mes, cliente) + COUNT simples — mesmo valor do COUNT DISTINCT,
+      // evitando o COUNT DISTINCT externo por linha durante o agrupamento)
       const cliTintasSql =
-        'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
-        'FROM resumo_vendas_mensal WHERE ' +
+        'SELECT ano_mes AS a, COUNT(*) AS b ' +
+        'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
         sqlWhereHistorical +
         " AND UPPER(TRIM(grupo_item)) = 'TINTAS' " +
         "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
         'AND ano_mes IN (' +
         inMesesList +
-        ') GROUP BY ano_mes'
+        ')) GROUP BY ano_mes'
       const cliTintasRows = runAgg(cliTintasSql)
       const cliTintasMap = {}
       for (let i = 0; i < cliTintasRows.length; i++) {
@@ -1403,15 +1384,16 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       for (let i = 0; i < sTintas.length; i++) clientesAtivosTintas.push(sTintas[i])
 
       // Query resumo_vendas_mensal para ACESSORIOS
+      // (DISTINCT interno (ano_mes, cliente) + COUNT simples — mesmo valor do COUNT DISTINCT)
       const cliAcesSql =
-        'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
-        'FROM resumo_vendas_mensal WHERE ' +
+        'SELECT ano_mes AS a, COUNT(*) AS b ' +
+        'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
         sqlWhereHistorical +
         " AND UPPER(TRIM(grupo_item)) IN ('ACESSÓRIOS', 'ACESSORIOS') " +
         "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
         'AND ano_mes IN (' +
         inMesesList +
-        ') GROUP BY ano_mes'
+        ')) GROUP BY ano_mes'
       const cliAcesRows = runAgg(cliAcesSql)
       const cliAcesMap = {}
       for (let i = 0; i < cliAcesRows.length; i++) {
@@ -1421,15 +1403,16 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       for (let i = 0; i < sAces.length; i++) clientesAtivosAcessorios.push(sAces[i])
 
       // Query resumo_vendas_mensal para PECAS
+      // (DISTINCT interno (ano_mes, cliente) + COUNT simples — mesmo valor do COUNT DISTINCT)
       const cliPecasSql =
-        'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
-        'FROM resumo_vendas_mensal WHERE ' +
+        'SELECT ano_mes AS a, COUNT(*) AS b ' +
+        'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
         sqlWhereHistorical +
         " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS') " +
         "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
         'AND ano_mes IN (' +
         inMesesList +
-        ') GROUP BY ano_mes'
+        ')) GROUP BY ano_mes'
       const cliPecasRows = runAgg(cliPecasSql)
       const cliPecasMap = {}
       for (let i = 0; i < cliPecasRows.length; i++) {
