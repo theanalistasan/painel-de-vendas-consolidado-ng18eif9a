@@ -271,8 +271,36 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       console.warn('dashboard_stats: auto-inicializacao resumo warning:', tblErr)
     }
 
-    // Chave de cache em memória
-    const cacheKey = JSON.stringify(f)
+    // Chave de cache em memória — CANÔNICA por combinação de filtros.
+    // Antes: JSON.stringify(f) cru — a MESMA combinação de filtros refeita com
+    // ordem de chaves (ou de seleção em arrays) diferente gerava uma chave
+    // diferente e recomputava todas as agregações (~310k registros). Agora a
+    // chave serializa chaves de objeto em ordem fixa e arrays ordenados: a
+    // ordem dos termos não altera o resultado das consultas (listas IN são
+    // invariantes à ordem), portanto nenhum valor muda — só a taxa de acerto
+    // do cache. Entradas expiram em 5 minutos por combinação de filtros.
+    const stableCacheKey = (value) => {
+      if (value === null) return 'null'
+      if (Array.isArray(value)) {
+        const items = []
+        for (let i = 0; i < value.length; i++) items.push(stableCacheKey(value[i]))
+        return '[' + items.sort().join('|') + ']'
+      }
+      const t = typeof value
+      if (t === 'object') {
+        const keys = Object.keys(value).sort()
+        const parts = []
+        for (let i = 0; i < keys.length; i++) {
+          parts.push(keys[i] + '=' + stableCacheKey(value[keys[i]]))
+        }
+        return '{' + parts.join('&') + '}'
+      }
+      if (t === 'string') return 's:' + value
+      if (t === 'number') return 'n:' + String(value)
+      if (t === 'boolean') return 'b:' + String(value)
+      return 'x:' + String(value)
+    }
+    const cacheKey = stableCacheKey(f || {})
     const now = Date.now()
     let cachedEntry = null
     try {
@@ -1650,6 +1678,19 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           typeof globalThis.__skipDashboardCache.set !== 'function'
         ) {
           globalThis.__skipDashboardCache = new Map()
+        }
+        // Poda primeiro as entradas já expiradas (invalidação simples: TTL de
+        // 5 min por chave de filtros); se ainda assim passar do limite, remove
+        // a entrada mais antiga inserida.
+        if (globalThis.__skipDashboardCache.size > 20) {
+          const pruneNow = Date.now()
+          const expiredKeys = []
+          globalThis.__skipDashboardCache.forEach((entry, key) => {
+            if (!entry || !(entry.expiresAt > pruneNow)) expiredKeys.push(key)
+          })
+          for (let pIdx = 0; pIdx < expiredKeys.length; pIdx++) {
+            globalThis.__skipDashboardCache.delete(expiredKeys[pIdx])
+          }
         }
         if (globalThis.__skipDashboardCache.size > 50) {
           const firstKey = globalThis.__skipDashboardCache.keys().next().value
