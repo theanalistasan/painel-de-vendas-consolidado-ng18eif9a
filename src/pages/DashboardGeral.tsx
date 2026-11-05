@@ -47,8 +47,9 @@ import {
   hasValidPeriodFilters,
   buildDynamicInitialFilters,
 } from '@/lib/filter-persistence'
-import FilterBar from '@/components/FilterBar'
 import ChartCard from '@/components/ChartCard'
+import { SlidersHorizontal } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { MetasIndicador } from '@/components/MetasIndicador'
 import type { VendaConsolidada } from '@/types/sales'
 import { fetchVendasList } from '@/services/sales'
@@ -1024,15 +1025,27 @@ export default function DashboardGeral() {
 
   return (
     <div className="space-y-6">
-      {/* Filters Bar */}
-      <FilterBar
-        filters={filters}
-        setFilters={setFilters}
-        options={filterOptions}
-        isLoading={loading}
-        loadingMessage="Atualizando indicadores da visão geral..."
-        onApplyFilters={(applied) => loadData(applied)}
-      />
+      {/* Filtros globais: geridos na página dedicada /dashboard/filtros */}
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white p-3 shadow-xs">
+        <div className="flex items-center gap-2 min-w-0">
+          <SlidersHorizontal className="w-4 h-4 text-[#0B6E99] shrink-0" />
+          <span className="text-xs text-slate-600 font-medium truncate">
+            Filtros globais gerenciados no submenu{' '}
+            <span className="font-bold text-slate-800">Dashboard → Filtros Globais</span>
+            {' — '}aplicados automaticamente a esta visão.
+          </span>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => navigate('/dashboard/filtros')}
+          // Navega para a página de gestão centralizada dos filtros
+          className="bg-white border-gray-200 text-[#0B6E99] hover:bg-cyan-50 font-bold gap-1.5 text-xs shadow-2xs h-8 shrink-0"
+        >
+          <SlidersHorizontal className="w-3.5 h-3.5" />
+          Abrir Filtros Globais
+        </Button>
+      </div>
 
       {/* Barra de Ações com Botões de Exportação no Topo */}
       <Card className="rounded-xl border border-gray-200 bg-white p-4 shadow-xs">

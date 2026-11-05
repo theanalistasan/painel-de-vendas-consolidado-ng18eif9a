@@ -7,6 +7,7 @@ import { AuthProvider } from '@/context/AuthContext'
 import GuardedRoute from '@/components/GuardedRoute'
 import DashboardGeral from './pages/DashboardGeral'
 import DashboardCanais from './pages/DashboardCanais'
+import FiltrosGlobais from './pages/FiltrosGlobais'
 import JpClassPage from './pages/JpClassPage'
 import PedidosAbertos from './pages/PedidosAbertos'
 import EstoqueFaltante from './pages/EstoqueFaltante'
@@ -33,6 +34,7 @@ const App = () => (
             <Route path="/" element={<DashboardGeral />} />
             <Route path="/dashboard/geral" element={<DashboardGeral />} />
             <Route path="/dashboard/canais" element={<DashboardCanais />} />
+            <Route path="/dashboard/filtros" element={<FiltrosGlobais />} />
             <Route path="/jp-class" element={<JpClassPage />} />
             {/* O relatório de Vendas foi incorporado na Visão Geral; /vendas redireciona mantendo compatibilidade */}
             <Route path="/vendas" element={<Navigate to="/dashboard/geral" replace />} />
