@@ -5,6 +5,9 @@
 // - Esquema idêntico: mesmos campos, mesmos tipos, mesmos índices (prefixo idx_vh_).
 // - Movimentação em LOTES (INSERT ... SELECT + DELETE por id), ~10 mil por passada,
 //   para não estourar o limite de tempo da migration (310k+ registros).
+// - Ordem determinística (data_lancamento, id) no INSERT e no DELETE do mesmo lote:
+//   garante que o DELETE remova EXATAMENTE os ids que o INSERT copiou (empates de
+//   data não podem causar perda de registros entre as duas passadas).
 // - Idempotente: a seleção é sempre por condição (data_lancamento < início da janela);
 //   rodar de novo não move nem duplica nada (INSERT OR IGNORE por id).
 // - Cópia RAW por SQL: preserva id, created, updated e todos os valores de todos os campos
@@ -182,7 +185,7 @@ const moverLote = function (app, limite) {
         NOMES_CAMPOS_DATA +
         ' FROM vendas ' +
         "WHERE data_lancamento IS NOT NULL AND TRIM(data_lancamento) != '' AND data_lancamento < {:limite} " +
-        'ORDER BY data_lancamento LIMIT {:limite_lote}',
+        'ORDER BY data_lancamento, id LIMIT {:limite_lote}',
     )
     .bind({ limite: limite, limite_lote: BATCH_SIZE })
     .execute()
@@ -194,7 +197,7 @@ const moverLote = function (app, limite) {
       'DELETE FROM vendas WHERE id IN (' +
         'SELECT id FROM vendas ' +
         "WHERE data_lancamento IS NOT NULL AND TRIM(data_lancamento) != '' AND data_lancamento < {:limite} " +
-        'ORDER BY data_lancamento LIMIT {:limite_lote})',
+        'ORDER BY data_lancamento, id LIMIT {:limite_lote})',
     )
     .bind({ limite: limite, limite_lote: BATCH_SIZE })
     .execute()
@@ -320,10 +323,8 @@ migrate(
     const janela = inicioJanelaAtiva()
     const limite = janela.iso
     try {
-      app
-        .db()
-        .newQuery('CREATE TABLE IF NOT EXISTS vendas_historico (id TEXT PRIMARY KEY)')
-        .execute()
+      // Só restaura se a tabela realmente existe (não cria tabela órfã só com id).
+      app.db().newQuery('SELECT id FROM vendas_historico LIMIT 1').execute()
       for (let round = 0; round < MAX_ROUNDS; round++) {
         const antes = contar(
           app,
@@ -340,7 +341,7 @@ migrate(
               'SELECT ' +
               NOMES_CAMPOS_DATA +
               ' FROM vendas_historico WHERE data_lancamento < {:limite} ' +
-              'ORDER BY data_lancamento LIMIT {:limite_lote}',
+              'ORDER BY data_lancamento, id LIMIT {:limite_lote}',
           )
           .bind({ limite: limite, limite_lote: BATCH_SIZE })
           .execute()
@@ -348,7 +349,7 @@ migrate(
           .db()
           .newQuery(
             'DELETE FROM vendas_historico WHERE id IN (' +
-              'SELECT id FROM vendas_historico WHERE data_lancamento < {:limite} ORDER BY data_lancamento LIMIT {:limite_lote})',
+              'SELECT id FROM vendas_historico WHERE data_lancamento < {:limite} ORDER BY data_lancamento, id LIMIT {:limite_lote})',
           )
           .bind({ limite: limite, limite_lote: BATCH_SIZE })
           .execute()
