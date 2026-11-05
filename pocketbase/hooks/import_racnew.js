@@ -1,9 +1,22 @@
+const path = require('path')
+const { getJanelaDinamica, isForaDaJanela } = require(path.join(__dirname, 'janela_dinamica.js'))
+
 routerAdd(
   'POST',
   '/backend/v1/import/racnew',
   (e) => {
     const body = e.requestInfo().body || {}
     const rows = Array.isArray(body.rows) ? body.rows : Array.isArray(body) ? body : []
+
+    // DOIS MODOS (decisão Silvio, segregação de dados):
+    // - "atual" (padrão): dados do Ano Atual + Ano Passado — registros DENTRO da
+    //   janela dinâmica seguem para racnew (fluxo normal até consolidar em vendas);
+    //   registros FORA da janela (< jan do ano anterior) vão DIRETO a vendas_historico.
+    // - "historico": dados anteriores ao Ano Passado — TUDO vai direto a
+    //   vendas_historico, sem tocar racnew.
+    const modo = (body.modo || 'atual').toString().trim()
+    const modoHistorico = modo === 'historico'
+    const janela = getJanelaDinamica()
 
     if (rows.length === 0) {
       return e.json(400, {
@@ -16,6 +29,7 @@ routerAdd(
     }
 
     const racnewCol = $app.findCollectionByNameOrId('racnew')
+    const historicoCol = $app.findCollectionByNameOrId('vendas_historico')
     const nowIso = new Date().toISOString()
 
     // Enriquecimento Tipos de Cliente (cruzamento com Código do PN)
@@ -52,6 +66,9 @@ routerAdd(
     let importados = 0
     let atualizados = 0
     let ignorados = 0
+    let roteadosHistorico = 0
+    let historicoImportados = 0
+    let historicoAtualizados = 0
     const erros = []
 
     const parseNum = (val) => {
@@ -173,18 +190,24 @@ routerAdd(
         continue
       }
 
+      // Roteamento pela janela dinâmica (nunca data fixa no código)
+      const foraDaJanela = !modoHistorico && isForaDaJanela(dataLancamento)
+      const targetName = modoHistorico || foraDaJanela ? 'vendas_historico' : 'racnew'
+      const targetCol = targetName === 'vendas_historico' ? historicoCol : racnewCol
+      if (targetName === 'vendas_historico') roteadosHistorico++
+
       try {
         let isUpdate = false
         let record
 
         const filter = `numero_sap = '${numeroSap}' && numero_nfe = '${numeroNfe}' && codigo_item = '${codigoItem}' && codigo_cliente = '${codigoCliente}'`
-        const found = $app.findRecordsByFilter('racnew', filter, '', 1, 0)
+        const found = $app.findRecordsByFilter(targetName, filter, '', 1, 0)
 
         if (found.length > 0) {
           record = found[0]
           isUpdate = true
         } else {
-          record = new Record(racnewCol)
+          record = new Record(targetCol)
         }
 
         record.set(
@@ -291,6 +314,12 @@ routerAdd(
         record.set('origem', 'RacNew')
         record.set('data_carga', nowIso)
 
+        if (targetName === 'vendas_historico') {
+          // Flag de proveniência na base histórica (espelha o padrão da consolidação)
+          record.set('tem_racnew', true)
+          record.set('tem_netsales', false)
+        }
+
         // Enriquecimento de Tipo de Cliente por codigoCliente
         const normCodCli = (codigoCliente || '').trim().toUpperCase()
         const tcInfo = normCodCli ? tiposClienteMap[normCodCli] : null
@@ -300,9 +329,17 @@ routerAdd(
 
         $app.save(record)
         if (isUpdate) {
-          atualizados++
+          if (targetName === 'vendas_historico') {
+            historicoAtualizados++
+          } else {
+            atualizados++
+          }
         } else {
-          importados++
+          if (targetName === 'vendas_historico') {
+            historicoImportados++
+          } else {
+            importados++
+          }
         }
       } catch (err) {
         ignorados++
@@ -314,9 +351,14 @@ routerAdd(
 
     return e.json(200, {
       success: true,
+      modo: modoHistorico ? 'historico' : 'atual',
       importados,
       atualizados,
       ignorados,
+      roteados_historico: roteadosHistorico,
+      historico_importados: historicoImportados,
+      historico_atualizados: historicoAtualizados,
+      janela: janela,
       erros,
       data_carga: nowIso,
     })
