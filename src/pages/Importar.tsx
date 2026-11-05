@@ -43,10 +43,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { getMigracaoHistoricoStatus, migrarHistoricoApi } from '@/services/migracaoHistorico'
 import type { MigracaoHistoricoStatus } from '@/services/migracaoHistorico'
+import { getZerarBaseStatus, zerarBaseApi } from '@/services/zerarBase'
+import type { ZerarBaseStatus, ZerarBaseStatusResponse } from '@/services/zerarBase'
 
 const CHUNK_SIZE = 5000
 
@@ -802,6 +805,19 @@ export default function Importar() {
     total_historico: number
     duracao_s: number
   } | null>(null)
+  // ===== Zeramento da Base (padrão do migrar_historico: lotes curtos + status persistido) =====
+  const [zerarConfirmOpen, setZerarConfirmOpen] = useState(false)
+  const [zerarConfirmText, setZerarConfirmText] = useState('')
+  const [zerando, setZerando] = useState(false)
+  const [zerarStatus, setZerarStatus] = useState<ZerarBaseStatus | null>(null)
+  const [zerarContagens, setZerarContagens] = useState<Record<string, number> | null>(null)
+  const [zerarError, setZerarError] = useState<string | null>(null)
+  const [zerarResultado, setZerarResultado] = useState<{
+    total_apagado: number
+    apagado_por_colecao: Record<string, number>
+    duracao_s: number
+    nada_a_apagar?: boolean
+  } | null>(null)
   // Resultado de cada importação armazenado separadamente por base
   const [importResults, setImportResults] = useState<{
     produtos?: ImportResult
@@ -866,6 +882,32 @@ export default function Importar() {
       })
       .catch(() => {
         /* coleção ainda não existe ou backend indisponível — segue com estado inicial */
+      })
+    // Restaura o estado persistido do zeramento da base (se houver)
+    getZerarBaseStatus()
+      .then((res: ZerarBaseStatusResponse) => {
+        setZerarStatus(res.status)
+        setZerarContagens(res.contagens_atuais)
+        if (res.status.status === 'completed' && res.status.total_apagado > 0) {
+          setZerarResultado({
+            total_apagado: res.status.total_apagado,
+            apagado_por_colecao: res.status.apagado_por_colecao || {},
+            duracao_s:
+              res.status.started_at && res.status.finished_at
+                ? Math.max(
+                    0,
+                    Math.round(
+                      (new Date(res.status.finished_at).getTime() -
+                        new Date(res.status.started_at).getTime()) /
+                        1000,
+                    ),
+                  )
+                : 0,
+          })
+        }
+      })
+      .catch(() => {
+        /* endpoint indisponível — card segue com estado inicial */
       })
   }, [])
 
@@ -1068,6 +1110,89 @@ export default function Importar() {
     } finally {
       setRebuildingSummaries(false)
       setSummariesProgress(null)
+    }
+  }
+
+  // ===== Zeramento da Base de Dados =====
+  const zerarAlvos = [
+    'vendas',
+    'vendas_historico',
+    'racnew',
+    'netsales',
+    'pedidos_abertos',
+    'estoque_sap',
+    'resumo_vendas_mensal',
+    'resumo_clientes_ativos',
+    'resumo_vendas_uf_regiao',
+    'vendas_staging',
+    'vendas_consolidacao_status',
+    'vendas_migracao_historico_status',
+  ]
+
+  const zerarTotalAtual = zerarContagens
+    ? zerarAlvos.reduce((acc, t) => acc + (zerarContagens[t] || 0), 0)
+    : 0
+
+  const handleZerarBase = async () => {
+    setZerando(true)
+    setZerarError(null)
+    setZerarResultado(null)
+    try {
+      const res = await zerarBaseApi({
+        onProgress: (s) => {
+          setZerarStatus(s)
+          if (s.status === 'in_progress') setZerarConfirmOpen(false)
+        },
+      })
+      setZerarStatus(res.status)
+      setZerarResultado({
+        total_apagado: res.total_apagado,
+        apagado_por_colecao: res.apagado_por_colecao || {},
+        duracao_s: res.duracao_ms ? Math.round(res.duracao_ms / 1000) : 0,
+        nada_a_apagar: res.nada_a_apagar,
+      })
+      logAudit(
+        'zerar_base',
+        `Zeramento da base: ${res.total_apagado} registros apagados${
+          res.nada_a_apagar ? ' (nada a apagar — base já vazia)' : ''
+        }.`,
+      )
+      toast({
+        title: res.nada_a_apagar ? 'Base já estava vazia' : 'Zeramento da Base Concluído!',
+        description: res.nada_a_apagar
+          ? 'Nada a apagar — todas as coleções transacionais já estavam vazias (execução idempotente).'
+          : `${formatNumber(res.total_apagado)} registros apagados. Produtos, Tipos de Cliente, Canais, Metas e usuários permanecem intactos. Cache do dashboard invalidado.`,
+      })
+      setZerarConfirmOpen(false)
+      setZerarConfirmText('')
+      refreshCounts()
+    } catch (err: unknown) {
+      const errObj = err as {
+        data?: { error?: string; message?: string; stage?: string }
+        response?: { error?: string; message?: string; stage?: string }
+        message?: string
+      }
+      const backendData = errObj?.data || errObj?.response
+      const msg =
+        backendData?.error ||
+        backendData?.message ||
+        errObj?.message ||
+        'Falha no zeramento da base'
+      console.error('Erro no zeramento da base:', err)
+      setZerarError(msg)
+      getZerarBaseStatus()
+        .then((s) => {
+          setZerarStatus(s.status)
+          setZerarContagens(s.contagens_atuais)
+        })
+        .catch(() => undefined)
+      toast({
+        variant: 'destructive',
+        title: 'Falha no Zeramento da Base',
+        description: msg,
+      })
+    } finally {
+      setZerando(false)
     }
   }
 
@@ -1360,6 +1485,276 @@ export default function Importar() {
           )}
         </CardContent>
       </Card>
+
+      {/* Zeramento da Base de Dados — apaga coleções transacionais sob confirmação explícita */}
+      <Card className="rounded-xl border border-red-200/80 bg-white shadow-xs">
+        <CardHeader className="pb-3 border-b border-slate-100">
+          <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <Database className="w-4 h-4 text-red-600" />
+            Zerar Base de Dados
+          </CardTitle>
+          <CardDescription className="text-xs text-slate-500">
+            Apaga <strong>TODOS</strong> os registros das coleções transacionais (
+            <code className="text-[10px]">vendas</code>,{' '}
+            <code className="text-[10px]">vendas_historico</code>,{' '}
+            <code className="text-[10px]">racnew</code>,{' '}
+            <code className="text-[10px]">netsales</code>,{' '}
+            <code className="text-[10px]">pedidos_abertos</code>,{' '}
+            <code className="text-[10px]">estoque_sap</code>, logs de auditoria, resumos
+            pré-calculados e tabelas de controle).{' '}
+            <strong className="text-red-700">
+              Produtos, Tipos de Cliente, Canais, Metas e usuários permanecem intactos.
+            </strong>{' '}
+            Nada é apagado automaticamente — só quando você confirmar abaixo.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-4">
+          {/* Lista do que será apagado, com contagem atual por coleção (do status) */}
+          <div className="rounded-lg bg-slate-50 border border-slate-200/80 p-3">
+            <p className="text-[11px] font-semibold text-slate-700 mb-2">
+              O que será apagado (contagem atual):
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+              {zerarContagens ? (
+                zerarAlvos.map((t) => (
+                  <div
+                    key={t}
+                    className="flex items-center justify-between gap-2 bg-white rounded border border-slate-200 px-2 py-1"
+                  >
+                    <code className="text-[10px] text-slate-600 truncate">{t}</code>
+                    <span className="text-[10px] font-bold text-slate-800 tabular-nums shrink-0">
+                      {formatNumber(zerarContagens[t] || 0)}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <span className="text-[11px] text-slate-500 col-span-full">
+                  Carregando contagens...
+                </span>
+              )}
+            </div>
+            {zerarContagens && (
+              <p className="mt-2 text-[11px] text-slate-600">
+                Total nos alvos:{' '}
+                <span className="font-bold text-red-700">{formatNumber(zerarTotalAtual)}</span>{' '}
+                registros.{' '}
+                {zerarTotalAtual === 0 && (
+                  <span className="text-emerald-700 font-semibold">
+                    Base já vazia — executar agora apenas confirma a conclusão (idempotente).
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-[11px] text-slate-600 space-y-1">
+              {zerarStatus?.status === 'completed' && zerarStatus.finished_at && (
+                <p className="text-emerald-700">
+                  Último zeramento concluído: {formatDateTime(zerarStatus.finished_at)}
+                </p>
+              )}
+            </div>
+            <Button
+              size="lg"
+              onClick={() => {
+                setZerarConfirmText('')
+                setZerarConfirmOpen(true)
+              }}
+              disabled={zerando || consolidating || rebuildingSummaries || migrandoHistorico}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-6 rounded-xl shadow-lg shadow-red-600/30 flex items-center justify-center gap-2 shrink-0"
+            >
+              {zerando ? (
+                <>
+                  <RotateCw className="w-5 h-5 animate-spin" />
+                  Zerando base...
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-5 h-5" />
+                  Zerar Base de Dados
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Progresso do zeramento (lote a lote) */}
+          {zerando && zerarStatus && (
+            <div className="p-4 rounded-xl bg-red-950/90 border border-red-400/40 text-red-100 space-y-2">
+              <div className="flex items-center justify-between text-xs sm:text-sm font-semibold">
+                <span className="flex items-center gap-2">
+                  <RotateCw className="w-4 h-4 animate-spin text-red-400" />
+                  {zerarStatus.mensagem || 'Apagando registros em lotes...'}
+                </span>
+                <span className="text-red-300 font-mono text-xs">
+                  {zerarStatus.total_planejado > 0
+                    ? `${Math.min(
+                        100,
+                        Math.round((zerarStatus.total_apagado / zerarStatus.total_planejado) * 100),
+                      )}%`
+                    : 'Concluindo...'}
+                </span>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className="bg-red-400 h-2.5 rounded-full transition-all duration-300 ease-out"
+                  style={{
+                    width: `${
+                      zerarStatus.total_planejado > 0
+                        ? Math.min(
+                            100,
+                            Math.round(
+                              (zerarStatus.total_apagado / zerarStatus.total_planejado) * 100,
+                            ),
+                          )
+                        : 100
+                    }%`,
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-red-200/80 font-mono">
+                <span>
+                  Apagados: {formatNumber(zerarStatus.total_apagado)} | Planejado:{' '}
+                  {formatNumber(zerarStatus.total_planejado)}
+                </span>
+                <span>Coleção: {zerarStatus.colecao_atual || '—'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Conclusão explícita e persistida (totais por coleção + duração) */}
+          {zerarResultado && !zerando && (
+            <div className="p-4 rounded-xl bg-emerald-950/90 border border-emerald-400/50 text-emerald-100 space-y-1.5">
+              <div className="flex items-center gap-2 text-sm font-bold text-emerald-300">
+                <CheckCircle2 className="w-4 h-4" />
+                {zerarResultado.nada_a_apagar
+                  ? 'Zeramento CONCLUÍDO — nada a apagar (base já estava vazia)'
+                  : 'Zeramento da base CONCLUÍDO — estado salvo no backend'}
+              </div>
+              {!zerarResultado.nada_a_apagar && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  {Object.entries(zerarResultado.apagado_por_colecao).map(([t, n]) => (
+                    <div
+                      key={t}
+                      className="flex items-center justify-between gap-2 bg-emerald-900/40 rounded border border-emerald-700/50 px-2 py-1"
+                    >
+                      <code className="text-[10px] text-emerald-200 truncate">{t}</code>
+                      <span className="text-[10px] font-bold text-emerald-100 tabular-nums shrink-0">
+                        {formatNumber(n)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-emerald-100/90">
+                {zerarResultado.nada_a_apagar ? (
+                  'Todas as coleções transacionais já estavam vazias — nada foi apagado.'
+                ) : (
+                  <>
+                    Total apagado:{' '}
+                    <span className="font-bold">{formatNumber(zerarResultado.total_apagado)}</span>{' '}
+                    registros.
+                  </>
+                )}
+                {zerarResultado.duracao_s > 0 ? ` Duração: ${zerarResultado.duracao_s}s.` : ''}{' '}
+                Cache do dashboard invalidado.
+              </p>
+              <p className="text-[11px] text-emerald-200/70">
+                Rodar novamente NÃO apaga nada (execução idempotente — responde "nada a apagar").
+              </p>
+            </div>
+          )}
+
+          {/* Erro persistido do zeramento */}
+          {zerarError && (
+            <div className="p-4 rounded-lg bg-red-950/80 border border-red-500/60 text-red-200 text-xs sm:text-sm flex items-start gap-3">
+              <span className="font-bold text-red-400 shrink-0 uppercase tracking-wide text-[11px] bg-red-900/80 px-2 py-0.5 rounded border border-red-700">
+                Falha no Zeramento
+              </span>
+              <p className="flex-1 font-mono text-xs break-all leading-relaxed">{zerarError}</p>
+            </div>
+          )}
+          {!zerarError && !zerando && zerarStatus?.status === 'error' && zerarStatus.erro && (
+            <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-900 text-xs">
+              <span className="font-bold flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5" />
+                Última execução falhou (estado salvo no backend)
+              </span>
+              <p className="mt-1 font-mono text-[11px] break-all">{zerarStatus.erro}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Diálogo de confirmação explícita do zeramento (digitar "ZERAR") */}
+      <Dialog
+        open={zerarConfirmOpen}
+        onOpenChange={(open) => !open && !zerando && setZerarConfirmOpen(open)}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <AlertTriangle className="w-5 h-5" />
+              Zerar Base de Dados — ação irreversível
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="text-xs space-y-2 text-slate-600">
+                <p>
+                  Isto apaga <strong>permanentemente</strong> todos os registros das coleções
+                  transacionais listadas abaixo. Esta ação <strong>não pode ser desfeita</strong>.
+                </p>
+                {zerarContagens && (
+                  <div className="max-h-40 overflow-y-auto rounded border border-slate-200 bg-slate-50 p-2 space-y-0.5">
+                    {zerarAlvos.map((t) => (
+                      <div key={t} className="flex items-center justify-between gap-2 text-[10px]">
+                        <code className="text-slate-600">{t}</code>
+                        <span className="font-bold text-slate-800 tabular-nums">
+                          {formatNumber(zerarContagens[t] || 0)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p>
+                  <strong>NÃO serão apagados:</strong> Produtos, Tipos de Cliente, Canais, Canais ×
+                  Clientes, Metas dos canais e usuários.
+                </p>
+                <p>
+                  Para confirmar, digite <code className="font-bold text-red-700">ZERAR</code> no
+                  campo abaixo:
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={zerarConfirmText}
+            onChange={(e) => setZerarConfirmText(e.target.value)}
+            placeholder='Digite "ZERAR" para confirmar'
+            disabled={zerando}
+            className="font-mono"
+            autoFocus
+          />
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setZerarConfirmOpen(false)} disabled={zerando}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleZerarBase}
+              disabled={zerando || zerarConfirmText.trim().toUpperCase() !== 'ZERAR'}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold"
+            >
+              {zerando ? (
+                <>
+                  <RotateCw className="w-4 h-4 animate-spin" />
+                  Zerando...
+                </>
+              ) : (
+                'Confirmar Zeramento'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Migração do Histórico (< 2025) — ETAPA 1 da segregação de dados */}
       <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs">
