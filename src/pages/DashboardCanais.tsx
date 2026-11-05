@@ -36,22 +36,18 @@ import {
   hasSavedFiltersInSession,
   buildDynamicInitialFilters,
 } from '@/lib/filter-persistence'
-import FilterBar from '@/components/FilterBar'
+
 import KpiCard from '@/components/KpiCard'
 import ChartCard from '@/components/ChartCard'
 import { MetasIndicador } from '@/components/MetasIndicador'
 import { VendasPorEstadoIndicador } from '@/components/VendasPorEstadoIndicador'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  fetchTiposClienteOptions,
-  fetchTiposClienteMap,
-  buildTiposClienteStringMap,
-} from '@/services/tiposCliente'
-import { JP_CLASS_OPTIONS } from '@/lib/jp-class'
+import { MultiSelectDropdown } from '@/components/FilterBar'
 
 const COLOR_BLUE = '#0B6E99'
 
@@ -74,9 +70,6 @@ export default function DashboardCanais() {
   const [error, setError] = useState<string | null>(null)
   const [comparativoData, setComparativoData] = useState<CanaisComparativoResult | null>(null)
   const [loadingComparativo, setLoadingComparativo] = useState(false)
-  const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
-  const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
-  const [loadingTiposCliente, setLoadingTiposCliente] = useState(false)
 
   const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
   const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
@@ -163,29 +156,6 @@ export default function DashboardCanais() {
   }
 
   useEffect(() => {
-    let mounted = true
-    setLoadingTiposCliente(true)
-    Promise.all([fetchTiposClienteOptions(), fetchTiposClienteMap()])
-      .then(([opts, rawMap]) => {
-        if (!mounted) return
-        if (Array.isArray(opts) && opts.length > 0) {
-          setTipoClienteOptions(opts)
-        }
-        if (rawMap && typeof rawMap === 'object') {
-          const stringMap = buildTiposClienteStringMap(rawMap)
-          setTiposClienteMap(stringMap)
-        }
-      })
-      .catch((err) => console.warn('[DashboardCanais] Erro ao carregar tipos de cliente:', err))
-      .finally(() => {
-        if (mounted) setLoadingTiposCliente(false)
-      })
-    return () => {
-      mounted = false
-    }
-  }, [])
-
-  useEffect(() => {
     loadData(filters)
     loadComparativoData(filters)
     return () => {
@@ -200,38 +170,26 @@ export default function DashboardCanais() {
     loadComparativoData(filters)
   })
 
-  const filterOptions = useMemo(() => {
-    const baseOpts = data?.filterOptions || {
-      vendedorCliente: [],
-      vendedor: [],
-      grupoItem: [],
-      estado: [],
-      utilizacao: [],
-      tipoDocumento: [],
-      canais: [],
-      canaisClientes: [],
-      inside: [],
-      anos: [],
-      meses: [],
-      dias: [],
-    }
-    return {
-      ...baseOpts,
-      jpClass: JP_CLASS_OPTIONS as unknown as string[],
-      tipoCliente: (() => {
-        const set = new Set<string>()
-        if (baseOpts.tipoCliente) {
-          baseOpts.tipoCliente.forEach((tc) => tc && set.add(tc.trim()))
-        }
-        tipoClienteOptions.forEach((tc) => tc && set.add(tc.trim()))
-        Object.values(tiposClienteMap).forEach((tc) => tc && set.add(tc.trim()))
-        return Array.from(set)
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b, 'pt-BR'))
-      })(),
-      isLoadingTipoCliente: loadingTiposCliente,
-    }
-  }, [data, tipoClienteOptions, tiposClienteMap, loadingTiposCliente])
+  // Único filtro local da Visão Canais: Canais (nome). Os demais filtros são globais
+  // (definidos na página Filtros Globais e lidos aqui via sessionStorage).
+  const canalOptions = useMemo(() => data?.filterOptions?.canais || [], [data])
+  const canalClientesOptions = useMemo(() => data?.filterOptions?.canaisClientes || [], [data])
+
+  const handleCanalChange = (values: string[]) => {
+    setFilters((prev) => {
+      // Ao mudar canais, descarta clientes do canal que não pertencem mais à seleção
+      let nextClientes = prev.canalClientes || []
+      if (values.length > 0 && nextClientes.length > 0) {
+        const validClis = new Set(
+          canalClientesOptions
+            .filter((cc) => values.includes(cc.nome_canal))
+            .map((cc) => cc.nome_cliente),
+        )
+        nextClientes = nextClientes.filter((cli) => validClis.has(cli))
+      }
+      return { ...prev, canal: values, canalClientes: nextClientes }
+    })
+  }
 
   const kpis = useMemo(() => {
     return {
@@ -252,43 +210,67 @@ export default function DashboardCanais() {
   const isNoData =
     !loading && !error && data !== null && kpis.faturamento === 0 && kpis.documentos === 0
 
+  // Limpa APENAS o filtro local de Canais — os filtros globais são gerenciados
+  // na página Dashboard > Filtros Globais e não devem ser alterados daqui.
   const handleClearFilters = () => {
-    const cleared: FilterState = {
-      base: 'ambos',
-      dataDe: '',
-      dataAte: '',
-      vendedorCliente: [],
-      vendedor: [],
-      grupoItem: [],
-      estado: [],
-      utilizacao: [],
-      tipoDocumento: [],
-      canal: [],
-      canalClientes: [],
-      deploy: [],
-      inside: [],
-      tipoCliente: [],
-      jpClass: [],
-      search: '',
-      ano: [],
-      mes: [],
-      dia: [],
-      tipoDevolucao: '',
-    }
-    setFilters(cleared)
+    setFilters((prev) => ({ ...prev, canal: [], canalClientes: [] }))
   }
 
   return (
     <div className="space-y-6 min-w-0 max-w-full">
-      {/* Filters Bar */}
-      <FilterBar
-        filters={filters}
-        setFilters={setFilters}
-        options={filterOptions}
-        isLoading={loading}
-        loadingMessage="Atualizando indicadores de canais..."
-        onApplyFilters={(applied) => loadData(applied)}
-      />
+      {/* Filtro local: apenas Canais (os demais filtros são globais — Filtros Globais) */}
+      <Card className="rounded-xl border border-gray-200 bg-white shadow-xs">
+        <CardContent className="p-4">
+          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+            <div className="flex-1 min-w-0">
+              <Label className="text-[11px] font-bold text-[#0B6E99] uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#0B6E99]" />
+                Canais
+                {canalOptions.length > 0 && (
+                  <span className="text-[10px] text-slate-500 font-semibold bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 normal-case">
+                    {canalOptions.length} canais
+                  </span>
+                )}
+              </Label>
+              <MultiSelectDropdown
+                label="Canal"
+                options={canalOptions.map((c) => c.nome)}
+                selected={filters.canal || []}
+                onChange={handleCanalChange}
+                placeholder="Todos os canais"
+                highlight={(filters.canal || []).length > 0}
+                getOptionLabel={(nome) => {
+                  const opt = canalOptions.find((c) => c.nome === nome)
+                  if (opt && opt.deploy) {
+                    const depDesc =
+                      opt.deploy === 'AGIS'
+                        ? 'AGIS'
+                        : opt.deploy === 'ROLAND'
+                          ? 'Roland'
+                          : opt.deploy
+                    return `${nome} (${depDesc})`
+                  }
+                  return nome
+                }}
+              />
+              <p className="text-[11px] text-slate-500 font-medium mt-1.5">
+                Filtro local da Visão Canais. Os demais filtros globais são definidos em Dashboard
+                &gt; Filtros Globais.
+              </p>
+            </div>
+            {(filters.canal || []).length > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => handleCanalChange([])}
+                className="border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold shrink-0"
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Limpar Canais
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Loading Skeleton */}
       {loading ? (

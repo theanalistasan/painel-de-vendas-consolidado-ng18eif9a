@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   TrendingUp,
   BarChart2,
@@ -40,33 +41,21 @@ import {
   MESES_CURTOS,
 } from '@/lib/formatters'
 import { toast } from '@/hooks/use-toast'
-import {
-  saveFiltersToSession,
-  loadFiltersFromSession,
-  hasSavedFiltersInSession,
-  hasValidPeriodFilters,
-  buildDynamicInitialFilters,
-} from '@/lib/filter-persistence'
+import { loadFiltersFromSession } from '@/lib/filter-persistence'
 import ChartCard from '@/components/ChartCard'
 import { SlidersHorizontal } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
 import { MetasIndicador } from '@/components/MetasIndicador'
 import type { VendaConsolidada } from '@/types/sales'
 import { fetchVendasList } from '@/services/sales'
 import {
-  fetchTiposClienteOptions,
   fetchTiposClienteMap,
   buildTiposClienteStringMap,
   enrichVendaTipoCliente,
   resolveTipoCliente,
 } from '@/services/tiposCliente'
 import { useTableSort } from '@/hooks/use-table-sort'
-import {
-  VendasRelatorioTable,
-  RELATORIO_COLUMNS,
-  type RelatorioGroupByMode,
-} from '@/components/VendasRelatorioTable'
-import { JP_CLASS_OPTIONS, matchesJpClassFilter } from '@/lib/jp-class'
+import { VendasRelatorioTable, type RelatorioGroupByMode } from '@/components/VendasRelatorioTable'
+import { matchesJpClassFilter } from '@/lib/jp-class'
 import { isDevolucao } from '@/types/sales'
 import { FileSpreadsheet, Package, FileText, DollarSign } from 'lucide-react'
 import KpiCard from '@/components/KpiCard'
@@ -172,9 +161,8 @@ export default function DashboardGeral() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [exportingReport, setExportingReport] = useState(false)
-  const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
   const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
-  const [loadingTiposCliente, setLoadingTiposCliente] = useState(false)
+  const navigate = useNavigate()
 
   // Estado do Relatório Consolidado de Vendas (incorporado de /vendas)
   const [paginatedVendas, setPaginatedVendas] = useState<VendaConsolidada[]>([])
@@ -202,8 +190,7 @@ export default function DashboardGeral() {
     return 'comissao'
   })
 
-  const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
-  const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
+  const [filters] = useState<FilterState>(() => loadFiltersFromSession())
 
   const displayedVendas = useMemo(() => {
     // 1. Enriquece com o mapa de tipos_cliente como fallback
@@ -226,14 +213,6 @@ export default function DashboardGeral() {
     if (!filters.jpClass || filters.jpClass.length === 0) return list
     return list.filter((item) => matchesJpClassFilter(item.grupo_item, filters.jpClass))
   }, [paginatedVendas, tiposClienteMap, filters.tipoCliente, filters.jpClass])
-  const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
-
-  useEffect(() => {
-    if (hadSavedFiltersAtMount.current || initializedFromBase) {
-      saveFiltersToSession(filters)
-    }
-  }, [filters, initializedFromBase])
-
   const requestSeqRef = useRef<number>(0)
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -256,19 +235,6 @@ export default function DashboardGeral() {
 
       if (seq !== requestSeqRef.current) {
         return
-      }
-
-      // Se ainda não foi inicializado com as opções dinâmicas da base (primeiro acesso sem sessão),
-      // aplica os filtros dinâmicos padrão da base APENAS se não houver sessão prévia.
-      if (!initializedFromBase && !hasSavedFiltersInSession() && res?.filterOptions) {
-        const dynamicFilters = buildDynamicInitialFilters(res.filterOptions)
-        setInitializedFromBase(true)
-        saveFiltersToSession(dynamicFilters)
-        setFilters(dynamicFilters)
-        return
-      }
-      if (!initializedFromBase && res?.filterOptions) {
-        setInitializedFromBase(true)
       }
 
       setData(res)
@@ -369,26 +335,14 @@ export default function DashboardGeral() {
   }
 
   useEffect(() => {
-    let mounted = true
-    setLoadingTiposCliente(true)
-    Promise.all([fetchTiposClienteOptions(), fetchTiposClienteMap()])
-      .then(([opts, rawMap]) => {
-        if (!mounted) return
-        if (Array.isArray(opts) && opts.length > 0) {
-          setTipoClienteOptions(opts)
-        }
+    fetchTiposClienteMap()
+      .then((rawMap) => {
         if (rawMap && typeof rawMap === 'object') {
           const stringMap = buildTiposClienteStringMap(rawMap)
           setTiposClienteMap(stringMap)
         }
       })
       .catch((err) => console.warn('Falha ao buscar dados de tipo de cliente na Visão Geral:', err))
-      .finally(() => {
-        if (mounted) setLoadingTiposCliente(false)
-      })
-    return () => {
-      mounted = false
-    }
   }, [])
 
   useEffect(() => {
@@ -414,39 +368,6 @@ export default function DashboardGeral() {
     loadData()
     loadVendasData(filters, vendasPage, sort.field, sort.dir, isAllGroupedNfe, reportGroupByMode)
   })
-
-  const filterOptions = useMemo(() => {
-    const baseOpts = data?.filterOptions || {
-      vendedorCliente: [],
-      vendedor: [],
-      grupoItem: [],
-      estado: [],
-      utilizacao: [],
-      tipoDocumento: [],
-      canais: [],
-      canaisClientes: [],
-      inside: [],
-      anos: [],
-      meses: [],
-      dias: [],
-    }
-    return {
-      ...baseOpts,
-      jpClass: JP_CLASS_OPTIONS as unknown as string[],
-      tipoCliente: (() => {
-        const set = new Set<string>()
-        if (baseOpts.tipoCliente) {
-          baseOpts.tipoCliente.forEach((tc) => tc && set.add(tc.trim()))
-        }
-        tipoClienteOptions.forEach((tc) => tc && set.add(tc.trim()))
-        Object.values(tiposClienteMap).forEach((tc) => tc && set.add(tc.trim()))
-        return Array.from(set)
-          .filter(Boolean)
-          .sort((a, b) => a.localeCompare(b, 'pt-BR'))
-      })(),
-      isLoadingTipoCliente: loadingTiposCliente,
-    }
-  }, [data, tipoClienteOptions, tiposClienteMap, loadingTiposCliente])
 
   const chartVendasPorMes = data?.charts?.vendasPorMes || []
   const chartVendasPorAno = data?.charts?.vendasPorAno || []
@@ -608,7 +529,8 @@ export default function DashboardGeral() {
 
   const isJpClassFilterActive = Boolean(filters.jpClass && filters.jpClass.length > 0)
 
-  // Cálculo dos Clientes Ativos segregados por categoria (Tintas, Acessórios, Peças)
+  // Clientes ativos segregados por categoria (Tintas, Acessórios, Peças),
+  // calculados a partir do relatório detalhado carregado nesta visão.
   const { clientesAtivosTintas, clientesAtivosAcessorios, clientesAtivosPecas } = useMemo(() => {
     const tintasClientes = new Set<string>()
     const acessoriosClientes = new Set<string>()
@@ -623,9 +545,7 @@ export default function DashboardGeral() {
         .toUpperCase()
     }
 
-    const source = displayedVendas.length > 0 ? displayedVendas : paginatedVendas
-
-    for (const item of source) {
+    for (const item of paginatedVendas) {
       if (isDevolucao(item.tipo_documento)) continue
 
       const clienteId = (item.codigo_cliente || item.nome_cliente || '').trim()
@@ -653,7 +573,7 @@ export default function DashboardGeral() {
       clientesAtivosAcessorios: acessoriosClientes.size,
       clientesAtivosPecas: pecasClientes.size,
     }
-  }, [displayedVendas, paginatedVendas])
+  }, [paginatedVendas])
 
   const reportKpis = useMemo(() => {
     if (!isJpClassFilterActive) {
@@ -898,32 +818,6 @@ export default function DashboardGeral() {
     [filters, sort.field, sort.dir, isAllGroupedNfe],
   )
 
-  const handleClearFilters = () => {
-    const cleared: FilterState = {
-      base: 'ambos',
-      dataDe: '',
-      dataAte: '',
-      vendedorCliente: [],
-      vendedor: [],
-      grupoItem: [],
-      estado: [],
-      utilizacao: [],
-      tipoDocumento: [],
-      canal: [],
-      canalClientes: [],
-      deploy: [],
-      inside: [],
-      tipoCliente: [],
-      jpClass: [],
-      search: '',
-      ano: [],
-      mes: [],
-      dia: [],
-      tipoDevolucao: '',
-    }
-    setFilters(cleared)
-  }
-
   // Exportação de relatórios respeitando filtros ativos
   const handleExportReport = async (groupByNfe = false) => {
     setExportingReport(true)
@@ -1127,12 +1021,12 @@ export default function DashboardGeral() {
           </p>
           <div className="flex items-center justify-center gap-3 flex-wrap">
             <Button
-              onClick={handleClearFilters}
+              onClick={() => navigate('/dashboard/filtros')}
               variant="outline"
               className="border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold"
             >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Limpar Filtros
+              <SlidersHorizontal className="w-4 h-4 mr-2" />
+              Abrir Filtros Globais
             </Button>
             <Button
               onClick={() => loadData(filters)}
@@ -1166,11 +1060,11 @@ export default function DashboardGeral() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Button
-                    onClick={handleClearFilters}
+                    onClick={() => navigate('/dashboard/filtros')}
                     className="bg-[#0B6E99] hover:bg-[#084F6E] text-white font-bold text-xs h-9 px-4 shadow-sm"
                   >
-                    <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
-                    Limpar Filtros
+                    <SlidersHorizontal className="w-3.5 h-3.5 mr-1.5" />
+                    Abrir Filtros Globais
                   </Button>
                 </div>
               </div>
