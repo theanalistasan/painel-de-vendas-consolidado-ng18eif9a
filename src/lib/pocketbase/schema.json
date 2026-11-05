@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-05T00:40:57.737Z",
+  "generatedAt": "2026-11-05T00:43:58.378Z",
   "collections": [
     {
       "name": "users",
@@ -29,29 +29,21 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "role",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "admin",
-            "user"
-          ]
+          "selectValues": ["admin", "user"]
         },
         {
           "name": "active",
@@ -117,19 +109,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -351,19 +338,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "status_cadastro",
@@ -579,19 +561,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "status_cadastro",
@@ -920,19 +897,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "tem_racnew",
@@ -1041,19 +1013,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -1144,19 +1111,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "segmento",
@@ -1302,19 +1264,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -1489,19 +1446,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "status_cadastro",
@@ -1618,24 +1570,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE UNIQUE INDEX idx_sync_state_chave ON canais_sync_state (chave)"
-      ]
+      "indexes": ["CREATE UNIQUE INDEX idx_sync_state_chave ON canais_sync_state (chave)"]
     },
     {
       "name": "estoque_sap",
@@ -1695,19 +1640,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "descricao_ingles",
@@ -1827,24 +1767,380 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
         "CREATE INDEX idx_tipos_cliente_codigo ON tipos_cliente (codigo_pn)",
         "CREATE INDEX idx_tipos_cliente_tipo ON tipos_cliente (tipo_cliente)"
+      ]
+    },
+    {
+      "name": "vendas_historico",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": null,
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "tipo_documento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nf_entrega_futura",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "numero_sap",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "numero_nfe",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_lancamento",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ultima_data_vencimento",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "docto_origem_destino",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_origem_destino",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "condicao_pagamento",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "numero_linha",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "codigo_item",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "descricao_item",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "quantidade",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "qty_kg_lt",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "preco_item",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "desconto_linha",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "icms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "pis",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cofins",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ipi",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "icms_partilha",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_linha",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "utilizacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_vendedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "custo_item",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "nome_filial",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "conta",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "estado",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "cidade",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "grupo_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "mercado",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "usuario_emissor_pedido",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "itms_grp_nam",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "numero_documento_netsales",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "preco_unitario",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_nf_sem_frete",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "total_nf_novo",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "valor_liquido",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "custo_total",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "classificacao",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vendedor_revenda",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "grupo_item",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "vendedor_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "origem",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "data_carga",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tem_racnew",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tem_netsales",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "status_cadastro",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_pn",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "tipo_cliente",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE INDEX `idx_vh_vendedor_cliente` ON `vendas_historico` (vendedor_cliente)",
+        "CREATE INDEX `idx_vh_nome_vendedor` ON `vendas_historico` (nome_vendedor)",
+        "CREATE INDEX `idx_vh_estado` ON `vendas_historico` (estado)",
+        "CREATE INDEX `idx_vh_cidade` ON `vendas_historico` (cidade)",
+        "CREATE INDEX `idx_vh_utilizacao` ON `vendas_historico` (utilizacao)",
+        "CREATE INDEX `idx_vh_numero_nfe` ON `vendas_historico` (numero_nfe)",
+        "CREATE INDEX `idx_vh_data_lancamento` ON `vendas_historico` (data_lancamento)",
+        "CREATE INDEX `idx_vh_grupo_item` ON `vendas_historico` (grupo_item)",
+        "CREATE INDEX `idx_vh_tipo_documento` ON `vendas_historico` (tipo_documento)",
+        "CREATE INDEX `idx_vh_dt_grupo_tipo` ON `vendas_historico` (data_lancamento, grupo_item, tipo_documento)",
+        "CREATE INDEX `idx_vh_nome_cliente` ON `vendas_historico` (nome_cliente)",
+        "CREATE INDEX `idx_vh_tem_netsales` ON `vendas_historico` (tem_netsales)",
+        "CREATE INDEX `idx_vh_created` ON `vendas_historico` (created)",
+        "CREATE INDEX `idx_vh_data_desc` ON `vendas_historico` (data_lancamento DESC)",
+        "CREATE INDEX `idx_vh_grupo_data` ON `vendas_historico` (grupo_item, data_lancamento)",
+        "CREATE INDEX `idx_vh_nome_cliente_total` ON `vendas_historico` (nome_cliente, total_linha)",
+        "CREATE INDEX `idx_vh_data_lancamento_nfe` ON `vendas_historico` (data_lancamento DESC, numero_nfe)",
+        "CREATE INDEX `idx_vh_nfe_data` ON `vendas_historico` (numero_nfe, data_lancamento DESC)",
+        "CREATE INDEX `idx_vh_netsales_data` ON `vendas_historico` (tem_netsales, data_lancamento DESC)",
+        "CREATE INDEX `idx_vh_data_carga` ON `vendas_historico` (data_carga)"
       ]
     }
   ]

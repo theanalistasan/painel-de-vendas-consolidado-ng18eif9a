@@ -45,6 +45,8 @@ import {
 } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import { getMigracaoHistoricoStatus, migrarHistoricoApi } from '@/services/migracaoHistorico'
+import type { MigracaoHistoricoStatus } from '@/services/migracaoHistorico'
 
 const CHUNK_SIZE = 5000
 
@@ -791,6 +793,15 @@ export default function Importar() {
     import('@/types/sales').ConsolidacaoStatus | null
   >(null)
   const [consolidationError, setConsolidationError] = useState<string | null>(null)
+  const [migrandoHistorico, setMigrandoHistorico] = useState(false)
+  const [migracaoHistoricoStatus, setMigracaoHistoricoStatus] =
+    useState<MigracaoHistoricoStatus | null>(null)
+  const [migracaoHistoricoError, setMigracaoHistoricoError] = useState<string | null>(null)
+  const [migracaoHistoricoResultado, setMigracaoHistoricoResultado] = useState<{
+    registros_movidos: number
+    total_historico: number
+    duracao_s: number
+  } | null>(null)
   // Resultado de cada importação armazenado separadamente por base
   const [importResults, setImportResults] = useState<{
     produtos?: ImportResult
@@ -841,6 +852,21 @@ export default function Importar() {
     refreshCounts()
     // Registrar acesso à tela de importação no audit_logs
     logAudit('import_access', 'Acesso à tela de Importação e Consolidação de Bases')
+    // Restaura o estado persistido da migração do histórico (se houver)
+    getMigracaoHistoricoStatus()
+      .then((s) => {
+        setMigracaoHistoricoStatus(s)
+        if (s.status === 'completed' && s.registros_movidos > 0) {
+          setMigracaoHistoricoResultado({
+            registros_movidos: s.registros_movidos,
+            total_historico: s.total_historico,
+            duracao_s: 0,
+          })
+        }
+      })
+      .catch(() => {
+        /* coleção ainda não existe ou backend indisponível — segue com estado inicial */
+      })
   }, [])
 
   const handleConsolidar = async () => {
@@ -952,6 +978,60 @@ export default function Importar() {
       })
     } finally {
       setConsolidating(false)
+    }
+  }
+
+  // ETAPA 1 da segregação: move registros < 2025-01-01 de `vendas` para
+  // `vendas_historico`, em lotes curtos (mesmo padrão da consolidação).
+  const handleMigrarHistorico = async () => {
+    setMigrandoHistorico(true)
+    setMigracaoHistoricoError(null)
+    setMigracaoHistoricoResultado(null)
+    try {
+      const res = await migrarHistoricoApi({
+        onProgress: (s) => setMigracaoHistoricoStatus(s),
+      })
+      const totalHist = res.status.total_historico
+      setMigracaoHistoricoResultado({
+        registros_movidos: res.registros_movidos,
+        total_historico: totalHist,
+        duracao_s: res.duracao_ms ? Math.round(res.duracao_ms / 1000) : 0,
+      })
+      setMigracaoHistoricoStatus(res.status)
+      logAudit(
+        'migracao_historico',
+        `Migração histórico (< 2025): ${res.registros_movidos} registros movidos para vendas_historico (${totalHist} no total).`,
+      )
+      toast({
+        title: 'Migração do Histórico Concluída!',
+        description: `${formatNumber(res.registros_movidos)} registros anteriores a jan/2025 movidos para a base histórica (${formatNumber(totalHist)} no histórico). Nada mais será movido — a execução é idempotente.`,
+      })
+      refreshCounts()
+    } catch (err: unknown) {
+      const errObj = err as {
+        data?: { error?: string; message?: string; stage?: string }
+        response?: { error?: string; message?: string; stage?: string }
+        message?: string
+      }
+      const backendData = errObj?.data || errObj?.response
+      const msg =
+        backendData?.error ||
+        backendData?.message ||
+        errObj?.message ||
+        'Falha na migração do histórico'
+      console.error('Erro na migração do histórico:', err)
+      setMigracaoHistoricoError(msg)
+      // Persiste o estado de erro para que a próxima visita à tela saiba o que aconteceu
+      getMigracaoHistoricoStatus()
+        .then((s) => setMigracaoHistoricoStatus(s))
+        .catch(() => undefined)
+      toast({
+        variant: 'destructive',
+        title: 'Falha na Migração do Histórico',
+        description: msg,
+      })
+    } finally {
+      setMigrandoHistorico(false)
     }
   }
 
@@ -1278,6 +1358,181 @@ export default function Importar() {
               Última consolidação: {formatDateTime(counts.ultimaCarga)}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Migração do Histórico (< 2025) — ETAPA 1 da segregação de dados */}
+      <Card className="rounded-xl border border-slate-200/80 bg-white shadow-xs">
+        <CardHeader className="pb-3 border-b border-slate-100">
+          <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <Database className="w-4 h-4 text-amber-600" />
+            Migração do Histórico (&lt; 2025)
+          </CardTitle>
+          <CardDescription className="text-xs text-slate-500">
+            ETAPA 1 da segregação de dados: move os registros de{' '}
+            <code className="text-[10px]">vendas</code> com data de lançamento anterior a{' '}
+            <strong>jan/2025</strong> para a base histórica separada{' '}
+            <code className="text-[10px]">vendas_historico</code>. Nada é movido automaticamente — a
+            movimentação só acontece quando você clicar no botão.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-4 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-[11px] text-slate-600 space-y-1">
+              <p>
+                <span className="font-semibold text-slate-800">Base ativa:</span>{' '}
+                {formatNumber(counts.vendas)} registros em <code>vendas</code>
+              </p>
+              {migracaoHistoricoStatus?.total_historico ? (
+                <p>
+                  <span className="font-semibold text-slate-800">Base histórica:</span>{' '}
+                  {formatNumber(migracaoHistoricoStatus.total_historico)} registros em{' '}
+                  <code>vendas_historico</code>
+                </p>
+              ) : null}
+              {migracaoHistoricoStatus?.status === 'completed' &&
+              migracaoHistoricoStatus.finished_at ? (
+                <p className="text-emerald-700">
+                  Última conclusão: {formatDateTime(migracaoHistoricoStatus.finished_at)}
+                </p>
+              ) : null}
+            </div>
+            <Button
+              size="lg"
+              onClick={handleMigrarHistorico}
+              disabled={migrandoHistorico || consolidating || rebuildingSummaries}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-6 py-6 rounded-xl shadow-lg shadow-amber-600/30 flex items-center justify-center gap-2 shrink-0"
+            >
+              {migrandoHistorico ? (
+                <>
+                  <RotateCw className="w-5 h-5 animate-spin" />
+                  {migracaoHistoricoStatus?.registros_pendentes
+                    ? `Movendo histórico (${formatNumber(migracaoHistoricoStatus.registros_movidos)} movidos, ${formatNumber(migracaoHistoricoStatus.registros_pendentes)} restantes)...`
+                    : 'Migração iniciada, aguarde...'}
+                </>
+              ) : (
+                <>
+                  <Play className="w-5 h-5 fill-white" />
+                  Migrar Histórico (&lt; 2025)
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Progresso da migração */}
+          {migrandoHistorico && migracaoHistoricoStatus && (
+            <div className="p-4 rounded-xl bg-amber-950/90 border border-amber-400/40 text-amber-100 space-y-2">
+              <div className="flex items-center justify-between text-xs sm:text-sm font-semibold">
+                <span className="flex items-center gap-2">
+                  <RotateCw className="w-4 h-4 animate-spin text-amber-400" />
+                  {migracaoHistoricoStatus.mensagem || 'Movendo registros em lotes...'}
+                </span>
+                <span className="text-amber-300 font-mono text-xs">
+                  {migracaoHistoricoStatus.registros_pendentes > 0
+                    ? `${Math.round(
+                        (migracaoHistoricoStatus.registros_movidos /
+                          (migracaoHistoricoStatus.registros_movidos +
+                            migracaoHistoricoStatus.registros_pendentes)) *
+                          100,
+                      )}%`
+                    : 'Concluindo...'}
+                </span>
+              </div>
+              <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                <div
+                  className="bg-amber-400 h-2.5 rounded-full transition-all duration-300 ease-out"
+                  style={{
+                    width: `${
+                      migracaoHistoricoStatus.registros_pendentes > 0
+                        ? Math.min(
+                            100,
+                            Math.round(
+                              (migracaoHistoricoStatus.registros_movidos /
+                                (migracaoHistoricoStatus.registros_movidos +
+                                  migracaoHistoricoStatus.registros_pendentes)) *
+                                100,
+                            ),
+                          )
+                        : 100
+                    }%`,
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-amber-200/80 font-mono">
+                <span>
+                  Movidos: {formatNumber(migracaoHistoricoStatus.registros_movidos)} | Restantes:{' '}
+                  {formatNumber(migracaoHistoricoStatus.registros_pendentes)}
+                </span>
+                <span>Etapa: {migracaoHistoricoStatus.etapa || 'processando'}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Conclusão explícita e persistida (o usuário reclamou que a tela não confirmava) */}
+          {migracaoHistoricoResultado && !migrandoHistorico && (
+            <div className="p-4 rounded-xl bg-emerald-950/90 border border-emerald-400/50 text-emerald-100 space-y-1.5">
+              <div className="flex items-center gap-2 text-sm font-bold text-emerald-300">
+                <CheckCircle2 className="w-4 h-4" />
+                Migração do histórico CONCLUÍDA — estado salvo no backend
+              </div>
+              <p className="text-xs text-emerald-100/90">
+                {formatNumber(migracaoHistoricoResultado.registros_movidos)} registros anteriores a
+                jan/2025 saíram de <code>vendas</code> e constam agora em{' '}
+                <code>vendas_historico</code> (
+                {formatNumber(migracaoHistoricoResultado.total_historico)} registros no total
+                histórico).
+                {migracaoHistoricoResultado.duracao_s > 0
+                  ? ` Duração: ${migracaoHistoricoResultado.duracao_s}s.`
+                  : ''}
+              </p>
+              <p className="text-[11px] text-emerald-200/70">
+                Rodar novamente NÃO move nem duplica nada (execução idempotente).
+              </p>
+            </div>
+          )}
+
+          {/* Estado persistido: já concluída em execução anterior */}
+          {!migracaoHistoricoResultado &&
+            !migrandoHistorico &&
+            migracaoHistoricoStatus?.status === 'completed' &&
+            migracaoHistoricoStatus.registros_movidos > 0 && (
+              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs">
+                <span className="font-bold flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Migração concluída em sessão anterior
+                </span>
+                <p className="mt-1 text-emerald-800">
+                  {formatNumber(migracaoHistoricoStatus.registros_movidos)} registros movidos para{' '}
+                  <code>vendas_historico</code>. Reexecutar não altera nada.
+                </p>
+              </div>
+            )}
+
+          {/* Erro persistido da migração */}
+          {migracaoHistoricoError && (
+            <div className="p-4 rounded-lg bg-red-950/80 border border-red-500/60 text-red-200 text-xs sm:text-sm flex items-start gap-3">
+              <span className="font-bold text-red-400 shrink-0 uppercase tracking-wide text-[11px] bg-red-900/80 px-2 py-0.5 rounded border border-red-700">
+                Falha na Migração
+              </span>
+              <p className="flex-1 font-mono text-xs break-all leading-relaxed">
+                {migracaoHistoricoError}
+              </p>
+            </div>
+          )}
+          {!migracaoHistoricoError &&
+            !migrandoHistorico &&
+            migracaoHistoricoStatus?.status === 'error' &&
+            migracaoHistoricoStatus.erro && (
+              <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-900 text-xs">
+                <span className="font-bold flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  Última execução falhou (estado salvo no backend)
+                </span>
+                <p className="mt-1 font-mono text-[11px] break-all">
+                  {migracaoHistoricoStatus.erro}
+                </p>
+              </div>
+            )}
         </CardContent>
       </Card>
 

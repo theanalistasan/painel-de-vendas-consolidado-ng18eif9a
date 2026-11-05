@@ -10,6 +10,7 @@ export type AuditAction =
   | 'pedidos_abertos_import'
   | 'estoque_sap_import'
   | 'tipos_cliente_import'
+  | 'migracao_historico'
 
 export interface AuditLog {
   id: string

@@ -27,6 +27,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   pedidos_abertos_import: 'Importação Pedidos SAP',
   estoque_sap_import: 'Importação Estoque SAP',
   tipos_cliente_import: 'Importação Tipo de Cliente',
+  migracao_historico: 'Migração Histórico (< 2025)',
 }
 
 const ACTION_BADGE: Record<AuditAction, string> = {
@@ -38,6 +39,7 @@ const ACTION_BADGE: Record<AuditAction, string> = {
   pedidos_abertos_import: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
   estoque_sap_import: 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100',
   tipos_cliente_import: 'bg-purple-100 text-purple-800 hover:bg-purple-100',
+  migracao_historico: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
 }
 
 export default function Auditoria() {
