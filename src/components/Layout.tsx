@@ -317,6 +317,20 @@ export default function Layout() {
                 {/* Submenu de Visões */}
                 {dashboardOpen && (
                   <div className="mt-1 ml-4 pl-3 border-l border-slate-800 space-y-1">
+                    {/* Filtros Globais (primeiro item, acima de Visão Geral) */}
+                    <NavLink
+                      to="/dashboard/filtros"
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
+                        isFiltrosGlobaisActive
+                          ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+                      )}
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Filtros Globais</span>
+                    </NavLink>
+
                     <NavLink
                       to="/dashboard/geral"
                       className={cn(
@@ -355,20 +369,6 @@ export default function Layout() {
                     >
                       <Network className="w-3.5 h-3.5 shrink-0" />
                       <span className="truncate">Manutenção de Canais</span>
-                    </NavLink>
-
-                    {/* Filtros Globais */}
-                    <NavLink
-                      to="/dashboard/filtros"
-                      className={cn(
-                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
-                        isFiltrosGlobaisActive
-                          ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
-                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
-                      )}
-                    >
-                      <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Filtros Globais</span>
                     </NavLink>
                   </div>
                 )}
@@ -598,6 +598,21 @@ export default function Layout() {
 
                 {dashboardOpen && (
                   <div className="ml-4 pl-3 border-l border-slate-800 space-y-1">
+                    {/* Filtros Globais (primeiro item, acima de Visão Geral) */}
+                    <NavLink
+                      to="/dashboard/filtros"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
+                        isFiltrosGlobaisActive
+                          ? 'bg-[#0B6E99] text-white font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                      )}
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
+                      <span>Filtros Globais</span>
+                    </NavLink>
+
                     <NavLink
                       to="/dashboard/geral"
                       onClick={() => setMobileMenuOpen(false)}
@@ -639,21 +654,6 @@ export default function Layout() {
                     >
                       <Network className="w-3.5 h-3.5 shrink-0" />
                       <span>Manutenção de Canais</span>
-                    </NavLink>
-
-                    {/* Filtros Globais */}
-                    <NavLink
-                      to="/dashboard/filtros"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={cn(
-                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
-                        isFiltrosGlobaisActive
-                          ? 'bg-[#0B6E99] text-white font-bold'
-                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
-                      )}
-                    >
-                      <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
-                      <span>Filtros Globais</span>
                     </NavLink>
                   </div>
                 )}
