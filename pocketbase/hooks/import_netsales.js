@@ -1,12 +1,29 @@
-const path = require('path')
-const { getJanelaDinamica, isForaDaJanela } = require(path.join(__dirname, 'janela_dinamica.js'))
-
 routerAdd(
   'POST',
   '/backend/v1/import/netsales',
   (e) => {
     const body = e.requestInfo().body || {}
     const rows = Array.isArray(body.rows) ? body.rows : Array.isArray(body) ? body : []
+
+    // Helper da janela dinâmica inline (regra: ano anterior + ano atual)
+    const getJanelaDinamica = () => {
+      const anoFim = new Date().getFullYear()
+      const anoInicio = anoFim - 1
+      return {
+        anoInicio,
+        anoFim,
+        inicioISO: `${anoInicio}-01-01`,
+        fimISO: `${anoFim}-12-31`,
+      }
+    }
+
+    const isForaDaJanela = (dataLancamento) => {
+      if (!dataLancamento || typeof dataLancamento !== 'string') return false
+      const d = dataLancamento.trim().slice(0, 10)
+      if (d.length < 10) return false
+      const { inicioISO } = getJanelaDinamica()
+      return d < inicioISO
+    }
 
     // DOIS MODOS (decisão Silvio, segregação de dados):
     // - "atual" (padrão): registros DENTRO da janela dinâmica seguem para

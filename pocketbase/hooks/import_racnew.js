@@ -1,6 +1,3 @@
-const path = require('path')
-const { getJanelaDinamica, isForaDaJanela } = require(path.join(__dirname, 'janela_dinamica.js'))
-
 routerAdd(
   'POST',
   '/backend/v1/import/racnew',
@@ -8,10 +5,30 @@ routerAdd(
     const body = e.requestInfo().body || {}
     const rows = Array.isArray(body.rows) ? body.rows : Array.isArray(body) ? body : []
 
+    // Helper da janela dinâmica inline (regra: ano anterior + ano atual)
+    const getJanelaDinamica = () => {
+      const anoFim = new Date().getFullYear()
+      const anoInicio = anoFim - 1
+      return {
+        anoInicio,
+        anoFim,
+        inicioISO: `${anoInicio}-01-01`,
+        fimISO: `${anoFim}-12-31`,
+      }
+    }
+
+    const isForaDaJanela = (dataLancamento) => {
+      if (!dataLancamento || typeof dataLancamento !== 'string') return false
+      const d = dataLancamento.trim().slice(0, 10)
+      if (d.length < 10) return false
+      const { inicioISO } = getJanelaDinamica()
+      return d < inicioISO
+    }
+
     // DOIS MODOS (decisão Silvio, segregação de dados):
-    // - "atual" (padrão): dados do Ano Atual + Ano Passado — registros DENTRO da
-    //   janela dinâmica seguem para racnew (fluxo normal até consolidar em vendas);
-    //   registros FORA da janela (< jan do ano anterior) vão DIRETO a vendas_historico.
+    // - "atual" (padrão): registros DENTRO da janela dinâmica seguem para
+    //   racnew (fluxo normal até consolidar em vendas); registros FORA da
+    //   janela (< jan do ano anterior) vão DIRETO a vendas_historico.
     // - "historico": dados anteriores ao Ano Passado — TUDO vai direto a
     //   vendas_historico, sem tocar racnew.
     const modo = (body.modo || 'atual').toString().trim()

@@ -512,11 +512,28 @@ routerAdd('GET', '/backend/v1/vendas/consolidar/status', (e) => {
 
 // Endpoint de avanço de lote: processa exatamente 1 lote (ou finalização atômica)
 // e responde em menos de 3 a 5 segundos, sem risco de timeout.
-const path = require('path')
-const { getJanelaDinamica, isForaDaJanela } = require(path.join(__dirname, 'janela_dinamica.js'))
-
 routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
   const BATCH_SIZE = 10000
+
+  // Helper da janela dinâmica inline (regra: ano anterior + ano atual)
+  const getJanelaDinamica = () => {
+    const anoFim = new Date().getFullYear()
+    const anoInicio = anoFim - 1
+    return {
+      anoInicio,
+      anoFim,
+      inicioISO: `${anoInicio}-01-01`,
+      fimISO: `${anoFim}-12-31`,
+    }
+  }
+
+  const isForaDaJanela = (dataLancamento) => {
+    if (!dataLancamento || typeof dataLancamento !== 'string') return false
+    const d = dataLancamento.trim().slice(0, 10)
+    if (d.length < 10) return false
+    const { inicioISO } = getJanelaDinamica()
+    return d < inicioISO
+  }
 
   const toInt = (v) => {
     if (v === undefined || v === null || v === '') return 0
