@@ -896,8 +896,10 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
         })
         .all(calculatedRows)
 
-      const stagingCol = $app.findCollectionByNameOrId('vendas_staging')
-      const historicoCol = $app.findCollectionByNameOrId('vendas_historico')
+      let historicoCol = null
+      try {
+        historicoCol = $app.findCollectionByNameOrId('vendas_historico')
+      } catch (_) {}
 
       for (let i = 0; i < calculatedRows.length; i++) {
         const row = calculatedRows[i]
