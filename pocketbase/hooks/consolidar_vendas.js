@@ -896,6 +896,39 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
         })
         .all(calculatedRows)
 
+      if (!calculatedRows || calculatedRows.length === 0) {
+        console.warn(
+          '[consolidar_step] Lote ' +
+            (batchIdx + 1) +
+            ' sem linhas retornadas pela query (calculatedRows vazio, offset ' +
+            offset +
+            '). Avançando lote.',
+        )
+        const processedNowEmpty = Math.min((batchIdx + 1) * BATCH_SIZE, totalRegistros)
+        const nextBatchEmpty = batchIdx + 1
+        setStatus({
+          lote_atual: nextBatchEmpty,
+          registros_processados: processedNowEmpty,
+          mensagem:
+            'Lote ' +
+            (batchIdx + 1) +
+            ' de ' +
+            totalBatches +
+            ' concluído (~' +
+            processedNowEmpty +
+            ' registros).',
+        })
+        return e.json(200, {
+          success: true,
+          done: false,
+          batch_processed: batchIdx + 1,
+          total_batches: totalBatches,
+          registros_processados: processedNowEmpty,
+          total_registros: totalRegistros,
+          status: getStatus(),
+        })
+      }
+
       let historicoCol = null
       try {
         historicoCol = $app.findCollectionByNameOrId('vendas_historico')
@@ -923,10 +956,15 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
             "' && codigo_cliente = '" +
             codigoCliente +
             "'"
-          const found = $app.findRecordsByFilter('vendas_historico', filter, '', 1, 0)
+          let found = []
+          try {
+            found = $app.findRecordsByFilter('vendas_historico', filter, '', 1, 0) || []
+          } catch (fErr) {
+            found = []
+          }
 
           let record
-          if (found.length > 0) {
+          if (found && found.length > 0) {
             record = found[0]
           } else {
             record = new Record(historicoCol)
@@ -1087,6 +1125,41 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
       }
     } catch (insertErr) {
       const dbErrMsg = String(insertErr && insertErr.message ? insertErr.message : insertErr)
+      if (dbErrMsg.indexOf('no rows in result set') >= 0) {
+        console.warn(
+          '[consolidar_step] lote sem linhas, avançando: ' +
+            dbErrMsg +
+            ' (lote ' +
+            (batchIdx + 1) +
+            ', offset ' +
+            offset +
+            ')',
+        )
+        const processedNowNoRows = Math.min((batchIdx + 1) * BATCH_SIZE, totalRegistros)
+        const nextBatchNoRows = batchIdx + 1
+        setStatus({
+          lote_atual: nextBatchNoRows,
+          registros_processados: processedNowNoRows,
+          mensagem:
+            'Lote ' +
+            (batchIdx + 1) +
+            ' de ' +
+            totalBatches +
+            ' concluído (~' +
+            processedNowNoRows +
+            ' registros).',
+        })
+        return e.json(200, {
+          success: true,
+          done: false,
+          batch_processed: batchIdx + 1,
+          total_batches: totalBatches,
+          registros_processados: processedNowNoRows,
+          total_registros: totalRegistros,
+          status: getStatus(),
+        })
+      }
+
       console.error(
         '[consolidar_step] Erro ao gravar lote ' +
           (batchIdx + 1) +

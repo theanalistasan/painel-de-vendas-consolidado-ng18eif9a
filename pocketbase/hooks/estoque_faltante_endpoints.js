@@ -439,12 +439,28 @@ routerAdd(
 
         for (let i = 0; i < items.length; i++) {
           const c = items[i].codigo_item
-          const totalVendida = salesMap[c] || 0
+          const totalVendida = toNum(salesMap[c])
           items[i].qtd_vendida_6m = totalVendida
-          items[i].media_mensal_vendas = parseFloat((totalVendida / 6).toFixed(2))
+          items[i].media_mensal_vendas = parseFloat((totalVendida / 6).toFixed(2)) || 0
         }
       } catch (vErr) {
         console.warn('estoque_faltante list vendas enrichment err:', vErr)
+        for (let i = 0; i < items.length; i++) {
+          if (
+            items[i].media_mensal_vendas === undefined ||
+            items[i].media_mensal_vendas === null ||
+            isNaN(items[i].media_mensal_vendas)
+          ) {
+            items[i].media_mensal_vendas = 0
+          }
+          if (
+            items[i].qtd_vendida_6m === undefined ||
+            items[i].qtd_vendida_6m === null ||
+            isNaN(items[i].qtd_vendida_6m)
+          ) {
+            items[i].qtd_vendida_6m = 0
+          }
+        }
       }
     }
 

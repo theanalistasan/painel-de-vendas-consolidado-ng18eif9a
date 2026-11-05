@@ -1117,25 +1117,29 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       $app
         .db()
         .newQuery(
-          "SELECT MIN(ano_mes) AS min_ym, MAX(ano_mes) AS max_ym FROM resumo_vendas_mensal WHERE ano_mes >= '2015-01'",
+          "SELECT COALESCE(MIN(ano_mes), '') AS min_ym, COALESCE(MAX(ano_mes), '') AS max_ym FROM resumo_vendas_mensal WHERE ano_mes >= '2015-01'",
         )
         .all(minMaxRows)
 
       if (minMaxRows.length > 0 && minMaxRows[0].min_ym && minMaxRows[0].max_ym) {
-        const minYear = parseInt(minMaxRows[0].min_ym.slice(0, 4), 10)
-        const maxYear = parseInt(minMaxRows[0].max_ym.slice(0, 4), 10)
-        maxLancamento = minMaxRows[0].max_ym + '-28 00:00:00.000Z'
-        if (!isNaN(minYear) && !isNaN(maxYear) && maxYear >= minYear) {
-          for (let y = minYear; y <= maxYear; y++) {
-            anosList.push(y)
+        const minYm = String(minMaxRows[0].min_ym || '').trim()
+        const maxYm = String(minMaxRows[0].max_ym || '').trim()
+        if (minYm.length >= 4 && maxYm.length >= 4) {
+          const minYear = parseInt(minYm.slice(0, 4), 10)
+          const maxYear = parseInt(maxYm.slice(0, 4), 10)
+          maxLancamento = maxYm + '-28 00:00:00.000Z'
+          if (!isNaN(minYear) && !isNaN(maxYear) && maxYear >= minYear) {
+            for (let y = minYear; y <= maxYear; y++) {
+              anosList.push(y)
+            }
+            ultimoAnoBase = maxYear
+            const m = parseInt(maxYm.slice(5, 7), 10)
+            if (!isNaN(m)) ultimoMesBase = m
           }
-          ultimoAnoBase = maxYear
-          const m = parseInt(minMaxRows[0].max_ym.slice(5, 7), 10)
-          if (!isNaN(m)) ultimoMesBase = m
         }
       }
     } catch (err) {
-      console.error('dashboard_stats: anos min/max resumo falhou:', err)
+      console.warn('dashboard_stats: anos min/max resumo (base vazia ou sem resumo):', err)
     }
     if (anosList.length === 0) {
       anosList = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
