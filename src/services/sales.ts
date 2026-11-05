@@ -50,17 +50,23 @@ export async function importProdutosApi(rows: Record<string, unknown>[]): Promis
   })
 }
 
-export async function importRacNewApi(rows: Record<string, unknown>[]): Promise<ImportResult> {
+export async function importRacNewApi(
+  rows: Record<string, unknown>[],
+  modo: 'atual' | 'historico' = 'atual',
+): Promise<ImportResult> {
   return pb.send<ImportResult>('/backend/v1/import/racnew', {
     method: 'POST',
-    body: { rows },
+    body: { rows, modo },
   })
 }
 
-export async function importNetSalesApi(rows: Record<string, unknown>[]): Promise<ImportResult> {
+export async function importNetSalesApi(
+  rows: Record<string, unknown>[],
+  modo: 'atual' | 'historico' = 'atual',
+): Promise<ImportResult> {
   return pb.send<ImportResult>('/backend/v1/import/netsales', {
     method: 'POST',
-    body: { rows },
+    body: { rows, modo },
   })
 }
 

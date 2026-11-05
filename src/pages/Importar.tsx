@@ -13,6 +13,7 @@ import {
   Info,
   X,
   FileText,
+  History,
 } from 'lucide-react'
 import {
   importProdutosApi,
@@ -64,6 +65,10 @@ interface BatchResult {
   atualizados: number
   mesclados?: number
   ignorados: number
+  roteados_historico?: number
+  historico_importados?: number
+  historico_atualizados?: number
+  janela?: import('@/types/sales').JanelaDinamicaInfo
   erros: string[]
   avisos: string[]
   failedBatches: number[]
@@ -86,6 +91,7 @@ interface CardImportProps {
   onImport: (
     rows: Record<string, unknown>[],
     batchMeta?: { batchIndex: number; totalBatches: number; isSubsequentBatch: boolean },
+    modo?: 'atual' | 'historico',
   ) => Promise<ImportResult>
   badgeLabel: string
   badgeColor: string
@@ -108,6 +114,8 @@ interface CardImportProps {
     confirmLabel?: string
     cancelLabel?: string
   }
+  /** Seletor de dois modos de importação (dados atuais vs históricos fora da janela) */
+  hasModos?: boolean
 }
 
 function BaseImportCard({
@@ -123,6 +131,7 @@ function BaseImportCard({
   customGuide,
   onImported,
   confirmDialog,
+  hasModos,
 }: CardImportProps) {
   const [file, setFile] = useState<File | null>(null)
   const [parsedRows, setParsedRows] = useState<Record<string, string>[]>([])
@@ -132,6 +141,7 @@ function BaseImportCard({
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null)
   const [dragOver, setDragOver] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [selectedModo, setSelectedModo] = useState<'atual' | 'historico'>('atual')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
@@ -251,15 +261,31 @@ function BaseImportCard({
         setBatchProgress({ current: batchNum, total: totalBatches, sent: i * CHUNK_SIZE })
 
         try {
-          const res = await onImport(chunks[i], {
-            batchIndex: i,
-            totalBatches,
-            isSubsequentBatch: i > 0,
-          })
+          const res = await onImport(
+            chunks[i],
+            {
+              batchIndex: i,
+              totalBatches,
+              isSubsequentBatch: i > 0,
+            },
+            selectedModo,
+          )
           acc.importados += res.importados || 0
           acc.atualizados += res.atualizados || 0
           acc.mesclados = (acc.mesclados || 0) + (res.mesclados || 0)
           acc.ignorados += res.ignorados || 0
+          if (res.roteados_historico) {
+            acc.roteados_historico = (acc.roteados_historico || 0) + res.roteados_historico
+          }
+          if (res.historico_importados) {
+            acc.historico_importados = (acc.historico_importados || 0) + res.historico_importados
+          }
+          if (res.historico_atualizados) {
+            acc.historico_atualizados = (acc.historico_atualizados || 0) + res.historico_atualizados
+          }
+          if (res.janela) {
+            acc.janela = res.janela
+          }
           if (res.erros && res.erros.length > 0) {
             acc.erros.push(...res.erros.slice(0, 20))
           }
@@ -285,6 +311,10 @@ function BaseImportCard({
         mesclados: acc.mesclados || 0,
         ignorados: acc.ignorados,
         erros: acc.erros,
+        roteados_historico: acc.roteados_historico,
+        historico_importados: acc.historico_importados,
+        historico_atualizados: acc.historico_atualizados,
+        janela: acc.janela,
         avisos: Array.from(new Set(acc.avisos)),
         data_carga: new Date().toISOString(),
       }
@@ -535,34 +565,156 @@ function BaseImportCard({
               </div>
             )}
 
-            {/* Action button */}
-            <Button
-              onClick={() => {
-                if (confirmDialog) {
-                  setConfirmOpen(true)
-                } else {
-                  handleExecuteImport()
-                }
-              }}
-              disabled={loading || parsedRows.length === 0}
-              className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs py-2 shadow-xs"
-            >
-              {loading ? (
-                <>
-                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Processando carga ({formatNumber(parsedRows.length)} registros)...
-                </>
-              ) : (
-                <>
-                  <UploadCloud className="w-4 h-4 mr-1.5" />
-                  Importar {title} ({formatNumber(parsedRows.length)} linhas
-                  {parsedRows.length > CHUNK_SIZE
-                    ? ` • ${Math.ceil(parsedRows.length / CHUNK_SIZE)} lotes`
-                    : ''}
-                  )
-                </>
-              )}
-            </Button>
+            {/* Seletor de Modo de Importação (quando habilitado) */}
+            {hasModos ? (
+              <div className="space-y-2 pt-1">
+                <div className="text-[11px] font-semibold text-slate-700 flex items-center justify-between">
+                  <span>Selecione o modo de importação:</span>
+                  <span className="text-[10px] text-slate-500 font-normal">
+                    {selectedModo === 'atual'
+                      ? 'Base ativa + roteamento histórico'
+                      : 'Direto no histórico'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant={selectedModo === 'atual' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      setSelectedModo('atual')
+                      setResult(null)
+                    }}
+                    disabled={loading}
+                    className={cn(
+                      'text-xs font-semibold h-auto py-2 px-3 text-left justify-start flex-col items-start whitespace-normal leading-snug',
+                      selectedModo === 'atual'
+                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-xs'
+                        : 'border-slate-300 text-slate-700 hover:bg-slate-50',
+                    )}
+                  >
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <span
+                        className={cn(
+                          'w-2 h-2 rounded-full',
+                          selectedModo === 'atual' ? 'bg-white' : 'bg-indigo-600',
+                        )}
+                      />
+                      Importar dados atuais (Ano Atual e Ano Passado)
+                    </span>
+                    <span
+                      className={cn(
+                        'text-[10px] block mt-0.5 font-normal',
+                        selectedModo === 'atual' ? 'text-indigo-100' : 'text-slate-500',
+                      )}
+                    >
+                      Grava na base mestra; registros fora da janela vão ao histórico.
+                    </span>
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant={selectedModo === 'historico' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => {
+                      setSelectedModo('historico')
+                      setResult(null)
+                    }}
+                    disabled={loading}
+                    className={cn(
+                      'text-xs font-semibold h-auto py-2 px-3 text-left justify-start flex-col items-start whitespace-normal leading-snug',
+                      selectedModo === 'historico'
+                        ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-600 shadow-xs'
+                        : 'border-slate-300 text-slate-700 hover:bg-slate-50',
+                    )}
+                  >
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <span
+                        className={cn(
+                          'w-2 h-2 rounded-full',
+                          selectedModo === 'historico' ? 'bg-white' : 'bg-amber-600',
+                        )}
+                      />
+                      Importar dados anteriores ao Ano Passado
+                    </span>
+                    <span
+                      className={cn(
+                        'text-[10px] block mt-0.5 font-normal',
+                        selectedModo === 'historico' ? 'text-amber-100' : 'text-slate-500',
+                      )}
+                    >
+                      Direto em vendas_historico sem tocar a base mestra.
+                    </span>
+                  </Button>
+                </div>
+
+                {/* Botão de Disparo do Modo Escolhido */}
+                <Button
+                  onClick={() => {
+                    if (confirmDialog) {
+                      setConfirmOpen(true)
+                    } else {
+                      handleExecuteImport()
+                    }
+                  }}
+                  disabled={loading || parsedRows.length === 0}
+                  className={cn(
+                    'w-full text-white font-semibold text-xs py-2 shadow-xs mt-1',
+                    selectedModo === 'atual'
+                      ? 'bg-indigo-600 hover:bg-indigo-700'
+                      : 'bg-amber-600 hover:bg-amber-700',
+                  )}
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Processando carga ({formatNumber(parsedRows.length)} registros)...
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-4 h-4 mr-1.5" />
+                      {selectedModo === 'atual'
+                        ? 'Importar dados atuais (Ano Atual e Ano Passado)'
+                        : 'Importar dados anteriores ao Ano Passado'}{' '}
+                      ({formatNumber(parsedRows.length)} linhas
+                      {parsedRows.length > CHUNK_SIZE
+                        ? ` • ${Math.ceil(parsedRows.length / CHUNK_SIZE)} lotes`
+                        : ''}
+                      )
+                    </>
+                  )}
+                </Button>
+              </div>
+            ) : (
+              /* Action button único para os outros cards */
+              <Button
+                onClick={() => {
+                  if (confirmDialog) {
+                    setConfirmOpen(true)
+                  } else {
+                    handleExecuteImport()
+                  }
+                }}
+                disabled={loading || parsedRows.length === 0}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs py-2 shadow-xs"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Processando carga ({formatNumber(parsedRows.length)} registros)...
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="w-4 h-4 mr-1.5" />
+                    Importar {title} ({formatNumber(parsedRows.length)} linhas
+                    {parsedRows.length > CHUNK_SIZE
+                      ? ` • ${Math.ceil(parsedRows.length / CHUNK_SIZE)} lotes`
+                      : ''}
+                    )
+                  </>
+                )}
+              </Button>
+            )}
 
             {/* Diálogo de Confirmação de Substituição Completa da Base */}
             {confirmDialog && (
@@ -714,6 +866,52 @@ function BaseImportCard({
                 <span className="text-sm font-bold text-cyan-600">{result.ignorados}</span>
               </div>
             </div>
+
+            {/* Métricas de Histórico e Janela Dinâmica Aplicada */}
+            {((result.roteados_historico ?? 0) > 0 ||
+              (result.historico_importados ?? 0) > 0 ||
+              (result.historico_atualizados ?? 0) > 0 ||
+              result.janela) && (
+              <div className="p-2.5 rounded-lg bg-amber-50/70 border border-amber-200 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-amber-900">
+                  <span className="flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5 text-amber-700" />
+                    Destino no Histórico (vendas_historico):
+                  </span>
+                  {result.janela && (
+                    <span className="text-[10px] font-mono text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200">
+                      Janela: {result.janela.inicioISO} a {result.janela.fimISO}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 text-center pt-0.5">
+                  <div className="bg-white/80 p-1.5 rounded border border-amber-100">
+                    <span className="text-[9px] text-amber-800 uppercase font-semibold block">
+                      Roteados Histórico
+                    </span>
+                    <span className="text-xs font-bold text-amber-900">
+                      {result.roteados_historico ?? 0}
+                    </span>
+                  </div>
+                  <div className="bg-white/80 p-1.5 rounded border border-amber-100">
+                    <span className="text-[9px] text-amber-800 uppercase font-semibold block">
+                      Histórico Novos
+                    </span>
+                    <span className="text-xs font-bold text-amber-900">
+                      {result.historico_importados ?? 0}
+                    </span>
+                  </div>
+                  <div className="bg-white/80 p-1.5 rounded border border-amber-100">
+                    <span className="text-[9px] text-amber-800 uppercase font-semibold block">
+                      Histórico Atualiz.
+                    </span>
+                    <span className="text-xs font-bold text-amber-900">
+                      {result.historico_atualizados ?? 0}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Warning notice if expected columns (e.g. Nome do Canal) were missing */}
             {result.avisos && result.avisos.length > 0 && (
@@ -2007,7 +2205,8 @@ export default function Importar() {
             'estado',
             'cidade',
           ]}
-          onImport={(rows) => importRacNewApi(rows)}
+          hasModos
+          onImport={(rows, _batchMeta, modo) => importRacNewApi(rows, modo || 'atual')}
           baseCount={counts.racnew}
           onImported={(r) => handleImported('racnew', r)}
         />
@@ -2074,7 +2273,8 @@ export default function Importar() {
             'classificacao',
             'vendedor_revenda',
           ]}
-          onImport={(rows) => importNetSalesApi(rows)}
+          hasModos
+          onImport={(rows, _batchMeta, modo) => importNetSalesApi(rows, modo || 'atual')}
           baseCount={counts.netsales}
           onImported={(r) => handleImported('netsales', r)}
         />

@@ -512,12 +512,21 @@ routerAdd('GET', '/backend/v1/vendas/consolidar/status', (e) => {
 
 // Endpoint de avanço de lote: processa exatamente 1 lote (ou finalização atômica)
 // e responde em menos de 3 a 5 segundos, sem risco de timeout.
+const path = require('path')
+const { getJanelaDinamica, isForaDaJanela } = require(path.join(__dirname, 'janela_dinamica.js'))
+
 routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
   const BATCH_SIZE = 10000
 
   const toInt = (v) => {
     if (v === undefined || v === null || v === '') return 0
     const n = parseInt(v, 10)
+    return isNaN(n) ? 0 : n
+  }
+
+  const toNum = (v) => {
+    if (v === undefined || v === null || v === '') return 0
+    const n = parseFloat(v)
     return isNaN(n) ? 0 : n
   }
 
@@ -694,11 +703,13 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
             status_cadastro, tipo_pn, tipo_cliente,
             data_carga, created, updated
           FROM vendas_staging
+          WHERE SUBSTR(TRIM(COALESCE(data_lancamento, '')), 1, 10) >= {:inicioJanela}
           ORDER BY rowid ASC
           LIMIT {:limit} OFFSET {:offset};
         `,
           )
           .bind({
+            inicioJanela: getJanelaDinamica().inicioISO,
             limit: SWAP_CHUNK_SIZE,
             offset: swapOffset,
           })
@@ -757,49 +768,33 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
       mensagem: 'Processando lote ' + (batchIdx + 1) + ' de ' + totalBatches + '...',
     })
 
-    const batchInsertSql =
-      'INSERT INTO vendas_staging (' +
-      '  id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe, ' +
-      '  data_lancamento, ultima_data_vencimento, docto_origem_destino, ' +
-      '  data_origem_destino, condicao_pagamento, codigo_cliente, ' +
-      '  nome_cliente, numero_linha, codigo_item, descricao_item, ' +
-      '  quantidade, qty_kg_lt, preco_item, desconto_linha, icms, pis, ' +
-      '  cofins, ipi, icms_partilha, total_linha, utilizacao, ' +
-      '  nome_vendedor, custo_item, nome_filial, conta, estado, cidade, ' +
-      '  grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam, ' +
-      '  numero_documento_netsales, preco_unitario, total_nf_sem_frete, ' +
-      '  total_nf_novo, valor_liquido, custo_total, classificacao, ' +
-      '  vendedor_revenda, grupo_item, vendedor_cliente, origem, ' +
-      '  tem_racnew, tem_netsales, ' +
-      '  status_cadastro, tipo_pn, tipo_cliente, ' +
-      '  data_carga, created, updated' +
-      ') ' +
+    // Seleciona os registros consolidados deste lote
+    const batchSelectSql =
       'SELECT ' +
-      "  ('r' || substr(hex(randomblob(7)), 1, 14)), " +
+      "  ('r' || substr(hex(randomblob(7)), 1, 14)) AS id, " +
       '  r.tipo_documento, r.nf_entrega_futura, r.numero_sap, r.numero_nfe, ' +
       '  r.data_lancamento, r.ultima_data_vencimento, r.docto_origem_destino, ' +
       '  r.data_origem_destino, r.condicao_pagamento, r.codigo_cliente, ' +
       '  r.nome_cliente, r.numero_linha, r.codigo_item, r.descricao_item, ' +
-      '  COALESCE(r.quantidade, 0.0), COALESCE(r.qty_kg_lt, 0.0), COALESCE(r.preco_item, 0.0), ' +
-      '  COALESCE(r.desconto_linha, 0.0), COALESCE(r.icms, 0.0), COALESCE(r.pis, 0.0), ' +
-      '  COALESCE(r.cofins, 0.0), COALESCE(r.ipi, 0.0), COALESCE(r.icms_partilha, 0.0), ' +
-      '  COALESCE(r.total_linha, 0.0), r.utilizacao, ' +
-      '  r.nome_vendedor, COALESCE(r.custo_item, 0.0), r.nome_filial, r.conta, ' +
+      '  COALESCE(r.quantidade, 0.0) AS quantidade, COALESCE(r.qty_kg_lt, 0.0) AS qty_kg_lt, COALESCE(r.preco_item, 0.0) AS preco_item, ' +
+      '  COALESCE(r.desconto_linha, 0.0) AS desconto_linha, COALESCE(r.icms, 0.0) AS icms, COALESCE(r.pis, 0.0) AS pis, ' +
+      '  COALESCE(r.cofins, 0.0) AS cofins, COALESCE(r.ipi, 0.0) AS ipi, COALESCE(r.icms_partilha, 0.0) AS icms_partilha, ' +
+      '  COALESCE(r.total_linha, 0.0) AS total_linha, r.utilizacao, ' +
+      '  r.nome_vendedor, COALESCE(r.custo_item, 0.0) AS custo_item, r.nome_filial, r.conta, ' +
       '  r.estado, r.cidade, ' +
-      "  COALESCE(n.grupo_cliente, ''), COALESCE(n.mercado, ''), " +
-      "  COALESCE(n.usuario_emissor, ''), COALESCE(n.itms_grp_nam, ''), " +
-      "  COALESCE(n.numero_documento, ''), COALESCE(n.preco_unitario, 0.0), " +
-      '  COALESCE(n.total_nf_sem_frete, 0.0), COALESCE(n.total_nf_novo, 0.0), ' +
-      '  COALESCE(n.valor_liquido, 0.0), COALESCE(n.custo_total, 0.0), ' +
-      "  COALESCE(n.classificacao, ''), COALESCE(n.vendedor_revenda, ''), " +
-      "  COALESCE(NULLIF(p.grupo_item, ''), 'Não Categorizado'), " +
-      "  (r.nome_vendedor || ' > ' || r.nome_cliente), " +
-      "  'Consolidado', " +
-      "  1, (CASE WHEN n.chave_documento IS NOT NULL AND n.chave_documento != '' THEN 1 ELSE 0 END), " +
-      "  COALESCE(NULLIF(tc.status_cadastro, ''), NULLIF(r.status_cadastro, ''), NULLIF(n.status_cadastro, ''), ''), " +
-      "  COALESCE(NULLIF(tc.tipo_pn, ''), NULLIF(r.tipo_pn, ''), NULLIF(n.tipo_pn, ''), ''), " +
-      "  COALESCE(NULLIF(tc.tipo_cliente, ''), NULLIF(r.tipo_cliente, ''), NULLIF(n.tipo_cliente, ''), ''), " +
-      '  {:now}, {:now}, {:now} ' +
+      "  COALESCE(n.grupo_cliente, '') AS grupo_cliente, COALESCE(n.mercado, '') AS mercado, " +
+      "  COALESCE(n.usuario_emissor, '') AS usuario_emissor_pedido, COALESCE(n.itms_grp_nam, '') AS itms_grp_nam, " +
+      "  COALESCE(n.numero_documento, '') AS numero_documento_netsales, COALESCE(n.preco_unitario, 0.0) AS preco_unitario, " +
+      '  COALESCE(n.total_nf_sem_frete, 0.0) AS total_nf_sem_frete, COALESCE(n.total_nf_novo, 0.0) AS total_nf_novo, ' +
+      '  COALESCE(n.valor_liquido, 0.0) AS valor_liquido, COALESCE(n.custo_total, 0.0) AS custo_total, ' +
+      "  COALESCE(n.classificacao, '') AS classificacao, COALESCE(n.vendedor_revenda, '') AS vendedor_revenda, " +
+      "  COALESCE(NULLIF(p.grupo_item, ''), 'Não Categorizado') AS grupo_item, " +
+      "  (r.nome_vendedor || ' > ' || r.nome_cliente) AS vendedor_cliente, " +
+      "  'Consolidado' AS origem, " +
+      "  1 AS tem_racnew, (CASE WHEN n.chave_documento IS NOT NULL AND n.chave_documento != '' THEN 1 ELSE 0 END) AS tem_netsales, " +
+      "  COALESCE(NULLIF(tc.status_cadastro, ''), NULLIF(r.status_cadastro, ''), NULLIF(n.status_cadastro, ''), '') AS status_cadastro, " +
+      "  COALESCE(NULLIF(tc.tipo_pn, ''), NULLIF(r.tipo_pn, ''), NULLIF(n.tipo_pn, ''), '') AS tipo_pn, " +
+      "  COALESCE(NULLIF(tc.tipo_cliente, ''), NULLIF(r.tipo_cliente, ''), NULLIF(n.tipo_cliente, ''), '') AS tipo_cliente " +
       'FROM (' +
       '  SELECT * FROM racnew ' +
       "  WHERE UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS' " +
@@ -818,15 +813,259 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
       '  ON UPPER(TRIM(tc.codigo_pn)) = UPPER(TRIM(r.codigo_cliente))'
 
     try {
+      const calculatedRows = arrayOf(
+        new DynamicModel({
+          id: '',
+          tipo_documento: '',
+          nf_entrega_futura: '',
+          numero_sap: '',
+          numero_nfe: '',
+          data_lancamento: '',
+          ultima_data_vencimento: '',
+          docto_origem_destino: '',
+          data_origem_destino: '',
+          condicao_pagamento: '',
+          codigo_cliente: '',
+          nome_cliente: '',
+          numero_linha: '',
+          codigo_item: '',
+          descricao_item: '',
+          quantidade: '',
+          qty_kg_lt: '',
+          preco_item: '',
+          desconto_linha: '',
+          icms: '',
+          pis: '',
+          cofins: '',
+          ipi: '',
+          icms_partilha: '',
+          total_linha: '',
+          utilizacao: '',
+          nome_vendedor: '',
+          custo_item: '',
+          nome_filial: '',
+          conta: '',
+          estado: '',
+          cidade: '',
+          grupo_cliente: '',
+          mercado: '',
+          usuario_emissor_pedido: '',
+          itms_grp_nam: '',
+          numero_documento_netsales: '',
+          preco_unitario: '',
+          total_nf_sem_frete: '',
+          total_nf_novo: '',
+          valor_liquido: '',
+          custo_total: '',
+          classificacao: '',
+          vendedor_revenda: '',
+          grupo_item: '',
+          vendedor_cliente: '',
+          origem: '',
+          tem_racnew: '',
+          tem_netsales: '',
+          status_cadastro: '',
+          tipo_pn: '',
+          tipo_cliente: '',
+        }),
+      )
+
       $app
         .db()
-        .newQuery(batchInsertSql)
+        .newQuery(batchSelectSql)
         .bind({
-          now: nowIso,
           limit: BATCH_SIZE,
           offset: offset,
         })
-        .execute()
+        .all(calculatedRows)
+
+      const stagingCol = $app.findCollectionByNameOrId('vendas_staging')
+      const historicoCol = $app.findCollectionByNameOrId('vendas_historico')
+
+      for (let i = 0; i < calculatedRows.length; i++) {
+        const row = calculatedRows[i]
+        const dataLanc = (row.data_lancamento || '').toString().trim()
+        const foraDaJanela = isForaDaJanela(dataLanc)
+
+        if (foraDaJanela) {
+          // Roteia para vendas_historico por chave composta
+          const numeroSap = (row.numero_sap || '').toString().trim()
+          const numeroNfe = (row.numero_nfe || '').toString().trim()
+          const codigoItem = (row.codigo_item || '').toString().trim()
+          const codigoCliente = (row.codigo_cliente || '').toString().trim()
+
+          const filter =
+            "numero_sap = '" +
+            numeroSap +
+            "' && numero_nfe = '" +
+            numeroNfe +
+            "' && codigo_item = '" +
+            codigoItem +
+            "' && codigo_cliente = '" +
+            codigoCliente +
+            "'"
+          const found = $app.findRecordsByFilter('vendas_historico', filter, '', 1, 0)
+
+          let record
+          if (found.length > 0) {
+            record = found[0]
+          } else {
+            record = new Record(historicoCol)
+          }
+
+          record.set('tipo_documento', (row.tipo_documento || '').toString().trim())
+          record.set('nf_entrega_futura', (row.nf_entrega_futura || '').toString().trim())
+          record.set('numero_sap', numeroSap)
+          record.set('numero_nfe', numeroNfe)
+          record.set('data_lancamento', dataLanc)
+          record.set('ultima_data_vencimento', (row.ultima_data_vencimento || '').toString().trim())
+          record.set('docto_origem_destino', (row.docto_origem_destino || '').toString().trim())
+          record.set('data_origem_destino', (row.data_origem_destino || '').toString().trim())
+          record.set('condicao_pagamento', (row.condicao_pagamento || '').toString().trim())
+          record.set('codigo_cliente', codigoCliente)
+          record.set('nome_cliente', (row.nome_cliente || '').toString().trim())
+          record.set('numero_linha', toNum(row.numero_linha))
+          record.set('codigo_item', codigoItem)
+          record.set('descricao_item', (row.descricao_item || '').toString().trim())
+          record.set('quantidade', toNum(row.quantidade))
+          record.set('qty_kg_lt', toNum(row.qty_kg_lt))
+          record.set('preco_item', toNum(row.preco_item))
+          record.set('desconto_linha', toNum(row.desconto_linha))
+          record.set('icms', toNum(row.icms))
+          record.set('pis', toNum(row.pis))
+          record.set('cofins', toNum(row.cofins))
+          record.set('ipi', toNum(row.ipi))
+          record.set('icms_partilha', toNum(row.icms_partilha))
+          record.set('total_linha', toNum(row.total_linha))
+          record.set('utilizacao', (row.utilizacao || '').toString().trim())
+          record.set('nome_vendedor', (row.nome_vendedor || '').toString().trim())
+          record.set('custo_item', toNum(row.custo_item))
+          record.set('nome_filial', (row.nome_filial || '').toString().trim())
+          record.set('conta', (row.conta || '').toString().trim())
+          record.set('estado', (row.estado || '').toString().trim())
+          record.set('cidade', (row.cidade || '').toString().trim())
+          record.set('grupo_cliente', (row.grupo_cliente || '').toString().trim())
+          record.set('mercado', (row.mercado || '').toString().trim())
+          record.set('usuario_emissor_pedido', (row.usuario_emissor_pedido || '').toString().trim())
+          record.set('itms_grp_nam', (row.itms_grp_nam || '').toString().trim())
+          record.set(
+            'numero_documento_netsales',
+            (row.numero_documento_netsales || '').toString().trim(),
+          )
+          record.set('preco_unitario', toNum(row.preco_unitario))
+          record.set('total_nf_sem_frete', toNum(row.total_nf_sem_frete))
+          record.set('total_nf_novo', toNum(row.total_nf_novo))
+          record.set('valor_liquido', toNum(row.valor_liquido))
+          record.set('custo_total', toNum(row.custo_total))
+          record.set('classificacao', (row.classificacao || '').toString().trim())
+          record.set('vendedor_revenda', (row.vendedor_revenda || '').toString().trim())
+          record.set('grupo_item', (row.grupo_item || '').toString().trim())
+          record.set('vendedor_cliente', (row.vendedor_cliente || '').toString().trim())
+          record.set('origem', 'Consolidado')
+          record.set('data_carga', nowIso)
+          // Preserva proveniência do cálculo de consolidação
+          record.set('tem_racnew', toInt(row.tem_racnew) === 1)
+          record.set('tem_netsales', toInt(row.tem_netsales) === 1)
+          record.set('status_cadastro', (row.status_cadastro || '').toString().trim())
+          record.set('tipo_pn', (row.tipo_pn || '').toString().trim())
+          record.set('tipo_cliente', (row.tipo_cliente || '').toString().trim())
+
+          $app.save(record)
+        } else {
+          // Dentro da janela dinâmica -> grava no staging de vendas para fluxo normal
+          $app
+            .db()
+            .newQuery(
+              'INSERT INTO vendas_staging (' +
+                '  id, tipo_documento, nf_entrega_futura, numero_sap, numero_nfe, ' +
+                '  data_lancamento, ultima_data_vencimento, docto_origem_destino, ' +
+                '  data_origem_destino, condicao_pagamento, codigo_cliente, ' +
+                '  nome_cliente, numero_linha, codigo_item, descricao_item, ' +
+                '  quantidade, qty_kg_lt, preco_item, desconto_linha, icms, pis, ' +
+                '  cofins, ipi, icms_partilha, total_linha, utilizacao, ' +
+                '  nome_vendedor, custo_item, nome_filial, conta, estado, cidade, ' +
+                '  grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam, ' +
+                '  numero_documento_netsales, preco_unitario, total_nf_sem_frete, ' +
+                '  total_nf_novo, valor_liquido, custo_total, classificacao, ' +
+                '  vendedor_revenda, grupo_item, vendedor_cliente, origem, ' +
+                '  tem_racnew, tem_netsales, ' +
+                '  status_cadastro, tipo_pn, tipo_cliente, ' +
+                '  data_carga, created, updated' +
+                ') VALUES (' +
+                '  {:id}, {:tipo_documento}, {:nf_entrega_futura}, {:numero_sap}, {:numero_nfe}, ' +
+                '  {:data_lancamento}, {:ultima_data_vencimento}, {:docto_origem_destino}, ' +
+                '  {:data_origem_destino}, {:condicao_pagamento}, {:codigo_cliente}, ' +
+                '  {:nome_cliente}, {:numero_linha}, {:codigo_item}, {:descricao_item}, ' +
+                '  {:quantidade}, {:qty_kg_lt}, {:preco_item}, {:desconto_linha}, {:icms}, {:pis}, ' +
+                '  {:cofins}, {:ipi}, {:icms_partilha}, {:total_linha}, {:utilizacao}, ' +
+                '  {:nome_vendedor}, {:custo_item}, {:nome_filial}, {:conta}, {:estado}, {:cidade}, ' +
+                '  {:grupo_cliente}, {:mercado}, {:usuario_emissor_pedido}, {:itms_grp_nam}, ' +
+                '  {:numero_documento_netsales}, {:preco_unitario}, {:total_nf_sem_frete}, ' +
+                '  {:total_nf_novo}, {:valor_liquido}, {:custo_total}, {:classificacao}, ' +
+                '  {:vendedor_revenda}, {:grupo_item}, {:vendedor_cliente}, {:origem}, ' +
+                '  {:tem_racnew}, {:tem_netsales}, ' +
+                '  {:status_cadastro}, {:tipo_pn}, {:tipo_cliente}, ' +
+                '  {:now}, {:now}, {:now}' +
+                ')',
+            )
+            .bind({
+              id: row.id,
+              tipo_documento: row.tipo_documento || '',
+              nf_entrega_futura: row.nf_entrega_futura || '',
+              numero_sap: row.numero_sap || '',
+              numero_nfe: row.numero_nfe || '',
+              data_lancamento: dataLanc,
+              ultima_data_vencimento: row.ultima_data_vencimento || '',
+              docto_origem_destino: row.docto_origem_destino || '',
+              data_origem_destino: row.data_origem_destino || '',
+              condicao_pagamento: row.condicao_pagamento || '',
+              codigo_cliente: row.codigo_cliente || '',
+              nome_cliente: row.nome_cliente || '',
+              numero_linha: toNum(row.numero_linha),
+              codigo_item: row.codigo_item || '',
+              descricao_item: row.descricao_item || '',
+              quantidade: toNum(row.quantidade),
+              qty_kg_lt: toNum(row.qty_kg_lt),
+              preco_item: toNum(row.preco_item),
+              desconto_linha: toNum(row.desconto_linha),
+              icms: toNum(row.icms),
+              pis: toNum(row.pis),
+              cofins: toNum(row.cofins),
+              ipi: toNum(row.ipi),
+              icms_partilha: toNum(row.icms_partilha),
+              total_linha: toNum(row.total_linha),
+              utilizacao: row.utilizacao || '',
+              nome_vendedor: row.nome_vendedor || '',
+              custo_item: toNum(row.custo_item),
+              nome_filial: row.nome_filial || '',
+              conta: row.conta || '',
+              estado: row.estado || '',
+              cidade: row.cidade || '',
+              grupo_cliente: row.grupo_cliente || '',
+              mercado: row.mercado || '',
+              usuario_emissor_pedido: row.usuario_emissor_pedido || '',
+              itms_grp_nam: row.itms_grp_nam || '',
+              numero_documento_netsales: row.numero_documento_netsales || '',
+              preco_unitario: toNum(row.preco_unitario),
+              total_nf_sem_frete: toNum(row.total_nf_sem_frete),
+              total_nf_novo: toNum(row.total_nf_novo),
+              valor_liquido: toNum(row.valor_liquido),
+              custo_total: toNum(row.custo_total),
+              classificacao: row.classificacao || '',
+              vendedor_revenda: row.vendedor_revenda || '',
+              grupo_item: row.grupo_item || 'Não Categorizado',
+              vendedor_cliente: row.vendedor_cliente || '',
+              origem: 'Consolidado',
+              tem_racnew: toInt(row.tem_racnew),
+              tem_netsales: toInt(row.tem_netsales),
+              status_cadastro: row.status_cadastro || '',
+              tipo_pn: row.tipo_pn || '',
+              tipo_cliente: row.tipo_cliente || '',
+              now: nowIso,
+            })
+            .execute()
+        }
+      }
     } catch (insertErr) {
       const dbErrMsg = String(insertErr && insertErr.message ? insertErr.message : insertErr)
       console.error(

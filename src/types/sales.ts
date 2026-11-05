@@ -252,12 +252,23 @@ export function isDevolucao(tipoDocumento: string | undefined | null): boolean {
   return (DEVOLUCAO_TIPOS as readonly string[]).includes(tipoDocumento)
 }
 
+export interface JanelaDinamicaInfo {
+  anoAnterior: number
+  anoAtual: number
+  inicioISO: string
+  fimISO: string
+}
+
 export interface ImportResult {
   success: boolean
   importados: number
   atualizados: number
   mesclados?: number
   ignorados: number
+  roteados_historico?: number
+  historico_importados?: number
+  historico_atualizados?: number
+  janela?: JanelaDinamicaInfo
   erros: string[]
   avisos?: string[]
   headersRecebidos?: string[]
