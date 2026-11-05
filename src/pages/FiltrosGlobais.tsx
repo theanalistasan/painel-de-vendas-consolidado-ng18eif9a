@@ -148,7 +148,8 @@ export default function FiltrosGlobais() {
             </CardTitle>
             <CardDescription className="text-xs text-slate-500 font-medium mt-0.5">
               Os filtros definidos aqui valem para o painel inteiro: aplicam-se à Visão Geral e à
-              Visão Canais. A Visão Canais mantém apenas o filtro local de Canais.
+              Visão Canais. Os filtros de Canais (Canal, Clientes, Deploy e Inside) ficam na Visão
+              Canais.
             </CardDescription>
           </div>
         </div>
@@ -178,11 +179,12 @@ export default function FiltrosGlobais() {
         </Card>
       )}
 
-      {/* Barra completa de filtros globais (mesma da Visão Geral/Visão Canais) */}
+      {/* Filtros globais (sem os filtros de Canais, que ficam na Visão Canais) */}
       {loading && !optionsData ? (
         <Skeleton className="h-64 w-full rounded-xl" />
       ) : (
         <FilterBar
+          hideCanais
           filters={filters}
           setFilters={setFilters}
           options={filterOptions}

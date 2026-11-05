@@ -170,10 +170,19 @@ export default function DashboardCanais() {
     loadComparativoData(filters)
   })
 
-  // Único filtro local da Visão Canais: Canais (nome). Os demais filtros são globais
-  // (definidos na página Filtros Globais e lidos aqui via sessionStorage).
+  // Filtros locais da Visão Canais: Canal, Clientes do Canal, Deploy e Inside.
+  // Os demais filtros são globais (página Filtros Globais, lidos via sessionStorage).
   const canalOptions = useMemo(() => data?.filterOptions?.canais || [], [data])
   const canalClientesOptions = useMemo(() => data?.filterOptions?.canaisClientes || [], [data])
+  const insideOptions = useMemo(() => data?.filterOptions?.inside || [], [data])
+  const clientesDoCanalOptions = useMemo(() => {
+    const selected = filters.canal || []
+    const list =
+      selected.length > 0
+        ? canalClientesOptions.filter((cc) => selected.includes(cc.nome_canal))
+        : canalClientesOptions
+    return list
+  }, [canalClientesOptions, filters.canal])
 
   const handleCanalChange = (values: string[]) => {
     setFilters((prev) => {
@@ -210,27 +219,52 @@ export default function DashboardCanais() {
   const isNoData =
     !loading && !error && data !== null && kpis.faturamento === 0 && kpis.documentos === 0
 
-  // Limpa APENAS o filtro local de Canais — os filtros globais são gerenciados
+  // Limpa APENAS os filtros locais de Canais — os filtros globais são gerenciados
   // na página Dashboard > Filtros Globais e não devem ser alterados daqui.
-  const handleClearFilters = () => {
-    setFilters((prev) => ({ ...prev, canal: [], canalClientes: [] }))
+  const clearCanaisFilters = () => {
+    setFilters((prev) => ({ ...prev, canal: [], canalClientes: [], deploy: [], inside: [] }))
   }
+
+  const hasCanaisFilters =
+    (filters.canal || []).length > 0 ||
+    (filters.canalClientes || []).length > 0 ||
+    (filters.deploy || []).length > 0 ||
+    (filters.inside || []).length > 0
+
+  const handleClearFilters = clearCanaisFilters
 
   return (
     <div className="space-y-6 min-w-0 max-w-full">
-      {/* Filtro local: apenas Canais (os demais filtros são globais — Filtros Globais) */}
+      {/* Filtros locais da Visão Canais: Canal, Clientes, Deploy e Inside */}
       <Card className="rounded-xl border border-gray-200 bg-white shadow-xs">
-        <CardContent className="p-4">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-3">
-            <div className="flex-1 min-w-0">
-              <Label className="text-[11px] font-bold text-[#0B6E99] uppercase tracking-wide flex items-center gap-1.5 mb-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#0B6E99]" />
-                Canais
-                {canalOptions.length > 0 && (
-                  <span className="text-[10px] text-slate-500 font-semibold bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 normal-case">
-                    {canalOptions.length} canais
-                  </span>
-                )}
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-[11px] font-bold text-[#0B6E99] uppercase tracking-wide flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#0B6E99]" />
+              Filtros de Canais
+              {canalOptions.length > 0 && (
+                <span className="text-[10px] text-slate-500 font-semibold bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200 normal-case">
+                  {canalOptions.length} canais
+                </span>
+              )}
+            </Label>
+            {hasCanaisFilters && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearCanaisFilters}
+                className="border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold shrink-0 h-8 text-xs"
+              >
+                <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                Limpar Canais
+              </Button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div>
+              <Label className="text-[10px] font-bold text-slate-600 mb-1 block">
+                Nome do Canal
               </Label>
               <MultiSelectDropdown
                 label="Canal"
@@ -253,22 +287,68 @@ export default function DashboardCanais() {
                   return nome
                 }}
               />
-              <p className="text-[11px] text-slate-500 font-medium mt-1.5">
-                Filtro local da Visão Canais. Os demais filtros globais são definidos em Dashboard
-                &gt; Filtros Globais.
-              </p>
             </div>
-            {(filters.canal || []).length > 0 && (
-              <Button
-                variant="outline"
-                onClick={() => handleCanalChange([])}
-                className="border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold shrink-0"
-              >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Limpar Canais
-              </Button>
-            )}
+
+            <div>
+              <Label className="text-[10px] font-bold text-slate-600 mb-1 block">
+                Clientes do Canal
+              </Label>
+              <MultiSelectDropdown
+                label="Clientes"
+                options={Array.from(new Set(clientesDoCanalOptions.map((cc) => cc.nome_cliente)))}
+                selected={filters.canalClientes || []}
+                onChange={(values) => setFilters((prev) => ({ ...prev, canalClientes: values }))}
+                placeholder={
+                  (filters.canal || []).length > 0
+                    ? 'Todos os clientes do canal'
+                    : 'Todos os clientes de canais'
+                }
+                highlight={(filters.canalClientes || []).length > 0}
+                getOptionLabel={(cli) => {
+                  const match = clientesDoCanalOptions.find((cc) => cc.nome_cliente === cli)
+                  if (match && (filters.canal || []).length !== 1 && match.nome_canal) {
+                    return `${cli} [${match.nome_canal}]`
+                  }
+                  return cli
+                }}
+              />
+            </div>
+
+            <div>
+              <Label className="text-[10px] font-bold text-slate-600 mb-1 block">Deploy</Label>
+              <MultiSelectDropdown
+                label="Deploy"
+                options={['AGIS', 'Roland', 'Nenhum']}
+                selected={filters.deploy || []}
+                onChange={(values) => setFilters((prev) => ({ ...prev, deploy: values }))}
+                placeholder="Todos os deploys"
+                highlight={(filters.deploy || []).length > 0}
+                getOptionLabel={(dep) => {
+                  if (dep === 'AGIS') return 'AGIS (revenda)'
+                  if (dep === 'Roland') return 'Roland (direta)'
+                  if (dep === 'Nenhum') return 'Nenhum (sem deploy)'
+                  return dep
+                }}
+              />
+            </div>
+
+            <div>
+              <Label className="text-[10px] font-bold text-slate-600 mb-1 block">Inside</Label>
+              <MultiSelectDropdown
+                label="Inside"
+                options={insideOptions}
+                selected={filters.inside || []}
+                onChange={(values) => setFilters((prev) => ({ ...prev, inside: values }))}
+                placeholder="Todos os inside"
+                highlight={(filters.inside || []).length > 0}
+              />
+            </div>
           </div>
+
+          <p className="text-[11px] text-slate-500 font-medium">
+            Filtros locais da Visão Canais. Os demais filtros globais são definidos em Dashboard
+            &gt; Filtros Globais.
+          </p>
         </CardContent>
       </Card>
 
