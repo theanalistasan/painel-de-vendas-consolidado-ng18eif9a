@@ -45,6 +45,7 @@ export default function Layout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [ultimaCarga, setUltimaCarga] = useState<string | null>(null)
   const [dashboardOpen, setDashboardOpen] = useState(true)
+  const [gestaoOpen, setGestaoOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -68,12 +69,30 @@ export default function Layout() {
     location.pathname === '/vendas'
   const isDashboardCanaisActive = location.pathname === '/dashboard/canais'
 
+  const isGestaoActive =
+    location.pathname === '/importar' ||
+    location.pathname === '/admin' ||
+    location.pathname === '/usuarios' ||
+    location.pathname === '/auditoria'
+
+  const isImportarActive = location.pathname === '/importar'
+  const isAdminActive = location.pathname === '/admin'
+  const isUsuariosActive = location.pathname === '/usuarios'
+  const isAuditoriaActive = location.pathname === '/auditoria'
+
   // Garantir que se a rota atual for dashboard, o submenu fica expandido
   useEffect(() => {
     if (isDashboardActive) {
       setDashboardOpen(true)
     }
   }, [isDashboardActive])
+
+  // Garantir que se a rota atual for do módulo Gestão, o submenu fica expandido
+  useEffect(() => {
+    if (isGestaoActive) {
+      setGestaoOpen(true)
+    }
+  }, [isGestaoActive])
 
   const toggleDesktopSidebar = () => {
     setSidebarCollapsed((prev) => {
@@ -128,44 +147,34 @@ export default function Layout() {
     return <Navigate to="/login" replace state={{ from: location }} />
   }
 
-  const adminUnlocked = isAdminUnlocked()
+  const isUserAdmin = user?.role === 'admin'
 
-  const navItems: Array<{
-    title: string
-    href: string
-    icon: typeof LayoutDashboard
-    adminOnly?: boolean
-  }> = [
-    {
-      title: 'Dashboard',
-      href: '/',
-      icon: LayoutDashboard,
-    },
+  const gestaoItems = [
     {
       title: 'Importar Dados',
       href: '/importar',
       icon: UploadCloud,
-      adminOnly: true,
+      isActive: isImportarActive,
     },
     {
       title: 'Administração',
       href: '/admin',
       icon: ShieldAlert,
-      adminOnly: true,
+      isActive: isAdminActive,
     },
     {
       title: 'Usuários',
       href: '/usuarios',
       icon: UsersIcon,
-      adminOnly: true,
+      isActive: isUsuariosActive,
     },
     {
       title: 'Auditoria',
       href: '/auditoria',
       icon: History,
-      adminOnly: true,
+      isActive: isAuditoriaActive,
     },
-  ].filter((item) => !item.adminOnly || user?.role === 'admin' || adminUnlocked)
+  ]
 
   // Page title mapping
   const getPageTitle = () => {
@@ -443,34 +452,80 @@ export default function Layout() {
             </NavLink>
           </div>
 
-          {/* Demais Itens de Navegação (Importar, Admin, Usuários, Auditoria) */}
-          {navItems
-            .filter((item) => item.href !== '/')
-            .map((item) => {
-              const Icon = item.icon
-              const isActive = location.pathname === item.href
-              return (
+          {/* Módulo Gestão: Agrupa Importar Dados, Administração, Usuários e Auditoria (apenas Administrador) */}
+          {isUserAdmin && (
+            <div className="space-y-1 pt-1 border-t border-slate-800/60 mt-2">
+              {sidebarCollapsed ? (
+                // No modo colapsado, link para a primeira tela de gestão com tooltip indicando o módulo
                 <NavLink
-                  key={item.href}
-                  to={item.href}
-                  title={sidebarCollapsed ? item.title : undefined}
+                  to="/importar"
+                  title="Gestão (Importar, Administração, Usuários, Auditoria)"
                   className={cn(
-                    'flex items-center rounded-full text-sm font-medium transition-all duration-200',
-                    sidebarCollapsed
-                      ? 'justify-center w-10 h-10 mx-auto px-0'
-                      : 'gap-3 px-3.5 py-2.5',
-                    isActive
+                    'flex items-center justify-center w-10 h-10 mx-auto rounded-full text-sm font-medium transition-all duration-200',
+                    isGestaoActive
                       ? 'bg-[#0B6E99] text-white shadow-sm font-bold'
                       : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
                   )}
                 >
-                  <Icon
-                    className={cn('w-4 h-4 shrink-0', isActive ? 'text-white' : 'text-slate-400')}
-                  />
-                  {!sidebarCollapsed && <span className="truncate">{item.title}</span>}
+                  <ShieldAlert className="w-4 h-4 shrink-0" />
                 </NavLink>
-              )
-            })}
+              ) : (
+                // No modo expandido, cabeçalho expansível do módulo Gestão
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setGestaoOpen((prev) => !prev)}
+                    className={cn(
+                      'w-full flex items-center justify-between rounded-full text-sm font-medium transition-all duration-200 px-3.5 py-2.5',
+                      isGestaoActive
+                        ? 'bg-slate-800/90 text-white font-bold'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800/80',
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <ShieldAlert
+                        className={cn(
+                          'w-4 h-4 shrink-0',
+                          isGestaoActive ? 'text-[#0B6E99]' : 'text-slate-400',
+                        )}
+                      />
+                      <span className="truncate">Gestão</span>
+                    </div>
+                    <ChevronDown
+                      className={cn(
+                        'w-4 h-4 transition-transform duration-200 text-slate-400',
+                        gestaoOpen ? 'rotate-180' : '',
+                      )}
+                    />
+                  </button>
+
+                  {/* Submenu de Gestão */}
+                  {gestaoOpen && (
+                    <div className="mt-1 ml-4 pl-3 border-l border-slate-800 space-y-1">
+                      {gestaoItems.map((item) => {
+                        const Icon = item.icon
+                        return (
+                          <NavLink
+                            key={item.href}
+                            to={item.href}
+                            className={cn(
+                              'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
+                              item.isActive
+                                ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+                            )}
+                          >
+                            <Icon className="w-3.5 h-3.5 shrink-0" />
+                            <span className="truncate">{item.title}</span>
+                          </NavLink>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </nav>
 
         {/* Integration Status Badge */}
@@ -708,29 +763,61 @@ export default function Layout() {
                 </NavLink>
               </div>
 
-              {/* Demais itens mobile (Importar, Admin, Usuários, Auditoria) */}
-              {navItems
-                .filter((item) => item.href !== '/')
-                .map((item) => {
-                  const Icon = item.icon
-                  const isActive = location.pathname === item.href
-                  return (
-                    <NavLink
-                      key={item.href}
-                      to={item.href}
-                      onClick={() => setMobileMenuOpen(false)}
+              {/* Módulo Gestão Mobile: Importar, Admin, Usuários e Auditoria (apenas Administrador) */}
+              {isUserAdmin && (
+                <div className="space-y-1 pt-1 border-t border-slate-800/60 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setGestaoOpen((prev) => !prev)}
+                    className={cn(
+                      'w-full flex items-center justify-between px-3.5 py-2.5 rounded-full text-sm font-medium transition-all',
+                      isGestaoActive
+                        ? 'bg-slate-800 text-white font-bold'
+                        : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <ShieldAlert
+                        className={cn(
+                          'w-4 h-4',
+                          isGestaoActive ? 'text-[#0B6E99]' : 'text-slate-400',
+                        )}
+                      />
+                      <span>Gestão</span>
+                    </div>
+                    <ChevronDown
                       className={cn(
-                        'flex items-center gap-3 px-3.5 py-2.5 rounded-full text-sm font-medium transition-all',
-                        isActive
-                          ? 'bg-[#0B6E99] text-white font-bold'
-                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                        'w-4 h-4 transition-transform duration-200 text-slate-400',
+                        gestaoOpen ? 'rotate-180' : '',
                       )}
-                    >
-                      <Icon className="w-4 h-4" />
-                      {item.title}
-                    </NavLink>
-                  )
-                })}
+                    />
+                  </button>
+
+                  {gestaoOpen && (
+                    <div className="ml-4 pl-3 border-l border-slate-800 space-y-1">
+                      {gestaoItems.map((item) => {
+                        const Icon = item.icon
+                        return (
+                          <NavLink
+                            key={item.href}
+                            to={item.href}
+                            onClick={() => setMobileMenuOpen(false)}
+                            className={cn(
+                              'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
+                              item.isActive
+                                ? 'bg-[#0B6E99] text-white font-bold'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                            )}
+                          >
+                            <Icon className="w-3.5 h-3.5 shrink-0" />
+                            <span>{item.title}</span>
+                          </NavLink>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </nav>
 
             {/* User Footer Mobile */}

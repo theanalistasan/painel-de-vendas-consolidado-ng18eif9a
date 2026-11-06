@@ -79,7 +79,7 @@ export function setAdminUnlocked(unlocked: boolean) {
  * Mostra o modal enquanto o admin não estiver desbloqueado na sessão.
  */
 export default function AdminGuard({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth()
+  const { user, isLoading } = useAuth()
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
@@ -96,6 +96,32 @@ export default function AdminGuard({ children }: { children: React.ReactNode }) 
       setUnlocked(isAdminUnlocked())
     }
   }, [isRoleAdmin])
+
+  // Se o perfil do usuário não for Administrador (e não estiver carregando a auth),
+  // bloqueia o acesso e redireciona imediatamente para o dashboard.
+  useEffect(() => {
+    if (!isLoading && user && user.role !== 'admin') {
+      toast({
+        variant: 'destructive',
+        title: 'Acesso Restrito',
+        description: 'Apenas usuários com perfil Administrador têm acesso a este módulo.',
+      })
+      navigate('/dashboard/geral', { replace: true })
+    }
+  }, [isLoading, user, navigate, toast])
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+      </div>
+    )
+  }
+
+  // Usuário não é admin: não renderiza conteúdo algum enquanto redireciona
+  if (user && user.role !== 'admin') {
+    return null
+  }
 
   if (isRoleAdmin || unlocked) {
     return <>{children}</>
