@@ -41,7 +41,11 @@ import {
   MESES_CURTOS,
 } from '@/lib/formatters'
 import { toast } from '@/hooks/use-toast'
-import { loadFiltersFromSession } from '@/lib/filter-persistence'
+import {
+  loadFiltersFromSession,
+  saveFiltersToSession,
+  hasSavedFiltersInSession,
+} from '@/lib/filter-persistence'
 import ChartCard from '@/components/ChartCard'
 import { SlidersHorizontal } from 'lucide-react'
 import { MetasIndicador } from '@/components/MetasIndicador'
@@ -190,7 +194,13 @@ export default function DashboardGeral() {
     return 'comissao'
   })
 
-  const [filters] = useState<FilterState>(() => loadFiltersFromSession())
+  const [filters, setFilters] = useState<FilterState>(() => {
+    const loaded = loadFiltersFromSession()
+    if (!hasSavedFiltersInSession()) {
+      saveFiltersToSession(loaded)
+    }
+    return loaded
+  })
 
   const displayedVendas = useMemo(() => {
     // 1. Enriquece com o mapa de tipos_cliente como fallback

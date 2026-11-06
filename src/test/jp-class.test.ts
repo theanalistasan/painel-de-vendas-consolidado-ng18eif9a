@@ -251,5 +251,17 @@ describe('Regra de De/Para JP-Class', () => {
       const loaded = loadFiltersFromSession()
       expect(loaded.grupoItem).toEqual(['TINTAS'])
     })
+
+    it('quando não há filtros salvos na sessão, DEFAULT_FILTERS e loadFiltersFromSession abrem com o mês corrente e ano corrente', () => {
+      clearFiltersFromSession()
+      const now = new Date()
+      const expectedYear = String(now.getFullYear())
+      const expectedMonth = String(now.getMonth() + 1)
+
+      const loaded = loadFiltersFromSession()
+      expect(loaded.ano).toEqual([expectedYear])
+      expect(loaded.mes).toEqual([expectedMonth])
+      expect(loaded.grupoItem).toEqual(DEFAULT_GRUPOS_ITEM)
+    })
   })
 })

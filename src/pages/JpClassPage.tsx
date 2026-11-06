@@ -49,15 +49,17 @@ import { DEVOLUCAO_TIPOS } from '@/types/sales'
 export default function JpClassPage() {
   const hoje = new Date()
 
-  // Determina o ano/mês inicial inteligente:
-  // 1. Se houver filtros salvos na sessão com ano e mês válidos, usa-os
-  // 2. Caso contrário, se o mês atual for posterior a setembro/2026, fallback padrão para 2026 / 9 (último mês com dados)
+  // Determina o ano/mês inicial:
+  // 1. Se houver filtros salvos na sessão com ano e mês válidos, usa-os (persistência preservada)
+  // 2. Caso contrário, o padrão é SEMPRE o MÊS CORRENTE do ano corrente
   const [ano, setAno] = useState<number>(() => {
     try {
-      const saved = loadFiltersFromSession()
-      if (saved.ano && saved.ano.length > 0) {
-        const parsedAno = parseInt(saved.ano[0], 10)
-        if (!isNaN(parsedAno) && parsedAno > 2000) return parsedAno
+      if (hasSavedFiltersInSession()) {
+        const saved = loadFiltersFromSession()
+        if (saved.ano && saved.ano.length > 0) {
+          const parsedAno = parseInt(saved.ano[0], 10)
+          if (!isNaN(parsedAno) && parsedAno > 2000) return parsedAno
+        }
       }
     } catch {
       /* intentionally ignored */
@@ -67,18 +69,15 @@ export default function JpClassPage() {
 
   const [mes, setMes] = useState<number>(() => {
     try {
-      const saved = loadFiltersFromSession()
-      if (saved.mes && saved.mes.length > 0) {
-        const parsedMes = parseInt(saved.mes[0], 10)
-        if (!isNaN(parsedMes) && parsedMes >= 1 && parsedMes <= 12) return parsedMes
+      if (hasSavedFiltersInSession()) {
+        const saved = loadFiltersFromSession()
+        if (saved.mes && saved.mes.length > 0) {
+          const parsedMes = parseInt(saved.mes[0], 10)
+          if (!isNaN(parsedMes) && parsedMes >= 1 && parsedMes <= 12) return parsedMes
+        }
       }
     } catch {
       /* intentionally ignored */
-    }
-    // Se o mês atual do sistema for outubro ou superior em 2026 e a base só tiver até setembro,
-    // o padrão seguro é setembro (9)
-    if (hoje.getFullYear() === 2026 && hoje.getMonth() + 1 > 9) {
-      return 9
     }
     return hoje.getMonth() + 1
   })
@@ -213,9 +212,10 @@ export default function JpClassPage() {
           }
         }
       } catch (_) {
-        // Se falhar a detecção, fallback padrão seguro é 2026 / 9 (Setembro)
+        // Se falhar a detecção, fallback padrão é o mês e ano correntes
         if (mounted) {
-          setUltimoPeriodoDisponivel({ ano: 2026, mes: 9 })
+          const now = new Date()
+          setUltimoPeriodoDisponivel({ ano: now.getFullYear(), mes: now.getMonth() + 1 })
         }
       }
     }

@@ -35,15 +35,19 @@ export default function FiltrosGlobais() {
   const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
 
   const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
-  const [filters, setFilters] = useState<FilterState>(() => loadFiltersFromSession())
-  const [initializedFromBase, setInitializedFromBase] = useState(() => hasSavedFiltersInSession())
+  const [filters, setFilters] = useState<FilterState>(() => {
+    const loaded = loadFiltersFromSession()
+    if (!hasSavedFiltersInSession()) {
+      saveFiltersToSession(loaded)
+    }
+    return loaded
+  })
+  const [initializedFromBase, setInitializedFromBase] = useState(true)
 
   // Persiste no mesmo espaço de sessão usado pelas duas visões
   useEffect(() => {
-    if (hadSavedFiltersAtMount.current || initializedFromBase) {
-      saveFiltersToSession(filters)
-    }
-  }, [filters, initializedFromBase])
+    saveFiltersToSession(filters)
+  }, [filters])
 
   const filtersRef = useRef(filters)
   filtersRef.current = filters

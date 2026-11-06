@@ -34,6 +34,10 @@ export const DEFAULT_GRUPOS_ITEM: string[] = ['EQUIPAMENTOS', 'ACESSÓRIOS', 'TI
 /**
  * Filtros padrão estáticos básicos (quando ainda não computou dinamicamente com base nas opções da base)
  */
+const _currentDate = new Date()
+const _currentYearStr = String(_currentDate.getFullYear())
+const _currentMonthStr = String(_currentDate.getMonth() + 1)
+
 export const DEFAULT_FILTERS: FilterState = {
   base: 'ambos',
   dataDe: '',
@@ -51,8 +55,8 @@ export const DEFAULT_FILTERS: FilterState = {
   tipoCliente: [],
   jpClass: [],
   search: '',
-  ano: ['2026'],
-  mes: ['8'],
+  ano: [_currentYearStr],
+  mes: [_currentMonthStr],
   dia: [],
   tipoDevolucao: '',
 }
@@ -105,48 +109,23 @@ export function buildDynamicInitialFilters(options?: {
   ultimoMes?: number
   maxDataLancamento?: string
 }): FilterState {
-  // 1. Data/mês atual real do sistema
+  // 1. Data/mês atual real do sistema (regra do usuário: por padrão, mostrar dados do MÊS CORRENTE)
   const now = new Date()
   const currentYear = now.getFullYear()
   const currentMonth = now.getMonth() + 1 // 1 a 12
 
-  // 2. Determinar o último ano e último mês disponíveis na base
-  const anosDisponiveis = (options?.anos || []).slice().sort((a, b) => b - a)
+  // 2. Determinar se o ano/mês corrente é o padrão ou se cai no fallback da base
+  // A instrução do usuário é explícita:
+  // Filtros Globais e JP-Class devem sempre mostrar por padrão os dados do MÊS CORRENTE.
+  let selectedAno = String(currentYear)
+  let selectedMes = String(currentMonth)
 
-  // Prioriza o ultimoAno / ultimoMes calculado pelo backend ou extrai de maxDataLancamento
-  let lastYearInDb = options?.ultimoAno ?? (anosDisponiveis.length > 0 ? anosDisponiveis[0] : 2026)
-  let lastMonthInDb = options?.ultimoMes
-
-  if (!lastMonthInDb && options?.maxDataLancamento && options.maxDataLancamento.length >= 7) {
-    const parts = options.maxDataLancamento.slice(0, 10).split('-')
-    const y = parseInt(parts[0], 10)
-    const m = parseInt(parts[1], 10)
-    if (!isNaN(y)) lastYearInDb = y
-    if (!isNaN(m) && m >= 1 && m <= 12) lastMonthInDb = m
-  }
-
-  // Se ainda não tiver o último mês determinado, usa 8 (agosto) como fallback seguro da base
-  if (!lastMonthInDb) {
-    lastMonthInDb = 8
-  }
-
-  // 3. Regra padrão solicitada:
-  // "Ano: atual; Mês: último disponível na base, exemplo: Ago-2026"
-  // Caso o ano corrente do sistema coincida com o ano da base e o mês corrente exista,
-  // poderíamos usar currentMonth se <= lastMonthInDb, mas a instrução é explícita:
-  // SEMPRE garantir: ano: [String(ultimoAnoDisponivel)] (2026), mes: [String(ultimoMesDisponivel)] (8 = Ago/2026, último mês com dados na base — nunca mês atual do sistema sem dados, nunca vazio).
-  let selectedAno = String(lastYearInDb)
-  let selectedMes = String(lastMonthInDb)
-
-  // Se o ano corrente do sistema estiver presente e tiver dados para o mês corrente:
-  if (currentYear === lastYearInDb && currentMonth <= lastMonthInDb && currentMonth >= 1) {
-    // Se o mês corrente do sistema já tem dados na base deste mesmo ano:
-    selectedAno = String(currentYear)
-    selectedMes = String(currentMonth)
-  } else {
-    // Caso padrão e mais comum: o ano e último mês com movimentação consolidada na base
-    selectedAno = String(lastYearInDb)
-    selectedMes = String(lastMonthInDb)
+  // Caso opcional: se o chamador fornecer opções e o ano corrente for muito discrepante (ex: base legada),
+  // ainda podemos avaliar, mas por padrão respeita o ano/mês corrente do sistema
+  if (options?.anos && options.anos.length > 0 && !options.anos.includes(currentYear)) {
+    const anosDisponiveis = options.anos.slice().sort((a, b) => b - a)
+    selectedAno = String(anosDisponiveis[0])
+    selectedMes = String(options.ultimoMes || currentMonth)
   }
 
   // Grupo do Item: mapeia para os nomes existentes que correspondam a Equipamentos, Acessórios, Tintas e Peças
