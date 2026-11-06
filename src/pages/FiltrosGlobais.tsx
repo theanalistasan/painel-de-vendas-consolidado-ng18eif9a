@@ -31,6 +31,9 @@ export default function FiltrosGlobais() {
   const [optionsData, setOptionsData] = useState<DashboardStatsResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Último resultado bem-sucedido: usado como fallback quando a consulta falha
+  // (ex.: timeout) — evita tela de erro e mantém as opções já conhecidas.
+  const lastGoodOptionsRef = useRef<DashboardStatsResult | null>(null)
   const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
   const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
 
@@ -74,9 +77,17 @@ export default function FiltrosGlobais() {
       }
 
       setOptionsData(res)
+      lastGoodOptionsRef.current = res
     } catch (err: unknown) {
       console.error('[FiltrosGlobais] Erro ao carregar opções de filtros:', err)
-      setError(err instanceof Error ? err.message : 'Falha ao carregar opções de filtros.')
+      // Estabilidade: se já existe um resultado anterior, mantém as opções na tela
+      // em vez de mostrar o cartão de erro (o "Tentar novamente" reaproveita o cache).
+      if (lastGoodOptionsRef.current) {
+        setOptionsData(lastGoodOptionsRef.current)
+        setError(null)
+      } else {
+        setError(err instanceof Error ? err.message : 'Falha ao carregar opções de filtros.')
+      }
     } finally {
       setLoading(false)
     }
