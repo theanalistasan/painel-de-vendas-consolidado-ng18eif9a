@@ -757,6 +757,27 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
       // Concluiu todos os blocos de swap
       $app.db().newQuery('DELETE FROM vendas_staging').execute()
 
+      // Consolidação concluída: invalida o cache de opções dinâmicas dos filtros
+      // (30 min) e o cache do dashboard (5 min) para refletir os dados novos.
+      try {
+        if (typeof globalThis !== 'undefined' && globalThis.__skipFilterOptionsCache) {
+          globalThis.__skipFilterOptionsCache = new Map()
+          console.log(
+            'consolidar_vendas: __skipFilterOptionsCache invalidado (consolidação concluída)',
+          )
+        }
+      } catch (cacheErr) {
+        console.warn('consolidar_vendas: falha ao invalidar cache de opções:', cacheErr)
+      }
+      try {
+        if (typeof globalThis !== 'undefined' && globalThis.__skipDashboardCache) {
+          globalThis.__skipDashboardCache.clear()
+          console.log('consolidar_vendas: __skipDashboardCache invalidado (consolidação concluída)')
+        }
+      } catch (dashCacheErr) {
+        console.warn('consolidar_vendas: falha ao invalidar cache do dashboard:', dashCacheErr)
+      }
+
       setStatus({
         status: 'completed',
         etapa: 'concluido',

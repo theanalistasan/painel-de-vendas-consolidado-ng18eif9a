@@ -366,6 +366,26 @@ routerAdd(
       }
     }
 
+    // Carga concluída: invalida o cache de opções dinâmicas dos filtros (30 min)
+    // e o cache do dashboard (5 min) para que /dashboard/filtros reflita os
+    // novos registros imediatamente.
+    try {
+      if (typeof globalThis !== 'undefined' && globalThis.__skipFilterOptionsCache) {
+        globalThis.__skipFilterOptionsCache = new Map()
+        console.log('import_racnew: __skipFilterOptionsCache invalidado (carga concluída)')
+      }
+    } catch (cacheErr) {
+      console.warn('import_racnew: falha ao invalidar cache de opções:', cacheErr)
+    }
+    try {
+      if (typeof globalThis !== 'undefined' && globalThis.__skipDashboardCache) {
+        globalThis.__skipDashboardCache.clear()
+        console.log('import_racnew: __skipDashboardCache invalidado (carga concluída)')
+      }
+    } catch (dashCacheErr) {
+      console.warn('import_racnew: falha ao invalidar cache do dashboard:', dashCacheErr)
+    }
+
     return e.json(200, {
       success: true,
       modo: modoHistorico ? 'historico' : 'atual',

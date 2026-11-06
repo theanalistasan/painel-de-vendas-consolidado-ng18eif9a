@@ -322,6 +322,25 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
 
     const sqlEsc = (s) => String(s).replace(/'/g, "''")
 
+    // Último mês disponível na base (a partir do resumo pré-calculado) — usado
+    // para a janela padrão das consultas na base bruta `vendas` e para a série
+    // dos últimos 6 meses. Consulta única e barata (MAX sobre índice).
+    let ultimoYmGeral = '2026-08'
+    try {
+      const maxYmRows = arrayOf(new DynamicModel({ a: '' }))
+      $app
+        .db()
+        .newQuery(
+          "SELECT COALESCE(MAX(ano_mes),'2026-08') AS a FROM resumo_vendas_mensal WHERE ano_mes >= '2015-01'",
+        )
+        .all(maxYmRows)
+      if (maxYmRows.length > 0 && maxYmRows[0].a && maxYmRows[0].a.indexOf('-') >= 0) {
+        ultimoYmGeral = maxYmRows[0].a
+      }
+    } catch (_) {
+      ultimoYmGeral = '2026-08'
+    }
+
     // Cláusulas de filtro
     const sqlParts = []
     const sqlDimParts = []
@@ -448,39 +467,81 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     }
 
     // Filtros de data
+    //
+    // Na base bruta `vendas` o filtro de período é convertido em FAIXA DE DATAS
+    // (data_lancamento >= início AND < fim) para usar o índice
+    // idx_vendas_data_lancamento (migration 1741900000) — nada de substr() sobre
+    // a coluna, que anularia o índice e forçaria varredura de ~310k registros.
+    //
+    // data_lancamento é uma coluna DATE do PocketBase, armazenada/serializada
+    // como 'yyyy-mm-dd hh:mm:ss.SSSZ'. As faixas abaixo cobrem dias inteiros.
+    const pad2 = (n) => String(n).padStart(2, '0')
+    const anoMesBounds = [] // pares [inclusivo 'yyyy-mm-01', exclusivo 'yyyy-mm+1-01']
+
     if (f.dataDe) {
       const ymDe = f.dataDe.slice(0, 7)
       sqlParts.push("ano_mes >= '" + sqlEsc(ymDe) + "'")
-      sqlVendasParts.push("data_lancamento >= '" + sqlEsc(f.dataDe) + " 00:00:00'")
+      // Faixa aberta a partir do dia informado (inclusive)
+      anoMesBounds.push(['>=', sqlEsc(f.dataDe) + ' 00:00:00.000Z'])
     }
     if (f.dataAte) {
       const ymAte = f.dataAte.slice(0, 7)
       sqlParts.push("ano_mes <= '" + sqlEsc(ymAte) + "'")
-      sqlVendasParts.push("data_lancamento <= '" + sqlEsc(f.dataAte) + " 23:59:59'")
-    }
-    const anosFilter = Array.isArray(f.ano) ? f.ano : f.ano ? [f.ano] : []
-    if (anosFilter.length > 0) {
-      const anos = anosFilter.map((a) => 'ano = ' + parseInt(a, 10)).join(' OR ')
-      sqlParts.push('(' + anos + ')')
-      const anosVendas = anosFilter
-        .map((a) => "substr(data_lancamento, 1, 4) = '" + sqlEsc(String(parseInt(a, 10))) + "'")
-        .join(' OR ')
-      sqlVendasParts.push('(' + anosVendas + ')')
-    }
-    const mesesFilter = Array.isArray(f.mes) ? f.mes : f.mes ? [f.mes] : []
-    if (mesesFilter.length > 0) {
-      const meses = mesesFilter.map((m) => 'mes = ' + parseInt(m, 10)).join(' OR ')
-      sqlParts.push('(' + meses + ')')
-      const mesesVendas = mesesFilter
-        .map(
-          (m) =>
-            "substr(data_lancamento, 6, 2) = '" + String(parseInt(m, 10)).padStart(2, '0') + "'",
-        )
-        .join(' OR ')
-      sqlVendasParts.push('(' + mesesVendas + ')')
+      // Exclusivo: primeiro instante do dia seguinte
+      const dAte = new Date(f.dataAte + 'T00:00:00Z')
+      const dNext = new Date(dAte.getTime() + 86400000)
+      const nextIso =
+        dNext.getUTCFullYear() +
+        '-' +
+        pad2(dNext.getUTCMonth() + 1) +
+        '-' +
+        pad2(dNext.getUTCDate()) +
+        ' 00:00:00.000Z'
+      anoMesBounds.push(['<', nextIso])
     }
 
+    // anos/meses: combinação (ano, mês) em faixas contíguas por mês civil
+    // (ex.: anos [2025, 2026] x meses [1, 2] => faixas jan/fev de cada ano).
+    // Sem ano selecionado, o ano do último mês da base delimita a faixa.
+    const anosFilter = Array.isArray(f.ano) ? f.ano : f.ano ? [f.ano] : []
+    const mesesFilter = Array.isArray(f.mes) ? f.mes : f.mes ? [f.mes] : []
     const diasFilter = Array.isArray(f.dia) ? f.dia : f.dia ? [f.dia] : []
+
+    const anosInt = anosFilter
+      .map((a) => parseInt(a, 10))
+      .filter((a) => !isNaN(a) && a > 1990 && a < 2100)
+    const mesesInt = mesesFilter
+      .map((m) => parseInt(m, 10))
+      .filter((m) => !isNaN(m) && m >= 1 && m <= 12)
+
+    if (anosInt.length > 0) {
+      const anos = anosFilter.map((a) => 'ano = ' + parseInt(a, 10)).join(' OR ')
+      sqlParts.push('(' + anos + ')')
+    }
+    if (mesesInt.length > 0) {
+      const meses = mesesFilter.map((m) => 'mes = ' + parseInt(m, 10)).join(' OR ')
+      sqlParts.push('(' + meses + ')')
+    }
+
+    if (anosInt.length > 0 || mesesInt.length > 0) {
+      const anosParaFaixa = anosInt.length > 0 ? anosInt : [parseInt(ultimoYmGeral.slice(0, 4), 10)]
+      const mesUpper = mesesInt.length > 0 ? Math.max.apply(null, mesesInt) : 12
+      const mesLower = mesesInt.length > 0 ? Math.min.apply(null, mesesInt) : 1
+
+      // Uma faixa por ano selecionado: de (ano, mesLower) até o fim de (ano, mesUpper)
+      for (let ai = 0; ai < anosParaFaixa.length; ai++) {
+        const y = anosParaFaixa[ai]
+        const startYm = y + '-' + pad2(mesLower)
+        // fim exclusivo: primeiro dia do mês seguinte ao mês superior
+        const endY = mesUpper === 12 ? y + 1 : y
+        const endM = mesUpper === 12 ? 1 : mesUpper + 1
+        anoMesBounds.push(['>=', startYm + '-01 00:00:00.000Z'])
+        anoMesBounds.push(['<', endY + '-' + pad2(endM) + '-01 00:00:00.000Z'])
+      }
+    }
+
+    // dias: quando combinado com ano/mês forma um recorte pequeno; sozinho,
+    // limita ao mês corrente da base (mesma janela do caso anterior)
     if (diasFilter.length > 0) {
       const diasVendas = diasFilter
         .map(
@@ -489,6 +550,25 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         )
         .join(' OR ')
       sqlVendasParts.push('(' + diasVendas + ')')
+
+      // Com dia filtrado mas sem ano/mês: recorte no mês corrente da base
+      if (anosInt.length === 0 && mesesInt.length === 0 && anoMesBounds.length === 0) {
+        const p = ultimoYmGeral.split('-')
+        const y = parseInt(p[0], 10)
+        const m = parseInt(p[1], 10)
+        const startYm = y + '-' + pad2(m)
+        const endY = m === 12 ? y + 1 : y
+        const endM = m === 12 ? 1 : m + 1
+        anoMesBounds.push(['>=', startYm + '-01 00:00:00.000Z'])
+        anoMesBounds.push(['<', endY + '-' + pad2(endM) + '-01 00:00:00.000Z'])
+      }
+    }
+
+    // Aplica as faixas de data montadas acima na cláusula da base bruta
+    for (let bi = 0; bi < anoMesBounds.length; bi++) {
+      const op = anoMesBounds[bi][0]
+      const val = anoMesBounds[bi][1]
+      sqlVendasParts.push('data_lancamento ' + op + " '" + val + "'")
     }
 
     // Filtros de dimensão
@@ -681,23 +761,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     // independente do filtro de período (ano/mês/dia) selecionado, mantendo a regra dos gráficos históricos.
     // Respeita os filtros de dimensão e base (sqlWhereBase).
     const ultimos6MesesAlvo = []
-    // Determina o último mês geral da base a partir do resumo
-    let ultimoYmGeral = '2026-08'
-    try {
-      const maxYmRows = arrayOf(new DynamicModel({ a: '' }))
-      $app
-        .db()
-        .newQuery(
-          "SELECT COALESCE(MAX(ano_mes),'2026-08') AS a FROM resumo_vendas_mensal WHERE ano_mes >= '2015-01'",
-        )
-        .all(maxYmRows)
-      if (maxYmRows.length > 0 && maxYmRows[0].a && maxYmRows[0].a.indexOf('-') >= 0) {
-        ultimoYmGeral = maxYmRows[0].a
-      }
-    } catch (_) {
-      ultimoYmGeral = '2026-08'
-    }
-
+    // (ultimoYmGeral já foi calculado antes das cláusulas de filtro)
     const ymParts = ultimoYmGeral.split('-')
     const maxY = parseInt(ymParts[0], 10) || 2026
     const maxM = parseInt(ymParts[1], 10) || 8
@@ -994,6 +1058,29 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     // ============================================================
     const recentSales = []
     try {
+      // Sem recorte de período na base bruta (sem faixa de data), limitamos o
+      // ORDER BY a uma janela indexada dos últimos 2 meses da base — sem isso o
+      // SQLite faria sort de toda a tabela antes do LIMIT 8 (timeout em 310k).
+      let recentOrderClause = ''
+      const hasFaixaData = sqlVendasParts.some((p) => p.indexOf('data_lancamento >=') === 0)
+      if (!hasFaixaData) {
+        const pU = ultimoYmGeral.split('-')
+        const yU = parseInt(pU[0], 10)
+        const mU = parseInt(pU[1], 10)
+        let backM = mU - 2
+        let backY = yU
+        if (backM < 1) {
+          backM += 12
+          backY -= 1
+        }
+        recentOrderClause =
+          ' data_lancamento >= ' +
+          "'" +
+          backY +
+          '-' +
+          String(backM).padStart(2, '0') +
+          '-01 00:00:00.000Z AND '
+      }
       const recentSql =
         'SELECT ' +
         "COALESCE(id,'') AS id, " +
@@ -1003,10 +1090,11 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         "COALESCE(codigo_item,'Sem informação') AS codigo_item, " +
         "COALESCE(descricao_item,'Sem informação') AS descricao_item, " +
         "COALESCE(grupo_item,'Sem informação') AS grupo_item, " +
-        'COALESCE(quantidade,0) AS quantidade, ' +
-        'COALESCE(total_linha,0) AS total_linha ' +
+        "COALESCE(quantidade,'') AS quantidade, " +
+        "COALESCE(total_linha,'') AS total_linha " +
         'FROM vendas WHERE ' +
         sqlWhereVendas +
+        (recentOrderClause ? ' AND ' + recentOrderClause : '') +
         ' ORDER BY data_lancamento DESC LIMIT 8'
       const recentRows = arrayOf(
         new DynamicModel({
@@ -1107,136 +1195,229 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
     }
 
-    // Anos disponíveis e último período (ano/mês)
-    let anosList = []
-    let maxLancamento = ''
-    let ultimoAnoBase = 2026
-    let ultimoMesBase = 8
-    try {
-      const minMaxRows = arrayOf(new DynamicModel({ min_ym: '', max_ym: '' }))
-      $app
-        .db()
-        .newQuery(
-          "SELECT COALESCE(MIN(ano_mes), '') AS min_ym, COALESCE(MAX(ano_mes), '') AS max_ym FROM resumo_vendas_mensal WHERE ano_mes >= '2015-01'",
-        )
-        .all(minMaxRows)
-
-      if (minMaxRows.length > 0 && minMaxRows[0].min_ym && minMaxRows[0].max_ym) {
-        const minYm = String(minMaxRows[0].min_ym || '').trim()
-        const maxYm = String(minMaxRows[0].max_ym || '').trim()
-        if (minYm.length >= 4 && maxYm.length >= 4) {
-          const minYear = parseInt(minYm.slice(0, 4), 10)
-          const maxYear = parseInt(maxYm.slice(0, 4), 10)
-          maxLancamento = maxYm + '-28 00:00:00.000Z'
-          if (!isNaN(minYear) && !isNaN(maxYear) && maxYear >= minYear) {
-            for (let y = minYear; y <= maxYear; y++) {
-              anosList.push(y)
-            }
-            ultimoAnoBase = maxYear
-            const m = parseInt(maxYm.slice(5, 7), 10)
-            if (!isNaN(m)) ultimoMesBase = m
+    // ============================================================
+    // Cache de 30 min das opções dinâmicas (filterOptions)
+    // ============================================================
+    // As opções de filtro NÃO dependem do período filtrado (vêm do resumo
+    // pré-calculado, sem recorte de data), então são cacheadas por TIPO de
+    // opção em globalThis.__skipFilterOptionsCache com TTL de 30 minutos.
+    // Os hooks de carga (import_racnew.js, import_netsales.js,
+    // consolidar_vendas.js) limpam este cache ao concluir, garantindo frescor.
+    const FILTER_OPTIONS_TTL_MS = 1800000
+    const getFilterOptionsCache = () => {
+      if (typeof globalThis === 'undefined' || !globalThis) return null
+      if (
+        !globalThis.__skipFilterOptionsCache ||
+        typeof globalThis.__skipFilterOptionsCache.get !== 'function'
+      ) {
+        globalThis.__skipFilterOptionsCache = new Map()
+      }
+      return globalThis.__skipFilterOptionsCache
+    }
+    const cachedOptions = (type, compute) => {
+      try {
+        const cache = getFilterOptionsCache()
+        if (cache) {
+          const hit = cache.get(type)
+          if (hit && hit.expiresAt > Date.now() && hit.data !== null && hit.data !== undefined) {
+            return hit.data
           }
         }
+      } catch (_) {}
+      const data = compute()
+      try {
+        const cache = getFilterOptionsCache()
+        const isEmpty =
+          data === null ||
+          data === undefined ||
+          (Array.isArray(data) && data.length === 0) ||
+          (data &&
+            typeof data === 'object' &&
+            !Array.isArray(data) &&
+            Object.keys(data).length === 0)
+        // Resultado vazio NÃO é cacheado: uma carga em andamento não congela
+        // listas vazias por 30 minutos.
+        if (cache && !isEmpty) {
+          cache.set(type, { data: data, expiresAt: Date.now() + FILTER_OPTIONS_TTL_MS })
+        }
+      } catch (_) {}
+      return data
+    }
+
+    // Anos disponíveis e último período (ano/mês) — com cache de 30 min
+    const basePeriodo = cachedOptions('anosPeriodo', () => {
+      let anosList = []
+      let maxLancamento = ''
+      let ultimoAnoBase = 2026
+      let ultimoMesBase = 8
+      try {
+        const minMaxRows = arrayOf(new DynamicModel({ min_ym: '', max_ym: '' }))
+        $app
+          .db()
+          .newQuery(
+            "SELECT COALESCE(MIN(ano_mes), '') AS min_ym, COALESCE(MAX(ano_mes), '') AS max_ym FROM resumo_vendas_mensal WHERE ano_mes >= '2015-01'",
+          )
+          .all(minMaxRows)
+
+        if (minMaxRows.length > 0 && minMaxRows[0].min_ym && minMaxRows[0].max_ym) {
+          const minYm = String(minMaxRows[0].min_ym || '').trim()
+          const maxYm = String(minMaxRows[0].max_ym || '').trim()
+          if (minYm.length >= 4 && maxYm.length >= 4) {
+            const minYear = parseInt(minYm.slice(0, 4), 10)
+            const maxYear = parseInt(maxYm.slice(0, 4), 10)
+            maxLancamento = maxYm + '-28 00:00:00.000Z'
+            if (!isNaN(minYear) && !isNaN(maxYear) && maxYear >= minYear) {
+              for (let y = minYear; y <= maxYear; y++) {
+                anosList.push(y)
+              }
+              ultimoAnoBase = maxYear
+              const m = parseInt(maxYm.slice(5, 7), 10)
+              if (!isNaN(m)) ultimoMesBase = m
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('dashboard_stats: anos min/max resumo (base vazia ou sem resumo):', err)
       }
-    } catch (err) {
-      console.warn('dashboard_stats: anos min/max resumo (base vazia ou sem resumo):', err)
-    }
-    if (anosList.length === 0) {
-      anosList = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
-    }
+      if (anosList.length === 0) {
+        anosList = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+      }
+      return {
+        anos: anosList,
+        maxDataLancamento: maxLancamento,
+        ultimoAno: ultimoAnoBase,
+        ultimoMes: ultimoMesBase,
+      }
+    })
+    const anosList = basePeriodo.anos
+    const maxLancamento = basePeriodo.maxDataLancamento
+    const ultimoAnoBase = basePeriodo.ultimoAno
+    const ultimoMesBase = basePeriodo.ultimoMes
 
     // Opções de canais, clientes dos canais e inside (apenas registros onde eh_canal = 1 / true)
-    let canaisOptions = []
-    let canaisClientesOptions = []
-    let insideOptions = []
-    try {
-      const canalRows = arrayOf(
-        new DynamicModel({
-          nome_canal: '',
-          deploy: '',
-        }),
-      )
-      $app
-        .db()
-        .newQuery(
-          "SELECT nome_canal, MAX(deploy) AS deploy FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND nome_canal IS NOT NULL AND nome_canal != '' GROUP BY nome_canal ORDER BY nome_canal ASC",
+    // Cache de 30 min (chaves: canais, canaisClientes, inside)
+    const canaisOptions = cachedOptions('canais', () => {
+      const out = []
+      try {
+        const canalRows = arrayOf(
+          new DynamicModel({
+            nome_canal: '',
+            deploy: '',
+          }),
         )
-        .all(canalRows)
+        $app
+          .db()
+          .newQuery(
+            "SELECT nome_canal, MAX(deploy) AS deploy FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND nome_canal IS NOT NULL AND nome_canal != '' GROUP BY nome_canal ORDER BY nome_canal ASC",
+          )
+          .all(canalRows)
 
-      for (let i = 0; i < canalRows.length; i++) {
-        const nc = (canalRows[i].nome_canal || '').trim()
-        if (nc) {
-          canaisOptions.push({
-            nome: nc,
-            deploy: (canalRows[i].deploy || '').trim().toUpperCase(),
-          })
+        for (let i = 0; i < canalRows.length; i++) {
+          const nc = (canalRows[i].nome_canal || '').trim()
+          if (nc) {
+            out.push({
+              nome: nc,
+              deploy: (canalRows[i].deploy || '').trim().toUpperCase(),
+            })
+          }
         }
+      } catch (canalOptErr) {
+        console.warn('dashboard_stats: consulta de canais warning:', canalOptErr)
       }
+      return out
+    })
 
-      // Consulta de todos os clientes vinculados a canais para o filtro dependente
-      const cliCanalRows = arrayOf(
-        new DynamicModel({
-          nome_canal: '',
-          nome_cliente: '',
-          codigo_cliente: '',
-          deploy: '',
-        }),
-      )
-      $app
-        .db()
-        .newQuery(
-          "SELECT DISTINCT nome_canal, nome_cliente, codigo_cliente, deploy FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND nome_cliente IS NOT NULL AND nome_cliente != '' ORDER BY nome_cliente ASC",
+    // Consulta de todos os clientes vinculados a canais para o filtro dependente (cache 30 min)
+    const canaisClientesOptions = cachedOptions('canaisClientes', () => {
+      const out = []
+      try {
+        const cliCanalRows = arrayOf(
+          new DynamicModel({
+            nome_canal: '',
+            nome_cliente: '',
+            codigo_cliente: '',
+            deploy: '',
+          }),
         )
-        .all(cliCanalRows)
+        $app
+          .db()
+          .newQuery(
+            "SELECT DISTINCT nome_canal, nome_cliente, codigo_cliente, deploy FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND nome_cliente IS NOT NULL AND nome_cliente != '' ORDER BY nome_cliente ASC",
+          )
+          .all(cliCanalRows)
 
-      for (let i = 0; i < cliCanalRows.length; i++) {
-        const ncli = (cliCanalRows[i].nome_cliente || '').trim()
-        if (ncli) {
-          canaisClientesOptions.push({
-            nome_canal: (cliCanalRows[i].nome_canal || '').trim(),
-            nome_cliente: ncli,
-            codigo_cliente: (cliCanalRows[i].codigo_cliente || '').trim(),
-            deploy: (cliCanalRows[i].deploy || '').trim().toUpperCase(),
-          })
+        for (let i = 0; i < cliCanalRows.length; i++) {
+          const ncli = (cliCanalRows[i].nome_cliente || '').trim()
+          if (ncli) {
+            out.push({
+              nome_canal: (cliCanalRows[i].nome_canal || '').trim(),
+              nome_cliente: ncli,
+              codigo_cliente: (cliCanalRows[i].codigo_cliente || '').trim(),
+              deploy: (cliCanalRows[i].deploy || '').trim().toUpperCase(),
+            })
+          }
         }
+      } catch (cliOptErr) {
+        console.warn('dashboard_stats: consulta de clientes de canais warning:', cliOptErr)
       }
+      return out
+    })
 
-      // Opções deduplicadas e normalizadas de Inside (apenas registros eh_canal = 1)
-      const insideRows = arrayOf(
-        new DynamicModel({
-          inside_val: '',
-        }),
-      )
-      $app
-        .db()
-        .newQuery(
-          "SELECT DISTINCT UPPER(TRIM(inside)) AS inside_val FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND inside IS NOT NULL AND TRIM(inside) != '' ORDER BY 1 ASC",
+    // Opções deduplicadas e normalizadas de Inside (apenas registros eh_canal = 1) — cache 30 min
+    const insideOptions = cachedOptions('inside', () => {
+      const out = []
+      try {
+        const insideRows = arrayOf(
+          new DynamicModel({
+            inside_val: '',
+          }),
         )
-        .all(insideRows)
+        $app
+          .db()
+          .newQuery(
+            "SELECT DISTINCT UPPER(TRIM(inside)) AS inside_val FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND inside IS NOT NULL AND TRIM(inside) != '' ORDER BY 1 ASC",
+          )
+          .all(insideRows)
 
-      const insideSet = new Set()
-      for (let i = 0; i < insideRows.length; i++) {
-        const ins = (insideRows[i].inside_val || '').trim()
-        if (ins && !insideSet.has(ins)) {
-          insideSet.add(ins)
-          insideOptions.push(ins)
+        const insideSet = new Set()
+        for (let i = 0; i < insideRows.length; i++) {
+          const ins = (insideRows[i].inside_val || '').trim()
+          if (ins && !insideSet.has(ins)) {
+            insideSet.add(ins)
+            out.push(ins)
+          }
         }
+      } catch (insideOptErr) {
+        console.warn('dashboard_stats: consulta de inside warning:', insideOptErr)
       }
-    } catch (canalOptErr) {
-      console.warn('dashboard_stats: consulta de canais warning:', canalOptErr)
-    }
+      return out
+    })
 
     const filterOptions = {
-      vendedorCliente: cleanFilterOptions(distinctSummaryCol('vendedor_cliente', 3000), true),
-      vendedor: cleanFilterOptions(distinctSummaryCol('nome_vendedor', 500)),
-      grupoItem: cleanFilterOptions(distinctSummaryCol('grupo_item', 100)),
-      estado: cleanFilterOptions(distinctSummaryCol('estado', 50)),
-      utilizacao: cleanFilterOptions(distinctSummaryCol('utilizacao', 200)),
-      tipoDocumento: cleanFilterOptions(distinctSummaryCol('tipo_documento', 50)),
+      vendedorCliente: cachedOptions('optVendedorCliente', () =>
+        cleanFilterOptions(distinctSummaryCol('vendedor_cliente', 3000), true),
+      ),
+      vendedor: cachedOptions('optVendedor', () =>
+        cleanFilterOptions(distinctSummaryCol('nome_vendedor', 500)),
+      ),
+      grupoItem: cachedOptions('optGrupoItem', () =>
+        cleanFilterOptions(distinctSummaryCol('grupo_item', 100)),
+      ),
+      estado: cachedOptions('optEstado', () =>
+        cleanFilterOptions(distinctSummaryCol('estado', 50)),
+      ),
+      utilizacao: cachedOptions('optUtilizacao', () =>
+        cleanFilterOptions(distinctSummaryCol('utilizacao', 200)),
+      ),
+      tipoDocumento: cachedOptions('optTipoDocumento', () =>
+        cleanFilterOptions(distinctSummaryCol('tipo_documento', 50)),
+      ),
       canais: canaisOptions,
       canaisClientes: canaisClientesOptions,
       inside: insideOptions,
-      tipoCliente: cleanFilterOptions(distinctSummaryCol('tipo_cliente', 50)),
+      tipoCliente: cachedOptions('optTipoCliente', () =>
+        cleanFilterOptions(distinctSummaryCol('tipo_cliente', 50)),
+      ),
       anos: anosList,
       meses: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
       dias: [
