@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { SlidersHorizontal, RefreshCw, AlertTriangle } from 'lucide-react'
+import { SlidersHorizontal, RefreshCw, AlertTriangle, RotateCcw } from 'lucide-react'
 import FilterBar from '@/components/FilterBar'
 import { fetchDashboardStats, type DashboardStatsResult } from '@/services/sales'
 import type { FilterState } from '@/types/sales'
@@ -56,6 +56,15 @@ export default function FiltrosGlobais() {
   filtersRef.current = filters
   const initializedRef = useRef(initializedFromBase)
   initializedRef.current = initializedFromBase
+
+  // Restaurar os filtros globais ao padrão (commit 0.0.264): período = mês corrente
+  // (ou último ano disponível na base, se o corrente não existir) e demais seleções
+  // voltam ao estado inicial — o mesmo critério do botão "Padrão Geral" do JP-Class.
+  // A persistência em sessão acontece pelo useEffect que grava `filters`.
+  const handleResetToDefault = useCallback(() => {
+    const defaultFilters = buildDynamicInitialFilters(optionsData?.filterOptions)
+    setFilters(defaultFilters)
+  }, [optionsData])
 
   // Busca apenas as opções dinâmicas dos filtros (base vazia ⇒ listas vazias, sem quebrar)
   const loadOptions = useCallback(async () => {
@@ -153,20 +162,35 @@ export default function FiltrosGlobais() {
     <div className="space-y-6">
       {/* Cabeçalho explicativo */}
       <Card className="rounded-xl border border-gray-200 bg-white p-4 shadow-xs">
-        <div className="flex items-start gap-3">
-          <div className="p-2 rounded-xl bg-cyan-50 text-[#0B6E99] shrink-0">
-            <SlidersHorizontal className="w-5 h-5" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-cyan-50 text-[#0B6E99] shrink-0">
+              <SlidersHorizontal className="w-5 h-5" />
+            </div>
+            <div>
+              <CardTitle className="text-base font-extrabold text-slate-900">
+                Filtros Globais
+              </CardTitle>
+              <CardDescription className="text-xs text-slate-500 font-medium mt-0.5">
+                Os filtros definidos aqui valem para o painel inteiro: aplicam-se à Visão Geral e à
+                Visão Canais. Os filtros de Canais (Canal, Clientes, Deploy e Inside) ficam na Visão
+                Canais.
+              </CardDescription>
+            </div>
           </div>
-          <div>
-            <CardTitle className="text-base font-extrabold text-slate-900">
-              Filtros Globais
-            </CardTitle>
-            <CardDescription className="text-xs text-slate-500 font-medium mt-0.5">
-              Os filtros definidos aqui valem para o painel inteiro: aplicam-se à Visão Geral e à
-              Visão Canais. Os filtros de Canais (Canal, Clientes, Deploy e Inside) ficam na Visão
-              Canais.
-            </CardDescription>
-          </div>
+
+          {/* Botão Restaurar Padrão Geral (mesmo comportamento do botão da página JP-Class) */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleResetToDefault}
+            className="h-8 px-2.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border-slate-200 gap-1 shrink-0"
+            title="Restaurar critério padrão de filtragem (Visão Geral / Visão Canais)"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-[#0B6E99]" />
+            <span>Padrão Geral</span>
+          </Button>
         </div>
       </Card>
 
