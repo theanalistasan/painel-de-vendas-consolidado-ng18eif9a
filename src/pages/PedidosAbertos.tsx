@@ -1477,13 +1477,14 @@ export default function PedidosAbertos() {
         { key: 'numero_pedido', label: 'Nº Pedido' },
         { key: 'linha', label: 'Linha' },
         { key: 'data_pedido', label: 'Data do Pedido' },
-        { key: 'codigo_vendedor', label: 'Código Vendedor' },
-        { key: 'nome_vendedor', label: 'Nome Vendedor' },
+
         { key: 'codigo_cliente', label: 'Código Cliente' },
         { key: 'nome_cliente', label: 'Nome Cliente' },
         { key: 'tipo_cliente', label: 'Tipo de Cliente' },
         { key: 'status_cadastro', label: 'Status do Cadastro' },
         { key: 'tipo_pn', label: 'Tipo de PN' },
+        { key: 'codigo_vendedor', label: 'Código Vendedor' },
+        { key: 'nome_vendedor', label: 'Nome Vendedor' },
         { key: 'codigo_item', label: 'Código Item' },
         { key: 'descricao_item', label: 'Descrição Item' },
         { key: 'grupo_item', label: 'Grupo do Item' },
@@ -2111,24 +2112,6 @@ export default function PedidosAbertos() {
                   </th>
                   <th
                     className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
-                    onClick={() => handleSort('nome_vendedor')}
-                    title="Ordenar por Vendedor"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Vendedor (Código)</span>
-                      {sort.field === 'nome_vendedor' || sort.field === 'codigo_vendedor' ? (
-                        sort.dir === 'asc' ? (
-                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
-                        ) : (
-                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
-                        )
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
                     onClick={() => handleSort('tipo_cliente')}
                     title="Ordenar por Tipo de Cliente"
                   >
@@ -2298,6 +2281,24 @@ export default function PedidosAbertos() {
                     <div className="flex items-center justify-end gap-1">
                       <span>Valor em Aberto</span>
                       {sort.field === 'valor_em_aberto' ? (
+                        sort.dir === 'asc' ? (
+                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+                        ) : (
+                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+                        )
+                      ) : (
+                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
+                    onClick={() => handleSort('nome_vendedor')}
+                    title="Ordenar por Vendedor"
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Vendedor (Código)</span>
+                      {sort.field === 'nome_vendedor' || sort.field === 'codigo_vendedor' ? (
                         sort.dir === 'asc' ? (
                           <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
                         ) : (
@@ -2536,21 +2537,6 @@ export default function PedidosAbertos() {
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
                               </td>
 
-                              {/* Vendedor */}
-                              <td className="p-3 min-w-[170px]">
-                                <div
-                                  className="font-medium text-slate-800 truncate"
-                                  title={item.nome_vendedor}
-                                >
-                                  {item.nome_vendedor || '-'}
-                                </div>
-                                {item.codigo_vendedor && (
-                                  <div className="text-[11px] text-slate-400 font-mono">
-                                    {item.codigo_vendedor}
-                                  </div>
-                                )}
-                              </td>
-
                               {/* Tipo de Cliente */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
@@ -2621,6 +2607,21 @@ export default function PedidosAbertos() {
                               {/* Tipo de PN */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
+                              </td>
+
+                              {/* Vendedor */}
+                              <td className="p-3 min-w-[170px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_vendedor}
+                                >
+                                  {item.nome_vendedor || '-'}
+                                </div>
+                                {item.codigo_vendedor && (
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {item.codigo_vendedor}
+                                  </div>
+                                )}
                               </td>
 
                               {/* Item / Descrição */}
@@ -2859,21 +2860,6 @@ export default function PedidosAbertos() {
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
                               </td>
 
-                              {/* Vendedor */}
-                              <td className="p-3 min-w-[170px]">
-                                <div
-                                  className="font-medium text-slate-800 truncate"
-                                  title={item.nome_vendedor}
-                                >
-                                  {item.nome_vendedor || '-'}
-                                </div>
-                                {item.codigo_vendedor && (
-                                  <div className="text-[11px] text-slate-400 font-mono">
-                                    {item.codigo_vendedor}
-                                  </div>
-                                )}
-                              </td>
-
                               {/* Tipo de Cliente */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
@@ -2944,6 +2930,21 @@ export default function PedidosAbertos() {
                               {/* Tipo de PN */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
+                              </td>
+
+                              {/* Vendedor */}
+                              <td className="p-3 min-w-[170px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_vendedor}
+                                >
+                                  {item.nome_vendedor || '-'}
+                                </div>
+                                {item.codigo_vendedor && (
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {item.codigo_vendedor}
+                                  </div>
+                                )}
                               </td>
 
                               {/* Item / Descrição */}
@@ -3226,21 +3227,6 @@ export default function PedidosAbertos() {
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
                               </td>
 
-                              {/* Vendedor */}
-                              <td className="p-3 min-w-[170px]">
-                                <div
-                                  className="font-medium text-slate-800 truncate"
-                                  title={item.nome_vendedor}
-                                >
-                                  {item.nome_vendedor || '-'}
-                                </div>
-                                {item.codigo_vendedor && (
-                                  <div className="text-[11px] text-slate-400 font-mono">
-                                    {item.codigo_vendedor}
-                                  </div>
-                                )}
-                              </td>
-
                               {/* Tipo de Cliente */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
@@ -3311,6 +3297,21 @@ export default function PedidosAbertos() {
                               {/* Tipo de PN */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
+                              </td>
+
+                              {/* Vendedor */}
+                              <td className="p-3 min-w-[170px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_vendedor}
+                                >
+                                  {item.nome_vendedor || '-'}
+                                </div>
+                                {item.codigo_vendedor && (
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {item.codigo_vendedor}
+                                  </div>
+                                )}
                               </td>
 
                               {/* Item / Descrição */}
@@ -3549,21 +3550,6 @@ export default function PedidosAbertos() {
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
                               </td>
 
-                              {/* Vendedor */}
-                              <td className="p-3 min-w-[170px]">
-                                <div
-                                  className="font-medium text-slate-800 truncate"
-                                  title={item.nome_vendedor}
-                                >
-                                  {item.nome_vendedor || '-'}
-                                </div>
-                                {item.codigo_vendedor && (
-                                  <div className="text-[11px] text-slate-400 font-mono">
-                                    {item.codigo_vendedor}
-                                  </div>
-                                )}
-                              </td>
-
                               {/* Tipo de Cliente */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
@@ -3634,6 +3620,21 @@ export default function PedidosAbertos() {
                               {/* Tipo de PN */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
+                              </td>
+
+                              {/* Vendedor */}
+                              <td className="p-3 min-w-[170px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_vendedor}
+                                >
+                                  {item.nome_vendedor || '-'}
+                                </div>
+                                {item.codigo_vendedor && (
+                                  <div className="text-[11px] text-slate-400 font-mono">
+                                    {item.codigo_vendedor}
+                                  </div>
+                                )}
                               </td>
 
                               {/* Item / Descrição */}
@@ -3727,21 +3728,6 @@ export default function PedidosAbertos() {
                         {item.data_pedido ? formatDate(item.data_pedido) : '-'}
                       </td>
 
-                      {/* Vendedor */}
-                      <td className="p-3 min-w-[170px]">
-                        <div
-                          className="font-medium text-slate-800 truncate"
-                          title={item.nome_vendedor}
-                        >
-                          {item.nome_vendedor || '-'}
-                        </div>
-                        {item.codigo_vendedor && (
-                          <div className="text-[11px] text-slate-400 font-mono">
-                            {item.codigo_vendedor}
-                          </div>
-                        )}
-                      </td>
-
                       {/* Tipo de Cliente */}
                       <td className="p-3 whitespace-nowrap">
                         {renderTipoClienteBadge(resolveClienteInfo(item).tipo_cliente)}
@@ -3812,6 +3798,21 @@ export default function PedidosAbertos() {
                       {/* Tipo de PN */}
                       <td className="p-3 whitespace-nowrap">
                         {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
+                      </td>
+
+                      {/* Vendedor */}
+                      <td className="p-3 min-w-[170px]">
+                        <div
+                          className="font-medium text-slate-800 truncate"
+                          title={item.nome_vendedor}
+                        >
+                          {item.nome_vendedor || '-'}
+                        </div>
+                        {item.codigo_vendedor && (
+                          <div className="text-[11px] text-slate-400 font-mono">
+                            {item.codigo_vendedor}
+                          </div>
+                        )}
                       </td>
 
                       {/* Item / Descrição */}
