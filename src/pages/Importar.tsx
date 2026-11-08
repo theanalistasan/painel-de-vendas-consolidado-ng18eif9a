@@ -24,6 +24,9 @@ import {
   reconstruirResumosApi,
   getConsolidacaoStatusApi,
   getCountsSummary,
+  fetchUltimaCargaRacNew,
+  fetchUltimaCargaNetSales,
+  fetchUltimaCargaProdutos,
 } from '@/services/sales'
 import { importPedidosAbertosApi, fetchUltimaCargaPedidosAbertos } from '@/services/pedidosAbertos'
 import { importEstoqueSapApi, fetchUltimaCargaEstoqueSap } from '@/services/estoqueFaltante'
@@ -979,6 +982,9 @@ export default function Importar() {
     ultimaCargaEstoqueSap: null,
     ultimaCargaTiposCliente: null,
   })
+  const [ultimaCargaRacNew, setUltimaCargaRacNew] = useState<string | null>(null)
+  const [ultimaCargaNetSales, setUltimaCargaNetSales] = useState<string | null>(null)
+  const [ultimaCargaProdutos, setUltimaCargaProdutos] = useState<string | null>(null)
   const [ultimaCargaPedidosAbertos, setUltimaCargaPedidosAbertos] = useState<string | null>(null)
   const [ultimaCargaEstoqueSap, setUltimaCargaEstoqueSap] = useState<string | null>(null)
   const [ultimaCargaTiposCliente, setUltimaCargaTiposCliente] = useState<string | null>(null)
@@ -1032,6 +1038,24 @@ export default function Importar() {
     try {
       const data = await getCountsSummary()
       setCounts(data)
+      if (data.ultimaCargaRacnew) {
+        setUltimaCargaRacNew(data.ultimaCargaRacnew)
+      } else {
+        const directRac = await fetchUltimaCargaRacNew()
+        setUltimaCargaRacNew(directRac)
+      }
+      if (data.ultimaCargaNetsales) {
+        setUltimaCargaNetSales(data.ultimaCargaNetsales)
+      } else {
+        const directNet = await fetchUltimaCargaNetSales()
+        setUltimaCargaNetSales(directNet)
+      }
+      if (data.ultimaCargaProdutos) {
+        setUltimaCargaProdutos(data.ultimaCargaProdutos)
+      } else {
+        const directProd = await fetchUltimaCargaProdutos()
+        setUltimaCargaProdutos(directProd)
+      }
       if (data.ultimaCargaPedidosAbertos) {
         setUltimaCargaPedidosAbertos(data.ultimaCargaPedidosAbertos)
       } else {
@@ -1053,6 +1077,9 @@ export default function Importar() {
       }
     } catch (err) {
       console.error('Erro ao buscar contagens:', err)
+      fetchUltimaCargaRacNew().then((d) => setUltimaCargaRacNew(d))
+      fetchUltimaCargaNetSales().then((d) => setUltimaCargaNetSales(d))
+      fetchUltimaCargaProdutos().then((d) => setUltimaCargaProdutos(d))
       const directDate = await fetchUltimaCargaPedidosAbertos()
       setUltimaCargaPedidosAbertos(directDate)
       const directEstoqueDate = await fetchUltimaCargaEstoqueSap()
@@ -1399,7 +1426,31 @@ export default function Importar() {
   const handleImported = (base: BaseKey, result: ImportResult) => {
     setImportResults((prev) => ({ ...prev, [base]: result }))
     refreshCounts()
-    if (base === 'pedidos_abertos') {
+    if (base === 'racnew') {
+      if (result.data_carga) {
+        setUltimaCargaRacNew(result.data_carga)
+      } else {
+        fetchUltimaCargaRacNew().then((d) => {
+          if (d) setUltimaCargaRacNew(d)
+        })
+      }
+    } else if (base === 'netsales') {
+      if (result.data_carga) {
+        setUltimaCargaNetSales(result.data_carga)
+      } else {
+        fetchUltimaCargaNetSales().then((d) => {
+          if (d) setUltimaCargaNetSales(d)
+        })
+      }
+    } else if (base === 'produtos') {
+      if (result.data_carga) {
+        setUltimaCargaProdutos(result.data_carga)
+      } else {
+        fetchUltimaCargaProdutos().then((d) => {
+          if (d) setUltimaCargaProdutos(d)
+        })
+      }
+    } else if (base === 'pedidos_abertos') {
       if (result.data_carga) {
         setUltimaCargaPedidosAbertos(result.data_carga)
       } else {
@@ -2137,6 +2188,7 @@ export default function Importar() {
           subtitle="Catálogo de itens e categorias"
           badgeLabel="Produtos"
           badgeColor="bg-cyan-600"
+          lastImportDate={ultimaCargaProdutos}
           expectedColumns={['codigo_item', 'descricao_item', 'grupo_item', 'ativo']}
           onImport={(rows) => importProdutosApi(rows)}
           baseCount={counts.produtos}
@@ -2149,6 +2201,7 @@ export default function Importar() {
           subtitle="Dados fiscais e financeiros oficiais"
           badgeLabel="RacNew (Mestre)"
           badgeColor="bg-indigo-600"
+          lastImportDate={ultimaCargaRacNew}
           customGuide={
             <div className="rounded-lg bg-slate-50 border border-slate-200/80 p-2.5 text-[11px] text-slate-600 space-y-1.5 shadow-2xs">
               <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-[11px]">
@@ -2217,6 +2270,7 @@ export default function Importar() {
           subtitle="Campos comerciais e custos complementares"
           badgeLabel="NetSales"
           badgeColor="bg-teal-600"
+          lastImportDate={ultimaCargaNetSales}
           customGuide={
             <div className="rounded-lg bg-slate-50 border border-slate-200/80 p-2.5 text-[11px] text-slate-600 space-y-1.5 shadow-2xs">
               <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-[11px]">

@@ -2927,21 +2927,6 @@ export default function PedidosAbertos() {
                                 {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
                               </td>
 
-                              {/* Vendedor */}
-                              <td className="p-3 min-w-[170px]">
-                                <div
-                                  className="font-medium text-slate-800 truncate"
-                                  title={item.nome_vendedor}
-                                >
-                                  {item.nome_vendedor || '-'}
-                                </div>
-                                {item.codigo_vendedor && (
-                                  <div className="text-[11px] text-slate-400 font-mono">
-                                    {item.codigo_vendedor}
-                                  </div>
-                                )}
-                              </td>
-
                               {/* Item / Descrição */}
                               <td className="p-3 min-w-[220px]">
                                 <div className="font-mono text-xs font-semibold text-slate-800">
@@ -2987,6 +2972,16 @@ export default function PedidosAbertos() {
                               {/* Valor em Aberto */}
                               <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
                                 {formatCurrency(Number(item.valor_em_aberto) || 0)}
+                              </td>
+
+                              {/* Vendedor */}
+                              <td className="p-3 min-w-[170px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_vendedor}
+                                >
+                                  {item.nome_vendedor || '-'}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -3069,19 +3064,11 @@ export default function PedidosAbertos() {
                           <td className="p-3 min-w-[170px]">
                             {(() => {
                               const primeiroItem = group.items[0]
-                              const codV = primeiroItem?.codigo_vendedor
                               const nomV = primeiroItem?.nome_vendedor
-                              if (!codV && !nomV) return <span className="text-slate-300">-</span>
+                              if (!nomV) return <span className="text-slate-300">-</span>
                               return (
-                                <div>
-                                  <div className="font-medium text-slate-800 truncate" title={nomV}>
-                                    {nomV || '-'}
-                                  </div>
-                                  {codV && (
-                                    <div className="text-[11px] text-slate-400 font-mono">
-                                      {codV}
-                                    </div>
-                                  )}
+                                <div className="font-medium text-slate-800 truncate" title={nomV}>
+                                  {nomV || '-'}
                                 </div>
                               )
                             })()}
@@ -3294,21 +3281,6 @@ export default function PedidosAbertos() {
                                 {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
                               </td>
 
-                              {/* Vendedor */}
-                              <td className="p-3 min-w-[170px]">
-                                <div
-                                  className="font-medium text-slate-800 truncate"
-                                  title={item.nome_vendedor}
-                                >
-                                  {item.nome_vendedor || '-'}
-                                </div>
-                                {item.codigo_vendedor && (
-                                  <div className="text-[11px] text-slate-400 font-mono">
-                                    {item.codigo_vendedor}
-                                  </div>
-                                )}
-                              </td>
-
                               {/* Item / Descrição */}
                               <td className="p-3 min-w-[220px]">
                                 <div className="font-mono text-xs font-semibold text-slate-800">
@@ -3354,6 +3326,16 @@ export default function PedidosAbertos() {
                               {/* Valor em Aberto */}
                               <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
                                 {formatCurrency(Number(item.valor_em_aberto) || 0)}
+                              </td>
+
+                              {/* Vendedor */}
+                              <td className="p-3 min-w-[170px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_vendedor}
+                                >
+                                  {item.nome_vendedor || '-'}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -3617,21 +3599,6 @@ export default function PedidosAbertos() {
                                 {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
                               </td>
 
-                              {/* Vendedor */}
-                              <td className="p-3 min-w-[170px]">
-                                <div
-                                  className="font-medium text-slate-800 truncate"
-                                  title={item.nome_vendedor}
-                                >
-                                  {item.nome_vendedor || '-'}
-                                </div>
-                                {item.codigo_vendedor && (
-                                  <div className="text-[11px] text-slate-400 font-mono">
-                                    {item.codigo_vendedor}
-                                  </div>
-                                )}
-                              </td>
-
                               {/* Item / Descrição */}
                               <td className="p-3 min-w-[220px]">
                                 <div className="font-mono text-xs font-semibold text-slate-800">
@@ -3677,6 +3644,16 @@ export default function PedidosAbertos() {
                               {/* Valor em Aberto */}
                               <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
                                 {formatCurrency(Number(item.valor_em_aberto) || 0)}
+                              </td>
+
+                              {/* Vendedor */}
+                              <td className="p-3 min-w-[170px]">
+                                <div
+                                  className="font-medium text-slate-800 truncate"
+                                  title={item.nome_vendedor}
+                                >
+                                  {item.nome_vendedor || '-'}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -3795,21 +3772,6 @@ export default function PedidosAbertos() {
                         {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
                       </td>
 
-                      {/* Vendedor */}
-                      <td className="p-3 min-w-[170px]">
-                        <div
-                          className="font-medium text-slate-800 truncate"
-                          title={item.nome_vendedor}
-                        >
-                          {item.nome_vendedor || '-'}
-                        </div>
-                        {item.codigo_vendedor && (
-                          <div className="text-[11px] text-slate-400 font-mono">
-                            {item.codigo_vendedor}
-                          </div>
-                        )}
-                      </td>
-
                       {/* Item / Descrição */}
                       <td className="p-3 min-w-[220px]">
                         <div className="font-mono text-xs font-semibold text-slate-800">
@@ -3853,6 +3815,16 @@ export default function PedidosAbertos() {
                       {/* Valor em Aberto */}
                       <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
                         {formatCurrency(Number(item.valor_em_aberto) || 0)}
+                      </td>
+
+                      {/* Vendedor */}
+                      <td className="p-3 min-w-[170px]">
+                        <div
+                          className="font-medium text-slate-800 truncate"
+                          title={item.nome_vendedor}
+                        >
+                          {item.nome_vendedor || '-'}
+                        </div>
                       </td>
                     </tr>
                   ))

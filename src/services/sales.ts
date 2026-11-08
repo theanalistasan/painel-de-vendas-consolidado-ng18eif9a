@@ -542,6 +542,8 @@ export async function fetchUltimaCargaRacnew(): Promise<string | null> {
   return null
 }
 
+export const fetchUltimaCargaRacNew = fetchUltimaCargaRacnew
+
 /**
  * Consulta a data_carga mais recente da coleção netsales.
  */
@@ -560,6 +562,8 @@ export async function fetchUltimaCargaNetsales(): Promise<string | null> {
   }
   return null
 }
+
+export const fetchUltimaCargaNetSales = fetchUltimaCargaNetsales
 
 /**
  * Consulta a data_carga mais recente da coleção produtos.
