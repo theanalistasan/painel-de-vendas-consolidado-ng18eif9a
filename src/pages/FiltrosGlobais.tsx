@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { SlidersHorizontal, RefreshCw, AlertTriangle, RotateCcw } from 'lucide-react'
+import { SlidersHorizontal, RefreshCw, AlertTriangle, RotateCcw, FileText, Tag } from 'lucide-react'
 import FilterBar from '@/components/FilterBar'
+import ChartCard from '@/components/ChartCard'
 import { fetchDashboardStats, type DashboardStatsResult } from '@/services/sales'
 import type { FilterState } from '@/types/sales'
 import {
@@ -15,6 +16,8 @@ import {
   fetchTiposClienteMap,
   buildTiposClienteStringMap,
 } from '@/services/tiposCliente'
+import { formatCurrency } from '@/lib/formatters'
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -104,7 +107,7 @@ export default function FiltrosGlobais() {
 
   useEffect(() => {
     loadOptions()
-  }, [loadOptions])
+  }, [loadOptions, filters])
 
   useEffect(() => {
     let mounted = true
@@ -157,6 +160,37 @@ export default function FiltrosGlobais() {
       isLoadingTipoCliente: false,
     }
   }, [optionsData, tipoClienteOptions, tiposClienteMap])
+
+  const chartTipoDocumentoData = useMemo(() => {
+    const list = optionsData?.charts?.tipoDocumento || []
+    return list
+      .map((item) => ({
+        name: (item.name || '').trim() || 'Sem classificação',
+        value: Number(item.value) || 0,
+      }))
+      .filter((item) => item.value > 0)
+      .sort((a, b) => b.value - a.value)
+  }, [optionsData])
+
+  const chartUtilizacaoData = useMemo(() => {
+    const list = optionsData?.charts?.utilizacao || []
+    return list
+      .map((item) => ({
+        name: (item.name || '').trim() || 'Sem classificação',
+        value: Number(item.value) || 0,
+      }))
+      .filter((item) => item.value > 0)
+      .sort((a, b) => b.value - a.value)
+  }, [optionsData])
+
+  const tooltipContentStyle: React.CSSProperties = {
+    backgroundColor: '#0F172A',
+    borderColor: '#334155',
+    color: '#FFFFFF',
+    borderRadius: '0.5rem',
+    fontSize: '0.75rem',
+    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+  }
 
   return (
     <div className="space-y-6">
@@ -234,6 +268,133 @@ export default function FiltrosGlobais() {
           }}
         />
       )}
+
+      {/* Dois gráficos solicitados: Tipo de Documento e Utilização respeitando os filtros ativos */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Gráfico 1: Valor Total por Tipo de Documento */}
+        <ChartCard
+          title="Faturamento por Tipo de Documento"
+          description="Valor total acumulado no período filtrado por tipo de documento"
+          icon={FileText}
+          iconColor="text-[#0B6E99]"
+        >
+          {loading && !optionsData ? (
+            <div className="h-full flex items-center justify-center">
+              <Skeleton className="h-64 w-full rounded-lg" />
+            </div>
+          ) : chartTipoDocumentoData.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-xs text-slate-400">
+              Nenhum dado encontrado para o período/filtros selecionados
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartTipoDocumentoData}
+                layout="vertical"
+                margin={{ top: 10, right: 24, left: 10, bottom: 10 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                <XAxis
+                  type="number"
+                  tickLine={false}
+                  axisLine={{ stroke: '#E2E8F0' }}
+                  tick={{ fill: '#64748B', fontSize: 11 }}
+                  tickFormatter={(val) => {
+                    const n = Number(val)
+                    if (Math.abs(n) >= 1_000_000) return `R$ ${(n / 1_000_000).toFixed(1)}M`
+                    if (Math.abs(n) >= 1_000) return `R$ ${(n / 1_000).toFixed(0)}k`
+                    return `R$ ${n}`
+                  }}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tickLine={false}
+                  axisLine={{ stroke: '#E2E8F0' }}
+                  tick={{ fill: '#334155', fontSize: 11, fontWeight: 600 }}
+                  width={130}
+                />
+                <Tooltip
+                  formatter={(val: number | string | undefined) => [
+                    formatCurrency(Number(val) || 0),
+                    'Valor Total',
+                  ]}
+                  contentStyle={tooltipContentStyle}
+                />
+                <Bar
+                  dataKey="value"
+                  name="Valor Total"
+                  fill="#0B6E99"
+                  radius={[0, 4, 4, 0]}
+                  maxBarSize={28}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+
+        {/* Gráfico 2: Valor Total por Utilização */}
+        <ChartCard
+          title="Faturamento por Utilização"
+          description="Valor total acumulado no período filtrado por utilização"
+          icon={Tag}
+          iconColor="text-teal-600"
+        >
+          {loading && !optionsData ? (
+            <div className="h-full flex items-center justify-center">
+              <Skeleton className="h-64 w-full rounded-lg" />
+            </div>
+          ) : chartUtilizacaoData.length === 0 ? (
+            <div className="h-full flex items-center justify-center text-xs text-slate-400">
+              Nenhum dado encontrado para o período/filtros selecionados
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartUtilizacaoData}
+                layout="vertical"
+                margin={{ top: 10, right: 24, left: 10, bottom: 10 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+                <XAxis
+                  type="number"
+                  tickLine={false}
+                  axisLine={{ stroke: '#E2E8F0' }}
+                  tick={{ fill: '#64748B', fontSize: 11 }}
+                  tickFormatter={(val) => {
+                    const n = Number(val)
+                    if (Math.abs(n) >= 1_000_000) return `R$ ${(n / 1_000_000).toFixed(1)}M`
+                    if (Math.abs(n) >= 1_000) return `R$ ${(n / 1_000).toFixed(0)}k`
+                    return `R$ ${n}`
+                  }}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  tickLine={false}
+                  axisLine={{ stroke: '#E2E8F0' }}
+                  tick={{ fill: '#334155', fontSize: 11, fontWeight: 600 }}
+                  width={130}
+                />
+                <Tooltip
+                  formatter={(val: number | string | undefined) => [
+                    formatCurrency(Number(val) || 0),
+                    'Valor Total',
+                  ]}
+                  contentStyle={tooltipContentStyle}
+                />
+                <Bar
+                  dataKey="value"
+                  name="Valor Total"
+                  fill="#0D9488"
+                  radius={[0, 4, 4, 0]}
+                  maxBarSize={28}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+      </div>
     </div>
   )
 }

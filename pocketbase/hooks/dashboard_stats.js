@@ -894,16 +894,29 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         ' UNION ALL ' +
         "SELECT 'estado' AS dim, COALESCE(NULLIF(estado,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
         dimBase +
+        ' UNION ALL ' +
+        "SELECT 'tipo_documento' AS dim, COALESCE(NULLIF(tipo_documento,''),'Sem classificação') AS k, COALESCE(SUM(total_linha),0) AS v " +
+        dimBase +
+        ' UNION ALL ' +
+        "SELECT 'utilizacao' AS dim, COALESCE(NULLIF(utilizacao,''),'Sem classificação') AS k, COALESCE(SUM(total_linha),0) AS v " +
+        dimBase +
         ' ORDER BY v DESC'
       $app.db().newQuery(multiDimSql).all(multiDimRows)
     } catch (err) {
       console.error('dashboard_stats: agregacao multi-dimensao falhou:', err)
     }
 
-    const dimLists = { grupo: [], vendedor: [], cliente: [], estado: [] }
+    const dimLists = {
+      grupo: [],
+      vendedor: [],
+      cliente: [],
+      estado: [],
+      tipo_documento: [],
+      utilizacao: [],
+    }
     for (let i = 0; i < multiDimRows.length; i++) {
       const dim = String(multiDimRows[i].dim || '')
-      const key = multiDimRows[i].k || 'Sem informação'
+      const key = multiDimRows[i].k || 'Sem classificação'
       const val = toNum(multiDimRows[i].v)
       if (dimLists[dim]) dimLists[dim].push({ k: key, v: val })
     }
@@ -912,6 +925,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const topVendedores = dimLists.vendedor.slice(0, 10).map((r) => ({ name: r.k, total: r.v }))
     const topClientes = dimLists.cliente.slice(0, 10).map((r) => ({ name: r.k, total: r.v }))
     const estado = dimLists.estado.map((r) => ({ uf: r.k, total: r.v }))
+    const tipoDocumento = (dimLists.tipo_documento || []).map((r) => ({ name: r.k, value: r.v }))
+    const utilizacao = (dimLists.utilizacao || []).map((r) => ({ name: r.k, value: r.v }))
 
     // 2.7) revendasFaturamento
     const revendaConfigs = [
@@ -1849,6 +1864,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         revendasFaturamento: revendasFaturamento,
         vendasPorCanal: vendasPorCanal,
         vendasPorDeploy: vendasPorDeploy,
+        tipoDocumento: tipoDocumento,
+        utilizacao: utilizacao,
         canaisSummary: canaisSummary,
       },
       recentSales: recentSales,

@@ -448,6 +448,9 @@ export interface CountsSummary {
   estoque_sap: number
   tipos_cliente?: number
   ultimaCarga: string | null
+  ultimaCargaRacnew?: string | null
+  ultimaCargaNetsales?: string | null
+  ultimaCargaProdutos?: string | null
   ultimaCargaPedidosAbertos?: string | null
   ultimaCargaEstoqueSap?: string | null
   ultimaCargaTiposCliente?: string | null
@@ -469,6 +472,9 @@ export async function getCountsSummary(): Promise<CountsSummary> {
       estoque_sap?: number
       tipos_cliente?: number
       ultimaCarga: string
+      ultimaCargaRacnew?: string
+      ultimaCargaNetsales?: string
+      ultimaCargaProdutos?: string
       ultimaCargaPedidosAbertos?: string
       ultimaCargaEstoqueSap?: string
       ultimaCargaTiposCliente?: string
@@ -507,11 +513,71 @@ export async function getCountsSummary(): Promise<CountsSummary> {
     estoque_sap: (data as unknown as Record<string, number>).estoque_sap ?? 0,
     tipos_cliente: (data as unknown as Record<string, number>).tipos_cliente ?? 0,
     ultimaCarga: data.ultimaCarga || null,
+    ultimaCargaRacnew: data.ultimaCargaRacnew || null,
+    ultimaCargaNetsales: data.ultimaCargaNetsales || null,
+    ultimaCargaProdutos: data.ultimaCargaProdutos || null,
     ultimaCargaPedidosAbertos: data.ultimaCargaPedidosAbertos || null,
     ultimaCargaEstoqueSap: data.ultimaCargaEstoqueSap || null,
     ultimaCargaTiposCliente:
       (data as unknown as Record<string, string>).ultimaCargaTiposCliente || null,
   }
+}
+
+/**
+ * Consulta a data_carga mais recente da coleção racnew.
+ */
+export async function fetchUltimaCargaRacnew(): Promise<string | null> {
+  try {
+    const records = await pb.collection('racnew').getList(1, 1, {
+      sort: '-data_carga',
+      fields: 'data_carga',
+      filter: "data_carga != ''",
+    })
+    if (records.items.length > 0 && records.items[0].data_carga) {
+      return String(records.items[0].data_carga)
+    }
+  } catch (err) {
+    console.warn('Erro ao buscar última carga racnew:', err)
+  }
+  return null
+}
+
+/**
+ * Consulta a data_carga mais recente da coleção netsales.
+ */
+export async function fetchUltimaCargaNetsales(): Promise<string | null> {
+  try {
+    const records = await pb.collection('netsales').getList(1, 1, {
+      sort: '-data_carga',
+      fields: 'data_carga',
+      filter: "data_carga != ''",
+    })
+    if (records.items.length > 0 && records.items[0].data_carga) {
+      return String(records.items[0].data_carga)
+    }
+  } catch (err) {
+    console.warn('Erro ao buscar última carga netsales:', err)
+  }
+  return null
+}
+
+/**
+ * Consulta a data_carga mais recente da coleção produtos.
+ */
+export async function fetchUltimaCargaProdutos(): Promise<string | null> {
+  try {
+    const records = await pb.collection('produtos').getList(1, 1, {
+      sort: '-data_carga',
+      fields: 'data_carga',
+      filter: "data_carga != ''",
+    })
+    if (records.items.length > 0 && records.items[0].data_carga) {
+      return String(records.items[0].data_carga)
+    }
+  } catch (err) {
+    console.warn('Erro ao buscar última carga produtos:', err)
+  }
+  return null
 }
 
 export interface DashboardStatsResult {
@@ -557,6 +623,8 @@ export interface DashboardStatsResult {
       faturamento: number
       label: string
     }>
+    tipoDocumento?: Array<{ name: string; value: number }>
+    utilizacao?: Array<{ name: string; value: number }>
     canaisSummary?: { canaisAtivos: number; clientesVinculados: number; faturamentoTotal: number }
   }
   recentSales: Array<{
