@@ -864,14 +864,13 @@ export default function PedidosAbertos() {
     logAudit('pedidos_abertos_view', 'Acesso ao módulo Pedidos em Aberto (SAP)')
   }, [])
 
-  // Escalonamento do carregamento: primeiro a listagem paginada (feedback imediato),
-  // e em seguida os KPIs e dados agregados/estatísticas.
+  // Carregamento em paralelo: listagem, KPIs/estatísticas e tipos de cliente
+  // (a listagem é a resposta mais pesada; nada espera em cascata por ela).
   useEffect(() => {
-    let isCancelled = false
-
     const runStaggeredLoad = async () => {
-      // 1. Carrega primeiro a listagem de pedidos
-      await loadData(
+      // Listagem, KPIs/estatísticas e tipos de cliente em PARALELO
+      // (antes: sequencial em cascata — a listagem esperava a anterior).
+      const listPromise = loadData(
         filters,
         page,
         sort.field,
@@ -881,10 +880,8 @@ export default function PedidosAbertos() {
         tiposClienteMap,
         statusLinhaFilter,
       )
-      if (isCancelled) return
-
-      // 2. Carrega depois os KPIs e estatísticas agregadas
-      loadStats(filters)
+      const statsPromise = loadStats(filters)
+      await Promise.allSettled([listPromise, statsPromise])
     }
 
     runStaggeredLoad()
@@ -933,8 +930,8 @@ export default function PedidosAbertos() {
       // ignora se sessionStorage indisponível
     }
 
-    // Carrega primeiro a listagem e depois as estatísticas
-    loadData(
+    // Listagem e estatísticas em paralelo (antes: sequencial).
+    void loadData(
       applied,
       1,
       sort.field,
@@ -943,9 +940,8 @@ export default function PedidosAbertos() {
       viewMode,
       tiposClienteMap,
       statusLinhaFilter,
-    ).then(() => {
-      loadStats(applied)
-    })
+    )
+    void loadStats(applied)
   }
 
   const handleStatusLinhaChange = (val: StatusLinhaFilter) => {

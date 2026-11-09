@@ -11,6 +11,28 @@ routerAdd(
     const perPage = Math.min(2000, Math.max(1, parseInt(body.perPage, 10) || 20))
     const offset = (page - 1) * perPage
 
+    // Cache server-side curto (padrão __skipDashboardCache): o front repete a MESMA
+    // requisição (mesma página/filtros/ordenação) em cargas escalonadas e remounts;
+    // repetições idênticas dentro de 60s são servidas do cache sem varrer a base.
+    const PA_LIST_TTL_MS = 60000
+    const paListCacheKey = 'pa-list:' + JSON.stringify(body)
+    try {
+      if (typeof globalThis !== 'undefined' && globalThis) {
+        if (
+          !globalThis.__skipPedidosAbertosCache ||
+          typeof globalThis.__skipPedidosAbertosCache.get !== 'function'
+        ) {
+          globalThis.__skipPedidosAbertosCache = new Map()
+        }
+        const hit = globalThis.__skipPedidosAbertosCache.get(paListCacheKey)
+        if (hit && hit.expiresAt > Date.now() && hit.data) {
+          return e.json(200, hit.data)
+        }
+      }
+    } catch (cacheChkErr) {
+      console.warn('pedidos_abertos list: cache read warning:', cacheChkErr)
+    }
+
     const sortField = body.sortField || 'data_pedido'
     const sortDir = body.sortDirection === 'asc' ? 'ASC' : 'DESC'
     const f = body.filters || {}
@@ -487,7 +509,7 @@ routerAdd(
 
     const totalPages = Math.ceil(totalItems / perPage) || 1
 
-    return e.json(200, {
+    const listPayload = {
       items,
       page,
       perPage,
@@ -495,7 +517,32 @@ routerAdd(
       totalPages,
       totalValor,
       totalQtd,
-    })
+    }
+
+    // Grava no cache de listagem (TTL curto, 60s)
+    try {
+      if (typeof globalThis !== 'undefined' && globalThis.__skipPedidosAbertosCache) {
+        // Poda entradas expiradas antes de inserir
+        if (globalThis.__skipPedidosAbertosCache.size > 30) {
+          const pruneNow = Date.now()
+          const expiredKeys = []
+          globalThis.__skipPedidosAbertosCache.forEach((entry, key) => {
+            if (!entry || !(entry.expiresAt > pruneNow)) expiredKeys.push(key)
+          })
+          for (let pIdx = 0; pIdx < expiredKeys.length; pIdx++) {
+            globalThis.__skipPedidosAbertosCache.delete(expiredKeys[pIdx])
+          }
+        }
+        globalThis.__skipPedidosAbertosCache.set(paListCacheKey, {
+          data: listPayload,
+          expiresAt: Date.now() + PA_LIST_TTL_MS,
+        })
+      }
+    } catch (cacheWriteErr) {
+      console.warn('pedidos_abertos list: cache write warning:', cacheWriteErr)
+    }
+
+    return e.json(200, listPayload)
   },
   $apis.requireAuth(),
 )
@@ -509,6 +556,28 @@ routerAdd(
     const body = e.requestInfo().body || {}
     const f = body.filters || {}
     const sqlEsc = (s) => String(s).replace(/'/g, "''")
+
+    // Cache server-side (padrão __skipDashboardCache, TTL 5 min): KPIs, ranking e
+    // opções de filtro repetem as mesmas varreduras por recorte; recortes idênticos
+    // dentro de 5 min são servidos do cache sem refazer as queries.
+    const PA_STATS_TTL_MS = 300000
+    const paStatsCacheKey = 'pa-stats:' + JSON.stringify(body)
+    try {
+      if (typeof globalThis !== 'undefined' && globalThis) {
+        if (
+          !globalThis.__skipPedidosAbertosCache ||
+          typeof globalThis.__skipPedidosAbertosCache.get !== 'function'
+        ) {
+          globalThis.__skipPedidosAbertosCache = new Map()
+        }
+        const hit = globalThis.__skipPedidosAbertosCache.get(paStatsCacheKey)
+        if (hit && hit.expiresAt > Date.now() && hit.data) {
+          return e.json(200, hit.data)
+        }
+      }
+    } catch (cacheChkErr) {
+      console.warn('pedidos_abertos stats: cache read warning:', cacheChkErr)
+    }
 
     // Cláusulas para pedidos_abertos
     const paWhereClauses = []
@@ -1093,7 +1162,7 @@ routerAdd(
       console.warn('pedidos_abertos stats: tipos_cliente options err:', tcErr)
     }
 
-    return e.json(200, {
+    const statsPayload = {
       kpis: {
         valorTotalAberto,
         pedidosDistintos,
@@ -1109,7 +1178,31 @@ routerAdd(
         statusCadastro: statusCadastroOptions,
         tipoPn: tipoPnOptions,
       },
-    })
+    }
+
+    // Grava no cache de stats (TTL 5 min, com poda de entradas expiradas)
+    try {
+      if (typeof globalThis !== 'undefined' && globalThis.__skipPedidosAbertosCache) {
+        if (globalThis.__skipPedidosAbertosCache.size > 30) {
+          const pruneNow = Date.now()
+          const expiredKeys = []
+          globalThis.__skipPedidosAbertosCache.forEach((entry, key) => {
+            if (!entry || !(entry.expiresAt > pruneNow)) expiredKeys.push(key)
+          })
+          for (let pIdx = 0; pIdx < expiredKeys.length; pIdx++) {
+            globalThis.__skipPedidosAbertosCache.delete(expiredKeys[pIdx])
+          }
+        }
+        globalThis.__skipPedidosAbertosCache.set(paStatsCacheKey, {
+          data: statsPayload,
+          expiresAt: Date.now() + PA_STATS_TTL_MS,
+        })
+      }
+    } catch (cacheWriteErr) {
+      console.warn('pedidos_abertos stats: cache write warning:', cacheWriteErr)
+    }
+
+    return e.json(200, statsPayload)
   },
   $apis.requireAuth(),
 )

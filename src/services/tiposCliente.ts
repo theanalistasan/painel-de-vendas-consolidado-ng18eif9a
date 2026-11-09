@@ -2,6 +2,26 @@ import pb from '@/lib/pocketbase/client'
 import { safeAuthRefresh } from '@/lib/pocketbase/auth-session'
 import type { ImportResult } from '@/types/sales'
 
+// Tipo referenciado pelo cache abaixo (declarado adiante).
+type TipoClienteInfoLike = { tipo_cliente: string }
+
+// Cache de leitura em memória (por sessão de navegador) para os endpoints de
+// tipos de cliente — os mais chamados do painel (toda página os carrega 1-2x
+// em paralelo com as listagens). Deduplica chamadas simultâneas (Promise em
+// voo) e serve de TTL curto para evitar refetchs idênticos em remounts.
+const TC_READ_TTL_MS = 60000
+let tcOptionsCache: { data: string[]; expiresAt: number } | null = null
+let tcMapCache: { data: Record<string, TipoClienteInfoLike>; expiresAt: number } | null = null
+let tcOptionsInFlight: Promise<string[]> | null = null
+let tcMapInFlight: Promise<Record<string, TipoClienteInfoLike>> | null = null
+
+export function invalidateTiposClienteReadCache(): void {
+  tcOptionsCache = null
+  tcMapCache = null
+  tcOptionsInFlight = null
+  tcMapInFlight = null
+}
+
 export interface TiposClienteOptionsResult {
   options: string[]
 }
@@ -46,14 +66,19 @@ export async function importTiposClienteApi(
     })
 
   try {
-    return await run()
+    const result = await run()
+    // Carga concluída: invalida o cache de leitura local (options/map).
+    invalidateTiposClienteReadCache()
+    return result
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status
     if (status === 401 || status === 403) {
       try {
         const refreshed = await safeAuthRefresh()
         if (refreshed && pb.authStore.isValid) {
-          return await run()
+          const result = await run()
+          invalidateTiposClienteReadCache()
+          return result
         }
       } catch {
         throw err
@@ -76,9 +101,19 @@ export async function fetchTiposClienteOptions(options?: {
     })
 
   try {
-    const res = await run()
-    return Array.isArray(res?.options) ? res.options : []
+    // Dedupe/TTL: várias páginas chamam options simultaneamente no mount.
+    if (tcOptionsCache && tcOptionsCache.expiresAt > Date.now()) return tcOptionsCache.data
+    if (tcOptionsInFlight) return tcOptionsInFlight
+    tcOptionsInFlight = run().then((res) => {
+      const opts = Array.isArray(res?.options) ? res.options : []
+      tcOptionsCache = { data: opts, expiresAt: Date.now() + TC_READ_TTL_MS }
+      return opts
+    })
+    const result = await tcOptionsInFlight
+    tcOptionsInFlight = null
+    return result
   } catch (err: unknown) {
+    tcOptionsInFlight = null
     const status = (err as { status?: number })?.status
     if (status === 401 || status === 403) {
       try {
@@ -109,9 +144,20 @@ export async function fetchTiposClienteMap(options?: {
     })
 
   try {
-    const res = await run()
-    return res?.map && typeof res.map === 'object' ? res.map : {}
+    // Dedupe/TTL: o mapa é o payload mais pesado desta service e é pedido
+    // 2-4x por página (com listagens em paralelo). Uma única viagem por minuto.
+    if (tcMapCache && tcMapCache.expiresAt > Date.now()) return tcMapCache.data
+    if (tcMapInFlight) return tcMapInFlight
+    tcMapInFlight = run().then((res) => {
+      const map = res?.map && typeof res.map === 'object' ? res.map : {}
+      tcMapCache = { data: map, expiresAt: Date.now() + TC_READ_TTL_MS }
+      return map
+    })
+    const result = await tcMapInFlight
+    tcMapInFlight = null
+    return result
   } catch (err: unknown) {
+    tcMapInFlight = null
     const status = (err as { status?: number })?.status
     if (status === 401 || status === 403) {
       try {

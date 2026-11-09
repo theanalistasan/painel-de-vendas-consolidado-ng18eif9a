@@ -189,13 +189,25 @@ export async function fetchClientesContatosMap(): Promise<Map<string, ClienteCon
 }
 
 /**
- * Busca todos os registros da coleção pedidos_abertos e agrega por cliente:
- * - Mapa indexado por codigo_cliente.trim().toUpperCase()
+ * Busca pedidos em aberto agregados por cliente (código em maiúsculas):
  * - qtd: contagem de pedidos (numero_pedido distintos)
  * - valor: somatório de valor_em_aberto
+ *
+ * Usa o endpoint agregado /backend/v1/pedidos-abertos/por-cliente (GROUP BY no
+ * servidor, cache 5 min, ~centenas de linhas) em vez de baixar TODA a coleção
+ * (~310 mil registros) para o navegador. Fallback: agregação local via
+ * getFullList apenas se o endpoint falhar (ex.: deploy antigo).
  */
 export async function fetchPedidosAbertosClienteMap(): Promise<PedidosAbertosClienteMap> {
-  const run = async () => {
+  const runEndpoint = async (): Promise<PedidosAbertosClienteMap> => {
+    const res = await pb.send<{ map: PedidosAbertosClienteMap }>(
+      '/backend/v1/pedidos-abertos/por-cliente',
+      { method: 'GET' },
+    )
+    return res?.map && typeof res.map === 'object' ? res.map : {}
+  }
+
+  const runFallback = async (): Promise<PedidosAbertosClienteMap> => {
     const records = await pb.collection('pedidos_abertos').getFullList<{
       codigo_cliente?: string
       numero_pedido?: string
