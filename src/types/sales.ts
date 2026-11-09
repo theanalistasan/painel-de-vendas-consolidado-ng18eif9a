@@ -217,12 +217,14 @@ export interface ClientesAtivosEquipamentos {
   mes: string
   clientes: number
   clientesAnoAnterior: number
+  clientesAnoRetrasado?: number
 }
 
 export interface ClientesAtivosInsumos {
   mes: string
   clientes: number
   clientesAnoAnterior: number
+  clientesAnoRetrasado?: number
 }
 
 export interface VendaPorCanal {

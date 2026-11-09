@@ -389,6 +389,29 @@ export default function DashboardGeral() {
   const chartClientesAtivosTintas = data?.charts?.clientesAtivosTintas || []
   const chartClientesAtivosAcessorios = data?.charts?.clientesAtivosAcessorios || []
   const chartClientesAtivosPecas = data?.charts?.clientesAtivosPecas || []
+
+  // Rótulos dinâmicos de anos comparativos (3 anos: anoRetrasado, anoAnterior, anoAtual)
+  const { anoAtualLabel, anoAnteriorLabel, anoRetrasadoLabel } = useMemo(() => {
+    let maxY = 2026
+    if (chartClientesAtivosEquipamentos.length > 0) {
+      const ultimoMes =
+        chartClientesAtivosEquipamentos[chartClientesAtivosEquipamentos.length - 1].mes
+      const y = parseInt(ultimoMes.slice(0, 4), 10)
+      if (!isNaN(y) && y >= 2020) maxY = y
+    } else if (chartVendasPorMes.length > 0) {
+      const ultimoItem = chartVendasPorMes[chartVendasPorMes.length - 1].mes
+      const parts = ultimoItem.split('/')
+      if (parts.length === 2) {
+        const y2 = parseInt(parts[1], 10)
+        if (!isNaN(y2)) maxY = 2000 + y2
+      }
+    }
+    return {
+      anoAtualLabel: String(maxY),
+      anoAnteriorLabel: String(maxY - 1),
+      anoRetrasadoLabel: String(maxY - 2),
+    }
+  }, [chartClientesAtivosEquipamentos, chartVendasPorMes])
   // Total de faturamento dos grupos para cálculo de percentual no gráfico Donut
   const totalGrupoItemFaturamento = useMemo(() => {
     return chartGrupoItem.reduce((acc, cur) => acc + (Number(cur.value) || 0), 0)
@@ -1188,7 +1211,7 @@ export default function DashboardGeral() {
             {/* Indicador 3: Clientes Ativos — Equipamentos */}
             <ChartCard
               title="Clientes Ativos — Equipamentos"
-              description="Comparativo de clientes ativos de equipamentos nos últimos 6 meses vs. ano anterior"
+              description={`Comparativo trienal de clientes ativos de equipamentos (${anoRetrasadoLabel}, ${anoAnteriorLabel}, ${anoAtualLabel})`}
               icon={Users}
               iconColor="text-[#0B6E99]"
             >
@@ -1232,18 +1255,25 @@ export default function DashboardGeral() {
                       )}
                     />
                     <Bar
+                      dataKey="clientesAnoRetrasado"
+                      name={anoRetrasadoLabel}
+                      fill="#94A3B8"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={24}
+                    />
+                    <Bar
                       dataKey="clientesAnoAnterior"
-                      name="Ano Anterior"
+                      name={anoAnteriorLabel}
                       fill="#67D2E2"
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={32}
+                      maxBarSize={24}
                     />
                     <Bar
                       dataKey="clientes"
-                      name="Atual"
+                      name={anoAtualLabel}
                       fill={COLOR_BLUE}
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={32}
+                      maxBarSize={24}
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1253,7 +1283,7 @@ export default function DashboardGeral() {
             {/* Clientes Ativos — Tintas */}
             <ChartCard
               title="Clientes Ativos — Tintas"
-              description="Comparativo de clientes ativos de tintas nos últimos 6 meses vs. ano anterior"
+              description={`Comparativo trienal de clientes ativos de tintas (${anoRetrasadoLabel}, ${anoAnteriorLabel}, ${anoAtualLabel})`}
               icon={Users}
               iconColor="text-[#0B6E99]"
             >
@@ -1297,18 +1327,25 @@ export default function DashboardGeral() {
                       )}
                     />
                     <Bar
+                      dataKey="clientesAnoRetrasado"
+                      name={anoRetrasadoLabel}
+                      fill="#94A3B8"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={24}
+                    />
+                    <Bar
                       dataKey="clientesAnoAnterior"
-                      name="Ano Anterior"
+                      name={anoAnteriorLabel}
                       fill="#67D2E2"
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={32}
+                      maxBarSize={24}
                     />
                     <Bar
                       dataKey="clientes"
-                      name="Atual"
+                      name={anoAtualLabel}
                       fill={COLOR_BLUE}
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={32}
+                      maxBarSize={24}
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1318,7 +1355,7 @@ export default function DashboardGeral() {
             {/* Clientes Ativos — Acessórios */}
             <ChartCard
               title="Clientes Ativos — Acessórios"
-              description="Comparativo de clientes ativos de acessórios nos últimos 6 meses vs. ano anterior"
+              description={`Comparativo trienal de clientes ativos de acessórios (${anoRetrasadoLabel}, ${anoAnteriorLabel}, ${anoAtualLabel})`}
               icon={Users}
               iconColor="text-[#0B6E99]"
             >
@@ -1362,18 +1399,25 @@ export default function DashboardGeral() {
                       )}
                     />
                     <Bar
+                      dataKey="clientesAnoRetrasado"
+                      name={anoRetrasadoLabel}
+                      fill="#94A3B8"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={24}
+                    />
+                    <Bar
                       dataKey="clientesAnoAnterior"
-                      name="Ano Anterior"
+                      name={anoAnteriorLabel}
                       fill="#67D2E2"
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={32}
+                      maxBarSize={24}
                     />
                     <Bar
                       dataKey="clientes"
-                      name="Atual"
+                      name={anoAtualLabel}
                       fill={COLOR_BLUE}
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={32}
+                      maxBarSize={24}
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1383,7 +1427,7 @@ export default function DashboardGeral() {
             {/* Clientes Ativos — Peças */}
             <ChartCard
               title="Clientes Ativos — Peças"
-              description="Comparativo de clientes ativos de peças nos últimos 6 meses vs. ano anterior"
+              description={`Comparativo trienal de clientes ativos de peças (${anoRetrasadoLabel}, ${anoAnteriorLabel}, ${anoAtualLabel})`}
               icon={Users}
               iconColor="text-[#0B6E99]"
             >
@@ -1427,18 +1471,25 @@ export default function DashboardGeral() {
                       )}
                     />
                     <Bar
+                      dataKey="clientesAnoRetrasado"
+                      name={anoRetrasadoLabel}
+                      fill="#94A3B8"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={24}
+                    />
+                    <Bar
                       dataKey="clientesAnoAnterior"
-                      name="Ano Anterior"
+                      name={anoAnteriorLabel}
                       fill="#67D2E2"
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={32}
+                      maxBarSize={24}
                     />
                     <Bar
                       dataKey="clientes"
-                      name="Atual"
+                      name={anoAtualLabel}
                       fill={COLOR_BLUE}
                       radius={[4, 4, 0, 0]}
-                      maxBarSize={32}
+                      maxBarSize={24}
                     />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1451,7 +1502,7 @@ export default function DashboardGeral() {
             {/* Indicador 5: Evolução de Vendas por Mês */}
             <ChartCard
               title="Evolução de Vendas por Mês"
-              description="Últimos 6 meses com comparação do mesmo mês no ano anterior"
+              description={`Últimos 6 meses com comparação trienal (${anoRetrasadoLabel}, ${anoAnteriorLabel}, ${anoAtualLabel})`}
               icon={BarChart2}
               iconColor="text-[#0B6E99]"
             >
@@ -1476,9 +1527,12 @@ export default function DashboardGeral() {
                   <Tooltip
                     formatter={(val: number | string | undefined, name: string) => {
                       const n = typeof val === 'number' ? val : Number(val)
-                      if (name === 'faturamento') return [formatCurrency(n), 'Faturamento (atual)']
+                      if (name === 'faturamento')
+                        return [formatCurrency(n), `Faturamento (${anoAtualLabel})`]
                       if (name === 'faturamento_ano_anterior')
-                        return [formatCurrency(n), 'Faturamento (ano anterior)']
+                        return [formatCurrency(n), `Faturamento (${anoAnteriorLabel})`]
+                      if (name === 'faturamento_ano_retrasado')
+                        return [formatCurrency(n), `Faturamento (${anoRetrasadoLabel})`]
                       if (name === 'devolucoes') return [formatCurrency(n), 'Devoluções']
                       return [formatCurrency(n), name]
                     }}
@@ -1489,8 +1543,9 @@ export default function DashboardGeral() {
                     height={36}
                     formatter={(value) => {
                       const labels: Record<string, string> = {
-                        faturamento: 'Faturamento (atual)',
-                        faturamento_ano_anterior: 'Faturamento (ano anterior)',
+                        faturamento: `Faturamento (${anoAtualLabel})`,
+                        faturamento_ano_anterior: `Faturamento (${anoAnteriorLabel})`,
+                        faturamento_ano_retrasado: `Faturamento (${anoRetrasadoLabel})`,
                         devolucoes: 'Devoluções',
                       }
                       return (
@@ -1516,25 +1571,32 @@ export default function DashboardGeral() {
                     />
                   )}
                   <Bar
+                    dataKey="faturamento_ano_retrasado"
+                    name="faturamento_ano_retrasado"
+                    fill="#94A3B8"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={22}
+                  />
+                  <Bar
                     dataKey="faturamento_ano_anterior"
                     name="faturamento_ano_anterior"
                     fill="#67D2E2"
                     radius={[4, 4, 0, 0]}
-                    maxBarSize={28}
+                    maxBarSize={22}
                   />
                   <Bar
                     dataKey="faturamento"
                     name="faturamento"
                     fill={COLOR_BLUE}
                     radius={[4, 4, 0, 0]}
-                    maxBarSize={28}
+                    maxBarSize={22}
                   />
                   <Bar
                     dataKey="devolucoes"
                     name="devolucoes"
                     fill="#EF4444"
                     radius={[4, 4, 0, 0]}
-                    maxBarSize={28}
+                    maxBarSize={22}
                   />
                 </BarChart>
               </ResponsiveContainer>

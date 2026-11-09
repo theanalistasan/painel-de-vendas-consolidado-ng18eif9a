@@ -772,15 +772,20 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       ultimos6MesesAlvo.push(String(y) + '-' + String(m).padStart(2, '0'))
     }
 
-    // OTIMIZAÇÃO: antes eram 2 varreduras do resumo (janela atual + janela do ano
-    // anterior). Como os 12 períodos (6 atuais + 6 do ano anterior) são disjuntos,
-    // uma única varredura com IN cobre as duas séries com resultado idêntico.
+    // OTIMIZAÇÃO: varredura única cobrindo os 3 anos (atual, ano anterior e ano retrasado).
+    // Como os 18 períodos (6 atuais + 6 ano-1 + 6 ano-2) são disjuntos,
+    // uma única varredura com IN cobre as três séries trienais (ex: 2024, 2025, 2026).
     const mesesAnoAnterior6 = ultimos6MesesAlvo.map((m) => {
       const p = m.split('-')
       const y = parseInt(p[0], 10) - 1
       return String(y) + '-' + p[1]
     })
-    const todosMesesJanela = ultimos6MesesAlvo.concat(mesesAnoAnterior6)
+    const mesesAnoRetrasado6 = ultimos6MesesAlvo.map((m) => {
+      const p = m.split('-')
+      const y = parseInt(p[0], 10) - 2
+      return String(y) + '-' + p[1]
+    })
+    const todosMesesJanela = ultimos6MesesAlvo.concat(mesesAnoAnterior6).concat(mesesAnoRetrasado6)
     const janelaInClause = todosMesesJanela.map((m) => "'" + m + "'").join(',')
 
     const mesSql =
@@ -811,6 +816,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
 
     const mesMapAtual = {}
     const prevYearMap = {}
+    const prevYear2Map = {}
     for (let i = 0; i < mesRows.length; i++) {
       const ym = mesRows[i].a
       if (ym) {
@@ -819,11 +825,12 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           liquido: toNum(mesRows[i].c),
           devolucoes: toNum(mesRows[i].d),
         }
-        // Os 12 períodos são disjuntos: cada ano_mes alimenta a série em que aparece
         if (ultimos6MesesAlvo.indexOf(ym) >= 0) {
           mesMapAtual[ym] = entry
-        } else {
+        } else if (mesesAnoAnterior6.indexOf(ym) >= 0) {
           prevYearMap[ym] = toNum(mesRows[i].b)
+        } else {
+          prevYear2Map[ym] = toNum(mesRows[i].b)
         }
       }
     }
@@ -835,6 +842,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       const y = p[0]
       const mo = parseInt(p[1], 10)
       const prevKey = String(parseInt(y, 10) - 1) + '-' + String(mo).padStart(2, '0')
+      const prev2Key = String(parseInt(y, 10) - 2) + '-' + String(mo).padStart(2, '0')
       const atual = mesMapAtual[ym] || { faturamento: 0, liquido: 0, devolucoes: 0 }
 
       vendasPorMes.push({
@@ -843,6 +851,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         liquido: atual.liquido,
         devolucoes: atual.devolucoes,
         faturamento_ano_anterior: prevYearMap[prevKey] || 0,
+        faturamento_ano_retrasado: prevYear2Map[prev2Key] || 0,
       })
     }
 
@@ -1089,12 +1098,11 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           backY -= 1
         }
         recentOrderClause =
-          ' data_lancamento >= ' +
-          "'" +
+          "data_lancamento >= '" +
           backY +
           '-' +
           String(backM).padStart(2, '0') +
-          '-01 00:00:00.000Z AND '
+          "-01 00:00:00.000Z'"
       }
       const recentSql =
         'SELECT ' +
@@ -1527,8 +1535,13 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         const y = parseInt(p[0], 10) - 1
         return String(y) + '-' + p[1]
       })
+      const mesesAnoRetrasado = mesesAlvoClientes.map((m) => {
+        const p = m.split('-')
+        const y = parseInt(p[0], 10) - 2
+        return String(y) + '-' + p[1]
+      })
 
-      const allMesesNeeded = mesesAlvoClientes.concat(mesesAnoAnterior)
+      const allMesesNeeded = mesesAlvoClientes.concat(mesesAnoAnterior).concat(mesesAnoRetrasado)
       const inMesesList = allMesesNeeded.map((m) => "'" + m + "'").join(',')
 
       // Query resumo_clientes_ativos para EQUIPAMENTOS e INSUMOS
@@ -1557,10 +1570,12 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         const m = mesesAlvoClientes[i]
         const p = m.split('-')
         const prevM = String(parseInt(p[0], 10) - 1) + '-' + p[1]
+        const prev2M = String(parseInt(p[0], 10) - 2) + '-' + p[1]
         clientesAtivosEquipamentos.push({
           mes: m,
           clientes: cliEquipMap[m] || 0,
           clientesAnoAnterior: cliEquipMap[prevM] || 0,
+          clientesAnoRetrasado: cliEquipMap[prev2M] || 0,
         })
       }
 
@@ -1568,24 +1583,28 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         const m = mesesAlvoClientes[i]
         const p = m.split('-')
         const prevM = String(parseInt(p[0], 10) - 1) + '-' + p[1]
+        const prev2M = String(parseInt(p[0], 10) - 2) + '-' + p[1]
         clientesAtivosInsumos.push({
           mes: m,
           clientes: cliInsumosMap[m] || 0,
           clientesAnoAnterior: cliInsumosMap[prevM] || 0,
+          clientesAnoRetrasado: cliInsumosMap[prev2M] || 0,
         })
       }
 
-      // Helper para montar série comparativa dos últimos 6 meses vs ano anterior a partir de mapa de contagens
+      // Helper para montar série comparativa dos últimos 6 meses vs ano anterior vs ano retrasado (3 anos) a partir de mapa de contagens
       const buildSeriesFromMap = (mapData) => {
         const series = []
         for (let i = 0; i < mesesAlvoClientes.length; i++) {
           const m = mesesAlvoClientes[i]
           const p = m.split('-')
           const prevM = String(parseInt(p[0], 10) - 1) + '-' + p[1]
+          const prev2M = String(parseInt(p[0], 10) - 2) + '-' + p[1]
           series.push({
             mes: m,
             clientes: mapData[m] || 0,
             clientesAnoAnterior: mapData[prevM] || 0,
+            clientesAnoRetrasado: mapData[prev2M] || 0,
           })
         }
         return series

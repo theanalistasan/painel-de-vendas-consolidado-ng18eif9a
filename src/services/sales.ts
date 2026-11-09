@@ -599,6 +599,7 @@ export interface DashboardStatsResult {
       liquido: number
       devolucoes: number
       faturamento_ano_anterior: number
+      faturamento_ano_retrasado?: number
     }>
     vendasPorAno: Array<{
       ano: string
