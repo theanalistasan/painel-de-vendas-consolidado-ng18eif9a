@@ -710,14 +710,19 @@ export default function PedidosAbertos() {
         msg.toLowerCase().includes('demorou') ||
         msg.toLowerCase().includes('timeout') ||
         msg.includes('504')
-      if (isTimeout) {
-        toast({
-          variant: 'destructive',
-          title: 'A consulta demorou mais que o esperado',
-          description:
-            'A consulta demorou mais que o esperado devido ao volume de registros. Tente filtrar por um ano específico ou refinar os filtros selecionados.',
-        })
-      }
+      // NUNCA deixa os KPIs ficarem zerados em silêncio: toda falha de stats
+      // avisa o usuário (zeros sem aviso parecem carteira zerada).
+      toast({
+        variant: 'destructive',
+        title: isTimeout
+          ? 'A consulta demorou mais que o esperado'
+          : 'Erro ao carregar os totais de Pedidos em Aberto',
+        description: isTimeout
+          ? 'A consulta demorou mais que o esperado devido ao volume de registros. Tente filtrar por um ano específico ou refinar os filtros selecionados.'
+          : 'Os cards de totais podem estar desatualizados. ' +
+            msg +
+            ' Use "Atualizar" para revalidar.',
+      })
     } finally {
       setStatsLoading(false)
     }

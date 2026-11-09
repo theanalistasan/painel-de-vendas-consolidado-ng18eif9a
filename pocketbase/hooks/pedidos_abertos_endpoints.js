@@ -26,7 +26,9 @@ routerAdd(
           globalThis.__skipPedidosAbertosCache = new Map()
         }
         const hit = globalThis.__skipPedidosAbertosCache.get(paListCacheKey)
-        if (hit && hit.expiresAt > Date.now() && hit.data) {
+        // Só serve do cache se o payload é válido (tem array de items) — nunca
+        // serve um resultado vazio/zerado gravado por uma execução que falhou.
+        if (hit && hit.expiresAt > Date.now() && hit.data && Array.isArray(hit.data.items)) {
           return e.json(200, hit.data)
         }
       }
@@ -377,6 +379,7 @@ routerAdd(
     let totalItems = 0
     let totalValor = 0
     let totalQtd = 0
+    let countOk = true
     try {
       // Usamos string vazia para todos os campos numéricos no DynamicModel
       // porque o Go PocketBase converte qualquer float64 para string de forma 100% segura sem tentar int64 scan!
@@ -401,6 +404,7 @@ routerAdd(
       }
     } catch (cErr) {
       console.warn('pedidos_abertos list: count err:', cErr)
+      countOk = false
     }
 
     // Itens paginados
@@ -520,9 +524,10 @@ routerAdd(
       totalQtd,
     }
 
-    // Grava no cache de listagem (TTL curto, 60s)
+    // Grava no cache de listagem (TTL curto, 60s) — NUNCA grava resultado de
+    // execução com erro de totalizadores (evita servir zeros por 60s).
     try {
-      if (typeof globalThis !== 'undefined' && globalThis.__skipPedidosAbertosCache) {
+      if (countOk && typeof globalThis !== 'undefined' && globalThis.__skipPedidosAbertosCache) {
         // Poda entradas expiradas antes de inserir
         if (globalThis.__skipPedidosAbertosCache.size > 30) {
           const pruneNow = Date.now()
@@ -572,7 +577,9 @@ routerAdd(
           globalThis.__skipPedidosAbertosCache = new Map()
         }
         const hit = globalThis.__skipPedidosAbertosCache.get(paStatsCacheKey)
-        if (hit && hit.expiresAt > Date.now() && hit.data) {
+        // Só serve do cache se o payload é válido (tem kpis) — nunca serve um
+        // resultado vazio/zerado gravado por uma execução que falhou.
+        if (hit && hit.expiresAt > Date.now() && hit.data && hit.data.kpis) {
           return e.json(200, hit.data)
         }
       }
@@ -911,6 +918,7 @@ routerAdd(
     let pedidosDistintos = 0
     let itensPendentes = 0
     let clientesDistintos = 0
+    let kpiOk = true
 
     try {
       // Usamos string vazia em todos os campos numéricos do DynamicModel para scan 100% seguro em Go
@@ -941,6 +949,7 @@ routerAdd(
       }
     } catch (kErr) {
       console.warn('pedidos_abertos stats: kpi err:', kErr)
+      kpiOk = false
     }
 
     // 2. Ranking de clientes com pedidos em aberto
@@ -1181,9 +1190,10 @@ routerAdd(
       },
     }
 
-    // Grava no cache de stats (TTL 5 min, com poda de entradas expiradas)
+    // Grava no cache de stats (TTL 5 min, com poda de entradas expiradas) —
+    // NUNCA grava resultado de execução com erro de KPIs (evita servir zeros).
     try {
-      if (typeof globalThis !== 'undefined' && globalThis.__skipPedidosAbertosCache) {
+      if (kpiOk && typeof globalThis !== 'undefined' && globalThis.__skipPedidosAbertosCache) {
         if (globalThis.__skipPedidosAbertosCache.size > 30) {
           const pruneNow = Date.now()
           const expiredKeys = []
@@ -1266,7 +1276,7 @@ routerAdd(
             'CAST(COALESCE(SUM(valor_em_aberto), 0.0) AS REAL) AS valor ' +
             'FROM pedidos_abertos ' +
             "WHERE COALESCE(codigo_cliente, '') != '' " +
-            'GROUP BY UPPER(TRIM(COALESCE(codigo_cliente, "")))',
+            "GROUP BY UPPER(TRIM(COALESCE(codigo_cliente, '')))",
         )
         .all(aggRows)
 
@@ -1285,9 +1295,14 @@ routerAdd(
 
     const payload = { map }
 
-    // Grava no cache compartilhado (TTL 5 min, com poda de entradas expiradas)
+    // Grava no cache compartilhado (TTL 5 min, com poda de entradas expiradas) —
+    // NUNCA grava mapa vazio (a base tem pedidos; vazio = execução problemática).
     try {
-      if (typeof globalThis !== 'undefined' && globalThis.__skipPedidosAbertosCache) {
+      if (
+        Object.keys(map).length > 0 &&
+        typeof globalThis !== 'undefined' &&
+        globalThis.__skipPedidosAbertosCache
+      ) {
         if (globalThis.__skipPedidosAbertosCache.size > 30) {
           const pruneNow = Date.now()
           const expiredKeys = []

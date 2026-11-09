@@ -204,7 +204,12 @@ export async function fetchPedidosAbertosClienteMap(): Promise<PedidosAbertosCli
       '/backend/v1/pedidos-abertos/por-cliente',
       { method: 'GET' },
     )
-    return res?.map && typeof res.map === 'object' ? res.map : {}
+    if (res?.map && typeof res.map === 'object' && Object.keys(res.map).length > 0) {
+      return res.map
+    }
+    // Mapa vazio não é resposta válida (a base tem pedidos): força fallback
+    // local em vez de devolver zeros para a Visão Canais.
+    throw new Error('Endpoint por-cliente devolveu mapa vazio')
   }
 
   const runFallback = async (): Promise<PedidosAbertosClienteMap> => {
