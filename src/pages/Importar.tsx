@@ -916,16 +916,17 @@ function BaseImportCard({
               </div>
             )}
 
-            {/* Warning notice if expected columns (e.g. Nome do Canal) were missing */}
+            {/* Warning / Informational notices (ex: roteamento ao histórico 2024, avisos de mapeamento) */}
             {result.avisos && result.avisos.length > 0 && (
               <div className="mt-2 pt-2 border-t border-slate-200">
                 <span className="text-[11px] font-semibold text-amber-700 block mb-1">
-                  Avisos de Mapeamento:
+                  Avisos / Informações:
                 </span>
-                <div className="max-h-24 overflow-y-auto space-y-1 text-[10px] text-amber-800 bg-amber-50/80 p-2 rounded-md border border-amber-200">
+                <div className="max-h-28 overflow-y-auto space-y-1 text-[10px] text-amber-800 bg-amber-50/80 p-2 rounded-md border border-amber-200">
                   {result.avisos.map((aviso, i) => (
-                    <div key={i} className="leading-snug">
-                      ⚠️ {aviso}
+                    <div key={i} className="leading-snug flex items-start gap-1">
+                      <span className="shrink-0 text-amber-600">ℹ️</span>
+                      <span>{aviso}</span>
                     </div>
                   ))}
                 </div>

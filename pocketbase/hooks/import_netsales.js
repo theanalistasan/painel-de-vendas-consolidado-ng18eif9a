@@ -87,6 +87,7 @@ routerAdd(
     let historicoImportados = 0
     let historicoAtualizados = 0
     const erros = []
+    const avisos = []
 
     const parseNum = (val) => {
       if (val === undefined || val === null || val === '') return 0
@@ -219,7 +220,16 @@ routerAdd(
         let isUpdate = false
         let record
 
-        const filter = `chave_documento = '${chaveDocumento}' && serial = '${serial}' && codigo_item = '${codigoItem}' && codigo_cliente = '${codigoCliente}'`
+        // Checagem de duplicidade:
+        // - na coleção netsales: usa chave_documento e serial
+        // - na coleção vendas_historico: o campo correspondente é numero_documento_netsales e numero_nfe
+        let filter
+        if (targetName === 'vendas_historico') {
+          filter = `numero_documento_netsales = '${chaveDocumento}' && numero_nfe = '${serial}' && codigo_item = '${codigoItem}' && codigo_cliente = '${codigoCliente}'`
+        } else {
+          filter = `chave_documento = '${chaveDocumento}' && serial = '${serial}' && codigo_item = '${codigoItem}' && codigo_cliente = '${codigoCliente}'`
+        }
+
         const found = $app.findRecordsByFilter(targetName, filter, '', 1, 0)
 
         if (found.length > 0) {
@@ -229,108 +239,194 @@ routerAdd(
           record = new Record(targetCol)
         }
 
-        record.set('tipo', (row.tipo || row['Tipo'] || 'NF').toString().trim())
-        record.set('codigo_cliente', codigoCliente)
-        record.set(
-          'nome_cliente',
-          (row.nome_cliente || row['Nome do Cliente'] || row['Cliente'] || '').toString().trim(),
-        )
-        record.set(
-          'grupo_cliente',
-          (row.grupo_cliente || row['Grupo do Cliente'] || row['Grupo de Cliente'] || '')
-            .toString()
-            .trim(),
-        )
-        record.set('mercado', (row.mercado || row['Mercado'] || '').toString().trim())
-        record.set(
-          'usuario_emissor',
-          (
-            row.usuario_emissor ||
-            row['Usuário Emitente do Pedido'] ||
-            row['Usuario Emitente do Pedido'] ||
-            row['Usuário Emissor'] ||
-            ''
-          )
-            .toString()
-            .trim(),
-        )
-        record.set('docdate', docDate || '')
-        record.set('chave_documento', chaveDocumento)
-        record.set(
-          'descrip',
-          (row.descrip || row['Descrip'] || row['Descrição'] || '').toString().trim(),
-        )
-        record.set(
-          'itms_grp_nam',
-          (row.itms_grp_nam || row['ItmsGrpNam'] || row['Itms Grp Nam'] || '').toString().trim(),
-        )
-        record.set('codigo_item', codigoItem)
-        record.set(
-          'numero_documento',
-          (
-            row.numero_documento ||
-            row['N° do documento'] ||
-            row['Nº do documento'] ||
-            row['Numero Documento'] ||
-            ''
-          )
-            .toString()
-            .trim(),
-        )
-        record.set('quantidade', parseNum(row.quantidade || row['Quantidade'] || row['Qtd'] || 0))
-        record.set(
-          'preco_unitario',
-          parseNum(row.preco_unitario || row['Preço Unitário'] || row['Preco Unitario'] || 0),
-        )
-        record.set(
-          'valor_mercadoria',
-          parseNum(row.valor_mercadoria || row['Valor Mercadoria'] || row['Total da Linha'] || 0),
-        )
-        record.set(
-          'total_nf_sem_frete',
-          parseNum(
-            row.total_nf_sem_frete || row['Total NF SEM Frete'] || row['Total NF sem Frete'] || 0,
-          ),
-        )
-        record.set(
-          'total_nf_novo',
-          parseNum(row.total_nf_novo || row['Total NF Novo'] || row['Total NF novo'] || 0),
-        )
-        record.set(
-          'valor_liquido',
-          parseNum(row.valor_liquido || row['Valor Liquido'] || row['Valor Líquido'] || 0),
-        )
-        record.set('serial', serial)
-        record.set('custo_total', parseNum(row.custo_total || row['Custo Total'] || 0))
-        record.set(
-          'usage',
-          (row.usage || row['Usage'] || row['Utilização'] || '').toString().trim(),
-        )
-        record.set(
-          'classificacao',
-          (row.classificacao || row['Classificacao'] || row['Classificação'] || '')
-            .toString()
-            .trim(),
-        )
-        record.set('revenda', (row.revenda || row['Revenda'] || '').toString().trim())
-        record.set(
-          'vendedor_revenda',
-          (row.vendedor_revenda || row['Vendedor Revenda'] || '').toString().trim(),
-        )
-        record.set(
-          'municipio',
-          (row.municipio || row['Município'] || row['Municipio'] || row['Cidade'] || '')
-            .toString()
-            .trim(),
-        )
-        record.set('estado', (row.estado || row['Estado'] || row['UF'] || '').toString().trim())
-        record.set('origem', 'NetSales')
-        record.set('data_carga', nowIso)
-
         if (targetName === 'vendas_historico') {
-          // Flag de proveniência na base histórica (espelha o padrão da consolidação)
+          // Mapeamento dos campos para o schema de vendas_historico
+          record.set('tipo_documento', (row.tipo || row['Tipo'] || 'NF').toString().trim())
+          record.set('codigo_cliente', codigoCliente)
+          record.set(
+            'nome_cliente',
+            (row.nome_cliente || row['Nome do Cliente'] || row['Cliente'] || '').toString().trim(),
+          )
+          record.set(
+            'grupo_cliente',
+            (row.grupo_cliente || row['Grupo do Cliente'] || row['Grupo de Cliente'] || '')
+              .toString()
+              .trim(),
+          )
+          record.set('mercado', (row.mercado || row['Mercado'] || '').toString().trim())
+          record.set(
+            'usuario_emissor_pedido',
+            (
+              row.usuario_emissor ||
+              row['Usuário Emitente do Pedido'] ||
+              row['Usuario Emitente do Pedido'] ||
+              row['Usuário Emissor'] ||
+              ''
+            )
+              .toString()
+              .trim(),
+          )
+          record.set('data_lancamento', docDate || '')
+          record.set('numero_documento_netsales', chaveDocumento)
+          record.set('numero_nfe', serial)
+          record.set('numero_sap', chaveDocumento)
+          record.set(
+            'descricao_item',
+            (row.descrip || row['Descrip'] || row['Descrição'] || '').toString().trim(),
+          )
+          record.set(
+            'itms_grp_nam',
+            (row.itms_grp_nam || row['ItmsGrpNam'] || row['Itms Grp Nam'] || '').toString().trim(),
+          )
+          record.set('codigo_item', codigoItem)
+          record.set('quantidade', parseNum(row.quantidade || row['Quantidade'] || row['Qtd'] || 0))
+          record.set(
+            'preco_unitario',
+            parseNum(row.preco_unitario || row['Preço Unitário'] || row['Preco Unitario'] || 0),
+          )
+          record.set(
+            'total_linha',
+            parseNum(row.valor_mercadoria || row['Valor Mercadoria'] || row['Total da Linha'] || 0),
+          )
+          record.set(
+            'total_nf_sem_frete',
+            parseNum(
+              row.total_nf_sem_frete || row['Total NF SEM Frete'] || row['Total NF sem Frete'] || 0,
+            ),
+          )
+          record.set(
+            'total_nf_novo',
+            parseNum(row.total_nf_novo || row['Total NF Novo'] || row['Total NF novo'] || 0),
+          )
+          record.set(
+            'valor_liquido',
+            parseNum(row.valor_liquido || row['Valor Liquido'] || row['Valor Líquido'] || 0),
+          )
+          record.set('custo_total', parseNum(row.custo_total || row['Custo Total'] || 0))
+          record.set(
+            'utilizacao',
+            (row.usage || row['Usage'] || row['Utilização'] || '').toString().trim(),
+          )
+          record.set(
+            'classificacao',
+            (row.classificacao || row['Classificacao'] || row['Classificação'] || '')
+              .toString()
+              .trim(),
+          )
+          record.set(
+            'vendedor_revenda',
+            (row.vendedor_revenda || row['Vendedor Revenda'] || '').toString().trim(),
+          )
+          record.set(
+            'cidade',
+            (row.municipio || row['Município'] || row['Municipio'] || row['Cidade'] || '')
+              .toString()
+              .trim(),
+          )
+          record.set('estado', (row.estado || row['Estado'] || row['UF'] || '').toString().trim())
+          record.set('origem', 'NetSales')
+          record.set('data_carga', nowIso)
           record.set('tem_racnew', false)
           record.set('tem_netsales', true)
+        } else {
+          // Base ativa: coleção netsales
+          record.set('tipo', (row.tipo || row['Tipo'] || 'NF').toString().trim())
+          record.set('codigo_cliente', codigoCliente)
+          record.set(
+            'nome_cliente',
+            (row.nome_cliente || row['Nome do Cliente'] || row['Cliente'] || '').toString().trim(),
+          )
+          record.set(
+            'grupo_cliente',
+            (row.grupo_cliente || row['Grupo do Cliente'] || row['Grupo de Cliente'] || '')
+              .toString()
+              .trim(),
+          )
+          record.set('mercado', (row.mercado || row['Mercado'] || '').toString().trim())
+          record.set(
+            'usuario_emissor',
+            (
+              row.usuario_emissor ||
+              row['Usuário Emitente do Pedido'] ||
+              row['Usuario Emitente do Pedido'] ||
+              row['Usuário Emissor'] ||
+              ''
+            )
+              .toString()
+              .trim(),
+          )
+          record.set('docdate', docDate || '')
+          record.set('chave_documento', chaveDocumento)
+          record.set(
+            'descrip',
+            (row.descrip || row['Descrip'] || row['Descrição'] || '').toString().trim(),
+          )
+          record.set(
+            'itms_grp_nam',
+            (row.itms_grp_nam || row['ItmsGrpNam'] || row['Itms Grp Nam'] || '').toString().trim(),
+          )
+          record.set('codigo_item', codigoItem)
+          record.set(
+            'numero_documento',
+            (
+              row.numero_documento ||
+              row['N° do documento'] ||
+              row['Nº do documento'] ||
+              row['Numero Documento'] ||
+              ''
+            )
+              .toString()
+              .trim(),
+          )
+          record.set('quantidade', parseNum(row.quantidade || row['Quantidade'] || row['Qtd'] || 0))
+          record.set(
+            'preco_unitario',
+            parseNum(row.preco_unitario || row['Preço Unitário'] || row['Preco Unitario'] || 0),
+          )
+          record.set(
+            'valor_mercadoria',
+            parseNum(row.valor_mercadoria || row['Valor Mercadoria'] || row['Total da Linha'] || 0),
+          )
+          record.set(
+            'total_nf_sem_frete',
+            parseNum(
+              row.total_nf_sem_frete || row['Total NF SEM Frete'] || row['Total NF sem Frete'] || 0,
+            ),
+          )
+          record.set(
+            'total_nf_novo',
+            parseNum(row.total_nf_novo || row['Total NF Novo'] || row['Total NF novo'] || 0),
+          )
+          record.set(
+            'valor_liquido',
+            parseNum(row.valor_liquido || row['Valor Liquido'] || row['Valor Líquido'] || 0),
+          )
+          record.set('serial', serial)
+          record.set('custo_total', parseNum(row.custo_total || row['Custo Total'] || 0))
+          record.set(
+            'usage',
+            (row.usage || row['Usage'] || row['Utilização'] || '').toString().trim(),
+          )
+          record.set(
+            'classificacao',
+            (row.classificacao || row['Classificacao'] || row['Classificação'] || '')
+              .toString()
+              .trim(),
+          )
+          record.set('revenda', (row.revenda || row['Revenda'] || '').toString().trim())
+          record.set(
+            'vendedor_revenda',
+            (row.vendedor_revenda || row['Vendedor Revenda'] || '').toString().trim(),
+          )
+          record.set(
+            'municipio',
+            (row.municipio || row['Município'] || row['Municipio'] || row['Cidade'] || '')
+              .toString()
+              .trim(),
+          )
+          record.set('estado', (row.estado || row['Estado'] || row['UF'] || '').toString().trim())
+          record.set('origem', 'NetSales')
+          record.set('data_carga', nowIso)
         }
 
         // Enriquecimento de Tipo de Cliente por codigoCliente
@@ -360,6 +456,12 @@ routerAdd(
           `Linha ${lineNum} (${chaveDocumento}/${serial}): erro ao salvar: ${err.message || String(err)}`,
         )
       }
+    }
+
+    if (roteadosHistorico > 0) {
+      avisos.push(
+        `${roteadosHistorico} registro(s) anterior(es) a ${janela.anoInicio} enviado(s) ao histórico (vendas_historico).`,
+      )
     }
 
     // Carga concluída: invalida o cache de opções dinâmicas dos filtros (30 min)
@@ -393,6 +495,7 @@ routerAdd(
       historico_atualizados: historicoAtualizados,
       janela: janela,
       erros,
+      avisos,
       data_carga: nowIso,
     })
   },
