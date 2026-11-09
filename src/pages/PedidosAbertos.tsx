@@ -524,6 +524,59 @@ export default function PedidosAbertos() {
     )
   }
 
+  // Cabeçalhos de Item, Qtde, Preço e Valor em Aberto (mesma marcação da ordem padrão),
+  // reutilizados para reposicionar essas colunas logo APÓS a coluna Data no modo "Tipo de Cliente"
+  const renderThColunaMovida = (
+    field: 'codigo_item' | 'qtd_aberto' | 'preco_apos_desconto' | 'valor_em_aberto',
+  ) => {
+    const config = {
+      codigo_item: {
+        label: 'Item',
+        title: 'Ordenar por Item / Descrição',
+        align: '',
+        justify: '',
+      },
+      qtd_aberto: {
+        label: 'Qtde',
+        title: 'Ordenar por Quantidade em Aberto',
+        align: 'text-center',
+        justify: 'justify-center',
+      },
+      preco_apos_desconto: {
+        label: 'Preço',
+        title: 'Ordenar por Preço Líquido',
+        align: 'text-right',
+        justify: 'justify-end',
+      },
+      valor_em_aberto: {
+        label: 'Valor em Aberto',
+        title: 'Ordenar por Valor em Aberto',
+        align: 'text-right',
+        justify: 'justify-end',
+      },
+    }[field]
+    return (
+      <th
+        className={`p-3 ${config.align} cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none`}
+        onClick={() => handleSort(field)}
+        title={config.title}
+      >
+        <div className={`flex items-center ${config.justify} gap-1`}>
+          <span>{config.label}</span>
+          {sort.field === field ? (
+            sort.dir === 'asc' ? (
+              <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
+            ) : (
+              <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
+            )
+          ) : (
+            <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
+          )}
+        </div>
+      </th>
+    )
+  }
+
   // Carrega opções e mapa de Tipos de Cliente (mesmo padrão de Visão Geral / Visão Canais / Canais)
   const loadTiposClienteData = async () => {
     try {
@@ -2102,6 +2155,14 @@ export default function PedidosAbertos() {
                       )}
                     </div>
                   </th>
+                  {viewMode === 'tipo_cliente' && (
+                    <>
+                      {renderThColunaMovida('codigo_item')}
+                      {renderThColunaMovida('qtd_aberto')}
+                      {renderThColunaMovida('preco_apos_desconto')}
+                      {renderThColunaMovida('valor_em_aberto')}
+                    </>
+                  )}
                   <th
                     className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
                     onClick={() => handleSort('tipo_cliente')}
@@ -2211,78 +2272,14 @@ export default function PedidosAbertos() {
                       )}
                     </div>
                   </th>
-                  <th
-                    className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
-                    onClick={() => handleSort('codigo_item')}
-                    title="Ordenar por Item / Descrição"
-                  >
-                    <div className="flex items-center gap-1">
-                      <span>Item</span>
-                      {sort.field === 'codigo_item' ? (
-                        sort.dir === 'asc' ? (
-                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
-                        ) : (
-                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
-                        )
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    className="p-3 text-center cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
-                    onClick={() => handleSort('qtd_aberto')}
-                    title="Ordenar por Quantidade em Aberto"
-                  >
-                    <div className="flex items-center justify-center gap-1">
-                      <span>Qtde</span>
-                      {sort.field === 'qtd_aberto' ? (
-                        sort.dir === 'asc' ? (
-                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
-                        ) : (
-                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
-                        )
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    className="p-3 text-right cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
-                    onClick={() => handleSort('preco_apos_desconto')}
-                    title="Ordenar por Preço Líquido"
-                  >
-                    <div className="flex items-center justify-end gap-1">
-                      <span>Preço</span>
-                      {sort.field === 'preco_apos_desconto' ? (
-                        sort.dir === 'asc' ? (
-                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
-                        ) : (
-                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
-                        )
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
-                      )}
-                    </div>
-                  </th>
-                  <th
-                    className="p-3 text-right cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
-                    onClick={() => handleSort('valor_em_aberto')}
-                    title="Ordenar por Valor em Aberto"
-                  >
-                    <div className="flex items-center justify-end gap-1">
-                      <span>Valor em Aberto</span>
-                      {sort.field === 'valor_em_aberto' ? (
-                        sort.dir === 'asc' ? (
-                          <ArrowUp className="w-3 h-3 text-[#0B6E99]" />
-                        ) : (
-                          <ArrowDown className="w-3 h-3 text-[#0B6E99]" />
-                        )
-                      ) : (
-                        <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60" />
-                      )}
-                    </div>
-                  </th>
+                  {viewMode !== 'tipo_cliente' && (
+                    <>
+                      {renderThColunaMovida('codigo_item')}
+                      {renderThColunaMovida('qtd_aberto')}
+                      {renderThColunaMovida('preco_apos_desconto')}
+                      {renderThColunaMovida('valor_em_aberto')}
+                    </>
+                  )}
                   <th
                     className="p-3 cursor-pointer hover:bg-slate-200/70 transition-colors sticky top-0 bg-slate-100 whitespace-nowrap select-none"
                     onClick={() => handleSort('nome_vendedor')}
@@ -3407,6 +3404,34 @@ export default function PedidosAbertos() {
                             {isExpanded ? 'Detalhamento ▼' : 'Consolidado ▲'}
                           </td>
 
+                          {/* Item / Qtde / Preço / Valor em Aberto reposicionados APÓS a coluna Data (modo Tipo de Cliente) */}
+                          <td className="p-3 text-slate-600 text-[11px]">
+                            <span className="font-bold text-slate-800">
+                              {group.totalLinhas} item(ns)
+                            </span>
+                            <span className="text-slate-400 ml-1">pendente(s)</span>
+                          </td>
+
+                          <td className="p-3 text-center whitespace-nowrap">
+                            <div className="font-extrabold text-slate-900">
+                              {formatNumber(group.totalQtdAberto)}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              de {formatNumber(group.totalQtdSolicitada)} solicit.
+                            </div>
+                          </td>
+
+                          <td className="p-3 text-right text-slate-600 whitespace-nowrap font-medium text-[11px]">
+                            {group.totalQtdAberto > 0
+                              ? formatCurrency(group.totalValorEmAberto / group.totalQtdAberto)
+                              : '-'}
+                            <span className="block text-[9px] text-slate-400">preço médio</span>
+                          </td>
+
+                          <td className="p-3 text-right whitespace-nowrap font-black text-purple-950 text-sm bg-purple-100/50">
+                            {formatCurrency(group.totalValorEmAberto)}
+                          </td>
+
                           {/* Coluna consolidada: Tipo de Cliente */}
                           <td className="p-3 whitespace-nowrap">
                             {renderTipoClienteBadge(isSemTipo ? undefined : group.tipo_cliente)}
@@ -3440,37 +3465,6 @@ export default function PedidosAbertos() {
                           {/* Colunas complementares no consolidado (Status do Cadastro, Tipo de PN) */}
                           <td className="p-3 text-center text-slate-300">-</td>
                           <td className="p-3 text-center text-slate-300">-</td>
-
-                          {/* Itens do Tipo de Cliente */}
-                          <td className="p-3 text-slate-600 text-[11px]">
-                            <span className="font-bold text-slate-800">
-                              {group.totalLinhas} item(ns)
-                            </span>
-                            <span className="text-slate-400 ml-1">pendente(s)</span>
-                          </td>
-
-                          {/* SOMA Qtd Aberto */}
-                          <td className="p-3 text-center whitespace-nowrap">
-                            <div className="font-extrabold text-slate-900">
-                              {formatNumber(group.totalQtdAberto)}
-                            </div>
-                            <div className="text-[10px] text-slate-400">
-                              de {formatNumber(group.totalQtdSolicitada)} solicit.
-                            </div>
-                          </td>
-
-                          {/* Preço Líquido Médio */}
-                          <td className="p-3 text-right text-slate-600 whitespace-nowrap font-medium text-[11px]">
-                            {group.totalQtdAberto > 0
-                              ? formatCurrency(group.totalValorEmAberto / group.totalQtdAberto)
-                              : '-'}
-                            <span className="block text-[9px] text-slate-400">preço médio</span>
-                          </td>
-
-                          {/* SOMA de todos os valores em aberto do Tipo de Cliente */}
-                          <td className="p-3 text-right whitespace-nowrap font-black text-purple-950 text-sm bg-purple-100/50">
-                            {formatCurrency(group.totalValorEmAberto)}
-                          </td>
                         </tr>
 
                         {/* Linhas detalhadas quando expandido */}
@@ -3517,6 +3511,53 @@ export default function PedidosAbertos() {
                               {/* Data */}
                               <td className="p-3 text-slate-600 whitespace-nowrap">
                                 {item.data_pedido ? formatDate(item.data_pedido) : '-'}
+                              </td>
+
+                              {/* Item / Descrição (reposicionado após a Data no modo Tipo de Cliente) */}
+                              <td className="p-3 min-w-[220px]">
+                                <div className="font-mono text-xs font-semibold text-slate-800">
+                                  {item.codigo_item || '-'}
+                                </div>
+                                <div
+                                  className="text-[11px] text-slate-600 truncate"
+                                  title={item.descricao_item}
+                                >
+                                  {item.descricao_item || '-'}
+                                </div>
+                                {item.grupo_item && (
+                                  <span className="inline-block text-[10px] text-slate-400 uppercase tracking-tight mt-0.5">
+                                    Grupo: {item.grupo_item}
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Qtd Aberto */}
+                              <td className="p-3 text-center whitespace-nowrap">
+                                <div className="font-bold text-slate-900">
+                                  {formatNumber(item.qtd_aberto)}
+                                </div>
+                                <div className="text-[10px] text-slate-400">
+                                  de {formatNumber(item.qtd_solicitada)} ped.
+                                </div>
+                              </td>
+
+                              {/* Preço Unitário Líquido */}
+                              <td className="p-3 text-right text-slate-700 whitespace-nowrap font-medium">
+                                {formatCurrency(
+                                  Number(item.preco_apos_desconto) ||
+                                    Number(item.preco_unitario) ||
+                                    0,
+                                )}
+                                {Number(item.desconto_percentual) > 0 && (
+                                  <span className="block text-[10px] text-rose-500">
+                                    -{Math.round(Number(item.desconto_percentual))}%
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Valor em Aberto */}
+                              <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
+                                {formatCurrency(Number(item.valor_em_aberto) || 0)}
                               </td>
 
                               {/* Tipo de Cliente */}
@@ -3589,53 +3630,6 @@ export default function PedidosAbertos() {
                               {/* Tipo de PN */}
                               <td className="p-3 whitespace-nowrap">
                                 {renderTipoPnCell(resolveClienteInfo(item).tipo_pn)}
-                              </td>
-
-                              {/* Item / Descrição */}
-                              <td className="p-3 min-w-[220px]">
-                                <div className="font-mono text-xs font-semibold text-slate-800">
-                                  {item.codigo_item || '-'}
-                                </div>
-                                <div
-                                  className="text-[11px] text-slate-600 truncate"
-                                  title={item.descricao_item}
-                                >
-                                  {item.descricao_item || '-'}
-                                </div>
-                                {item.grupo_item && (
-                                  <span className="inline-block text-[10px] text-slate-400 uppercase tracking-tight mt-0.5">
-                                    Grupo: {item.grupo_item}
-                                  </span>
-                                )}
-                              </td>
-
-                              {/* Qtd Aberto */}
-                              <td className="p-3 text-center whitespace-nowrap">
-                                <div className="font-bold text-slate-900">
-                                  {formatNumber(item.qtd_aberto)}
-                                </div>
-                                <div className="text-[10px] text-slate-400">
-                                  de {formatNumber(item.qtd_solicitada)} ped.
-                                </div>
-                              </td>
-
-                              {/* Preço Unitário Líquido */}
-                              <td className="p-3 text-right text-slate-700 whitespace-nowrap font-medium">
-                                {formatCurrency(
-                                  Number(item.preco_apos_desconto) ||
-                                    Number(item.preco_unitario) ||
-                                    0,
-                                )}
-                                {Number(item.desconto_percentual) > 0 && (
-                                  <span className="block text-[10px] text-rose-500">
-                                    -{Math.round(Number(item.desconto_percentual))}%
-                                  </span>
-                                )}
-                              </td>
-
-                              {/* Valor em Aberto */}
-                              <td className="p-3 text-right whitespace-nowrap font-bold text-amber-700">
-                                {formatCurrency(Number(item.valor_em_aberto) || 0)}
                               </td>
 
                               {/* Vendedor */}
