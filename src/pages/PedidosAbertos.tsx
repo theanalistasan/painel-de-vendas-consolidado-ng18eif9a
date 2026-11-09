@@ -885,10 +885,6 @@ export default function PedidosAbertos() {
     }
 
     runStaggeredLoad()
-
-    return () => {
-      isCancelled = true
-    }
   }, [page, filters, sort.field, sort.dir, viewMode, statusLinhaFilter])
 
   // Atualiza os filtros e persiste a seleção de tipoCliente, statusCadastro e tipoPn no sessionStorage compartilhado

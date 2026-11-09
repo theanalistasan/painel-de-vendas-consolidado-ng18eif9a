@@ -255,20 +255,27 @@ export async function fetchPedidosAbertosClienteMap(): Promise<PedidosAbertosCli
   }
 
   try {
-    return await run()
+    return await runEndpoint()
   } catch (err: unknown) {
     const status = (err as { status?: number })?.status
     if (status === 401 || status === 403) {
+      // Credencial expirada: renova e tenta o endpoint uma única vez
       try {
         const refreshed = await safeAuthRefresh()
         if (refreshed && pb.authStore.isValid) {
-          return await run()
+          return await runEndpoint()
         }
       } catch {
-        // fallback silencioso
+        // segue para o fallback
       }
     }
-    console.warn('Erro ao carregar mapa de pedidos abertos por cliente:', err)
-    return {}
+    // Qualquer outra falha (incluindo 404 de deploy antigo sem o endpoint novo):
+    // cai no fallback local para não devolver mapa vazio/errado.
+    try {
+      return await runFallback()
+    } catch (fbErr) {
+      console.warn('Erro ao carregar mapa de pedidos abertos por cliente:', fbErr)
+      return {}
+    }
   }
 }

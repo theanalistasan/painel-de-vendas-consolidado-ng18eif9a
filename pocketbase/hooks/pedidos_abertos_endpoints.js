@@ -1,6 +1,7 @@
 // Endpoints para Pedidos em Aberto:
 // 1. POST /backend/v1/pedidos-abertos/list - Listagem paginada com filtros, busca e ordenação
 // 2. POST /backend/v1/pedidos-abertos/stats - KPIs e Ranking de clientes com ritmo de compra vs vendas realizadas
+// 3. GET  /backend/v1/pedidos-abertos/por-cliente - Agregado por cliente (GROUP BY) para a Visão Canais
 
 routerAdd(
   'POST',
@@ -1203,6 +1204,110 @@ routerAdd(
     }
 
     return e.json(200, statsPayload)
+  },
+  $apis.requireAuth(),
+)
+
+// Endpoint: GET /backend/v1/pedidos-abertos/por-cliente
+// Agregado por cliente: GROUP BY UPPER(TRIM(codigo_cliente)) com COUNT(DISTINCT numero_pedido)
+// e SUM(valor_em_aberto). Evita baixar ~310 mil registros para o navegador (visão Canais).
+// Cache TTL ~5 min no MESMO Map __skipPedidosAbertosCache usado por list/stats,
+// para que a invalidação na importação limpe tudo de uma vez.
+routerAdd(
+  'GET',
+  '/backend/v1/pedidos-abertos/por-cliente',
+  (e) => {
+    const PA_CLIENTE_TTL_MS = 300000
+    const paClienteCacheKey = 'pa-por-cliente'
+
+    try {
+      if (typeof globalThis !== 'undefined' && globalThis) {
+        if (
+          !globalThis.__skipPedidosAbertosCache ||
+          typeof globalThis.__skipPedidosAbertosCache.get !== 'function'
+        ) {
+          globalThis.__skipPedidosAbertosCache = new Map()
+        }
+        const hit = globalThis.__skipPedidosAbertosCache.get(paClienteCacheKey)
+        if (hit && hit.expiresAt > Date.now() && hit.data) {
+          return e.json(200, hit.data)
+        }
+      }
+    } catch (cacheChkErr) {
+      console.warn('pedidos_abertos por-cliente: cache read warning:', cacheChkErr)
+    }
+
+    const toNum = (v) => {
+      const n = parseFloat(v)
+      return isNaN(n) ? 0 : n
+    }
+    const toInt = (v) => {
+      const n = parseInt(v, 10)
+      return isNaN(n) ? 0 : n
+    }
+
+    // Padrão obrigatório DynamicModel: campos numéricos inicializados como ''
+    // (o motor Go converte campo iniciado com 0/0.0 para int64 e quebra o scan
+    // de decimais com "Scan error float64 to int64").
+    const map = {}
+    try {
+      const aggRows = arrayOf(
+        new DynamicModel({
+          cod: '',
+          qtd: '',
+          valor: '',
+        }),
+      )
+      $app
+        .db()
+        .newQuery(
+          "SELECT UPPER(TRIM(COALESCE(codigo_cliente, ''))) AS cod, " +
+            'COUNT(DISTINCT numero_pedido) AS qtd, ' +
+            'CAST(COALESCE(SUM(valor_em_aberto), 0.0) AS REAL) AS valor ' +
+            'FROM pedidos_abertos ' +
+            "WHERE COALESCE(codigo_cliente, '') != '' " +
+            'GROUP BY UPPER(TRIM(COALESCE(codigo_cliente, "")))',
+        )
+        .all(aggRows)
+
+      for (let i = 0; i < aggRows.length; i++) {
+        const cod = (aggRows[i].cod || '').trim()
+        if (!cod || cod === '-') continue
+        map[cod] = {
+          qtd: toInt(aggRows[i].qtd),
+          valor: toNum(aggRows[i].valor),
+        }
+      }
+    } catch (aggErr) {
+      console.error('pedidos_abertos por-cliente error:', aggErr)
+      return e.json(500, { error: 'Erro ao agregar pedidos em aberto por cliente' })
+    }
+
+    const payload = { map }
+
+    // Grava no cache compartilhado (TTL 5 min, com poda de entradas expiradas)
+    try {
+      if (typeof globalThis !== 'undefined' && globalThis.__skipPedidosAbertosCache) {
+        if (globalThis.__skipPedidosAbertosCache.size > 30) {
+          const pruneNow = Date.now()
+          const expiredKeys = []
+          globalThis.__skipPedidosAbertosCache.forEach((entry, key) => {
+            if (!entry || !(entry.expiresAt > pruneNow)) expiredKeys.push(key)
+          })
+          for (let pIdx = 0; pIdx < expiredKeys.length; pIdx++) {
+            globalThis.__skipPedidosAbertosCache.delete(expiredKeys[pIdx])
+          }
+        }
+        globalThis.__skipPedidosAbertosCache.set(paClienteCacheKey, {
+          data: payload,
+          expiresAt: Date.now() + PA_CLIENTE_TTL_MS,
+        })
+      }
+    } catch (cacheWriteErr) {
+      console.warn('pedidos_abertos por-cliente: cache write warning:', cacheWriteErr)
+    }
+
+    return e.json(200, payload)
   },
   $apis.requireAuth(),
 )

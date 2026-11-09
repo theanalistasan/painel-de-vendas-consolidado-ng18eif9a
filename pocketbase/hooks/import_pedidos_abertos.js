@@ -603,6 +603,16 @@ routerAdd(
       )
     }
 
+    // Invalida o cache server-side de Pedidos em Aberto (list/stats/por-cliente)
+    // para que os dados recém-importados apareçam imediatamente, sem esperar o TTL.
+    try {
+      if (typeof globalThis !== 'undefined' && globalThis.__skipPedidosAbertosCache) {
+        globalThis.__skipPedidosAbertosCache.clear()
+      }
+    } catch (cacheInvErr) {
+      console.warn('pedidos_abertos import: cache invalidate warning:', cacheInvErr)
+    }
+
     return e.json(200, {
       success: true,
       importados,
