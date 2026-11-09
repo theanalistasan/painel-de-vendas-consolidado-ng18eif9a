@@ -20,7 +20,8 @@
 // ---- POST /backend/v1/vendas/migrar-historico (iniciar/retomar) ----
 routerAdd('POST', '/backend/v1/vendas/migrar-historico', function (e) {
   const BATCH_SIZE = 5000
-  const CORTE = '2025-01-01'
+  const anoAtual = new Date().getFullYear()
+  const CORTE = anoAtual - 2 + '-01-01'
 
   const toInt = function (v) {
     if (v === undefined || v === null || v === '') return 0
@@ -353,7 +354,8 @@ routerAdd('GET', '/backend/v1/vendas/migrar-historico/status', function (e) {
 // ---- POST /backend/v1/vendas/migrar-historico/step (1 lote por chamada) ----
 routerAdd('POST', '/backend/v1/vendas/migrar-historico/step', function (e) {
   const BATCH_SIZE = 5000
-  const CORTE = '2025-01-01'
+  const anoAtual = new Date().getFullYear()
+  const CORTE = anoAtual - 2 + '-01-01'
 
   const toInt = function (v) {
     if (v === undefined || v === null || v === '') return 0

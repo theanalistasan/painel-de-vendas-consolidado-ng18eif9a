@@ -603,7 +603,7 @@ function BaseImportCard({
                           selectedModo === 'atual' ? 'bg-white' : 'bg-indigo-600',
                         )}
                       />
-                      Importar dados atuais (Ano Atual e Ano Passado)
+                      Importar dados atuais (Base Ativa: 3 Anos)
                     </span>
                     <span
                       className={cn(
@@ -677,7 +677,7 @@ function BaseImportCard({
                     <>
                       <UploadCloud className="w-4 h-4 mr-1.5" />
                       {selectedModo === 'atual'
-                        ? 'Importar dados atuais (Ano Atual e Ano Passado)'
+                        ? 'Importar dados atuais (Base Ativa: 3 Anos)'
                         : 'Importar dados anteriores ao Ano Passado'}{' '}
                       ({formatNumber(parsedRows.length)} linhas
                       {parsedRows.length > CHUNK_SIZE

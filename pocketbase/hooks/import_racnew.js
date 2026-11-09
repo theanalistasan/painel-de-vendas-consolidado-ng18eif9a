@@ -5,10 +5,10 @@ routerAdd(
     const body = e.requestInfo().body || {}
     const rows = Array.isArray(body.rows) ? body.rows : Array.isArray(body) ? body : []
 
-    // Helper da janela dinâmica inline (regra: ano anterior + ano atual)
+    // Helper da janela dinâmica inline (regra: dois anos anteriores + ano atual = 3 anos)
     const getJanelaDinamica = () => {
       const anoFim = new Date().getFullYear()
-      const anoInicio = anoFim - 1
+      const anoInicio = anoFim - 2
       return {
         anoInicio,
         anoFim,

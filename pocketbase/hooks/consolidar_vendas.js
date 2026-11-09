@@ -515,10 +515,10 @@ routerAdd('GET', '/backend/v1/vendas/consolidar/status', (e) => {
 routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
   const BATCH_SIZE = 10000
 
-  // Helper da janela dinâmica inline (regra: ano anterior + ano atual)
+  // Helper da janela dinâmica inline (regra: dois anos anteriores + ano atual = 3 anos)
   const getJanelaDinamica = () => {
     const anoFim = new Date().getFullYear()
-    const anoInicio = anoFim - 1
+    const anoInicio = anoFim - 2
     return {
       anoInicio,
       anoFim,
