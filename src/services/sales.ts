@@ -2,8 +2,6 @@ import pb from '@/lib/pocketbase/client'
 import { safeAuthRefresh } from '@/lib/pocketbase/auth-session'
 import type {
   Produto,
-  RacNew,
-  NetSales,
   VendaConsolidada,
   ImportResult,
   ConsolidarResult,
@@ -22,20 +20,6 @@ export async function fetchProdutos(): Promise<Produto[]> {
   })
 }
 
-export async function fetchRacNew(): Promise<RacNew[]> {
-  return pb.collection<RacNew>('racnew').getFullList({
-    filter: "codigo_item != 'SERVICOS'",
-    sort: '-data_lancamento',
-  })
-}
-
-export async function fetchNetSales(): Promise<NetSales[]> {
-  return pb.collection<NetSales>('netsales').getFullList({
-    filter: "itemcode != 'SERVICOS'",
-    sort: '-docdate',
-  })
-}
-
 export async function fetchVendas(): Promise<VendaConsolidada[]> {
   return pb.collection<VendaConsolidada>('vendas').getFullList({
     filter: "codigo_item != 'SERVICOS'",
@@ -50,21 +34,11 @@ export async function importProdutosApi(rows: Record<string, unknown>[]): Promis
   })
 }
 
-export async function importRacNewApi(
+export async function importNetsalesV4Api(
   rows: Record<string, unknown>[],
   modo: 'atual' | 'historico' = 'atual',
 ): Promise<ImportResult> {
-  return pb.send<ImportResult>('/backend/v1/import/racnew', {
-    method: 'POST',
-    body: { rows, modo },
-  })
-}
-
-export async function importNetSalesApi(
-  rows: Record<string, unknown>[],
-  modo: 'atual' | 'historico' = 'atual',
-): Promise<ImportResult> {
-  return pb.send<ImportResult>('/backend/v1/import/netsales', {
+  return pb.send<ImportResult>('/backend/v1/import/netsales_v4', {
     method: 'POST',
     body: { rows, modo },
   })
@@ -440,16 +414,14 @@ export async function resetBasesApi(
 
 export interface CountsSummary {
   produtos: number
-  racnew: number
-  netsales: number
+  netsales_v4: number
   vendas: number
   canais_clientes: number
   pedidos_abertos: number
   estoque_sap: number
   tipos_cliente?: number
   ultimaCarga: string | null
-  ultimaCargaRacnew?: string | null
-  ultimaCargaNetsales?: string | null
+  ultimaCargaNetsalesV4?: string | null
   ultimaCargaProdutos?: string | null
   ultimaCargaPedidosAbertos?: string | null
   ultimaCargaEstoqueSap?: string | null
@@ -464,16 +436,14 @@ export async function getCountsSummary(): Promise<CountsSummary> {
   const run = () =>
     pb.send<{
       produtos: number
-      racnew: number
-      netsales: number
+      netsales_v4?: number
       vendas: number
       canais_clientes?: number
       pedidos_abertos?: number
       estoque_sap?: number
       tipos_cliente?: number
       ultimaCarga: string
-      ultimaCargaRacnew?: string
-      ultimaCargaNetsales?: string
+      ultimaCargaNetsalesV4?: string
       ultimaCargaProdutos?: string
       ultimaCargaPedidosAbertos?: string
       ultimaCargaEstoqueSap?: string
@@ -505,16 +475,15 @@ export async function getCountsSummary(): Promise<CountsSummary> {
 
   return {
     produtos: data.produtos ?? 0,
-    racnew: data.racnew ?? 0,
-    netsales: data.netsales ?? 0,
+    netsales_v4: (data as unknown as Record<string, number>).netsales_v4 ?? 0,
     vendas: data.vendas ?? 0,
     canais_clientes: (data as unknown as Record<string, number>).canais_clientes ?? 0,
     pedidos_abertos: (data as unknown as Record<string, number>).pedidos_abertos ?? 0,
     estoque_sap: (data as unknown as Record<string, number>).estoque_sap ?? 0,
     tipos_cliente: (data as unknown as Record<string, number>).tipos_cliente ?? 0,
     ultimaCarga: data.ultimaCarga || null,
-    ultimaCargaRacnew: data.ultimaCargaRacnew || null,
-    ultimaCargaNetsales: data.ultimaCargaNetsales || null,
+    ultimaCargaNetsalesV4:
+      (data as unknown as Record<string, string>).ultimaCargaNetsalesV4 || null,
     ultimaCargaProdutos: data.ultimaCargaProdutos || null,
     ultimaCargaPedidosAbertos: data.ultimaCargaPedidosAbertos || null,
     ultimaCargaEstoqueSap: data.ultimaCargaEstoqueSap || null,
@@ -524,11 +493,11 @@ export async function getCountsSummary(): Promise<CountsSummary> {
 }
 
 /**
- * Consulta a data_carga mais recente da coleção racnew.
+ * Consulta a data_carga mais recente da coleção netsales_v4 (base única de vendas).
  */
-export async function fetchUltimaCargaRacnew(): Promise<string | null> {
+export async function fetchUltimaCargaNetsalesV4(): Promise<string | null> {
   try {
-    const records = await pb.collection('racnew').getList(1, 1, {
+    const records = await pb.collection('netsales_v4').getList(1, 1, {
       sort: '-data_carga',
       fields: 'data_carga',
       filter: "data_carga != ''",
@@ -537,33 +506,10 @@ export async function fetchUltimaCargaRacnew(): Promise<string | null> {
       return String(records.items[0].data_carga)
     }
   } catch (err) {
-    console.warn('Erro ao buscar última carga racnew:', err)
+    console.warn('Erro ao buscar última carga netsales_v4:', err)
   }
   return null
 }
-
-export const fetchUltimaCargaRacNew = fetchUltimaCargaRacnew
-
-/**
- * Consulta a data_carga mais recente da coleção netsales.
- */
-export async function fetchUltimaCargaNetsales(): Promise<string | null> {
-  try {
-    const records = await pb.collection('netsales').getList(1, 1, {
-      sort: '-data_carga',
-      fields: 'data_carga',
-      filter: "data_carga != ''",
-    })
-    if (records.items.length > 0 && records.items[0].data_carga) {
-      return String(records.items[0].data_carga)
-    }
-  } catch (err) {
-    console.warn('Erro ao buscar última carga netsales:', err)
-  }
-  return null
-}
-
-export const fetchUltimaCargaNetSales = fetchUltimaCargaNetsales
 
 /**
  * Consulta a data_carga mais recente da coleção produtos.

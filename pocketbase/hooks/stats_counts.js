@@ -5,8 +5,7 @@
 routerAdd('GET', '/backend/v1/stats/counts', (e) => {
   const names = [
     'produtos',
-    'racnew',
-    'netsales',
+    'netsales_v4',
     'vendas',
     'canais_clientes',
     'pedidos_abertos',
@@ -47,33 +46,18 @@ routerAdd('GET', '/backend/v1/stats/counts', (e) => {
     }
   } catch (_) {}
 
-  // Última data_carga da coleção racnew
-  let ultimaCargaRacnew = ''
-  try {
-    const rnRows = arrayOf(new DynamicModel({ data_carga: '' }))
-    $app
-      .db()
-      .newQuery(
-        "SELECT data_carga FROM racnew WHERE data_carga IS NOT NULL AND data_carga != '' ORDER BY data_carga DESC LIMIT 1",
-      )
-      .all(rnRows)
-    if (rnRows.length > 0 && rnRows[0].data_carga) {
-      ultimaCargaRacnew = rnRows[0].data_carga
-    }
-  } catch (_) {}
-
-  // Última data_carga da coleção netsales
-  let ultimaCargaNetsales = ''
+  // Última data_carga da coleção netsales_v4 (base única de vendas)
+  let ultimaCargaNetsalesV4 = ''
   try {
     const nsRows = arrayOf(new DynamicModel({ data_carga: '' }))
     $app
       .db()
       .newQuery(
-        "SELECT data_carga FROM netsales WHERE data_carga IS NOT NULL AND data_carga != '' ORDER BY data_carga DESC LIMIT 1",
+        "SELECT data_carga FROM netsales_v4 WHERE data_carga IS NOT NULL AND data_carga != '' ORDER BY data_carga DESC LIMIT 1",
       )
       .all(nsRows)
     if (nsRows.length > 0 && nsRows[0].data_carga) {
-      ultimaCargaNetsales = nsRows[0].data_carga
+      ultimaCargaNetsalesV4 = nsRows[0].data_carga
     }
   } catch (_) {}
 
@@ -139,16 +123,14 @@ routerAdd('GET', '/backend/v1/stats/counts', (e) => {
 
   const result = {
     produtos: counts.produtos || 0,
-    racnew: counts.racnew || 0,
-    netsales: counts.netsales || 0,
+    netsales_v4: counts.netsales_v4 || 0,
     vendas: counts.vendas || 0,
     canais_clientes: counts.canais_clientes || 0,
     pedidos_abertos: counts.pedidos_abertos || 0,
     estoque_sap: counts.estoque_sap || 0,
     tipos_cliente: counts.tipos_cliente || 0,
     ultimaCarga: ultimaCarga,
-    ultimaCargaRacnew: ultimaCargaRacnew,
-    ultimaCargaNetsales: ultimaCargaNetsales,
+    ultimaCargaNetsalesV4: ultimaCargaNetsalesV4,
     ultimaCargaProdutos: ultimaCargaProdutos,
     ultimaCargaPedidosAbertos: ultimaCargaPedidosAbertos,
     ultimaCargaEstoqueSap: ultimaCargaEstoqueSap,

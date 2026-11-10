@@ -17,15 +17,13 @@ import {
 } from 'lucide-react'
 import {
   importProdutosApi,
-  importRacNewApi,
-  importNetSalesApi,
   importCanaisClientesApi,
   consolidarVendasApi,
   reconstruirResumosApi,
   getConsolidacaoStatusApi,
   getCountsSummary,
-  fetchUltimaCargaRacNew,
-  fetchUltimaCargaNetSales,
+  importNetsalesV4Api,
+  fetchUltimaCargaNetsalesV4,
   fetchUltimaCargaProdutos,
 } from '@/services/sales'
 import { importPedidosAbertosApi, fetchUltimaCargaPedidosAbertos } from '@/services/pedidosAbertos'
@@ -80,8 +78,7 @@ interface BatchResult {
 
 type BaseKey =
   | 'produtos'
-  | 'racnew'
-  | 'netsales'
+  | 'netsales_v4'
   | 'canais_clientes'
   | 'pedidos_abertos'
   | 'estoque_sap'
@@ -958,8 +955,7 @@ function BaseImportCard({
 export default function Importar() {
   const [counts, setCounts] = useState<{
     produtos: number
-    racnew: number
-    netsales: number
+    netsales_v4: number
     vendas: number
     canais_clientes: number
     pedidos_abertos: number
@@ -971,8 +967,7 @@ export default function Importar() {
     ultimaCargaTiposCliente?: string | null
   }>({
     produtos: 0,
-    racnew: 0,
-    netsales: 0,
+    netsales_v4: 0,
     vendas: 0,
     canais_clientes: 0,
     pedidos_abertos: 0,
@@ -983,8 +978,7 @@ export default function Importar() {
     ultimaCargaEstoqueSap: null,
     ultimaCargaTiposCliente: null,
   })
-  const [ultimaCargaRacNew, setUltimaCargaRacNew] = useState<string | null>(null)
-  const [ultimaCargaNetSales, setUltimaCargaNetSales] = useState<string | null>(null)
+  const [ultimaCargaNetsalesV4, setUltimaCargaNetsalesV4] = useState<string | null>(null)
   const [ultimaCargaProdutos, setUltimaCargaProdutos] = useState<string | null>(null)
   const [ultimaCargaPedidosAbertos, setUltimaCargaPedidosAbertos] = useState<string | null>(null)
   const [ultimaCargaEstoqueSap, setUltimaCargaEstoqueSap] = useState<string | null>(null)
@@ -1026,8 +1020,7 @@ export default function Importar() {
   // Resultado de cada importação armazenado separadamente por base
   const [importResults, setImportResults] = useState<{
     produtos?: ImportResult
-    racnew?: ImportResult
-    netsales?: ImportResult
+    netsales_v4?: ImportResult
     canais_clientes?: ImportResult
     pedidos_abertos?: ImportResult
     estoque_sap?: ImportResult
@@ -1039,18 +1032,6 @@ export default function Importar() {
     try {
       const data = await getCountsSummary()
       setCounts(data)
-      if (data.ultimaCargaRacnew) {
-        setUltimaCargaRacNew(data.ultimaCargaRacnew)
-      } else {
-        const directRac = await fetchUltimaCargaRacNew()
-        setUltimaCargaRacNew(directRac)
-      }
-      if (data.ultimaCargaNetsales) {
-        setUltimaCargaNetSales(data.ultimaCargaNetsales)
-      } else {
-        const directNet = await fetchUltimaCargaNetSales()
-        setUltimaCargaNetSales(directNet)
-      }
       if (data.ultimaCargaProdutos) {
         setUltimaCargaProdutos(data.ultimaCargaProdutos)
       } else {
@@ -1078,8 +1059,7 @@ export default function Importar() {
       }
     } catch (err) {
       console.error('Erro ao buscar contagens:', err)
-      fetchUltimaCargaRacNew().then((d) => setUltimaCargaRacNew(d))
-      fetchUltimaCargaNetSales().then((d) => setUltimaCargaNetSales(d))
+      fetchUltimaCargaNetsalesV4().then((d) => setUltimaCargaNetsalesV4(d))
       fetchUltimaCargaProdutos().then((d) => setUltimaCargaProdutos(d))
       const directDate = await fetchUltimaCargaPedidosAbertos()
       setUltimaCargaPedidosAbertos(directDate)
@@ -1343,8 +1323,6 @@ export default function Importar() {
   const zerarAlvos = [
     'vendas',
     'vendas_historico',
-    'racnew',
-    'netsales',
     'pedidos_abertos',
     'estoque_sap',
     'resumo_vendas_mensal',
@@ -1427,22 +1405,18 @@ export default function Importar() {
   const handleImported = (base: BaseKey, result: ImportResult) => {
     setImportResults((prev) => ({ ...prev, [base]: result }))
     refreshCounts()
-    if (base === 'racnew') {
+    if (base === 'netsales_v4') {
       if (result.data_carga) {
-        setUltimaCargaRacNew(result.data_carga)
+        setUltimaCargaNetsalesV4(result.data_carga)
       } else {
-        fetchUltimaCargaRacNew().then((d) => {
-          if (d) setUltimaCargaRacNew(d)
+        fetchUltimaCargaNetsalesV4().then((d) => {
+          if (d) setUltimaCargaNetsalesV4(d)
         })
       }
-    } else if (base === 'netsales') {
-      if (result.data_carga) {
-        setUltimaCargaNetSales(result.data_carga)
-      } else {
-        fetchUltimaCargaNetSales().then((d) => {
-          if (d) setUltimaCargaNetSales(d)
-        })
-      }
+      logAudit(
+        'netsales_v4_import',
+        `NetSales_v4: ${result.importados ?? 0} novos, ${result.atualizados ?? 0} atualizados, ${result.mesclados ?? 0} mesclados, ${result.ignorados ?? 0} ignorados`,
+      )
     } else if (base === 'produtos') {
       if (result.data_carga) {
         setUltimaCargaProdutos(result.data_carga)
@@ -1492,8 +1466,7 @@ export default function Importar() {
 
   const summaryEntries: { base: BaseKey; label: string; color: string }[] = [
     { base: 'produtos', label: 'Produtos', color: 'text-cyan-700' },
-    { base: 'racnew', label: 'RacNew', color: 'text-indigo-700' },
-    { base: 'netsales', label: 'NetSales', color: 'text-teal-700' },
+    { base: 'netsales_v4', label: 'NetSales_v4', color: 'text-teal-700' },
     { base: 'canais_clientes', label: 'Canais x Clientes', color: 'text-sky-700' },
     { base: 'pedidos_abertos', label: 'Pedidos em Aberto', color: 'text-amber-700' },
     { base: 'estoque_sap', label: 'Posição Estoque (SAP)', color: 'text-emerald-700' },
@@ -1516,10 +1489,10 @@ export default function Importar() {
                 Consolidação Inteligente de Vendas
               </h2>
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                A <strong>RacNew</strong> é a base mestra. A junção com a <strong>NetSales</strong>{' '}
-                vincula Número SAP ↔ Chave Documento, Nº NFe ↔ Serial, Data ↔ DOCDATE, Cód. Cliente
-                e Cód. do Item, adicionando os 12 campos exclusivos. A categoria do item é trazida
-                da base de <strong>Produtos</strong>.
+                A <strong>NetSales_v4</strong> é a base única de vendas: a carga alimenta o staging{' '}
+                <code className="text-indigo-200">netsales</code> e a consolidação junta produtos,
+                tipos de cliente e canais de clientes para formar a coleção <strong>vendas</strong>,
+                com a categoria do item vinda da base de <strong>Produtos</strong>.
               </p>
             </div>
 
@@ -1673,18 +1646,10 @@ export default function Importar() {
             </div>
             <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/50">
               <span className="text-[11px] text-slate-400 block font-medium">
-                Registros RacNew (Mestre)
-              </span>
-              <span className="text-lg font-bold text-indigo-300 tabular-nums">
-                {formatNumber(counts.racnew)}
-              </span>
-            </div>
-            <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/50">
-              <span className="text-[11px] text-slate-400 block font-medium">
-                Registros NetSales
+                NetSales_v4 (staging de vendas)
               </span>
               <span className="text-lg font-bold text-teal-300 tabular-nums">
-                {formatNumber(counts.netsales)}
+                {formatNumber(counts.netsales_v4)}
               </span>
             </div>
             <div className="bg-slate-800/60 p-3 rounded-lg border border-slate-700/50">
@@ -1747,7 +1712,6 @@ export default function Importar() {
             Apaga <strong>TODOS</strong> os registros das coleções transacionais (
             <code className="text-[10px]">vendas</code>,{' '}
             <code className="text-[10px]">vendas_historico</code>,{' '}
-            <code className="text-[10px]">racnew</code>,{' '}
             <code className="text-[10px]">netsales</code>,{' '}
             <code className="text-[10px]">pedidos_abertos</code>,{' '}
             <code className="text-[10px]">estoque_sap</code>, logs de auditoria, resumos
@@ -2196,82 +2160,13 @@ export default function Importar() {
           onImported={(r) => handleImported('produtos', r)}
         />
 
-        {/* Card 2: RacNew */}
+        {/* Card 2: NetSales_v4 — base única de vendas (substitui RacNew e NetSales) */}
         <BaseImportCard
-          title="RacNew (Base Mestre)"
-          subtitle="Dados fiscais e financeiros oficiais"
-          badgeLabel="RacNew (Mestre)"
-          badgeColor="bg-indigo-600"
-          lastImportDate={ultimaCargaRacNew}
-          customGuide={
-            <div className="rounded-lg bg-slate-50 border border-slate-200/80 p-2.5 text-[11px] text-slate-600 space-y-1.5 shadow-2xs">
-              <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-[11px]">
-                <Info className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                <span>Caminho do relatório no SAP:</span>
-              </div>
-              <ol className="text-[10px] leading-relaxed text-slate-600 space-y-0.5 list-none">
-                <li className="flex items-center gap-1 flex-wrap">
-                  <span className="font-semibold text-slate-700">SAP</span>
-                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
-                  <span className="font-semibold text-slate-700">Ferramentas</span>
-                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
-                  <span className="font-semibold text-slate-700">Consultas</span>
-                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
-                  <span className="font-semibold text-slate-700">Gerenciador de Consultas</span>
-                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
-                  <span className="font-semibold text-slate-700">03-Vendas</span>
-                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
-                  <span className="font-medium text-slate-700">
-                    Faturamento de Vendas RAC - New 2
-                  </span>
-                </li>
-                <li className="flex items-center gap-1">
-                  <span>Botão direito no # da tabela</span>
-                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
-                  <span>Copiar Tabela</span>
-                </li>
-                <li className="flex items-center gap-1">
-                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
-                  <span>Colar no Excel</span>
-                  <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
-                  <span>Salve em um local e realize a importação do arquivo: RacNew (SAP)</span>
-                </li>
-              </ol>
-              <div className="pt-1 border-t border-slate-200/60 font-mono text-[9px] text-slate-500 break-words leading-tight select-all">
-                SAP &gt; Ferramentas &gt; Consultas &gt; Gerenciador de Consultas &gt; 03-Vendas
-                &gt; Faturamento de Vendas RAC - New 2 &gt; Botão direito no # da tabela &gt; Copiar
-                Tabela &gt; Colar no Excel &gt; Salve em um local e realize a importação do arquivo:
-                RacNew (SAP)
-              </div>
-            </div>
-          }
-          expectedColumns={[
-            'numero_sap',
-            'numero_nfe',
-            'data_lancamento',
-            'codigo_cliente',
-            'nome_cliente',
-            'codigo_item',
-            'quantidade',
-            'total_linha',
-            'nome_vendedor',
-            'utilizacao',
-            'estado',
-            'cidade',
-          ]}
-          hasModos
-          onImport={(rows, _batchMeta, modo) => importRacNewApi(rows, modo || 'atual')}
-          baseCount={counts.racnew}
-          onImported={(r) => handleImported('racnew', r)}
-        />
-
-        {/* Card 3: NetSales */}
-        <BaseImportCard
-          title="NetSales (Base Mestre)"
-          subtitle="Campos comerciais e custos complementares"
-          badgeLabel="NetSales"
+          title="NetSales_v4 — Base Única de Vendas"
+          subtitle="Zeramento + carga única. Substitui definitivamente RacNew e NetSales."
+          badgeLabel="NetSales_v4"
           badgeColor="bg-teal-600"
-          lastImportDate={ultimaCargaNetSales}
+          lastImportDate={ultimaCargaNetsalesV4}
           customGuide={
             <div className="rounded-lg bg-slate-50 border border-slate-200/80 p-2.5 text-[11px] text-slate-600 space-y-1.5 shadow-2xs">
               <div className="flex items-center gap-1.5 font-semibold text-slate-800 text-[11px]">
@@ -2303,14 +2198,16 @@ export default function Importar() {
                   <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
                   <span>Colar no Excel</span>
                   <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
-                  <span>Salve em um local e realize a importação do arquivo: NetSales (SAP)</span>
+                  <span>
+                    Salve em um local e realize a importação do arquivo: NetSales_v4 (SAP)
+                  </span>
                 </li>
               </ol>
               <div className="pt-1 border-t border-slate-200/60 font-mono text-[9px] text-slate-500 break-words leading-tight select-all">
                 SAP &gt; Ferramentas &gt; Consultas &gt; Gerenciador de Consultas &gt; Financeiro
                 &gt; Consultas Net Sales_v4 - Revenda &gt; Botão direito no # da tabela &gt; Copiar
                 Tabela &gt; Colar no Excel &gt; Salve em um local e realize a importação do arquivo:
-                NetSales (SAP)
+                NetSales_v4 (SAP)
               </div>
             </div>
           }
@@ -2329,9 +2226,9 @@ export default function Importar() {
             'vendedor_revenda',
           ]}
           hasModos
-          onImport={(rows, _batchMeta, modo) => importNetSalesApi(rows, modo || 'atual')}
-          baseCount={counts.netsales}
-          onImported={(r) => handleImported('netsales', r)}
+          onImport={(rows, _batchMeta, modo) => importNetsalesV4Api(rows, modo || 'atual')}
+          baseCount={counts.netsales_v4}
+          onImported={(r) => handleImported('netsales_v4', r)}
         />
 
         {/* Card 4: Canais x Clientes (DESATIVADO - Origem via Sincronização com Gestão de Canais de Vendas) */}
@@ -2658,17 +2555,15 @@ export default function Importar() {
                 const totalNaBase =
                   base === 'produtos'
                     ? counts.produtos
-                    : base === 'racnew'
-                      ? counts.racnew
-                      : base === 'netsales'
-                        ? counts.netsales
-                        : base === 'canais_clientes'
-                          ? (counts.canais_clientes ?? 0)
-                          : base === 'pedidos_abertos'
-                            ? (counts.pedidos_abertos ?? 0)
-                            : base === 'estoque_sap'
-                              ? (counts.estoque_sap ?? 0)
-                              : (counts.tipos_cliente ?? 0)
+                    : base === 'netsales_v4'
+                      ? counts.netsales_v4
+                      : base === 'canais_clientes'
+                        ? (counts.canais_clientes ?? 0)
+                        : base === 'pedidos_abertos'
+                          ? (counts.pedidos_abertos ?? 0)
+                          : base === 'estoque_sap'
+                            ? (counts.estoque_sap ?? 0)
+                            : (counts.tipos_cliente ?? 0)
                 return (
                   <div
                     key={base}
@@ -2757,19 +2652,22 @@ export default function Importar() {
         </Card>
       )}
 
-      {/* Info notice about Join Rules */}
+      {/* Info notice about NetSales_v4 */}
       <Alert className="bg-slate-50 border-slate-200">
-        <Info className="h-4 w-4 text-indigo-600" />
+        <Info className="h-4 w-4 text-teal-600" />
         <AlertTitle className="text-xs font-semibold text-slate-800">
-          Como funciona a junção e enriquecimento?
+          Como funciona a base única NetSales_v4?
         </AlertTitle>
         <AlertDescription className="text-xs text-slate-600 leading-relaxed mt-1">
-          Ao importar ou consolidar, a rotina lê todos os registros da <strong>RacNew</strong> (base
-          mestre). Para cada linha, busca o correspondente na <strong>NetSales</strong> utilizando a
-          chave composta quíntupla (Número SAP, Nº NFe, Data, Código do Cliente e Código do Item).
-          Da NetSales são adicionados exclusivamente os 12 campos complementares (sem duplicar dados
-          compartilhados). O <em>Grupo do Item</em> é vinculado automaticamente pelo código do item
-          na base de <strong>Produtos</strong>.
+          A <strong>NetSales_v4</strong> é a única fonte de vendas: cada linha do arquivo (XLSX/CSV)
+          já traz os dados fiscais, comerciais e de custo. A deduplicação usa a chave composta{' '}
+          <span className="font-mono text-[10px]">(documento, serial, data, cliente, item)</span> —
+          recarregar o mesmo arquivo não gera registros duplicados. Números no formato brasileiro
+          (ex.: <span className="font-mono text-[10px]">1.642,96</span>) e datas{' '}
+          <span className="font-mono text-[10px]">DD/MM/AAAA</span> são convertidos automaticamente.
+          Após a carga, o <em>Grupo do Item</em> é vinculado automaticamente pelo código do item na
+          base de <strong>Produtos</strong>, e o tipo de cliente e o canal pelos cadastros de{' '}
+          <strong>Tipos de Cliente</strong> e <strong>Canais x Clientes</strong>.
         </AlertDescription>
       </Alert>
     </div>
