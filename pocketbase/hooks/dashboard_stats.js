@@ -345,6 +345,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const sqlParts = []
     const sqlDimParts = []
     const sqlHistParts = []
+    const sqlGlobalRestrictedParts = [] // EXCLUSIVAMENTE os 5 filtros globais (Ciclo C)
+    const sqlGlobalRestrictedVendasParts = [] // EXCLUSIVAMENTE os 5 filtros globais para tabela vendas / clientesAtivos
     const sqlVendasParts = [] // Cláusulas compatíveis diretamente com as colunas da tabela vendas
 
     // Bloco de filtros "Canais":
@@ -586,15 +588,25 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       sqlDimParts.push(clause)
       sqlVendasParts.push(clause)
     }
-    if (Array.isArray(f.grupoItem) && f.grupoItem.length > 0) {
-      const sqlArr = f.grupoItem
+    // Filtro Global 1: Grupo do Item (f.grupoItem / f.grupo_item)
+    const rawGrupoItem = f.grupoItem || f.grupo_item
+    const grupoItemFilter = Array.isArray(rawGrupoItem)
+      ? rawGrupoItem
+      : rawGrupoItem
+        ? [rawGrupoItem]
+        : []
+    if (grupoItemFilter.length > 0 && !grupoItemFilter.includes('TODOS')) {
+      const sqlArr = grupoItemFilter
         .map((v) => "'" + sqlEsc(String(v).toUpperCase().trim()) + "'")
         .join(',')
       const clause = 'UPPER(TRIM(grupo_item)) IN (' + sqlArr + ')'
       sqlParts.push(clause)
       sqlDimParts.push(clause)
       sqlVendasParts.push(clause)
+      sqlGlobalRestrictedParts.push(clause)
+      sqlGlobalRestrictedVendasParts.push(clause)
     }
+
     if (Array.isArray(f.estado) && f.estado.length > 0) {
       const sqlArr = f.estado.map((v) => "'" + sqlEsc(v) + "'").join(',')
       const clause = 'estado IN (' + sqlArr + ')'
@@ -602,33 +614,55 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       sqlDimParts.push(clause)
       sqlVendasParts.push(clause)
     }
-    if (Array.isArray(f.utilizacao) && f.utilizacao.length > 0) {
-      const sqlArr = f.utilizacao.map((v) => "'" + sqlEsc(v) + "'").join(',')
+
+    // Filtro Global 2: Utilização (f.utilizacao)
+    const rawUtilizacao = f.utilizacao
+    const utilizacaoFilter = Array.isArray(rawUtilizacao)
+      ? rawUtilizacao
+      : rawUtilizacao
+        ? [rawUtilizacao]
+        : []
+    if (utilizacaoFilter.length > 0 && !utilizacaoFilter.includes('TODOS')) {
+      const sqlArr = utilizacaoFilter.map((v) => "'" + sqlEsc(v) + "'").join(',')
       const clause = 'utilizacao IN (' + sqlArr + ')'
       sqlParts.push(clause)
       sqlDimParts.push(clause)
       sqlVendasParts.push(clause)
+      sqlGlobalRestrictedParts.push(clause)
+      sqlGlobalRestrictedVendasParts.push(clause)
     }
-    if (Array.isArray(f.tipoDocumento) && f.tipoDocumento.length > 0) {
-      const sqlArr = f.tipoDocumento.map((v) => "'" + sqlEsc(v) + "'").join(',')
+
+    // Filtro Global 3: Tipo de Documento (f.tipoDocumento / f.tipo_documento)
+    const rawTipoDoc = f.tipoDocumento || f.tipo_documento
+    const tipoDocFilter = Array.isArray(rawTipoDoc) ? rawTipoDoc : rawTipoDoc ? [rawTipoDoc] : []
+    if (tipoDocFilter.length > 0 && !tipoDocFilter.includes('TODOS')) {
+      const sqlArr = tipoDocFilter.map((v) => "'" + sqlEsc(v) + "'").join(',')
       const clause = 'tipo_documento IN (' + sqlArr + ')'
       sqlParts.push(clause)
       sqlDimParts.push(clause)
       sqlVendasParts.push(clause)
+      sqlGlobalRestrictedParts.push(clause)
+      sqlGlobalRestrictedVendasParts.push(clause)
     }
-    if (f.tipoDevolucao) {
-      const td = sqlEsc(f.tipoDevolucao)
+
+    // Filtro Global 4: Tipo de Devolução (f.tipoDevolucao / f.tipo_devolucao)
+    const rawTipoDevolucao = f.tipoDevolucao || f.tipo_devolucao
+    if (rawTipoDevolucao) {
+      const td = sqlEsc(rawTipoDevolucao)
       const clause = "tipo_documento = '" + td + "'"
       sqlParts.push(clause)
       sqlDimParts.push(clause)
       sqlVendasParts.push(clause)
+      sqlGlobalRestrictedParts.push(clause)
+      sqlGlobalRestrictedVendasParts.push(clause)
     }
 
-    // Filtro Tipo de Cliente
-    const tipoClienteFilter = Array.isArray(f.tipoCliente)
-      ? f.tipoCliente
-      : f.tipoCliente
-        ? [f.tipoCliente]
+    // Filtro Global 5: Tipo de Cliente (f.tipoCliente / f.tipo_cliente)
+    const rawTipoCliente = f.tipoCliente || f.tipo_cliente
+    const tipoClienteFilter = Array.isArray(rawTipoCliente)
+      ? rawTipoCliente
+      : rawTipoCliente
+        ? [rawTipoCliente]
         : []
     let hasTipoCliente = false
     if (tipoClienteFilter.length > 0 && !tipoClienteFilter.includes('TODOS')) {
@@ -653,6 +687,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       if (tcConds.length > 0) {
         const tcClause = '(' + tcConds.join(' OR ') + ')'
         sqlVendasParts.push(tcClause)
+        sqlGlobalRestrictedParts.push(tcClause)
+        sqlGlobalRestrictedVendasParts.push(tcClause)
       }
     }
 
@@ -684,6 +720,12 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'
     const sqlWhereBase = sqlDimParts.length > 0 ? sqlDimParts.join(' AND ') : '1=1'
     const sqlWhereHistorical = sqlHistParts.length > 0 ? sqlHistParts.join(' AND ') : '1=1'
+    const sqlWhereGlobalRestricted =
+      sqlGlobalRestrictedParts.length > 0 ? sqlGlobalRestrictedParts.join(' AND ') : '1=1'
+    const sqlWhereGlobalRestrictedVendas =
+      sqlGlobalRestrictedVendasParts.length > 0
+        ? sqlGlobalRestrictedVendasParts.join(' AND ')
+        : '1=1'
     const sqlWhereVendas = sqlVendasParts.join(' AND ')
 
     // Helper de execução rápida
@@ -788,11 +830,13 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     const todosMesesJanela = ultimos6MesesAlvo.concat(mesesAnoAnterior6).concat(mesesAnoRetrasado6)
     const janelaInClause = todosMesesJanela.map((m) => "'" + m + "'").join(',')
 
+    // Ciclo C: vendasPorMes respeita EXCLUSIVAMENTE os 5 filtros globais (sqlWhereGlobalRestricted),
+    // ignorando vendedor/cliente, canal, base, período selecionado etc.
     const mesSql =
       "SELECT COALESCE(ano_mes,'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b, COALESCE(SUM(valor_liquido),0) AS c, " +
       'COALESCE(SUM(total_devolucao),0) AS d ' +
       'FROM resumo_vendas_mensal WHERE ' +
-      sqlWhereBase +
+      sqlWhereGlobalRestricted +
       ' AND ano_mes IN (' +
       janelaInClause +
       ') ' +
@@ -855,12 +899,12 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       })
     }
 
-    // 2.2) vendasPorAno — Mostra SEMPRE todos os anos da base (sqlWhereHistorical)
+    // 2.2) vendasPorAno — Mostra SEMPRE todos os anos da base respeitando SOMENTE os 5 filtros globais (Ciclo C)
     const anoSql =
       'SELECT CAST(ano AS TEXT) AS a, COALESCE(SUM(total_linha),0) AS b, ' +
       'COALESCE(SUM(total_devolucao),0) AS c ' +
       'FROM resumo_vendas_mensal WHERE ' +
-      sqlWhereHistorical +
+      sqlWhereGlobalRestricted +
       ' AND ano >= 2015 ' +
       'GROUP BY ano ORDER BY ano ASC'
     const anoRows = runAgg(anoSql)
@@ -1455,15 +1499,15 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     // ============================================================
 
     // 5.1) vendasEquipamentosHistorico — Tendência de Vendas de Equipamentos
-    // REGRA DE NEGÓCIO: Traz SEMPRE toda a base histórica (2015 em diante),
-    // agrupada por mês (yyyy-mm), independente dos filtros de período ativos.
-    // Respeita APENAS o filtro de seleção de base (sqlWhereHistorical).
+    // REGRA DE NEGÓCIO (Ciclo C): Traz SEMPRE toda a base histórica (2015 em diante),
+    // agrupada por mês (yyyy-mm), respeitando SOMENTE os 5 filtros globais (sqlWhereGlobalRestricted),
+    // e ignorando todos os demais filtros (período, canal, vendedor, base, etc).
     const vendasEquipamentosHistorico = []
     try {
       const equipSql =
         'SELECT ano_mes AS a, COALESCE(SUM(total_linha),0) AS b ' +
         'FROM resumo_vendas_mensal WHERE ' +
-        sqlWhereHistorical +
+        sqlWhereGlobalRestricted +
         " AND UPPER(TRIM(grupo_item)) = 'EQUIPAMENTOS' " +
         'AND ano >= 2015 ' +
         'GROUP BY ano_mes ORDER BY ano_mes ASC'
@@ -1482,15 +1526,15 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     }
 
     // 5.2) vendasInsumosHistorico — Histórico/Tendência de Insumos (Acumulado de Vendas — Insumos)
-    // REGRA DE NEGÓCIO: Traz SEMPRE toda a base histórica (2015 em diante),
+    // REGRA DE NEGÓCIO (Ciclo C): Traz SEMPRE toda a base histórica (2015 em diante),
     // agrupada por mês (yyyy-mm), dos grupos TINTAS, PEÇAS e ACESSÓRIOS.
-    // Respeita APENAS o filtro de seleção de base (sqlWhereHistorical).
+    // Respeita SOMENTE os 5 filtros globais (sqlWhereGlobalRestricted).
     const vendasInsumosHistorico = []
     try {
       const insumoSql =
         'SELECT ano_mes AS a, COALESCE(SUM(total_linha),0) AS b ' +
         'FROM resumo_vendas_mensal WHERE ' +
-        sqlWhereHistorical +
+        sqlWhereGlobalRestricted +
         " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
         'AND ano >= 2015 ' +
         'GROUP BY ano_mes ORDER BY ano_mes ASC'
@@ -1509,17 +1553,12 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     }
 
     // 5.3) clientesAtivosEquipamentos, clientesAtivosInsumos e segregados (Tintas, Acessórios, Peças)
-    // REGRA DE NEGÓCIO: Mostra SEMPRE os últimos 6 meses da base (terminando no último mês disponível, ex: Ago-2026),
-    // comparados com o mesmo mês do ano anterior, independente do filtro de período ativo.
-    // Respeita APENAS a seleção de base (sqlWhereHistorical).
-    //
-    // OTIMIZAÇÃO: as 5 séries usavam COUNT(DISTINCT codigo_cliente) GROUP BY ano_mes, que
-    // varre todos os pares (ano_mes, cliente) do resumo por categoria. Como cada linha do
-    // resumo_clientes_ativos JÁ É um par único (ano_mes, categoria, cliente), o COUNT
-    // DISTINCT vira um COUNT simples sobre um índice que já cobre o agrupamento
-    // (idx_rca_anomes_grp_cli criado na migration 1740900017). Para as séries derivadas de
-    // resumo_vendas_mensal (Tintas/Acessórios/Peças), o COUNT DISTINCT é substituído por
-    // COUNT(*) sobre o mesmo DISTINCT interno — mesmos valores, sem mudança de resultado.
+    // REGRA DE NEGÓCIO (Ciclo C): Mostra SEMPRE os últimos 6 meses da base (terminando no último mês disponível, ex: Ago-2026),
+    // comparados com o mesmo mês do ano anterior e retrasado, independente de período/canal/vendedor/base.
+    // Respeita EXCLUSIVAMENTE os 5 filtros globais:
+    // - Se não houver filtros globais específicos (sqlGlobalRestrictedParts vazio), lê da tabela de resumo_clientes_ativos ultra-rápida.
+    // - Se houver filtros globais ativos (tipo_documento, utilizacao, tipo_cliente, grupo_item, tipo_devolucao):
+    //   consulta `resumo_vendas_mensal` (ou `vendas` se tipo_cliente estiver ativo) aplicando sqlWhereGlobalRestricted.
     const clientesAtivosEquipamentos = []
     const clientesAtivosInsumos = []
     const clientesAtivosTintas = []
@@ -1542,54 +1581,6 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       const allMesesNeeded = mesesAlvoClientes.concat(mesesAnoAnterior).concat(mesesAnoRetrasado)
       const inMesesList = allMesesNeeded.map((m) => "'" + m + "'").join(',')
 
-      // Query resumo_clientes_ativos para EQUIPAMENTOS e INSUMOS
-      // OTIMIZAÇÃO: eram 2 varreduras (uma por categoria); agora 1 única varredura
-      // por (ano_mes, grupo_categoria) — cada linha é um par único
-      // (ano_mes, categoria, cliente), então COUNT(*) por grupo é o mesmo total.
-      const cliCatSql =
-        'SELECT ano_mes AS a, grupo_categoria AS b, COUNT(*) AS c ' +
-        'FROM resumo_clientes_ativos WHERE ' +
-        sqlWhereHistorical +
-        " AND grupo_categoria IN ('EQUIPAMENTOS', 'INSUMOS') " +
-        'AND ano_mes IN (' +
-        inMesesList +
-        ') GROUP BY ano_mes, grupo_categoria'
-      const cliCatRows = runAgg(cliCatSql)
-      const cliEquipMap = {}
-      const cliInsumosMap = {}
-      for (let i = 0; i < cliCatRows.length; i++) {
-        const ym = cliCatRows[i].a
-        const cnt = parseInt(cliCatRows[i].c, 10) || 0
-        if (String(cliCatRows[i].b) === 'EQUIPAMENTOS') cliEquipMap[ym] = cnt
-        else if (String(cliCatRows[i].b) === 'INSUMOS') cliInsumosMap[ym] = cnt
-      }
-
-      for (let i = 0; i < mesesAlvoClientes.length; i++) {
-        const m = mesesAlvoClientes[i]
-        const p = m.split('-')
-        const prevM = String(parseInt(p[0], 10) - 1) + '-' + p[1]
-        const prev2M = String(parseInt(p[0], 10) - 2) + '-' + p[1]
-        clientesAtivosEquipamentos.push({
-          mes: m,
-          clientes: cliEquipMap[m] || 0,
-          clientesAnoAnterior: cliEquipMap[prevM] || 0,
-          clientesAnoRetrasado: cliEquipMap[prev2M] || 0,
-        })
-      }
-
-      for (let i = 0; i < mesesAlvoClientes.length; i++) {
-        const m = mesesAlvoClientes[i]
-        const p = m.split('-')
-        const prevM = String(parseInt(p[0], 10) - 1) + '-' + p[1]
-        const prev2M = String(parseInt(p[0], 10) - 2) + '-' + p[1]
-        clientesAtivosInsumos.push({
-          mes: m,
-          clientes: cliInsumosMap[m] || 0,
-          clientesAnoAnterior: cliInsumosMap[prevM] || 0,
-          clientesAnoRetrasado: cliInsumosMap[prev2M] || 0,
-        })
-      }
-
       // Helper para montar série comparativa dos últimos 6 meses vs ano anterior vs ano retrasado (3 anos) a partir de mapa de contagens
       const buildSeriesFromMap = (mapData) => {
         const series = []
@@ -1608,63 +1599,190 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         return series
       }
 
-      // Query resumo_vendas_mensal para TINTAS
-      // (DISTINCT interno (ano_mes, cliente) + COUNT simples — mesmo valor do COUNT DISTINCT,
-      // evitando o COUNT DISTINCT externo por linha durante o agrupamento)
-      const cliTintasSql =
-        'SELECT ano_mes AS a, COUNT(*) AS b ' +
-        'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
-        sqlWhereHistorical +
-        " AND UPPER(TRIM(grupo_item)) = 'TINTAS' " +
-        "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
-        'AND ano_mes IN (' +
-        inMesesList +
-        ')) GROUP BY ano_mes'
-      const cliTintasRows = runAgg(cliTintasSql)
-      const cliTintasMap = {}
-      for (let i = 0; i < cliTintasRows.length; i++) {
-        cliTintasMap[cliTintasRows[i].a] = parseInt(cliTintasRows[i].b, 10) || 0
-      }
-      const sTintas = buildSeriesFromMap(cliTintasMap)
-      for (let i = 0; i < sTintas.length; i++) clientesAtivosTintas.push(sTintas[i])
+      // Verificação: se houver filtros globais ativos além de grupoItem, usamos resumo_vendas_mensal (ou vendas se tipo_cliente)
+      // para Equipamentos e Insumos, garantindo que tipo_documento, utilizacao e tipo_cliente reflitam em clientes ativos.
+      const hasGlobalFiltersActive = sqlGlobalRestrictedParts.length > 0
 
-      // Query resumo_vendas_mensal para ACESSORIOS
-      // (DISTINCT interno (ano_mes, cliente) + COUNT simples — mesmo valor do COUNT DISTINCT)
-      const cliAcesSql =
-        'SELECT ano_mes AS a, COUNT(*) AS b ' +
-        'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
-        sqlWhereHistorical +
-        " AND UPPER(TRIM(grupo_item)) IN ('ACESSÓRIOS', 'ACESSORIOS') " +
-        "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
-        'AND ano_mes IN (' +
-        inMesesList +
-        ')) GROUP BY ano_mes'
-      const cliAcesRows = runAgg(cliAcesSql)
-      const cliAcesMap = {}
-      for (let i = 0; i < cliAcesRows.length; i++) {
-        cliAcesMap[cliAcesRows[i].a] = parseInt(cliAcesRows[i].b, 10) || 0
-      }
-      const sAces = buildSeriesFromMap(cliAcesMap)
-      for (let i = 0; i < sAces.length; i++) clientesAtivosAcessorios.push(sAces[i])
+      const cliEquipMap = {}
+      const cliInsumosMap = {}
 
-      // Query resumo_vendas_mensal para PECAS
-      // (DISTINCT interno (ano_mes, cliente) + COUNT simples — mesmo valor do COUNT DISTINCT)
-      const cliPecasSql =
-        'SELECT ano_mes AS a, COUNT(*) AS b ' +
-        'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
-        sqlWhereHistorical +
-        " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS') " +
-        "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
-        'AND ano_mes IN (' +
-        inMesesList +
-        ')) GROUP BY ano_mes'
-      const cliPecasRows = runAgg(cliPecasSql)
-      const cliPecasMap = {}
-      for (let i = 0; i < cliPecasRows.length; i++) {
-        cliPecasMap[cliPecasRows[i].a] = parseInt(cliPecasRows[i].b, 10) || 0
+      if (!hasGlobalFiltersActive) {
+        // Caminho rápido pré-calculado: resumo_clientes_ativos
+        const cliCatSql =
+          'SELECT ano_mes AS a, grupo_categoria AS b, COUNT(*) AS c ' +
+          'FROM resumo_clientes_ativos WHERE ' +
+          "grupo_categoria IN ('EQUIPAMENTOS', 'INSUMOS') " +
+          'AND ano_mes IN (' +
+          inMesesList +
+          ') GROUP BY ano_mes, grupo_categoria'
+        const cliCatRows = runAgg(cliCatSql)
+        for (let i = 0; i < cliCatRows.length; i++) {
+          const ym = cliCatRows[i].a
+          const cnt = parseInt(cliCatRows[i].c, 10) || 0
+          if (String(cliCatRows[i].b) === 'EQUIPAMENTOS') cliEquipMap[ym] = cnt
+          else if (String(cliCatRows[i].b) === 'INSUMOS') cliInsumosMap[ym] = cnt
+        }
+      } else if (!hasTipoCliente) {
+        // Filtros globais presentes (tipo_documento, utilizacao, grupo_item, tipo_devolucao), sem tipo_cliente:
+        // resumo_vendas_mensal possui todas essas colunas!
+        const cliEquipSql =
+          'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+          'FROM resumo_vendas_mensal WHERE ' +
+          sqlWhereGlobalRestricted +
+          " AND UPPER(TRIM(grupo_item)) = 'EQUIPAMENTOS' " +
+          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+          'AND ano_mes IN (' +
+          inMesesList +
+          ') GROUP BY ano_mes'
+        const cliEquipRows = runAgg(cliEquipSql)
+        for (let i = 0; i < cliEquipRows.length; i++) {
+          cliEquipMap[cliEquipRows[i].a] = parseInt(cliEquipRows[i].b, 10) || 0
+        }
+
+        const cliInsSql =
+          'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+          'FROM resumo_vendas_mensal WHERE ' +
+          sqlWhereGlobalRestricted +
+          " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+          'AND ano_mes IN (' +
+          inMesesList +
+          ') GROUP BY ano_mes'
+        const cliInsRows = runAgg(cliInsSql)
+        for (let i = 0; i < cliInsRows.length; i++) {
+          cliInsumosMap[cliInsRows[i].a] = parseInt(cliInsRows[i].b, 10) || 0
+        }
+      } else {
+        // tipo_cliente ativo: consulta a tabela vendas bruta com os 5 filtros globais
+        // delimitando data_lancamento para a janela necessária (inMesesList)
+        const minMesYm = allMesesNeeded.sort()[0]
+        const cliEquipSql =
+          'SELECT substr(data_lancamento, 1, 7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+          'FROM vendas WHERE ' +
+          sqlWhereGlobalRestrictedVendas +
+          " AND UPPER(TRIM(grupo_item)) = 'EQUIPAMENTOS' " +
+          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+          "AND data_lancamento >= '" +
+          minMesYm +
+          "-01 00:00:00.000Z' " +
+          "(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS') " +
+          'GROUP BY substr(data_lancamento, 1, 7)'
+        const cliEquipRows = runAgg(cliEquipSql)
+        for (let i = 0; i < cliEquipRows.length; i++) {
+          cliEquipMap[cliEquipRows[i].a] = parseInt(cliEquipRows[i].b, 10) || 0
+        }
+
+        const cliInsSql =
+          'SELECT substr(data_lancamento, 1, 7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+          'FROM vendas WHERE ' +
+          sqlWhereGlobalRestrictedVendas +
+          " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+          "AND data_lancamento >= '" +
+          minMesYm +
+          "-01 00:00:00.000Z' " +
+          "(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS') " +
+          'GROUP BY substr(data_lancamento, 1, 7)'
+        const cliInsRows = runAgg(cliInsSql)
+        for (let i = 0; i < cliInsRows.length; i++) {
+          cliInsumosMap[cliInsRows[i].a] = parseInt(cliInsRows[i].b, 10) || 0
+        }
       }
-      const sPecas = buildSeriesFromMap(cliPecasMap)
-      for (let i = 0; i < sPecas.length; i++) clientesAtivosPecas.push(sPecas[i])
+
+      const sEquip = buildSeriesFromMap(cliEquipMap)
+      for (let i = 0; i < sEquip.length; i++) clientesAtivosEquipamentos.push(sEquip[i])
+
+      const sIns = buildSeriesFromMap(cliInsumosMap)
+      for (let i = 0; i < sIns.length; i++) clientesAtivosInsumos.push(sIns[i])
+
+      // Queries para as séries segregadas de Tintas, Acessórios e Peças
+      // Se tipoCliente estiver ativo, consulta vendas; se não, consulta resumo_vendas_mensal
+      if (!hasTipoCliente) {
+        // Query resumo_vendas_mensal para TINTAS
+        const cliTintasSql =
+          'SELECT ano_mes AS a, COUNT(*) AS b ' +
+          'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
+          sqlWhereGlobalRestricted +
+          " AND UPPER(TRIM(grupo_item)) = 'TINTAS' " +
+          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+          'AND ano_mes IN (' +
+          inMesesList +
+          ')) GROUP BY ano_mes'
+        const cliTintasRows = runAgg(cliTintasSql)
+        const cliTintasMap = {}
+        for (let i = 0; i < cliTintasRows.length; i++) {
+          cliTintasMap[cliTintasRows[i].a] = parseInt(cliTintasRows[i].b, 10) || 0
+        }
+        const sTintas = buildSeriesFromMap(cliTintasMap)
+        for (let i = 0; i < sTintas.length; i++) clientesAtivosTintas.push(sTintas[i])
+
+        // Query resumo_vendas_mensal para ACESSORIOS
+        const cliAcesSql =
+          'SELECT ano_mes AS a, COUNT(*) AS b ' +
+          'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
+          sqlWhereGlobalRestricted +
+          " AND UPPER(TRIM(grupo_item)) IN ('ACESSÓRIOS', 'ACESSORIOS') " +
+          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+          'AND ano_mes IN (' +
+          inMesesList +
+          ')) GROUP BY ano_mes'
+        const cliAcesRows = runAgg(cliAcesSql)
+        const cliAcesMap = {}
+        for (let i = 0; i < cliAcesRows.length; i++) {
+          cliAcesMap[cliAcesRows[i].a] = parseInt(cliAcesRows[i].b, 10) || 0
+        }
+        const sAces = buildSeriesFromMap(cliAcesMap)
+        for (let i = 0; i < sAces.length; i++) clientesAtivosAcessorios.push(sAces[i])
+
+        // Query resumo_vendas_mensal para PECAS
+        const cliPecasSql =
+          'SELECT ano_mes AS a, COUNT(*) AS b ' +
+          'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
+          sqlWhereGlobalRestricted +
+          " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS') " +
+          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+          'AND ano_mes IN (' +
+          inMesesList +
+          ')) GROUP BY ano_mes'
+        const cliPecasRows = runAgg(cliPecasSql)
+        const cliPecasMap = {}
+        for (let i = 0; i < cliPecasRows.length; i++) {
+          cliPecasMap[cliPecasRows[i].a] = parseInt(cliPecasRows[i].b, 10) || 0
+        }
+        const sPecas = buildSeriesFromMap(cliPecasMap)
+        for (let i = 0; i < sPecas.length; i++) clientesAtivosPecas.push(sPecas[i])
+      } else {
+        const minMesYm = allMesesNeeded.sort()[0]
+        const runSegregadoVendas = (filtroGrupo) => {
+          const sql =
+            'SELECT substr(data_lancamento, 1, 7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+            'FROM vendas WHERE ' +
+            sqlWhereGlobalRestrictedVendas +
+            ' AND ' +
+            filtroGrupo +
+            " AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+            "AND data_lancamento >= '" +
+            minMesYm +
+            "-01 00:00:00.000Z' " +
+            "AND (UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS') " +
+            'GROUP BY substr(data_lancamento, 1, 7)'
+          const rows = runAgg(sql)
+          const map = {}
+          for (let i = 0; i < rows.length; i++) {
+            map[rows[i].a] = parseInt(rows[i].b, 10) || 0
+          }
+          return buildSeriesFromMap(map)
+        }
+
+        const sTintas = runSegregadoVendas("UPPER(TRIM(grupo_item)) = 'TINTAS'")
+        for (let i = 0; i < sTintas.length; i++) clientesAtivosTintas.push(sTintas[i])
+
+        const sAces = runSegregadoVendas("UPPER(TRIM(grupo_item)) IN ('ACESSÓRIOS', 'ACESSORIOS')")
+        for (let i = 0; i < sAces.length; i++) clientesAtivosAcessorios.push(sAces[i])
+
+        const sPecas = runSegregadoVendas("UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS')")
+        for (let i = 0; i < sPecas.length; i++) clientesAtivosPecas.push(sPecas[i])
+      }
     } catch (err) {
       console.error('dashboard_stats: clientesAtivos queries falharam:', err)
     }
