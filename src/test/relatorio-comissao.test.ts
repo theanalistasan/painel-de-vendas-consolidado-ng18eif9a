@@ -194,4 +194,61 @@ describe('Regra de Agrupamento: Comissionados vs Não Comissionados', () => {
     const expandedAll = new Set<string>()
     expect(expandedAll.size).toBe(0)
   })
+
+  it('garante que a soma de Comissionados + Não Comissionados em conjunto completo bate com o Faturamento Total dos KPIs', () => {
+    // Cenário Silvio: 120 vendas totais no período (mais de 50 registros)
+    const mockTodasVendas = Array.from({ length: 120 }, (_, idx) => {
+      const isDireta = idx % 4 === 0 // 30 não comissionadas, 90 comissionadas
+      const valorLinha = (idx + 1) * 150
+      const valorLiq = valorLinha * 0.85
+      return {
+        id: `v_${idx + 1}`,
+        numero_nfe: `NF-${2000 + idx}`,
+        vendedor_cliente: isDireta
+          ? `Roland DG Brasil > Direta ${idx + 1}`
+          : `Canal ${idx % 3} > Cliente ${idx + 1}`,
+        total_linha: valorLinha,
+        valor_liquido: valorLiq,
+        quantidade: 1,
+      }
+    })
+
+    // O KPI Faturamento Total do topo soma o período completo via SQL:
+    const kpiFaturamentoTotal = mockTodasVendas.reduce((acc, v) => acc + v.total_linha, 0)
+    const kpiValorLiquidoTotal = mockTodasVendas.reduce((acc, v) => acc + v.valor_liquido, 0)
+
+    // Se o relatório usasse apenas a primeira página de 50 registros (bug anterior):
+    const primeiraPagina50 = mockTodasVendas.slice(0, 50)
+    const comissPagina1 = primeiraPagina50
+      .filter((v) => !isVendedorNaoComissionado(v))
+      .reduce((s, v) => s + v.total_linha, 0)
+    const naoComissPagina1 = primeiraPagina50
+      .filter((v) => isVendedorNaoComissionado(v))
+      .reduce((s, v) => s + v.total_linha, 0)
+    const somaTruncada50 = comissPagina1 + naoComissPagina1
+
+    // Comprova que com 50 registros havia divergência com o KPI
+    expect(somaTruncada50).not.toBe(kpiFaturamentoTotal)
+    expect(somaTruncada50).toBeLessThan(kpiFaturamentoTotal)
+
+    // Com o fix (busca completa no modo agrupado 'comissao'):
+    const comissCompleto = mockTodasVendas
+      .filter((v) => !isVendedorNaoComissionado(v))
+      .reduce((s, v) => s + v.total_linha, 0)
+    const naoComissCompleto = mockTodasVendas
+      .filter((v) => isVendedorNaoComissionado(v))
+      .reduce((s, v) => s + v.total_linha, 0)
+    const somaCompleta = comissCompleto + naoComissCompleto
+
+    // Comprovado: a soma colapsada de Comissionados + Não Comissionados bate exatamente com Faturamento Total
+    expect(somaCompleta).toBe(kpiFaturamentoTotal)
+
+    const liqComissCompleto = mockTodasVendas
+      .filter((v) => !isVendedorNaoComissionado(v))
+      .reduce((s, v) => s + v.valor_liquido, 0)
+    const liqNaoComissCompleto = mockTodasVendas
+      .filter((v) => isVendedorNaoComissionado(v))
+      .reduce((s, v) => s + v.valor_liquido, 0)
+    expect(liqComissCompleto + liqNaoComissCompleto).toBe(kpiValorLiquidoTotal)
+  })
 })

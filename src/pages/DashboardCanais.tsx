@@ -282,7 +282,11 @@ export default function DashboardCanais() {
     }
   }, [chartVendasPorGrupoItemMensal])
 
-  // Relatório Consolidado de Vendas (paginado via fetchVendasList)
+  // Relatório Consolidado de Vendas:
+  // - Modo 'none': paginado via fetchVendasList (50 itens por página).
+  // - Modos agrupados ('comissao' ou 'jp_class'): busca o conjunto COMPLETO via fetchVendasExport
+  //   para que os subtotais acumulados dos grupos colapsados somem todas as vendas do período
+  //   e coincidam exatamente com o Faturamento Total / Valor Líquido dos KPIs do topo.
   const [relatorioVendas, setRelatorioVendas] = useState<VendaConsolidada[]>([])
   const [relatorioTotal, setRelatorioTotal] = useState(0)
   const [relatorioPage, setRelatorioPage] = useState(1)
@@ -301,18 +305,37 @@ export default function DashboardCanais() {
     setRelatorioLoading(true)
     setRelatorioError(null)
 
+    const isGroupedMode = relatorioGroupByMode === 'comissao' || relatorioGroupByMode === 'jp_class'
+
     try {
-      const res: VendasListResult = await fetchVendasList({
-        page: relatorioPage,
-        perPage: relatorioLimit,
-        sort: `${relatorioSortDir === 'desc' ? '-' : ''}${relatorioSortField}`,
-        filters: filters as unknown as Record<string, unknown>,
-      })
+      if (isGroupedMode) {
+        // Busca completa do período para cálculo exato de subtotais nos grupos colapsados
+        const res = await fetchVendasExport({
+          sort: `${relatorioSortDir === 'desc' ? '-' : ''}${relatorioSortField}`,
+          sortField: relatorioSortField,
+          sortDirection: relatorioSortDir,
+          filters: filters as unknown as Record<string, unknown>,
+        })
 
-      if (seq !== relatorioRequestSeqRef.current) return
+        if (seq !== relatorioRequestSeqRef.current) return
 
-      setRelatorioVendas(res.items || [])
-      setRelatorioTotal(res.totalItems || 0)
+        const items = res.items || []
+        setRelatorioVendas(items)
+        setRelatorioTotal(res.totalItems ?? items.length)
+      } else {
+        // Modo flat (não agrupado): paginação server-side padrão de 50 registros
+        const res: VendasListResult = await fetchVendasList({
+          page: relatorioPage,
+          perPage: relatorioLimit,
+          sort: `${relatorioSortDir === 'desc' ? '-' : ''}${relatorioSortField}`,
+          filters: filters as unknown as Record<string, unknown>,
+        })
+
+        if (seq !== relatorioRequestSeqRef.current) return
+
+        setRelatorioVendas(res.items || [])
+        setRelatorioTotal(res.totalItems || 0)
+      }
     } catch (err: unknown) {
       if (seq !== relatorioRequestSeqRef.current) return
       console.error('[DashboardCanais:loadRelatorioVendas] Erro:', err)
@@ -326,15 +349,22 @@ export default function DashboardCanais() {
     }
   }
 
-  // Recarrega relatório quando filtros, página, limite ou ordenação mudam
+  // Recarrega relatório quando filtros, modo de agrupamento, página, limite ou ordenação mudam
   useEffect(() => {
     loadRelatorioVendas()
-  }, [filters, relatorioPage, relatorioLimit, relatorioSortField, relatorioSortDir])
+  }, [
+    filters,
+    relatorioGroupByMode,
+    relatorioPage,
+    relatorioLimit,
+    relatorioSortField,
+    relatorioSortDir,
+  ])
 
-  // Resetar para a primeira página quando os filtros mudam
+  // Resetar para a primeira página quando os filtros ou o modo de agrupamento mudam
   useEffect(() => {
     setRelatorioPage(1)
-  }, [filters])
+  }, [filters, relatorioGroupByMode])
 
   const handleRelatorioSort = (field: string) => {
     if (relatorioSortField === field) {
