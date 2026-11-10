@@ -98,6 +98,26 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
         )
         .execute()
     } catch (_) {}
+    // O join real usa UPPER(TRIM(tc.codigo_pn)) = UPPER(TRIM(n.codigo_cliente)):
+    // índice de coluna simples não é usado pelo SQLite aqui — só o de expressão é.
+    try {
+      $app
+        .db()
+        .newQuery(
+          'CREATE INDEX IF NOT EXISTS idx_tipos_cliente_codigo_pn_norm ON tipos_cliente (UPPER(TRIM(codigo_pn)));',
+        )
+        .execute()
+    } catch (_) {}
+    // Chaves do filtro de roteamento fora-da-janela em vendas_historico
+    // (findRecordsByFilter por numero_sap/numero_nfe/codigo_item/codigo_cliente)
+    try {
+      $app
+        .db()
+        .newQuery(
+          'CREATE INDEX IF NOT EXISTS idx_vh_routing_keys ON vendas_historico (numero_sap, numero_nfe, codigo_item, codigo_cliente);',
+        )
+        .execute()
+    } catch (_) {}
 
     $app
       .db()
