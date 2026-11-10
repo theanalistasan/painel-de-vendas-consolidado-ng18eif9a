@@ -39,7 +39,48 @@ describe('Regra de Agrupamento: Comissionados vs Não Comissionados', () => {
     ).toBe(true)
   })
 
-  it('classifica como Comissionado quando o vendedor é uma revenda externa ou outro parceiro', () => {
+  it('classifica como Não Comissionado quando há autofaturamento (Revenda == Comprador)', () => {
+    // Caso DIAMANTE > DIAMANTE citado textualmente pelo usuário
+    expect(
+      isVendedorNaoComissionado({
+        vendedor_cliente: 'DIAMANTE COMERCIO DE TINTAS LTDA > DIAMANTE COMERCIO DE TINTAS LTDA',
+      }),
+    ).toBe(true)
+
+    // Autofaturamento com espaços extras e case misto
+    expect(
+      isVendedorNaoComissionado({
+        vendedor_cliente: '  Diamante Comercio de Tintas Ltda > diamante comercio de tintas ltda  ',
+      }),
+    ).toBe(true)
+
+    // Autofaturamento por nome_vendedor == nome_cliente
+    expect(
+      isVendedorNaoComissionado({
+        nome_vendedor: 'IMPAR COMERCIO E SERVICOS DE COMUNICACAO VISUAL LTDA',
+        nome_cliente: 'IMPAR COMERCIO E SERVICOS DE COMUNICACAO VISUAL LTDA',
+      }),
+    ).toBe(true)
+
+    // Autofaturamento seguro por código de cliente revenda == código de cliente comprador
+    expect(
+      isVendedorNaoComissionado({
+        vendedor_cliente: 'DIAMANTE TINTAS > CASA DIAMANTE MATRIZ',
+        codigo_cliente_revenda: 'C08484',
+        codigo_cliente: 'C08484',
+      }),
+    ).toBe(true)
+
+    // Flag booleana explícita vinda do backend
+    expect(
+      isVendedorNaoComissionado({
+        vendedor_cliente: 'Outra Revenda > Outro Cliente',
+        nao_comissionado: true,
+      }),
+    ).toBe(true)
+  })
+
+  it('classifica como Comissionado quando o vendedor é uma revenda externa ou outro parceiro vendendo para terceiro', () => {
     expect(
       isVendedorNaoComissionado({
         vendedor_cliente: 'MARCO ANTONIO COLPI EIRELI > ADENILL SUPRIMENTOS',
@@ -55,6 +96,15 @@ describe('Regra de Agrupamento: Comissionados vs Não Comissionados', () => {
     expect(
       isVendedorNaoComissionado({
         vendedor_cliente: 'LP COMERCIO DE PRODUTOS SERIGRAFICOS LTDA > UNITINTAS',
+      }),
+    ).toBe(false)
+
+    // Revenda diferente do cliente, códigos diferentes
+    expect(
+      isVendedorNaoComissionado({
+        vendedor_cliente: 'DIAMANTE COMERCIO DE TINTAS LTDA > GRAFICA MODELO LTDA',
+        codigo_cliente_revenda: 'C08457',
+        codigo_cliente: 'C01234',
       }),
     ).toBe(false)
   })

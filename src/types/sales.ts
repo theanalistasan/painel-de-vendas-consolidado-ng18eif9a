@@ -164,6 +164,8 @@ export interface VendaConsolidada extends RecordModel {
   tem_racnew?: boolean
   tem_netsales?: boolean
   data_carga: string
+  codigo_cliente_revenda?: string
+  nao_comissionado?: boolean
 }
 
 export interface FilterState {
