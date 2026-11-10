@@ -3,19 +3,12 @@
 // Endpoint: POST /backend/v1/vendas/consolidar/step
 // Endpoint: POST /backend/v1/vendas/reconstruir-resumos
 //
-// Consolida a coleção `vendas` a partir de RacNew (base mestra) enriquecida
-// com os 12 campos exclusivos da NetSales e o grupo_item da Produtos.
+// FONTE ÚNICA (NetSales_v4): consolida a coleção `vendas` a partir de
+// `netsales` (staging da carga NetSales_v4), com grupo_item da Produtos
+// (join por codigo_item), tipos de cliente (join codigo_pn = codigo_cliente)
+// e vendedor via vendedor_revenda. Não existe mais join RacNew ↔ NetSales.
 //
-// Inclui os marcadores booleanos:
-//   tem_racnew = 1 (já que r é racnew)
-//   tem_netsales = 1 se houve match com netsales, 0 se não
-//
-// Chave de join RacNew -> NetSales:
-//   racnew.numero_sap   = netsales.chave_documento
-//   racnew.numero_nfe   = netsales.serial
-//   racnew.data_lancamento = netsales.docdate
-//   racnew.codigo_cliente = netsales.codigo_cliente
-//   racnew.codigo_item   = netsales.codigo_item
+// Marcadores: tem_racnew = 0 (RacNew deixou de existir); tem_netsales = 1.
 //
 // ARQUITETURA RESILIENTE COM EXECUÇÃO SEGURA E PROGRESSO PERSISTIDO:
 // 1. Tabela vendas_staging:
@@ -297,12 +290,12 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
     // Limpa staging para nova consolidação (vendas original fica intacta!)
     $app.db().newQuery('DELETE FROM vendas_staging').execute()
 
-    // Contagem de RacNew elegível
+    // Contagem de NetSales_v4 elegível (fonte única — não existe mais RacNew)
     const totalRacnewRows = arrayOf(new DynamicModel({ total: '' }))
     $app
       .db()
       .newQuery(
-        "SELECT COUNT(*) AS total FROM racnew WHERE UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'",
+        "SELECT COUNT(*) AS total FROM netsales WHERE UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'",
       )
       .all(totalRacnewRows)
 
@@ -316,7 +309,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
         total_lotes: 0,
         registros_processados: 0,
         total_registros: 0,
-        mensagem: 'Nenhum registro encontrado em RacNew.',
+        mensagem: 'Nenhum registro encontrado em NetSales_v4 (netsales).',
         data_carga: nowIso,
         finished_at: nowIso,
       })
@@ -326,7 +319,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
         started: true,
         total_consolidado: 0,
         data_carga: nowIso,
-        message: 'Nenhum registro encontrado na base RacNew para consolidar.',
+        message: 'Nenhum registro encontrado na base NetSales_v4 (netsales) para consolidar.',
         status: getStatus(),
       })
     }
@@ -807,48 +800,51 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
     })
 
     // Seleciona os registros consolidados deste lote
+    // FONTE ÚNICA NetSales_v4: n = netsales (carga v4); p = produtos (grupo do
+    // item por codigo_item); tc = tipos_cliente (tipo do cliente por codigo_pn).
+    // Vendedor: coluna "Revenda" da planilha; quando vazia (venda direta),
+    // cai para o próprio cliente -> regra de Não Comissionado (vendedor = cliente).
     const batchSelectSql =
       'SELECT ' +
       "  ('r' || substr(hex(randomblob(7)), 1, 14)) AS id, " +
-      '  r.tipo_documento, r.nf_entrega_futura, r.numero_sap, r.numero_nfe, ' +
-      '  r.data_lancamento, r.ultima_data_vencimento, r.docto_origem_destino, ' +
-      '  r.data_origem_destino, r.condicao_pagamento, r.codigo_cliente, ' +
-      '  r.nome_cliente, r.numero_linha, r.codigo_item, r.descricao_item, ' +
-      '  COALESCE(r.quantidade, 0.0) AS quantidade, COALESCE(r.qty_kg_lt, 0.0) AS qty_kg_lt, COALESCE(r.preco_item, 0.0) AS preco_item, ' +
-      '  COALESCE(r.desconto_linha, 0.0) AS desconto_linha, COALESCE(r.icms, 0.0) AS icms, COALESCE(r.pis, 0.0) AS pis, ' +
-      '  COALESCE(r.cofins, 0.0) AS cofins, COALESCE(r.ipi, 0.0) AS ipi, COALESCE(r.icms_partilha, 0.0) AS icms_partilha, ' +
-      '  COALESCE(r.total_linha, 0.0) AS total_linha, r.utilizacao, ' +
-      '  r.nome_vendedor, COALESCE(r.custo_item, 0.0) AS custo_item, r.nome_filial, r.conta, ' +
-      '  r.estado, r.cidade, ' +
+      "  COALESCE(NULLIF(TRIM(n.tipo), ''), 'NF') AS tipo_documento, " +
+      "  '' AS nf_entrega_futura, " +
+      '  n.chave_documento AS numero_sap, n.serial AS numero_nfe, ' +
+      '  n.docdate AS data_lancamento, ' +
+      "  '' AS ultima_data_vencimento, '' AS docto_origem_destino, '' AS data_origem_destino, " +
+      "  '' AS condicao_pagamento, n.codigo_cliente, n.nome_cliente, " +
+      "  0.0 AS numero_linha, n.codigo_item, COALESCE(n.descrip, '') AS descricao_item, " +
+      '  COALESCE(n.quantidade, 0.0) AS quantidade, 0.0 AS qty_kg_lt, 0.0 AS preco_item, ' +
+      '  0.0 AS desconto_linha, 0.0 AS icms, 0.0 AS pis, ' +
+      '  0.0 AS cofins, 0.0 AS ipi, 0.0 AS icms_partilha, ' +
+      "  COALESCE(n.valor_mercadoria, 0.0) AS total_linha, COALESCE(n.usage, '') AS utilizacao, " +
+      "  COALESCE(NULLIF(TRIM(n.revenda), ''), n.nome_cliente) AS nome_vendedor, " +
+      '  0.0 AS custo_item, ' +
+      "  '' AS nome_filial, '' AS conta, " +
+      "  COALESCE(n.estado, '') AS estado, COALESCE(n.municipio, '') AS cidade, " +
       "  COALESCE(n.grupo_cliente, '') AS grupo_cliente, COALESCE(n.mercado, '') AS mercado, " +
       "  COALESCE(n.usuario_emissor, '') AS usuario_emissor_pedido, COALESCE(n.itms_grp_nam, '') AS itms_grp_nam, " +
       "  COALESCE(n.numero_documento, '') AS numero_documento_netsales, COALESCE(n.preco_unitario, 0.0) AS preco_unitario, " +
       '  COALESCE(n.total_nf_sem_frete, 0.0) AS total_nf_sem_frete, COALESCE(n.total_nf_novo, 0.0) AS total_nf_novo, ' +
       '  COALESCE(n.valor_liquido, 0.0) AS valor_liquido, COALESCE(n.custo_total, 0.0) AS custo_total, ' +
       "  COALESCE(n.classificacao, '') AS classificacao, COALESCE(n.vendedor_revenda, '') AS vendedor_revenda, " +
-      "  COALESCE(NULLIF(p.grupo_item, ''), 'Não Categorizado') AS grupo_item, " +
-      "  (r.nome_vendedor || ' > ' || r.nome_cliente) AS vendedor_cliente, " +
+      "  COALESCE(NULLIF(p.grupo_item, ''), NULLIF(n.itms_grp_nam, ''), 'Não Categorizado') AS grupo_item, " +
+      "  (COALESCE(NULLIF(TRIM(n.revenda), ''), n.nome_cliente) || ' > ' || n.nome_cliente) AS vendedor_cliente, " +
       "  'Consolidado' AS origem, " +
-      "  1 AS tem_racnew, (CASE WHEN n.chave_documento IS NOT NULL AND n.chave_documento != '' THEN 1 ELSE 0 END) AS tem_netsales, " +
-      "  COALESCE(NULLIF(tc.status_cadastro, ''), NULLIF(r.status_cadastro, ''), NULLIF(n.status_cadastro, ''), '') AS status_cadastro, " +
-      "  COALESCE(NULLIF(tc.tipo_pn, ''), NULLIF(r.tipo_pn, ''), NULLIF(n.tipo_pn, ''), '') AS tipo_pn, " +
-      "  COALESCE(NULLIF(tc.tipo_cliente, ''), NULLIF(r.tipo_cliente, ''), NULLIF(n.tipo_cliente, ''), '') AS tipo_cliente " +
+      '  0 AS tem_racnew, 1 AS tem_netsales, ' +
+      "  COALESCE(NULLIF(tc.status_cadastro, ''), NULLIF(n.status_cadastro, ''), '') AS status_cadastro, " +
+      "  COALESCE(NULLIF(tc.tipo_pn, ''), NULLIF(n.tipo_pn, ''), '') AS tipo_pn, " +
+      "  COALESCE(NULLIF(tc.tipo_cliente, ''), NULLIF(n.tipo_cliente, ''), '') AS tipo_cliente " +
       'FROM (' +
-      '  SELECT * FROM racnew ' +
+      '  SELECT * FROM netsales ' +
       "  WHERE UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS' " +
       '  ORDER BY id ASC ' +
       '  LIMIT {:limit} OFFSET {:offset}' +
-      ') r ' +
-      'LEFT JOIN netsales n ' +
-      '  ON n.chave_documento = r.numero_sap ' +
-      '  AND n.serial = r.numero_nfe ' +
-      '  AND n.docdate = r.data_lancamento ' +
-      '  AND n.codigo_cliente = r.codigo_cliente ' +
-      '  AND n.codigo_item = r.codigo_item ' +
+      ') n ' +
       'LEFT JOIN produtos p ' +
-      '  ON p.codigo_item = r.codigo_item ' +
+      '  ON p.codigo_item = n.codigo_item ' +
       'LEFT JOIN tipos_cliente tc ' +
-      '  ON UPPER(TRIM(tc.codigo_pn)) = UPPER(TRIM(r.codigo_cliente))'
+      '  ON UPPER(TRIM(tc.codigo_pn)) = UPPER(TRIM(n.codigo_cliente))'
 
     try {
       const calculatedRows = arrayOf(
