@@ -206,11 +206,16 @@ routerAdd(
         }
         if (hasInsideFilter) {
           const list = insideFilter
-            .map((ins) => "'" + sqlEsc(String(ins).trim().toUpperCase()) + "'")
+            .map((i) => "'" + sqlEsc(String(i).trim().toUpperCase()) + "'")
             .join(',')
-          ccWhere.push("UPPER(TRIM(COALESCE(inside, ''))) IN (" + list + ')')
+          ccWhere.push(
+            "(UPPER(TRIM(COALESCE(inside, ''))) IN (" +
+              list +
+              ") OR UPPER(TRIM(COALESCE(responsavel, ''))) IN (" +
+              list +
+              '))',
+          )
         }
-
         const ccQuery =
           'SELECT DISTINCT codigo_cliente AS cc, nome_cliente AS nc FROM canais_clientes WHERE ' +
           ccWhere.join(' AND ')
@@ -657,11 +662,16 @@ routerAdd(
         }
         if (hasInsideFilter) {
           const list = insideFilter
-            .map((ins) => "'" + sqlEsc(String(ins).trim().toUpperCase()) + "'")
+            .map((i) => "'" + sqlEsc(String(i).trim().toUpperCase()) + "'")
             .join(',')
-          ccWhere.push("UPPER(TRIM(COALESCE(inside, ''))) IN (" + list + ')')
+          ccWhere.push(
+            "(UPPER(TRIM(COALESCE(inside, ''))) IN (" +
+              list +
+              ") OR UPPER(TRIM(COALESCE(responsavel, ''))) IN (" +
+              list +
+              '))',
+          )
         }
-
         const ccQuery =
           'SELECT DISTINCT codigo_cliente AS cc, nome_cliente AS nc FROM canais_clientes WHERE ' +
           ccWhere.join(' AND ')

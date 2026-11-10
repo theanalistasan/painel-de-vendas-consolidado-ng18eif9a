@@ -408,7 +408,13 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           const insideSqlList = insideFilter
             .map((ins) => "'" + sqlEsc(String(ins).trim().toUpperCase()) + "'")
             .join(',')
-          ccWhereClauses.push("UPPER(TRIM(COALESCE(inside, ''))) IN (" + insideSqlList + ')')
+          ccWhereClauses.push(
+            "(UPPER(TRIM(COALESCE(inside, ''))) IN (" +
+              insideSqlList +
+              ") OR UPPER(TRIM(COALESCE(responsavel, ''))) IN (" +
+              insideSqlList +
+              '))',
+          )
         }
 
         const ccQuerySql =
@@ -1429,29 +1435,37 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
     })
 
     // Opções deduplicadas e normalizadas de Inside (apenas registros eh_canal = 1) — cache 30 min
+    // Fallback: combina valores preenchidos tanto em inside quanto em responsavel
     const insideOptions = cachedOptions('inside', () => {
       const out = []
       try {
         const insideRows = arrayOf(
           new DynamicModel({
             inside_val: '',
+            resp_val: '',
           }),
         )
         $app
           .db()
           .newQuery(
-            "SELECT DISTINCT UPPER(TRIM(inside)) AS inside_val FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND inside IS NOT NULL AND TRIM(inside) != '' ORDER BY 1 ASC",
+            "SELECT DISTINCT UPPER(TRIM(COALESCE(inside, ''))) AS inside_val, UPPER(TRIM(COALESCE(responsavel, ''))) AS resp_val FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND ((inside IS NOT NULL AND TRIM(inside) != '' AND TRIM(inside) != '-') OR (responsavel IS NOT NULL AND TRIM(responsavel) != '' AND TRIM(responsavel) != '-' AND LOWER(TRIM(responsavel)) != 'null'))",
           )
           .all(insideRows)
 
         const insideSet = new Set()
         for (let i = 0; i < insideRows.length; i++) {
           const ins = (insideRows[i].inside_val || '').trim()
-          if (ins && !insideSet.has(ins)) {
+          const resp = (insideRows[i].resp_val || '').trim()
+          if (ins && ins !== '-' && !insideSet.has(ins)) {
             insideSet.add(ins)
             out.push(ins)
           }
+          if (resp && resp !== '-' && resp !== 'NULL' && !insideSet.has(resp)) {
+            insideSet.add(resp)
+            out.push(resp)
+          }
         }
+        out.sort((a, b) => a.localeCompare(b))
       } catch (insideOptErr) {
         console.warn('dashboard_stats: consulta de inside warning:', insideOptErr)
       }

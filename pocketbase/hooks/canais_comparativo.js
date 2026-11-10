@@ -235,7 +235,13 @@ routerAdd('POST', '/backend/v1/canais/comparativo-mes', function (e) {
             return "'" + sqlEsc(String(ins).trim().toUpperCase()) + "'"
           })
           .join(',')
-        ccWhereClauses.push("UPPER(TRIM(COALESCE(inside, ''))) IN (" + insideSqlList + ')')
+        var insCond =
+          "(UPPER(TRIM(COALESCE(inside, ''))) IN (" +
+          insideSqlList +
+          ") OR UPPER(TRIM(COALESCE(responsavel, ''))) IN (" +
+          insideSqlList +
+          '))'
+        ccWhereClauses.push(insCond)
       }
 
       var ccQuerySql =

@@ -163,7 +163,13 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
           const insideSqlList = insideFilter
             .map((ins) => "'" + sqlEsc(String(ins).trim().toUpperCase()) + "'")
             .join(',')
-          ccWhereClauses.push("UPPER(TRIM(COALESCE(inside, ''))) IN (" + insideSqlList + ')')
+          ccWhereClauses.push(
+            "(UPPER(TRIM(COALESCE(inside, ''))) IN (" +
+              insideSqlList +
+              ") OR UPPER(TRIM(COALESCE(responsavel, ''))) IN (" +
+              insideSqlList +
+              '))',
+          )
         }
 
         const ccQuerySql =

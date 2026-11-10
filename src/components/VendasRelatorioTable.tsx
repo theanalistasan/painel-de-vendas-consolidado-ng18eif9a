@@ -936,7 +936,7 @@ export function VendasRelatorioTable({
             </p>
           </div>
         ) : (
-          <div className="w-full min-w-0 max-w-full overflow-x-auto relative custom-scrollbar">
+          <div className="w-full min-w-0 max-w-full overflow-auto max-h-[75vh] relative custom-scrollbar scrollbar-always-visible">
             <table
               className="text-left text-xs border-collapse"
               style={{ minWidth: 'max-content', width: '100%' }}
