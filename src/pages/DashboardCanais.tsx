@@ -304,7 +304,7 @@ export default function DashboardCanais() {
     try {
       const res: VendasListResult = await fetchVendasList({
         page: relatorioPage,
-        limit: relatorioLimit,
+        perPage: relatorioLimit,
         sort: `${relatorioSortDir === 'desc' ? '-' : ''}${relatorioSortField}`,
         filters: filters as unknown as Record<string, unknown>,
       })
@@ -546,6 +546,49 @@ export default function DashboardCanais() {
         </Card>
       ) : (
         <>
+          {/* Valores de faturamento / KPIs no início da página */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            <KpiCard
+              title="Faturamento Total"
+              value={kpis.faturamento}
+              isCurrency
+              icon={DollarSign}
+              iconBgColor="bg-cyan-50"
+              iconColor="text-[#0B6E99]"
+            />
+            <KpiCard
+              title="Valor Líquido"
+              value={kpis.valorLiquido}
+              isCurrency
+              icon={TrendingUp}
+              iconBgColor="bg-teal-50"
+              iconColor="text-teal-600"
+            />
+            <KpiCard
+              title="Itens Vendidos"
+              value={kpis.itensVendidos}
+              decimals={0}
+              icon={Package}
+              iconBgColor="bg-cyan-50"
+              iconColor="text-cyan-600"
+            />
+            <KpiCard
+              title="Documentos (NFe)"
+              value={kpis.documentos}
+              decimals={0}
+              icon={FileText}
+              iconBgColor="bg-slate-100"
+              iconColor="text-slate-700"
+            />
+            <KpiCard
+              title="Devoluções"
+              value={kpis.devolucoes}
+              isCurrency
+              icon={RotateCcw}
+              iconBgColor="bg-rose-50"
+              iconColor="text-rose-600"
+            />
+          </div>
           {/* Alerta de Empty State */}
           {isNoData && (
             <Card className="rounded-xl border border-amber-200 bg-amber-50/60 p-6 shadow-xs">
@@ -575,8 +618,167 @@ export default function DashboardCanais() {
               </div>
             </Card>
           )}
+          {/* Vendas por Grupo do Item & Venda Mensal por Grupo do Item */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Vendas por Grupo do Item */}
+            <ChartCard
+              title="Vendas por Grupo do Item"
+              description="Distribuição do faturamento por grupo consolidado"
+            >
+              {chartGrupoItem.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                  Nenhum dado disponível
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={chartGrupoItem}
+                    margin={{ top: 10, right: 20, left: 0, bottom: 25 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                    <XAxis
+                      dataKey="name"
+                      tickLine={false}
+                      axisLine={{ stroke: '#E2E8F0' }}
+                      tick={{ fill: '#64748B', fontSize: 11 }}
+                      interval={0}
+                      angle={-20}
+                      textAnchor="end"
+                      height={40}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: '#64748B', fontSize: 11 }}
+                      tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      formatter={currencyFormatter('Faturamento')}
+                      contentStyle={tooltipContentStyle}
+                    />
+                    <Bar dataKey="value" name="Faturamento" radius={[4, 4, 0, 0]}>
+                      {chartGrupoItem.map((entry, index) => {
+                        const color =
+                          GRUPO_COLORS[entry.name] ||
+                          FALLBACK_PALETTE[index % FALLBACK_PALETTE.length]
+                        return <Cell key={`cell-grupo-${entry.name}`} fill={color} />
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </ChartCard>
 
+            {/* Venda Mensal por Grupo do Item */}
+            <ChartCard
+              title="Venda Mensal por Grupo do Item"
+              description="Evolução mensal do faturamento por grupo de item (últimos 6 meses)"
+            >
+              {monthlyGroupData.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-xs text-slate-400">
+                  Nenhum dado disponível
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={monthlyGroupData}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                    <XAxis
+                      dataKey="mesLabel"
+                      tickLine={false}
+                      axisLine={{ stroke: '#E2E8F0' }}
+                      tick={{ fill: '#64748B', fontSize: 12 }}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fill: '#64748B', fontSize: 11 }}
+                      tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      formatter={(val: number | string | undefined, name: string) => [
+                        formatCurrency(typeof val === 'number' ? val : Number(val)),
+                        name,
+                      ]}
+                      contentStyle={tooltipContentStyle}
+                    />
+                    <Legend
+                      verticalAlign="top"
+                      height={36}
+                      formatter={(value) => (
+                        <span className="text-xs font-bold text-slate-700">{value}</span>
+                      )}
+                    />
+                    {uniqueGrupos.map((grupo, gIdx) => {
+                      const color =
+                        GRUPO_COLORS[grupo] || FALLBACK_PALETTE[gIdx % FALLBACK_PALETTE.length]
+                      return (
+                        <Bar
+                          key={grupo}
+                          dataKey={grupo}
+                          name={grupo}
+                          stackId="a"
+                          fill={color}
+                          radius={gIdx === uniqueGrupos.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                        />
+                      )
+                    })}
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </ChartCard>
+          </div>
           {/* Vendas por Estado (UF) e Região com Mapa do Brasil e Revendas */}
+          =======
+          {/* Modal de Expansão em Tela Cheia do Mapa do Brasil & Regiões */}
+          <Dialog open={mapExpanded} onOpenChange={setMapExpanded}>
+            <DialogContent className="max-w-none w-[96vw] sm:w-[94vw] h-[92vh] sm:rounded-2xl border border-gray-200 bg-white p-0 flex flex-col overflow-hidden shadow-2xl">
+              <DialogTitle className="sr-only">Vendas por Estado (UF) &amp; Região</DialogTitle>
+              <div className="flex items-center justify-between gap-3 px-6 pt-5 pb-4 border-b border-slate-100 bg-white">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-cyan-50 text-[#0B6E99] shrink-0">
+                    <MapPin className="w-5 h-5 text-[#0B6E99]" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <CardTitle className="text-lg font-extrabold text-slate-900 tracking-tight">
+                        Vendas por Estado (UF) &amp; Região
+                      </CardTitle>
+                      {filters.estado.length > 0 && (
+                        <Badge
+                          variant="outline"
+                          className="border-cyan-200 bg-cyan-50 text-[#0B6E99] text-xs font-bold"
+                        >
+                          Filtro ativo: {filters.estado.join(', ')}
+                        </Badge>
+                      )}
+                    </div>
+                    <CardDescription className="text-xs sm:text-sm text-slate-500 mt-0.5">
+                      Distribuição geográfica, ranking regional e mapa térmico com pinos das
+                      revendas autorizadas Roland DG
+                    </CardDescription>
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 w-full p-4 sm:p-6 overflow-y-auto">
+                <VendasPorEstadoIndicador
+                  data={chartEstado}
+                  selectedUf={filters.estado.length === 1 ? filters.estado[0] : null}
+                  onSelectUf={(uf) => {
+                    setFilters((prev) => ({
+                      ...prev,
+                      estado: uf ? [uf] : [],
+                    }))
+                  }}
+                  revendasFaturamento={revendasFaturamento}
+                  isExpanded={true}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+          {/* Indicador de Metas Consolidadas (Canal, Deploy, Inside) */}
           <Card className="group relative rounded-xl border border-gray-200 bg-white shadow-xs transition-all duration-200 hover:border-slate-300">
             <CardHeader className="pb-3 border-b border-gray-100">
               <div className="flex items-start sm:items-center justify-between gap-3">
@@ -625,7 +827,6 @@ export default function DashboardCanais() {
               />
             </CardContent>
           </Card>
-
           {/* Modal de Expansão em Tela Cheia do Mapa do Brasil & Regiões */}
           <Dialog open={mapExpanded} onOpenChange={setMapExpanded}>
             <DialogContent className="max-w-none w-[96vw] sm:w-[94vw] h-[92vh] sm:rounded-2xl border border-gray-200 bg-white p-0 flex flex-col overflow-hidden shadow-2xl">
@@ -672,64 +873,13 @@ export default function DashboardCanais() {
               </div>
             </DialogContent>
           </Dialog>
-
-          {/* 5 KPIs Section */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            <KpiCard
-              title="Faturamento Total"
-              value={kpis.faturamento}
-              isCurrency
-              icon={DollarSign}
-              iconBgColor="bg-cyan-50"
-              iconColor="text-[#0B6E99]"
-              deltaPercent={12.4}
-            />
-            <KpiCard
-              title="Valor Líquido"
-              value={kpis.valorLiquido}
-              isCurrency
-              icon={TrendingUp}
-              iconBgColor="bg-teal-50"
-              iconColor="text-teal-600"
-              deltaPercent={8.7}
-            />
-            <KpiCard
-              title="Itens Vendidos"
-              value={kpis.itensVendidos}
-              decimals={0}
-              icon={Package}
-              iconBgColor="bg-cyan-50"
-              iconColor="text-cyan-600"
-              deltaPercent={-2.3}
-            />
-            <KpiCard
-              title="Documentos (NFe)"
-              value={kpis.documentos}
-              decimals={0}
-              icon={FileText}
-              iconBgColor="bg-slate-100"
-              iconColor="text-slate-700"
-              deltaPercent={4.1}
-            />
-            <KpiCard
-              title="Devoluções"
-              value={kpis.devolucoes}
-              isCurrency
-              icon={RotateCcw}
-              iconBgColor="bg-rose-50"
-              iconColor="text-rose-600"
-            />
-          </div>
-
           {/* Indicador de Metas Consolidadas (Canal, Deploy, Inside) */}
           <MetasIndicador
             filterMes={filters.mes?.[0] || null}
             filterAno={filters.ano?.[0] || null}
           />
-
           {/* Comparativo Mês Atual × Mês do Ano Anterior por Canal */}
           <ComparativoCanaisMesCard data={comparativoData} loading={loadingComparativo} />
-
           {/* Charts Grid: Top Vendedores & Top Clientes */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ChartCard
@@ -802,7 +952,6 @@ export default function DashboardCanais() {
               </ResponsiveContainer>
             </ChartCard>
           </div>
-
           {/* Gráfico: Valor Líquido x Faturamento por Mês */}
           <div className="grid grid-cols-1 gap-6">
             <ChartCard
@@ -853,7 +1002,69 @@ export default function DashboardCanais() {
               </ResponsiveContainer>
             </ChartCard>
           </div>
-
+          {/* Relatório Consolidado de Vendas */}
+          <Card className="rounded-xl border border-gray-200 bg-white shadow-xs overflow-hidden">
+            <CardHeader className="pb-3 border-b border-gray-100">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-[#0B6E99]" />
+                    Relatório Consolidado de Vendas
+                  </CardTitle>
+                  <CardDescription className="text-xs text-slate-500 font-medium mt-1">
+                    Listagem detalhada das vendas com paginação, ordenação e exportação respeitando
+                    os filtros ativos
+                  </CardDescription>
+                </div>
+                {relatorioTotal > 0 && (
+                  <Badge
+                    variant="outline"
+                    className="text-xs font-bold text-slate-600 self-start sm:self-auto"
+                  >
+                    {relatorioTotal.toLocaleString('pt-BR')} registros
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              {relatorioError ? (
+                <div className="p-6 text-center text-sm text-rose-600 bg-rose-50/50">
+                  <p className="font-semibold">{relatorioError}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={loadRelatorioVendas}
+                    className="mt-3 text-xs"
+                  >
+                    Tentar novamente
+                  </Button>
+                </div>
+              ) : (
+                <VendasRelatorioTable
+                  items={relatorioVendas}
+                  loading={relatorioLoading}
+                  totalItems={relatorioTotal}
+                  page={relatorioPage}
+                  pageSize={relatorioLimit}
+                  totalPages={Math.max(1, Math.ceil(relatorioTotal / relatorioLimit))}
+                  onPageChange={setRelatorioPage}
+                  sortField={relatorioSortField}
+                  sortDir={relatorioSortDir}
+                  onSort={handleRelatorioSort}
+                  isGroupedByNfe={false}
+                  onToggleGroupByNfe={() => {}}
+                  storageKeyPrefix="relatorio_canais"
+                  exporting={relatorioExporting}
+                  onExport={handleRelatorioExport}
+                  showOriginSummary={true}
+                  groupByMode={relatorioGroupByMode}
+                  onGroupByModeChange={setRelatorioGroupByMode}
+                  defaultGroupByMode="none"
+                  allowedGroupByModes={['none', 'jp_class', 'comissao']}
+                />
+              )}
+            </CardContent>
+          </Card>
           {/* Footer note */}
           <div className="flex items-center justify-between text-xs text-slate-400 pt-2 pb-6">
             <span className="flex items-center gap-1.5 font-medium">
