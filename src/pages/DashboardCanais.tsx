@@ -19,17 +19,28 @@ import {
   BarChart,
   Bar,
   Legend,
+  PieChart,
+  Pie,
+  Cell,
 } from 'recharts'
 import {
   fetchDashboardStats,
   type DashboardStatsResult,
   fetchCanaisComparativo,
   type CanaisComparativoResult,
+  fetchVendasList,
+  fetchVendasExport,
+  type VendasListResult,
 } from '@/services/sales'
 import { ComparativoCanaisMesCard } from '@/components/ComparativoCanaisMesCard'
+import {
+  VendasRelatorioTable,
+  type RelatorioGroupByMode,
+  type SortDirection,
+} from '@/components/VendasRelatorioTable'
 import { useRealtime } from '@/hooks/use-realtime'
-import type { FilterState } from '@/types/sales'
-import { formatCurrency } from '@/lib/formatters'
+import type { FilterState, VendaConsolidada } from '@/types/sales'
+import { formatCurrency, formatNumber, MESES_CURTOS } from '@/lib/formatters'
 import {
   saveFiltersToSession,
   loadFiltersFromSession,
@@ -219,6 +230,134 @@ export default function DashboardCanais() {
   const chartTopClientes = data?.charts?.topClientes || []
   const chartEstado = data?.charts?.estado || []
   const revendasFaturamento = data?.charts?.revendasFaturamento
+  const chartGrupoItem = data?.charts?.grupoItem || []
+  const chartVendasPorGrupoItemMensal = data?.charts?.vendasPorGrupoItemMensal || []
+
+  // Cores padronizadas para grupos de itens
+  const GRUPO_COLORS: Record<string, string> = {
+    Equipamentos: '#0B6E99',
+    Tintas: '#0D9488',
+    Peças: '#F59E0B',
+    Acessórios: '#8B5CF6',
+    Outros: '#64748B',
+    'Sem informação': '#94A3B8',
+  }
+  const FALLBACK_PALETTE = [
+    '#0B6E99',
+    '#0D9488',
+    '#F59E0B',
+    '#8B5CF6',
+    '#EC4899',
+    '#6366F1',
+    '#14B8A6',
+  ]
+
+  // Dados transformados para o gráfico Venda Mensal por Grupo do Item (stacked bar)
+  const { monthlyGroupData, uniqueGrupos } = useMemo(() => {
+    const gruposSet = new Set<string>()
+    const rows = chartVendasPorGrupoItemMensal.map((item) => {
+      const row: Record<string, unknown> = {
+        mes: item.mes,
+        mesLabel: (() => {
+          if (!item.mes) return ''
+          const p = item.mes.split('-')
+          if (p.length < 2) return item.mes
+          const mo = parseInt(p[1], 10)
+          if (isNaN(mo) || mo < 1 || mo > 12) return item.mes
+          return MESES_CURTOS[mo - 1] + '/' + p[0].slice(2)
+        })(),
+      }
+      let mesTotal = 0
+      for (const g of item.grupos) {
+        gruposSet.add(g.grupo)
+        row[g.grupo] = g.total
+        mesTotal += g.total
+      }
+      row._total = mesTotal
+      return row
+    })
+    return {
+      monthlyGroupData: rows,
+      uniqueGrupos: Array.from(gruposSet),
+    }
+  }, [chartVendasPorGrupoItemMensal])
+
+  // Relatório Consolidado de Vendas (paginado via fetchVendasList)
+  const [relatorioVendas, setRelatorioVendas] = useState<VendaConsolidada[]>([])
+  const [relatorioTotal, setRelatorioTotal] = useState(0)
+  const [relatorioPage, setRelatorioPage] = useState(1)
+  const [relatorioLimit, setRelatorioLimit] = useState(50)
+  const [relatorioSortField, setRelatorioSortField] = useState('data_lancamento')
+  const [relatorioSortDir, setRelatorioSortDir] = useState<SortDirection>('desc')
+  const [relatorioLoading, setRelatorioLoading] = useState(false)
+  const [relatorioError, setRelatorioError] = useState<string | null>(null)
+  const [relatorioGroupByMode, setRelatorioGroupByMode] = useState<RelatorioGroupByMode>('none')
+  const [relatorioExporting, setRelatorioExporting] = useState(false)
+
+  const relatorioRequestSeqRef = useRef(0)
+
+  const loadRelatorioVendas = async () => {
+    const seq = ++relatorioRequestSeqRef.current
+    setRelatorioLoading(true)
+    setRelatorioError(null)
+
+    try {
+      const res: VendasListResult = await fetchVendasList({
+        page: relatorioPage,
+        limit: relatorioLimit,
+        sort: `${relatorioSortDir === 'desc' ? '-' : ''}${relatorioSortField}`,
+        filters: filters as unknown as Record<string, unknown>,
+      })
+
+      if (seq !== relatorioRequestSeqRef.current) return
+
+      setRelatorioVendas(res.items || [])
+      setRelatorioTotal(res.totalItems || 0)
+    } catch (err: unknown) {
+      if (seq !== relatorioRequestSeqRef.current) return
+      console.error('[DashboardCanais:loadRelatorioVendas] Erro:', err)
+      setRelatorioError(
+        err instanceof Error ? err.message : 'Falha ao carregar relatório de vendas.',
+      )
+    } finally {
+      if (seq === relatorioRequestSeqRef.current) {
+        setRelatorioLoading(false)
+      }
+    }
+  }
+
+  // Recarrega relatório quando filtros, página, limite ou ordenação mudam
+  useEffect(() => {
+    loadRelatorioVendas()
+  }, [filters, relatorioPage, relatorioLimit, relatorioSortField, relatorioSortDir])
+
+  // Resetar para a primeira página quando os filtros mudam
+  useEffect(() => {
+    setRelatorioPage(1)
+  }, [filters])
+
+  const handleRelatorioSort = (field: string) => {
+    if (relatorioSortField === field) {
+      setRelatorioSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setRelatorioSortField(field)
+      setRelatorioSortDir('desc')
+    }
+  }
+
+  const handleRelatorioExport = async () => {
+    if (relatorioExporting) return
+    setRelatorioExporting(true)
+    try {
+      await fetchVendasExport({
+        filters: filters as unknown as Record<string, unknown>,
+      })
+    } catch (err) {
+      console.error('[DashboardCanais:handleRelatorioExport] Erro ao exportar:', err)
+    } finally {
+      setRelatorioExporting(false)
+    }
+  }
 
   const isNoData =
     !loading && !error && data !== null && kpis.faturamento === 0 && kpis.documentos === 0
