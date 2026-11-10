@@ -293,7 +293,107 @@ routerAdd(
       return e.json(502, { success: false, message: msg })
     }
 
-    // 5. Limpeza de registros órfãos legados da "Base Única de Canais"
+    // 5. Reconciliação completa de vínculos de Inside Sales da Origem (Ciclo D)
+    // Na base oficial, quando um inside sales é desvinculado ou alterado em uma revenda/canal,
+    // os contatos dessa revenda NÃO têm seu campo `updated` alterado.
+    // Para reconciliar: buscamos o mapeamento canônico de todas as revendas da origem (id, codigo, inside_sales)
+    // e atualizamos os registros locais em `canais_clientes` cujo inside local está dessincronizado.
+    let vinculosReconciliados = 0
+    const origemInsideByRevendaId = {}
+    const origemInsideByRevendaCodigo = {}
+
+    try {
+      let reconPage = 1
+      let reconTotalPages = 1
+      while (reconPage <= reconTotalPages) {
+        const q =
+          '/api/collections/revendas/records?perPage=500&page=' +
+          reconPage +
+          '&fields=id,codigo,nome,canal,inside_sales&expand=inside_sales'
+        const data = getWithRetry(q)
+        reconTotalPages = data.totalPages || 1
+        const items = data.items || []
+
+        for (let i = 0; i < items.length; i++) {
+          const r = items[i]
+          const rExp = r.expand || {}
+          const insideNome = (rExp.inside_sales && rExp.inside_sales.nome) || ''
+          const rId = (r.id || '').trim()
+          const rCod = norm(r.codigo)
+
+          if (rId) {
+            origemInsideByRevendaId[rId] = insideNome
+          }
+          if (rCod) {
+            origemInsideByRevendaCodigo[rCod] = insideNome
+          }
+        }
+
+        reconPage++
+        if (reconPage <= reconTotalPages) {
+          sleepMs(300)
+        }
+      }
+
+      // Varrer registros locais de canais_clientes que têm inside preenchido
+      // e comparar com a autoridade da origem para aquela revenda
+      const rowsWithInside = arrayOf(
+        new DynamicModel({
+          id: '',
+          origem_id_revenda: '',
+          codigo_cliente: '',
+          inside: '',
+        }),
+      )
+      $app
+        .db()
+        .newQuery(
+          "SELECT id, origem_id_revenda, codigo_cliente, inside FROM canais_clientes WHERE inside IS NOT NULL AND inside != ''",
+        )
+        .all(rowsWithInside)
+
+      for (let j = 0; j < rowsWithInside.length; j++) {
+        const row = rowsWithInside[j]
+        const revId = (row.origem_id_revenda || '').trim()
+        const codN = norm(row.codigo_cliente)
+        const insideAtual = (row.inside || '').trim()
+
+        let insideOficial = null
+        if (revId && origemInsideByRevendaId[revId] !== undefined) {
+          insideOficial = origemInsideByRevendaId[revId]
+        } else if (codN && origemInsideByRevendaCodigo[codN] !== undefined) {
+          insideOficial = origemInsideByRevendaCodigo[codN]
+        }
+
+        // Se encontramos a revenda na origem e o inside local difere do oficial
+        if (insideOficial !== null && norm(insideAtual) !== norm(insideOficial)) {
+          $app
+            .db()
+            .newQuery(
+              'UPDATE canais_clientes SET inside = {:ins}, updated = {:up} WHERE id = {:id}',
+            )
+            .bind({
+              ins: insideOficial, // se desvinculado, limpa para string vazia ''
+              up: nowIso,
+              id: row.id,
+            })
+            .execute()
+          vinculosReconciliados++
+        }
+      }
+
+      if (vinculosReconciliados > 0) {
+        console.log(
+          'sync_canais: ' +
+            vinculosReconciliados +
+            ' vínculo(s) de inside sales foram reconciliados com a origem.',
+        )
+      }
+    } catch (reconErr) {
+      console.warn('sync_canais: aviso na reconciliação de inside sales:', reconErr)
+    }
+
+    // 6. Limpeza de registros órfãos legados da "Base Única de Canais"
     // Executada a CADA sincronização (mesmo que a origem não tenha novos registros),
     // garantindo que resquícios do importador desativado sejam eliminados permanentemente.
     let orfaosRemovidos = 0
@@ -331,7 +431,7 @@ routerAdd(
       )
     }
 
-    // Se nenhum registro mudou na origem
+    // Se nenhum registro mudou na origem e nenhum vínculo precisou ser reconciliado
     if (revendasLidas === 0 && contatosLidos === 0) {
       stateRecord.set('status', 'sucesso_sem_mudancas')
       stateRecord.set('ultimo_sucesso', nowIso)
@@ -339,6 +439,9 @@ routerAdd(
         'Sincronização executada. Nenhum registro alterado na origem desde ' +
         (ultimoCorte || 'início') +
         '.'
+      if (vinculosReconciliados > 0) {
+        msgDetalhes += ' (' + vinculosReconciliados + ' vínculo(s) de inside sales reconciliados).'
+      }
       if (orfaosRemovidos > 0) {
         msgDetalhes +=
           ' (' + orfaosRemovidos + " registro(s) da 'Base Única de Canais' expurgados)."
@@ -353,22 +456,27 @@ routerAdd(
       return e.json(200, {
         success: true,
         isFullSync: isFullSync,
-        mudancas: false,
+        mudancas: vinculosReconciliados > 0,
         revendasLidas: 0,
         revendasAtualizadas: 0,
         contatosLidos: 0,
         contatosAtualizados: 0,
+        vinculosReconciliados: vinculosReconciliados,
         orfaosRemovidos: orfaosRemovidos,
         totalItemsOrigem: { revendas: revendasTotalItems, contatos: contatosTotalItems },
         ultimoCorte: ultimoCorte,
         novoCorte: ultimoCorte,
         duracaoMs: new Date().getTime() - startTime,
         message:
-          orfaosRemovidos > 0
-            ? 'Base já sincronizada. ' +
-              orfaosRemovidos +
-              " registro(s) órfãos da 'Base Única de Canais' expurgados."
-            : 'Base já sincronizada. Nenhum registro novo ou alterado na origem.',
+          vinculosReconciliados > 0
+            ? 'Sincronização concluída: ' +
+              vinculosReconciliados +
+              ' vínculo(s) de inside sales reconciliados com a origem.'
+            : orfaosRemovidos > 0
+              ? 'Base já sincronizada. ' +
+                orfaosRemovidos +
+                " registro(s) órfãos da 'Base Única de Canais' expurgados."
+              : 'Base já sincronizada. Nenhum registro novo ou alterado na origem.',
       })
     }
 
@@ -657,6 +765,10 @@ routerAdd(
       ' revenda(s) e ' +
       contatosAtualizados +
       ' contato(s) sincronizados.'
+    if (vinculosReconciliados > 0) {
+      detalhesSucesso +=
+        ' (' + vinculosReconciliados + ' vínculo(s) de inside sales reconciliados).'
+    }
     if (orfaosRemovidos > 0) {
       detalhesSucesso +=
         ' ' + orfaosRemovidos + " registro(s) da 'Base Única de Canais' expurgados."
@@ -681,6 +793,9 @@ routerAdd(
         contatosAtualizados +
         ' contatos atualizados. Corte: ' +
         (maiorUpdatedOrigem || ultimoCorte)
+      if (vinculosReconciliados > 0) {
+        auditDetails += '. ' + vinculosReconciliados + ' vínculo(s) de inside reconciliados.'
+      }
       if (orfaosRemovidos > 0) {
         auditDetails +=
           '. ' + orfaosRemovidos + " registro(s) órfãos ('Base Única de Canais') expurgados."
@@ -708,6 +823,7 @@ routerAdd(
       revendasAtualizadas,
       contatosLidos,
       contatosAtualizados,
+      vinculosReconciliados,
       totalItemsOrigem: { revendas: revendasTotalItems, contatos: contatosTotalItems },
       orfaosRemovidos,
       ultimoCorte: ultimoCorte,

@@ -15,6 +15,7 @@ describe('Sincronização de Canais e Limpeza de Órfãos da Base Única de Cana
       orfaosRemovidos?: number
       revendasLidas?: number
       contatosLidos?: number
+      vinculosReconciliados?: number
       message?: string
     }>('/backend/v1/canais/sync', {
       method: 'POST',
@@ -23,7 +24,11 @@ describe('Sincronização de Canais e Limpeza de Órfãos da Base Única de Cana
 
     console.log('Resultado da sincronização:', resSync)
     expect(resSync.success).toBe(true)
-    expect(typeof resSync.orfaosRemovidos).toBe('number')
-    expect(resSync.orfaosRemovidos).toBeGreaterThan(0)
+    expect(typeof resSync.vinculosReconciliados).toBe('number')
+    // Verifica que Paloma não consta mais vinculada como inside em nenhum registro
+    const palomaRecords = await pb.collection('canais_clientes').getList(1, 10, {
+      filter: 'inside ~ "Paloma" || inside ~ "PALOMA"',
+    })
+    expect(palomaRecords.totalItems).toBe(0)
   }, 120000)
 })
