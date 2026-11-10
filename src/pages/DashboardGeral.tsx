@@ -1,14 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   TrendingUp,
   BarChart2,
-  PieChart as PieChartIcon,
   RefreshCw,
   RotateCcw,
   Users,
-  Download,
   Sparkles,
+  SlidersHorizontal,
+  DollarSign,
+  Package,
+  FileText,
 } from 'lucide-react'
 import {
   XAxis,
@@ -16,9 +18,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
   BarChart,
   Bar,
   Legend,
@@ -27,82 +26,23 @@ import {
   Line,
   ReferenceLine,
 } from 'recharts'
-import { fetchDashboardStats, fetchVendasExport, type DashboardStatsResult } from '@/services/sales'
+import { fetchDashboardStats, type DashboardStatsResult } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
 import type { FilterState } from '@/types/sales'
-import {
-  formatCurrency,
-  formatCompactCurrency,
-  formatNumber,
-  exportToCSV,
-  getGrupoColor,
-  MESES_CURTOS,
-} from '@/lib/formatters'
-import { toast } from '@/hooks/use-toast'
+import { formatCurrency, formatCompactCurrency, formatNumber, MESES_CURTOS } from '@/lib/formatters'
 import {
   loadFiltersFromSession,
   saveFiltersToSession,
   hasSavedFiltersInSession,
 } from '@/lib/filter-persistence'
 import ChartCard from '@/components/ChartCard'
-import { SlidersHorizontal } from 'lucide-react'
-import { MetasIndicador } from '@/components/MetasIndicador'
-import type { VendaConsolidada } from '@/types/sales'
-import { fetchVendasList } from '@/services/sales'
-import {
-  fetchTiposClienteMap,
-  buildTiposClienteStringMap,
-  enrichVendaTipoCliente,
-  resolveTipoCliente,
-} from '@/services/tiposCliente'
-import { useTableSort } from '@/hooks/use-table-sort'
-import { VendasRelatorioTable, type RelatorioGroupByMode } from '@/components/VendasRelatorioTable'
-import { matchesJpClassFilter } from '@/lib/jp-class'
-import { isDevolucao } from '@/types/sales'
-import { FileSpreadsheet, Package, FileText, DollarSign } from 'lucide-react'
 import KpiCard from '@/components/KpiCard'
-import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
+import { Card, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const COLOR_BLUE = '#0B6E99'
-const COLOR_CYAN = '#1895A8'
 const COLOR_CYAN_DARK = '#106A82'
-
-const CHART_PALETTE = [
-  '#0B6E99', // Azul
-  '#1895A8', // Ciano
-  '#106A82', // Ciano Escuro
-  '#67D2E2', // Ciano Claro
-  '#084F6E', // Azul Escuro
-  '#38BDF8', // Sky
-  '#0284C7', // Azul Médio
-  '#14B8A6', // Teal
-]
-
-// Ordem fixa dos grupos e paleta de cores
-const MENSAL_GRUPOS_ORDEM = ['EQUIPAMENTOS', 'PEÇAS', 'TINTAS', 'ACESSÓRIOS'] as const
-
-const MENSAL_GRUPO_COLORS: Record<string, string> = {
-  EQUIPAMENTOS: '#0B6E99',
-  PEÇAS: '#1895A8',
-  PECAS: '#1895A8',
-  TINTAS: '#106A82',
-  ACESSÓRIOS: '#67D2E2',
-  ACESSORIOS: '#67D2E2',
-}
-
-const MENSAL_GRUPO_PALETTE = [
-  '#0B6E99',
-  '#1895A8',
-  '#106A82',
-  '#67D2E2',
-  '#084F6E',
-  '#38BDF8',
-  '#0284C7',
-  '#14B8A6',
-]
 
 const tooltipContentStyle = {
   backgroundColor: '#0F172A',
@@ -111,11 +51,6 @@ const tooltipContentStyle = {
   fontSize: '12px',
   border: '1px solid #334155',
 }
-
-const currencyFormatter =
-  (label = 'Total') =>
-  (val: number | string | undefined) =>
-    [formatCurrency(typeof val === 'number' ? val : Number(val)), label] as [string, string]
 
 /** Formata "yyyy-mm" (ex: "2025-06") como "Jun/25". */
 const formatMesAnoCurto = (ym: string) => {
@@ -127,72 +62,13 @@ const formatMesAnoCurto = (ym: string) => {
   return MESES_CURTOS[mo - 1] + '/' + p[0].slice(2)
 }
 
-/** Tooltip customizado do gráfico "Venda Mensal por Grupo do Item" */
-interface MensalGrupoTooltipProps {
-  active?: boolean
-  payload?: Array<{ name?: string; value?: number | string; color?: string }>
-  label?: string | number
-}
-
-function MensalGrupoTooltip({ active, payload, label }: MensalGrupoTooltipProps) {
-  if (!active || !payload || payload.length === 0) return null
-  return (
-    <div className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white border border-slate-700">
-      <div className="font-bold mb-1 text-slate-200">{formatMesAnoCurto(String(label ?? ''))}</div>
-      {payload.map((entry, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <span
-            className="inline-block w-2.5 h-2.5 rounded-sm"
-            style={{ backgroundColor: entry.color }}
-          />
-          <span className="text-slate-300">{entry.name}</span>
-          <span className="font-bold ml-auto text-white">
-            {formatCurrency(typeof entry.value === 'number' ? entry.value : Number(entry.value))}
-          </span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-const VENDAS_PAGE_SIZE = 20
-type SortField = Extract<keyof VendaConsolidada, string>
-
 export default function DashboardGeral() {
   const [data, setData] = useState<DashboardStatsResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [exportingReport, setExportingReport] = useState(false)
-  const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
   const navigate = useNavigate()
 
-  // Estado do Relatório Consolidado de Vendas (incorporado de /vendas)
-  const [paginatedVendas, setPaginatedVendas] = useState<VendaConsolidada[]>([])
-  const [totalVendasItems, setTotalVendasItems] = useState(0)
-  const [totalNetsales, setTotalNetsales] = useState(0)
-  const [totalRacnew, setTotalRacnew] = useState(0)
-  const [totalVendasPages, setTotalVendasPages] = useState(1)
-  const [vendasLoading, setVendasLoading] = useState(false)
-  const [vendasPage, setVendasPage] = useState(1)
-  const [isAllGroupedNfe, setIsAllGroupedNfe] = useState(false)
-  const [hasMoreVendas, setHasMoreVendas] = useState(false)
-  const sort = useTableSort<SortField>()
-
-  // Modo de agrupamento da Visão Geral (padrão comissao para espelhar a Visão Canais)
-  const storageKeyGeralGroupBy = 'relatorio_vendas_group_by_v2'
-  const [reportGroupByMode, setReportGroupByMode] = useState<RelatorioGroupByMode>(() => {
-    try {
-      const saved = localStorage.getItem(storageKeyGeralGroupBy)
-      if (saved === 'none' || saved === 'jp_class' || saved === 'comissao') {
-        return saved as RelatorioGroupByMode
-      }
-    } catch (_) {
-      // fallback
-    }
-    return 'comissao'
-  })
-
-  const [filters, setFilters] = useState<FilterState>(() => {
+  const [filters] = useState<FilterState>(() => {
     const loaded = loadFiltersFromSession()
     if (!hasSavedFiltersInSession()) {
       saveFiltersToSession(loaded)
@@ -200,27 +76,6 @@ export default function DashboardGeral() {
     return loaded
   })
 
-  const displayedVendas = useMemo(() => {
-    // 1. Enriquece com o mapa de tipos_cliente como fallback
-    let list = paginatedVendas.map((item) => enrichVendaTipoCliente(item, tiposClienteMap))
-
-    // 2. Fallback de filtro de tipoCliente no cliente (garante consistência mesmo se o backend estiver pendente de backfill)
-    if (
-      filters.tipoCliente &&
-      filters.tipoCliente.length > 0 &&
-      !filters.tipoCliente.includes('TODOS')
-    ) {
-      const selected = new Set(filters.tipoCliente.map((t) => t.trim()))
-      list = list.filter((item) => {
-        const tc = resolveTipoCliente(item.tipo_cliente, item.codigo_cliente, tiposClienteMap)
-        return selected.has(tc)
-      })
-    }
-
-    // 3. Filtro JP-Class
-    if (!filters.jpClass || filters.jpClass.length === 0) return list
-    return list.filter((item) => matchesJpClassFilter(item.grupo_item, filters.jpClass))
-  }, [paginatedVendas, tiposClienteMap, filters.tipoCliente, filters.jpClass])
   const requestSeqRef = useRef<number>(0)
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -262,125 +117,22 @@ export default function DashboardGeral() {
     }
   }
 
-  // Carrega listagem de vendas consolidada:
-  // - Se reportGroupByMode === 'comissao' ou 'jp_class', opera em MODO CONSOLIDADO DE PÁGINA ÚNICA:
-  //   usa fetchVendasExport com groupByNfe (ou detalhado se expandido) trazendo TODAS as NFs do recorte
-  // - Se reportGroupByMode !== 'comissao' e !== 'jp_class', opera com paginação server-side padrão (20 por página)
-  const loadVendasData = async (
-    activeFilters = filters,
-    targetPage = vendasPage,
-    sortField = sort.field,
-    sortDir = sort.dir,
-    groupedNfe = isAllGroupedNfe,
-    mode = reportGroupByMode,
-  ) => {
-    setVendasLoading(true)
-    try {
-      if (mode === 'comissao' || mode === 'jp_class') {
-        // MODO CONSOLIDADO: busca todas as notas fiscais do filtro numa única consulta sem corte de página
-        const res = await fetchVendasExport({
-          sortField: sortField || undefined,
-          sortDirection: sortField ? sortDir : undefined,
-          sort: sortField ? undefined : '-data_lancamento',
-          groupByNfe: groupedNfe,
-          collapsed: groupedNfe,
-          filters: activeFilters as unknown as Record<string, unknown>,
-        })
-
-        const allItems = res.items || []
-        let netsalesCount = 0
-        let racnewCount = 0
-        for (const it of allItems) {
-          if (it.tem_netsales) {
-            netsalesCount++
-          } else {
-            racnewCount++
-          }
-        }
-
-        setPaginatedVendas(allItems)
-        setTotalVendasItems(allItems.length)
-        setHasMoreVendas(false)
-        setTotalNetsales(netsalesCount)
-        setTotalRacnew(racnewCount)
-        setTotalVendasPages(1)
-        return true
-      } else {
-        const res = await fetchVendasList({
-          page: targetPage,
-          perPage: VENDAS_PAGE_SIZE,
-          sortField: sortField || undefined,
-          sortDirection: sortField ? sortDir : undefined,
-          sort: sortField ? undefined : '-data_lancamento',
-          groupByNfe: groupedNfe,
-          filters: activeFilters as unknown as Record<string, unknown>,
-        })
-        setPaginatedVendas(res.items || [])
-        setTotalVendasItems(res.totalItems || 0)
-        setHasMoreVendas(!!res.hasMore)
-        setTotalNetsales(
-          res.totalNetsales !== undefined
-            ? res.totalNetsales
-            : (res.items || []).filter((i) => i.tem_netsales).length,
-        )
-        setTotalRacnew(
-          res.totalRacnew !== undefined
-            ? res.totalRacnew
-            : (res.items || []).filter((i) => !i.tem_netsales).length,
-        )
-        setTotalVendasPages(res.totalPages || 1)
-        return true
-      }
-    } catch (err: unknown) {
-      if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
-        return false
-      }
-      console.error('Erro ao carregar relatório de vendas na Visão Geral:', err)
-      return false
-    } finally {
-      setVendasLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchTiposClienteMap()
-      .then((rawMap) => {
-        if (rawMap && typeof rawMap === 'object') {
-          const stringMap = buildTiposClienteStringMap(rawMap)
-          setTiposClienteMap(stringMap)
-        }
-      })
-      .catch((err) => console.warn('Falha ao buscar dados de tipo de cliente na Visão Geral:', err))
-  }, [])
-
   useEffect(() => {
     loadData(filters)
-    loadVendasData(filters, 1, sort.field, sort.dir, isAllGroupedNfe, reportGroupByMode)
-    setVendasPage(1)
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
     }
-  }, [filters, reportGroupByMode])
-
-  const handleVendasPageChange = React.useCallback(
-    (newPage: number) => {
-      setVendasPage(newPage)
-      loadVendasData(filters, newPage, sort.field, sort.dir, isAllGroupedNfe, reportGroupByMode)
-    },
-    [filters, sort.field, sort.dir, isAllGroupedNfe, reportGroupByMode],
-  )
+  }, [filters])
 
   useRealtime('vendas', () => {
     loadData()
-    loadVendasData(filters, vendasPage, sort.field, sort.dir, isAllGroupedNfe, reportGroupByMode)
   })
 
   const chartVendasPorMes = data?.charts?.vendasPorMes || []
   const chartVendasPorAno = data?.charts?.vendasPorAno || []
   const chartGrupoItem = data?.charts?.grupoItem || []
-  const chartVendasPorGrupoItemMensal = data?.charts?.vendasPorGrupoItemMensal || []
   const chartVendasEquipamentosRaw =
     data?.charts?.vendasEquipamentosHistorico || data?.charts?.vendasEquipamentosPorAno || []
   const chartVendasInsumosRaw =
@@ -412,188 +164,16 @@ export default function DashboardGeral() {
       anoRetrasadoLabel: String(maxY - 2),
     }
   }, [chartClientesAtivosEquipamentos, chartVendasPorMes])
-  // Total de faturamento dos grupos para cálculo de percentual no gráfico Donut
-  const totalGrupoItemFaturamento = useMemo(() => {
-    return chartGrupoItem.reduce((acc, cur) => acc + (Number(cur.value) || 0), 0)
-  }, [chartGrupoItem])
-
-  const chartGrupoItemWithPercent = useMemo(() => {
-    if (totalGrupoItemFaturamento <= 0 || chartGrupoItem.length === 0) {
-      return chartGrupoItem.map((item) => ({
-        ...item,
-        percent: 0,
-      }))
-    }
-
-    // Calcula percentual arredondado para inteiro (0 casas decimais)
-    // Para manter a soma em 100% caso haja pequenas divergências de arredondamento:
-    // o último grupo recebe 100 menos a soma dos anteriores (se positivo), mantendo consistência visual
-    let acumulado = 0
-    return chartGrupoItem.map((item, index) => {
-      const val = Number(item.value) || 0
-      const isLast = index === chartGrupoItem.length - 1
-      let roundedPct: number
-
-      if (isLast && chartGrupoItem.length > 1) {
-        roundedPct = Math.max(0, 100 - acumulado)
-      } else {
-        roundedPct = Math.round((val / totalGrupoItemFaturamento) * 100)
-        acumulado += roundedPct
-      }
-
-      return {
-        ...item,
-        percent: roundedPct,
-      }
-    })
-  }, [chartGrupoItem, totalGrupoItemFaturamento])
-
-  // Custom label renderer para a fatia da rosca (apenas se a fatia for >= 5% para manter legibilidade)
-  const renderDonutCustomLabel = ({
-    cx,
-    cy,
-    midAngle,
-    innerRadius,
-    outerRadius,
-    percent,
-  }: {
-    cx?: number
-    cy?: number
-    midAngle?: number
-    innerRadius?: number
-    outerRadius?: number
-    percent?: number
-  }) => {
-    if (
-      typeof cx !== 'number' ||
-      typeof cy !== 'number' ||
-      typeof midAngle !== 'number' ||
-      typeof innerRadius !== 'number' ||
-      typeof outerRadius !== 'number' ||
-      typeof percent !== 'number'
-    ) {
-      return null
-    }
-
-    // Suporta tanto percentual fracionário (0.42) quanto inteiro já em base 100 (42)
-    const isFractional = percent <= 1
-    const pctValue = isFractional ? Math.round(percent * 100) : Math.round(percent)
-
-    // Regra: só exibir rótulo em fatias >= 5%
-    if (pctValue < 5) {
-      return null
-    }
-
-    const RADIAN = Math.PI / 180
-    const radius = innerRadius + (outerRadius - innerRadius) * 0.5
-    const x = cx + radius * Math.cos(-midAngle * RADIAN)
-    const y = cy + radius * Math.sin(-midAngle * RADIAN)
-
-    return (
-      <text
-        x={x}
-        y={y}
-        fill="#ffffff"
-        textAnchor="middle"
-        dominantBaseline="central"
-        className="text-[11px] font-extrabold select-none drop-shadow-sm pointer-events-none"
-      >
-        {`${pctValue}%`}
-      </text>
-    )
-  }
-
-  const isJpClassFilterActive = Boolean(filters.jpClass && filters.jpClass.length > 0)
-
-  // Clientes ativos segregados por categoria (Tintas, Acessórios, Peças),
-  // calculados a partir do relatório detalhado carregado nesta visão.
-  const { clientesAtivosTintas, clientesAtivosAcessorios, clientesAtivosPecas } = useMemo(() => {
-    const tintasClientes = new Set<string>()
-    const acessoriosClientes = new Set<string>()
-    const pecasClientes = new Set<string>()
-
-    const normalizeGrupoName = (val?: string | null): string => {
-      if (!val) return ''
-      return val
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim()
-        .toUpperCase()
-    }
-
-    for (const item of paginatedVendas) {
-      if (isDevolucao(item.tipo_documento)) continue
-
-      const clienteId = (item.codigo_cliente || item.nome_cliente || '').trim()
-      if (!clienteId) continue
-
-      const rawGrupo =
-        item.grupo_item ||
-        (item as unknown as { itms_grp_nam?: string }).itms_grp_nam ||
-        (item as unknown as { grupo?: string }).grupo ||
-        ''
-
-      const grupo = normalizeGrupoName(rawGrupo)
-
-      if (grupo === 'TINTAS') {
-        tintasClientes.add(clienteId)
-      } else if (grupo === 'ACESSORIOS') {
-        acessoriosClientes.add(clienteId)
-      } else if (grupo === 'PECAS') {
-        pecasClientes.add(clienteId)
-      }
-    }
-
-    return {
-      clientesAtivosTintas: tintasClientes.size,
-      clientesAtivosAcessorios: acessoriosClientes.size,
-      clientesAtivosPecas: pecasClientes.size,
-    }
-  }, [paginatedVendas])
 
   const reportKpis = useMemo(() => {
-    if (!isJpClassFilterActive) {
-      return {
-        faturamento: data?.kpis?.faturamento || 0,
-        valorLiquido: data?.kpis?.valorLiquido || 0,
-        itensVendidos: data?.kpis?.itensVendidos || 0,
-        documentos: data?.kpis?.documentos || 0,
-        devolucoes: data?.kpis?.devolucoes || 0,
-      }
-    }
-
-    let faturamento = 0
-    let valorLiquido = 0
-    let itensVendidos = 0
-    let devolucoes = 0
-    const nfes = new Set<string>()
-
-    for (const item of displayedVendas) {
-      const totalLinha = Number(item.total_linha) || 0
-      faturamento += totalLinha
-      valorLiquido += Number(item.valor_liquido) || 0
-      itensVendidos += Number(item.quantidade) || 0
-
-      const nfe = (item.numero_nfe || '').trim()
-      if (nfe) {
-        nfes.add(nfe)
-      } else if (item.id) {
-        nfes.add(`__item_${item.id}`)
-      }
-
-      if (isDevolucao(item.tipo_documento)) {
-        devolucoes += totalLinha
-      }
-    }
-
     return {
-      faturamento,
-      valorLiquido,
-      itensVendidos,
-      documentos: nfes.size,
-      devolucoes,
+      faturamento: data?.kpis?.faturamento || 0,
+      valorLiquido: data?.kpis?.valorLiquido || 0,
+      itensVendidos: data?.kpis?.itensVendidos || 0,
+      documentos: data?.kpis?.documentos || 0,
+      devolucoes: data?.kpis?.devolucoes || 0,
     }
-  }, [data, displayedVendas, isJpClassFilterActive])
+  }, [data])
 
   const isNoData =
     !loading &&
@@ -723,175 +303,6 @@ export default function DashboardGeral() {
     return sum / chartVendasPorMes.length
   }, [chartVendasPorMes])
 
-  // Relatório "Venda Mensal por Grupo do Item":
-  // Mostra SEMPRE as 4 categorias completas (Equipamentos, Peças, Tintas e Acessórios)
-  // independente dos filtros aplicados na página.
-  const mensalGrupos = useMemo(() => {
-    return [...MENSAL_GRUPOS_ORDEM]
-  }, [])
-
-  const mensalGrupoData = useMemo(() => {
-    return chartVendasPorGrupoItemMensal.map((m) => {
-      const row: Record<string, number | string> = { mes: m.mes }
-      for (const g of MENSAL_GRUPOS_ORDEM) {
-        row[g] = 0
-      }
-      for (const g of m.grupos) {
-        const upper = (g.grupo || '')
-          .normalize('NFD')
-          .replace(/[\u0300-\u036f]/g, '')
-          .toUpperCase()
-          .trim()
-        if (upper === 'PECAS') {
-          row['PEÇAS'] = (Number(row['PEÇAS']) || 0) + g.total
-        } else if (upper === 'ACESSORIOS') {
-          row['ACESSÓRIOS'] = (Number(row['ACESSÓRIOS']) || 0) + g.total
-        } else if (upper === 'EQUIPAMENTOS') {
-          row['EQUIPAMENTOS'] = (Number(row['EQUIPAMENTOS']) || 0) + g.total
-        } else if (upper === 'TINTAS') {
-          row['TINTAS'] = (Number(row['TINTAS']) || 0) + g.total
-        }
-      }
-      return row
-    })
-  }, [chartVendasPorGrupoItemMensal])
-
-  const handleSort = React.useCallback(
-    (field: SortField) => {
-      sort.toggle(field)
-      const nextDir = sort.field === field && sort.dir === 'asc' ? 'desc' : 'asc'
-      setVendasPage(1)
-      loadVendasData(filters, 1, field, nextDir, isAllGroupedNfe, reportGroupByMode)
-    },
-    [sort, filters, isAllGroupedNfe, reportGroupByMode],
-  )
-
-  const handleCollapseAll = React.useCallback(() => {
-    const nextGrouped = !isAllGroupedNfe
-    setIsAllGroupedNfe(nextGrouped)
-    setVendasPage(1)
-    loadVendasData(filters, 1, sort.field, sort.dir, nextGrouped, reportGroupByMode)
-    toast({
-      title: nextGrouped ? 'Relatório colapsado por NF' : 'Relatório expandido',
-      description: nextGrouped
-        ? 'Exibindo 1 linha consolidada por Nota Fiscal para todos os dados do filtro.'
-        : 'Exibindo todos os itens detalhados de cada Nota Fiscal.',
-    })
-  }, [isAllGroupedNfe, filters, sort.field, sort.dir, reportGroupByMode])
-
-  const handleGroupByModeChange = React.useCallback(
-    (mode: RelatorioGroupByMode) => {
-      setReportGroupByMode(mode)
-      try {
-        localStorage.setItem(storageKeyGeralGroupBy, mode)
-      } catch (_) {
-        // ignore
-      }
-      setVendasPage(1)
-      loadVendasData(filters, 1, sort.field, sort.dir, isAllGroupedNfe, mode)
-    },
-    [filters, sort.field, sort.dir, isAllGroupedNfe],
-  )
-
-  // Exportação de relatórios respeitando filtros ativos
-  const handleExportReport = async (groupByNfe = false) => {
-    setExportingReport(true)
-    toast({
-      title: groupByNfe
-        ? 'Gerando relatório consolidado por NF...'
-        : 'Gerando relatório completo do Dashboard...',
-      description: 'Buscando todos os registros filtrados no servidor...',
-    })
-
-    try {
-      const res = await fetchVendasExport({
-        sort: '-data_lancamento',
-        groupByNfe,
-        collapsed: groupByNfe,
-        filters: filters as unknown as Record<string, unknown>,
-      })
-
-      const rowsToExport = res.items || []
-
-      if (rowsToExport.length === 0) {
-        toast({
-          variant: 'destructive',
-          title: 'Nenhum dado encontrado',
-          description: 'Nenhum registro encontrado para exportar com os filtros atuais.',
-        })
-        return
-      }
-
-      const exportColumns = [
-        { key: 'data_lancamento', label: 'Data de Lançamento' },
-        { key: 'numero_nfe', label: 'Nº NFe' },
-        { key: 'numero_sap', label: 'Número SAP' },
-        { key: 'tipo_documento', label: 'Tipo de Documento' },
-        { key: 'codigo_cliente', label: 'Código do Cliente' },
-        { key: 'nome_cliente', label: 'Nome do Cliente' },
-        { key: 'tipo_cliente', label: 'Tipo de Cliente' },
-        { key: 'status_cadastro', label: 'Status do Cadastro' },
-        { key: 'tipo_pn', label: 'Tipo de PN' },
-        { key: 'vendedor_cliente', label: 'Vendedor > Cliente' },
-        { key: 'nome_vendedor', label: 'Nome do Vendedor' },
-        { key: 'codigo_item', label: 'Cód. do Item' },
-        { key: 'descricao_item', label: 'Descrição do Item' },
-        { key: 'grupo_item', label: 'Grupo do Item' },
-        { key: 'quantidade', label: 'Quantidade' },
-        { key: 'preco_item', label: 'Preço do Item' },
-        { key: 'preco_unitario', label: 'Preço Unitário' },
-        { key: 'total_linha', label: 'Valor Mercadoria (Total da Linha)' },
-        { key: 'total_nf_sem_frete', label: 'Total NF SEM Frete' },
-        { key: 'valor_liquido', label: 'Valor Liquido' },
-        { key: 'custo_total', label: 'Custo Total' },
-        { key: 'utilizacao', label: 'Utilização' },
-        { key: 'estado', label: 'Estado' },
-        { key: 'cidade', label: 'Cidade' },
-        { key: 'classificacao', label: 'Classificacao' },
-        { key: 'grupo_cliente', label: 'Grupo do Cliente' },
-        { key: 'mercado', label: 'Mercado' },
-        { key: 'usuario_emissor_pedido', label: 'Usuário Emitente do Pedido' },
-        { key: 'origem', label: 'Origem' },
-      ]
-
-      const formattedRows = rowsToExport.map((row) => {
-        const enriched = enrichVendaTipoCliente(row, tiposClienteMap)
-        return {
-          ...enriched,
-          origem:
-            row.tem_netsales && row.tem_racnew
-              ? 'Consolidado'
-              : row.tem_netsales
-                ? 'NetSales'
-                : 'RacNew',
-        }
-      })
-
-      const dateStr = new Date().toISOString().slice(0, 10)
-      const filename = groupByNfe
-        ? `relatorio_geral_por_nf_${dateStr}`
-        : `relatorio_geral_completo_${dateStr}`
-
-      exportToCSV(filename, formattedRows as unknown as Record<string, unknown>[], exportColumns)
-
-      toast({
-        title: 'Relatório exportado com sucesso!',
-        description: groupByNfe
-          ? `${rowsToExport.length} Notas Fiscais consolidadas exportadas em formato Excel/CSV.`
-          : `Todos os ${rowsToExport.length} registros detalhados foram exportados com sucesso.`,
-      })
-    } catch (err) {
-      console.error('Erro na exportação do relatório:', err)
-      toast({
-        variant: 'destructive',
-        title: 'Falha na exportação',
-        description: 'Não foi possível exportar o relatório. Tente novamente.',
-      })
-    } finally {
-      setExportingReport(false)
-    }
-  }
-
   return (
     <div className="space-y-6">
       {/* Filtros globais: geridos na página dedicada /dashboard/filtros */}
@@ -908,7 +319,6 @@ export default function DashboardGeral() {
           variant="outline"
           size="sm"
           onClick={() => navigate('/dashboard/filtros')}
-          // Navega para a página de gestão centralizada dos filtros
           className="bg-white border-gray-200 text-[#0B6E99] hover:bg-cyan-50 font-bold gap-1.5 text-xs shadow-2xs h-8 shrink-0"
         >
           <SlidersHorizontal className="w-3.5 h-3.5" />
@@ -916,59 +326,66 @@ export default function DashboardGeral() {
         </Button>
       </div>
 
-      {/* Barra de Ações com Botões de Exportação no Topo */}
+      {/* Título da Visão Geral */}
       <Card className="rounded-xl border border-gray-200 bg-white p-4 shadow-xs">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div>
-            <CardTitle className="text-base font-extrabold text-slate-900">
-              Visão Geral — Indicadores Consolidados
-            </CardTitle>
-            <CardDescription className="text-xs text-slate-500 font-medium mt-0.5">
-              Tendências de mercado, evolução temporal e comparativos de clientes ativos e grupos
-            </CardDescription>
-          </div>
-          <div className="flex items-center flex-wrap gap-2 shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleExportReport(false)}
-              disabled={exportingReport}
-              className="bg-white border-gray-200 text-slate-700 hover:bg-slate-50 font-bold gap-1.5 text-xs shadow-2xs h-8"
-              title="Exportar todos os registros que atendem aos filtros ativos em formato CSV/Excel"
-            >
-              {exportingReport ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#0B6E99]" />
-                  Exportando...
-                </>
-              ) : (
-                <>
-                  <Download className="w-3.5 h-3.5 text-[#0B6E99]" />
-                  Exportar Relatório Detalhado
-                </>
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleExportReport(true)}
-              disabled={exportingReport}
-              className="bg-cyan-50 border-cyan-200 text-[#0B6E99] hover:bg-cyan-100 font-bold gap-1.5 text-xs shadow-2xs h-8"
-              title="Exportar relatório consolidado (1 linha compacta por Nota Fiscal)"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Exportar por NF
-            </Button>
-          </div>
+        <div>
+          <CardTitle className="text-base font-extrabold text-slate-900">
+            Visão Geral — Indicadores Consolidados
+          </CardTitle>
+          <CardDescription className="text-xs text-slate-500 font-medium mt-0.5">
+            Tendências de mercado, evolução temporal e comparativos de clientes ativos
+          </CardDescription>
         </div>
       </Card>
+
+      {/* Valores de faturamento / KPIs no início da página */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <KpiCard
+          title="Faturamento Total"
+          value={reportKpis.faturamento}
+          isCurrency
+          icon={DollarSign}
+          iconBgColor="bg-cyan-50"
+          iconColor="text-[#0B6E99]"
+        />
+        <KpiCard
+          title="Valor Líquido"
+          value={reportKpis.valorLiquido}
+          isCurrency
+          icon={TrendingUp}
+          iconBgColor="bg-teal-50"
+          iconColor="text-teal-600"
+        />
+        <KpiCard
+          title="Itens Vendidos"
+          value={reportKpis.itensVendidos}
+          decimals={0}
+          icon={Package}
+          iconBgColor="bg-cyan-50"
+          iconColor="text-cyan-600"
+        />
+        <KpiCard
+          title="Documentos (NFe)"
+          value={reportKpis.documentos}
+          decimals={0}
+          icon={FileText}
+          iconBgColor="bg-slate-100"
+          iconColor="text-slate-700"
+        />
+        <KpiCard
+          title="Devoluções"
+          value={reportKpis.devolucoes}
+          isCurrency
+          icon={RotateCcw}
+          iconBgColor="bg-rose-50"
+          iconColor="text-rose-600"
+        />
+      </div>
 
       {/* Loading Skeleton */}
       {loading ? (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Skeleton className="h-80 w-full rounded-xl" />
-            <Skeleton className="h-80 w-full rounded-xl" />
             <Skeleton className="h-80 w-full rounded-xl" />
             <Skeleton className="h-80 w-full rounded-xl" />
             <Skeleton className="h-80 w-full rounded-xl" />
@@ -1013,7 +430,7 @@ export default function DashboardGeral() {
           </div>
         </Card>
       ) : (
-        /* Grade dos 8 Indicadores Solicitados para a Visão Geral */
+        /* Indicadores da Visão Geral */
         <div className="space-y-6">
           {/* Alerta de Empty State */}
           {isNoData && (
@@ -1045,9 +462,226 @@ export default function DashboardGeral() {
               </div>
             </Card>
           )}
-          {/* Linha 1: Tendência de Vendas — Equipamentos & Acumulado de Vendas — Insumos */}
+
+          {/* Seção: Evolução de Vendas por Mês & Evolução de Vendas por Ano (antes de Tendência) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Indicador 1: Tendência de Vendas — Equipamentos */}
+            {/* Indicador: Evolução de Vendas por Mês */}
+            <ChartCard
+              title="Evolução de Vendas por Mês"
+              description={`Últimos 6 meses com comparação trienal (${anoRetrasadoLabel}, ${anoAnteriorLabel}, ${anoAtualLabel})`}
+              icon={BarChart2}
+              iconColor="text-[#0B6E99]"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={chartVendasPorMes}
+                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis
+                    dataKey="mes"
+                    tickLine={false}
+                    axisLine={{ stroke: '#E2E8F0' }}
+                    tick={{ fill: '#64748B', fontSize: 12 }}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip
+                    formatter={(val: number | string | undefined, name: string) => {
+                      const n = typeof val === 'number' ? val : Number(val)
+                      if (name === 'faturamento')
+                        return [formatCurrency(n), `Faturamento (${anoAtualLabel})`]
+                      if (name === 'faturamento_ano_anterior')
+                        return [formatCurrency(n), `Faturamento (${anoAnteriorLabel})`]
+                      if (name === 'faturamento_ano_retrasado')
+                        return [formatCurrency(n), `Faturamento (${anoRetrasadoLabel})`]
+                      if (name === 'devolucoes') return [formatCurrency(n), 'Devoluções']
+                      return [formatCurrency(n), name]
+                    }}
+                    contentStyle={tooltipContentStyle}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    height={36}
+                    formatter={(value) => {
+                      const labels: Record<string, string> = {
+                        faturamento: `Faturamento (${anoAtualLabel})`,
+                        faturamento_ano_anterior: `Faturamento (${anoAnteriorLabel})`,
+                        faturamento_ano_retrasado: `Faturamento (${anoRetrasadoLabel})`,
+                        devolucoes: 'Devoluções',
+                      }
+                      return (
+                        <span className="text-xs font-bold text-slate-700">
+                          {labels[value] ?? value}
+                        </span>
+                      )
+                    }}
+                  />
+                  {mediaVendasPorMesAtual > 0 && (
+                    <ReferenceLine
+                      y={mediaVendasPorMesAtual}
+                      stroke="#64748B"
+                      strokeDasharray="4 4"
+                      strokeWidth={1.5}
+                      label={{
+                        value: `Média: ${formatCompactCurrency(mediaVendasPorMesAtual)}`,
+                        position: 'top',
+                        fill: '#475569',
+                        fontSize: 10,
+                        fontWeight: 700,
+                      }}
+                    />
+                  )}
+                  <Bar
+                    dataKey="faturamento_ano_retrasado"
+                    name="faturamento_ano_retrasado"
+                    fill="#94A3B8"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={22}
+                  />
+                  <Bar
+                    dataKey="faturamento_ano_anterior"
+                    name="faturamento_ano_anterior"
+                    fill="#67D2E2"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={22}
+                  />
+                  <Bar
+                    dataKey="faturamento"
+                    name="faturamento"
+                    fill={COLOR_BLUE}
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={22}
+                  />
+                  <Bar
+                    dataKey="devolucoes"
+                    name="devolucoes"
+                    fill="#EF4444"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={22}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+
+            {/* Indicador: Evolução de Vendas por Ano */}
+            <ChartCard
+              title="Evolução de Vendas por Ano"
+              description="Faturamento total por ano e variação percentual em relação ao ano anterior"
+              icon={TrendingUp}
+              iconColor="text-emerald-600"
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart
+                  data={chartVendasPorAno}
+                  margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                  <XAxis
+                    dataKey="ano"
+                    tickLine={false}
+                    axisLine={{ stroke: '#E2E8F0' }}
+                    tick={{ fill: '#64748B', fontSize: 12 }}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: '#64748B', fontSize: 11 }}
+                    tickFormatter={(val) => `${val.toFixed(0)}%`}
+                  />
+                  <Tooltip
+                    formatter={(val: number | string | undefined, name: string) => {
+                      const n = typeof val === 'number' ? val : Number(val)
+                      if (name === 'variacao') {
+                        return [`${n >= 0 ? '+' : ''}${n.toFixed(1)}%`, 'Variação vs. ano anterior']
+                      }
+                      if (name === 'devolucoes') {
+                        return [formatCurrency(n), 'Devoluções']
+                      }
+                      return [formatCurrency(n), 'Faturamento']
+                    }}
+                    contentStyle={tooltipContentStyle}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    height={36}
+                    formatter={(value) => {
+                      const labels: Record<string, string> = {
+                        faturamento: 'Faturamento',
+                        devolucoes: 'Devoluções',
+                        variacao: 'Variação %',
+                      }
+                      return (
+                        <span className="text-xs font-bold text-slate-700">
+                          {labels[value] ?? value}
+                        </span>
+                      )
+                    }}
+                  />
+                  <ReferenceLine yAxisId="right" y={0} stroke="#CBD5E1" strokeDasharray="3 3" />
+                  {mediaVendasPorAno > 0 && (
+                    <ReferenceLine
+                      yAxisId="left"
+                      y={mediaVendasPorAno}
+                      stroke="#64748B"
+                      strokeDasharray="4 4"
+                      strokeWidth={1.5}
+                      label={{
+                        value: `Média/ano: ${formatCompactCurrency(mediaVendasPorAno)}`,
+                        position: 'top',
+                        fill: '#475569',
+                        fontSize: 10,
+                        fontWeight: 700,
+                      }}
+                    />
+                  )}
+                  <Bar
+                    yAxisId="left"
+                    dataKey="faturamento"
+                    name="faturamento"
+                    fill={COLOR_BLUE}
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={56}
+                  />
+                  <Bar
+                    yAxisId="left"
+                    dataKey="devolucoes"
+                    name="devolucoes"
+                    fill="#EF4444"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={56}
+                  />
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="variacao"
+                    name="variacao"
+                    stroke="#1895A8"
+                    strokeWidth={2.5}
+                    dot={{ r: 4, fill: '#1895A8' }}
+                    activeDot={{ r: 5 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+
+          {/* Seção: Tendência de Vendas — Equipamentos & Acumulado de Vendas — Insumos */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Indicador: Tendência de Vendas — Equipamentos */}
             <ChartCard
               title="Tendência de Vendas — Equipamentos"
               description="Evolução histórica contínua de vendas de Equipamentos"
@@ -1126,7 +760,7 @@ export default function DashboardGeral() {
               )}
             </ChartCard>
 
-            {/* Indicador 2: Acumulado de Vendas — Insumos */}
+            {/* Indicador: Acumulado de Vendas — Insumos */}
             <ChartCard
               title="Acumulado de Vendas — Insumos"
               description="Evolução histórica contínua de Peças, Tintas e Acessórios"
@@ -1206,9 +840,9 @@ export default function DashboardGeral() {
             </ChartCard>
           </div>
 
-          {/* Linha 2: Clientes Ativos — Equipamentos, Tintas, Acessórios e Peças */}
+          {/* Seção: Clientes Ativos — Equipamentos, Tintas, Acessórios e Peças */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Indicador 3: Clientes Ativos — Equipamentos */}
+            {/* Clientes Ativos — Equipamentos */}
             <ChartCard
               title="Clientes Ativos — Equipamentos"
               description={`Comparativo trienal de clientes ativos de equipamentos (${anoRetrasadoLabel}, ${anoAnteriorLabel}, ${anoAtualLabel})`}
@@ -1495,503 +1129,6 @@ export default function DashboardGeral() {
                 </ResponsiveContainer>
               )}
             </ChartCard>
-          </div>
-
-          {/* Linha 3: Evolução de Vendas por Mês & Evolução de Vendas por Ano */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Indicador 5: Evolução de Vendas por Mês */}
-            <ChartCard
-              title="Evolução de Vendas por Mês"
-              description={`Últimos 6 meses com comparação trienal (${anoRetrasadoLabel}, ${anoAnteriorLabel}, ${anoAtualLabel})`}
-              icon={BarChart2}
-              iconColor="text-[#0B6E99]"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={chartVendasPorMes}
-                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                  <XAxis
-                    dataKey="mes"
-                    tickLine={false}
-                    axisLine={{ stroke: '#E2E8F0' }}
-                    tick={{ fill: '#64748B', fontSize: 12 }}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fill: '#64748B', fontSize: 11 }}
-                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                  />
-                  <Tooltip
-                    formatter={(val: number | string | undefined, name: string) => {
-                      const n = typeof val === 'number' ? val : Number(val)
-                      if (name === 'faturamento')
-                        return [formatCurrency(n), `Faturamento (${anoAtualLabel})`]
-                      if (name === 'faturamento_ano_anterior')
-                        return [formatCurrency(n), `Faturamento (${anoAnteriorLabel})`]
-                      if (name === 'faturamento_ano_retrasado')
-                        return [formatCurrency(n), `Faturamento (${anoRetrasadoLabel})`]
-                      if (name === 'devolucoes') return [formatCurrency(n), 'Devoluções']
-                      return [formatCurrency(n), name]
-                    }}
-                    contentStyle={tooltipContentStyle}
-                  />
-                  <Legend
-                    verticalAlign="top"
-                    height={36}
-                    formatter={(value) => {
-                      const labels: Record<string, string> = {
-                        faturamento: `Faturamento (${anoAtualLabel})`,
-                        faturamento_ano_anterior: `Faturamento (${anoAnteriorLabel})`,
-                        faturamento_ano_retrasado: `Faturamento (${anoRetrasadoLabel})`,
-                        devolucoes: 'Devoluções',
-                      }
-                      return (
-                        <span className="text-xs font-bold text-slate-700">
-                          {labels[value] ?? value}
-                        </span>
-                      )
-                    }}
-                  />
-                  {mediaVendasPorMesAtual > 0 && (
-                    <ReferenceLine
-                      y={mediaVendasPorMesAtual}
-                      stroke="#64748B"
-                      strokeDasharray="4 4"
-                      strokeWidth={1.5}
-                      label={{
-                        value: `Média: ${formatCompactCurrency(mediaVendasPorMesAtual)}`,
-                        position: 'top',
-                        fill: '#475569',
-                        fontSize: 10,
-                        fontWeight: 700,
-                      }}
-                    />
-                  )}
-                  <Bar
-                    dataKey="faturamento_ano_retrasado"
-                    name="faturamento_ano_retrasado"
-                    fill="#94A3B8"
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={22}
-                  />
-                  <Bar
-                    dataKey="faturamento_ano_anterior"
-                    name="faturamento_ano_anterior"
-                    fill="#67D2E2"
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={22}
-                  />
-                  <Bar
-                    dataKey="faturamento"
-                    name="faturamento"
-                    fill={COLOR_BLUE}
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={22}
-                  />
-                  <Bar
-                    dataKey="devolucoes"
-                    name="devolucoes"
-                    fill="#EF4444"
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={22}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
-            {/* Indicador 6: Evolução de Vendas por Ano */}
-            <ChartCard
-              title="Evolução de Vendas por Ano"
-              description="Faturamento total por ano e variação percentual em relação ao ano anterior"
-              icon={TrendingUp}
-              iconColor="text-emerald-600"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
-                  data={chartVendasPorAno}
-                  margin={{ top: 10, right: 20, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                  <XAxis
-                    dataKey="ano"
-                    tickLine={false}
-                    axisLine={{ stroke: '#E2E8F0' }}
-                    tick={{ fill: '#64748B', fontSize: 12 }}
-                  />
-                  <YAxis
-                    yAxisId="left"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fill: '#64748B', fontSize: 11 }}
-                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                  />
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fill: '#64748B', fontSize: 11 }}
-                    tickFormatter={(val) => `${val.toFixed(0)}%`}
-                  />
-                  <Tooltip
-                    formatter={(val: number | string | undefined, name: string) => {
-                      const n = typeof val === 'number' ? val : Number(val)
-                      if (name === 'variacao') {
-                        return [`${n >= 0 ? '+' : ''}${n.toFixed(1)}%`, 'Variação vs. ano anterior']
-                      }
-                      if (name === 'devolucoes') {
-                        return [formatCurrency(n), 'Devoluções']
-                      }
-                      return [formatCurrency(n), 'Faturamento']
-                    }}
-                    contentStyle={tooltipContentStyle}
-                  />
-                  <Legend
-                    verticalAlign="top"
-                    height={36}
-                    formatter={(value) => {
-                      const labels: Record<string, string> = {
-                        faturamento: 'Faturamento',
-                        devolucoes: 'Devoluções',
-                        variacao: 'Variação %',
-                      }
-                      return (
-                        <span className="text-xs font-bold text-slate-700">
-                          {labels[value] ?? value}
-                        </span>
-                      )
-                    }}
-                  />
-                  <ReferenceLine yAxisId="right" y={0} stroke="#CBD5E1" strokeDasharray="3 3" />
-                  {mediaVendasPorAno > 0 && (
-                    <ReferenceLine
-                      yAxisId="left"
-                      y={mediaVendasPorAno}
-                      stroke="#64748B"
-                      strokeDasharray="4 4"
-                      strokeWidth={1.5}
-                      label={{
-                        value: `Média/ano: ${formatCompactCurrency(mediaVendasPorAno)}`,
-                        position: 'top',
-                        fill: '#475569',
-                        fontSize: 10,
-                        fontWeight: 700,
-                      }}
-                    />
-                  )}
-                  <Bar
-                    yAxisId="left"
-                    dataKey="faturamento"
-                    name="faturamento"
-                    fill={COLOR_BLUE}
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={56}
-                  />
-                  <Bar
-                    yAxisId="left"
-                    dataKey="devolucoes"
-                    name="devolucoes"
-                    fill="#EF4444"
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={56}
-                  />
-                  <Line
-                    yAxisId="right"
-                    type="monotone"
-                    dataKey="variacao"
-                    name="variacao"
-                    stroke="#1895A8"
-                    strokeWidth={2.5}
-                    dot={{ r: 4, fill: '#1895A8' }}
-                    activeDot={{ r: 5 }}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </ChartCard>
-          </div>
-
-          {/* Linha 4: Vendas por Grupo do Item & Venda Mensal por Grupo do Item */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Indicador 7: Vendas por Grupo do Item */}
-            <ChartCard
-              title="Vendas por Grupo do Item"
-              description="Distribuição do faturamento por categoria de produto"
-              icon={PieChartIcon}
-              iconColor="text-teal-600"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={chartGrupoItemWithPercent}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={95}
-                    paddingAngle={3}
-                    dataKey="value"
-                    label={renderDonutCustomLabel}
-                    labelLine={false}
-                  >
-                    {chartGrupoItemWithPercent.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={
-                          getGrupoColor(entry.name) || CHART_PALETTE[index % CHART_PALETTE.length]
-                        }
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    content={({ active, payload }) => {
-                      if (!active || !payload || payload.length === 0) return null
-                      const item = payload[0]
-                      const name = String(item.name || '')
-                      const val = Number(item.value || 0)
-                      const matchedItem = chartGrupoItemWithPercent.find((g) => g.name === name)
-                      const pct =
-                        matchedItem !== undefined
-                          ? matchedItem.percent
-                          : totalGrupoItemFaturamento > 0
-                            ? Math.round((val / totalGrupoItemFaturamento) * 100)
-                            : 0
-                      return (
-                        <div className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-white border border-slate-700 shadow-md">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span
-                              className="inline-block w-2.5 h-2.5 rounded-sm"
-                              style={{
-                                backgroundColor:
-                                  item.payload?.fill || getGrupoColor(name) || CHART_PALETTE[0],
-                              }}
-                            />
-                            <span className="font-bold text-slate-200">{name}</span>
-                            <span className="ml-auto font-extrabold text-cyan-300">{pct}%</span>
-                          </div>
-                          <div className="text-slate-300 flex justify-between gap-4">
-                            <span>Faturamento:</span>
-                            <span className="font-bold text-white">{formatCurrency(val)}</span>
-                          </div>
-                        </div>
-                      )
-                    }}
-                  />
-                  <Legend
-                    verticalAlign="bottom"
-                    height={44}
-                    formatter={(value) => {
-                      const item = chartGrupoItemWithPercent.find((g) => g.name === value)
-                      const pctStr = item ? ` (${item.percent}%)` : ''
-                      return (
-                        <span className="text-xs font-bold text-slate-700">
-                          {value}
-                          <span className="text-slate-500 font-semibold">{pctStr}</span>
-                        </span>
-                      )
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
-            {/* Indicador 8: Venda Mensal por Grupo do Item (últimos 6 meses) */}
-            <ChartCard
-              title="Venda Mensal por Grupo do Item"
-              description="Faturamento por grupo de item nos últimos 6 meses"
-              icon={BarChart2}
-              iconColor="text-[#0B6E99]"
-            >
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={mensalGrupoData}
-                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
-                  <XAxis
-                    dataKey="mes"
-                    tickLine={false}
-                    axisLine={{ stroke: '#E2E8F0' }}
-                    tick={{ fill: '#64748B', fontSize: 12 }}
-                    tickFormatter={(val) => formatMesAnoCurto(String(val))}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fill: '#64748B', fontSize: 11 }}
-                    tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
-                  />
-                  <Tooltip
-                    content={<MensalGrupoTooltip />}
-                    cursor={{ fill: 'rgba(11,110,153,0.08)' }}
-                  />
-                  <Legend
-                    verticalAlign="top"
-                    height={36}
-                    content={() => (
-                      <div className="flex flex-wrap items-center justify-center gap-4 pb-3">
-                        {mensalGrupos.map((grupo, i) => {
-                          const color =
-                            MENSAL_GRUPO_COLORS[grupo] ||
-                            MENSAL_GRUPO_PALETTE[i % MENSAL_GRUPO_PALETTE.length]
-                          return (
-                            <div key={grupo} className="flex items-center gap-1.5">
-                              <span
-                                className="inline-block w-3 h-3 rounded-[2px]"
-                                style={{ backgroundColor: color }}
-                              />
-                              <span className="text-xs font-bold text-slate-700">{grupo}</span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                  />
-                  {mensalGrupos.map((grupo, index) => (
-                    <Bar
-                      key={grupo}
-                      dataKey={grupo}
-                      name={grupo}
-                      fill={
-                        MENSAL_GRUPO_COLORS[grupo] ||
-                        MENSAL_GRUPO_PALETTE[index % MENSAL_GRUPO_PALETTE.length]
-                      }
-                      radius={[4, 4, 0, 0]}
-                      maxBarSize={28}
-                    />
-                  ))}
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-          </div>
-
-          {/* Linha 4.5: Indicador de Metas Consolidadas (Canal, Deploy, Inside) */}
-          <MetasIndicador
-            filterMes={filters.mes?.[0] || null}
-            filterAno={filters.ano?.[0] || null}
-          />
-
-          {/* Seção: Relatório Consolidado de Vendas (incorporado de Vendas) */}
-          <div className="space-y-4 pt-4 border-t border-slate-200">
-            {/* KPIs do Relatório de Vendas e Clientes Ativos por Categoria */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <KpiCard
-                title="Faturamento Total"
-                value={reportKpis.faturamento}
-                isCurrency
-                icon={DollarSign}
-                iconBgColor="bg-cyan-50"
-                iconColor="text-[#0B6E99]"
-              />
-              <KpiCard
-                title="Valor Líquido"
-                value={reportKpis.valorLiquido}
-                isCurrency
-                icon={TrendingUp}
-                iconBgColor="bg-teal-50"
-                iconColor="text-teal-600"
-              />
-              <KpiCard
-                title="Itens Vendidos"
-                value={reportKpis.itensVendidos}
-                decimals={0}
-                icon={Package}
-                iconBgColor="bg-cyan-50"
-                iconColor="text-cyan-600"
-              />
-              <KpiCard
-                title="Documentos (NFe)"
-                value={reportKpis.documentos}
-                decimals={0}
-                icon={FileText}
-                iconBgColor="bg-slate-100"
-                iconColor="text-slate-700"
-              />
-              <KpiCard
-                title="Devoluções"
-                value={reportKpis.devolucoes}
-                isCurrency
-                icon={RotateCcw}
-                iconBgColor="bg-rose-50"
-                iconColor="text-rose-600"
-              />
-              <KpiCard
-                title="Clientes Ativos - Tintas"
-                value={clientesAtivosTintas}
-                decimals={0}
-                icon={Users}
-                iconBgColor="bg-cyan-50"
-                iconColor="text-[#106A82]"
-              />
-              <KpiCard
-                title="Clientes Ativos - Acessórios"
-                value={clientesAtivosAcessorios}
-                decimals={0}
-                icon={Users}
-                iconBgColor="bg-sky-50"
-                iconColor="text-[#0B6E99]"
-              />
-              <KpiCard
-                title="Clientes Ativos - Peças"
-                value={clientesAtivosPecas}
-                decimals={0}
-                icon={Users}
-                iconBgColor="bg-teal-50"
-                iconColor="text-[#1895A8]"
-              />
-            </div>
-
-            {/* Tabela do Relatório Consolidado de Vendas */}
-            <Card className="rounded-xl border border-gray-200 bg-white overflow-hidden min-w-0 max-w-full">
-              <CardHeader className="border-b border-slate-100 pb-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                      <FileSpreadsheet className="w-5 h-5 text-[#0B6E99]" />
-                      Relatório Consolidado de Vendas (RacNew + NetSales + Produtos)
-                    </CardTitle>
-                    <CardDescription className="text-xs text-slate-500 font-medium">
-                      {totalVendasItems} {hasMoreVendas ? '+' : ''} linhas encontradas • Base mestre
-                      RacNew com enriquecimento NetSales •{' '}
-                      {reportGroupByMode === 'comissao' || reportGroupByMode === 'jp_class'
-                        ? 'Página única consolidada'
-                        : 'Ordenação server-side ativa'}
-                    </CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-
-              <VendasRelatorioTable
-                items={displayedVendas}
-                loading={vendasLoading}
-                totalItems={totalVendasItems}
-                totalNetsales={totalNetsales}
-                totalRacnew={totalRacnew}
-                page={vendasPage}
-                pageSize={VENDAS_PAGE_SIZE}
-                totalPages={totalVendasPages}
-                onPageChange={handleVendasPageChange}
-                sortField={sort.field}
-                sortDir={sort.dir}
-                onSort={(f) => handleSort(f as SortField)}
-                isGroupedByNfe={isAllGroupedNfe}
-                onToggleGroupByNfe={handleCollapseAll}
-                storageKeyPrefix="relatorio_vendas"
-                exporting={exportingReport}
-                onExport={(forceGrouped) =>
-                  handleExportReport(forceGrouped !== undefined ? forceGrouped : isAllGroupedNfe)
-                }
-                showOriginSummary={true}
-                defaultGroupByMode="comissao"
-                allowedGroupByModes={['comissao', 'none', 'jp_class']}
-                groupByMode={reportGroupByMode}
-                onGroupByModeChange={handleGroupByModeChange}
-                hidePagination={
-                  reportGroupByMode === 'comissao' || reportGroupByMode === 'jp_class'
-                }
-              />
-            </Card>
           </div>
         </div>
       )}
