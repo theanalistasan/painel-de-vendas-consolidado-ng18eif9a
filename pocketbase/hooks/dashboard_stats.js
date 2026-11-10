@@ -712,6 +712,8 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
           like +
           ' OR numero_nfe' +
           like +
+          ' OR vendedor_cliente' +
+          like +
           ')',
       )
     }
@@ -1260,7 +1262,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
         if (!v) continue
         if (v === '-Nenhum vendedor / comprador-' || v.startsWith('-Nenhum vendedor / comprador-'))
           continue
-        if (isVendedorCliente && v.startsWith(' > ')) continue
+        if (isVendedorCliente && (v.startsWith(' > ') || v.startsWith('> '))) continue
         set.add(v)
       }
       return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
