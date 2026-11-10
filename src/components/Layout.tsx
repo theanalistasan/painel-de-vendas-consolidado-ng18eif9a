@@ -326,7 +326,7 @@ export default function Layout() {
                 {/* Submenu de Visões */}
                 {dashboardOpen && (
                   <div className="mt-1 ml-4 pl-3 border-l border-slate-800 space-y-1">
-                    {/* Filtros Globais (primeiro item, acima de Visão Geral) */}
+                    {/* Filtros Globais (primeiro item) */}
                     <NavLink
                       to="/dashboard/filtros"
                       className={cn(
@@ -340,19 +340,7 @@ export default function Layout() {
                       <span className="truncate">Filtros Globais</span>
                     </NavLink>
 
-                    <NavLink
-                      to="/dashboard/geral"
-                      className={cn(
-                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
-                        isGeralActive
-                          ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
-                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
-                      )}
-                    >
-                      <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Visão Geral</span>
-                    </NavLink>
-
+                    {/* Visão Canais (posicionado antes de Visão Geral) */}
                     <NavLink
                       to="/dashboard/canais"
                       className={cn(
@@ -364,6 +352,20 @@ export default function Layout() {
                     >
                       <Network className="w-3.5 h-3.5 shrink-0" />
                       <span className="truncate">Visão Canais</span>
+                    </NavLink>
+
+                    {/* Visão Geral */}
+                    <NavLink
+                      to="/dashboard/geral"
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all duration-150',
+                        isGeralActive
+                          ? 'bg-[#0B6E99] text-white font-bold shadow-xs'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800/60',
+                      )}
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Visão Geral</span>
                     </NavLink>
 
                     {/* Manutenção de Canais (ex-item "Canais" do extinto grupo Canais) */}
@@ -653,7 +655,7 @@ export default function Layout() {
 
                 {dashboardOpen && (
                   <div className="ml-4 pl-3 border-l border-slate-800 space-y-1">
-                    {/* Filtros Globais (primeiro item, acima de Visão Geral) */}
+                    {/* Filtros Globais (primeiro item) */}
                     <NavLink
                       to="/dashboard/filtros"
                       onClick={() => setMobileMenuOpen(false)}
@@ -668,20 +670,7 @@ export default function Layout() {
                       <span>Filtros Globais</span>
                     </NavLink>
 
-                    <NavLink
-                      to="/dashboard/geral"
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={cn(
-                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
-                        isGeralActive
-                          ? 'bg-[#0B6E99] text-white font-bold'
-                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
-                      )}
-                    >
-                      <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
-                      <span>Visão Geral</span>
-                    </NavLink>
-
+                    {/* Visão Canais (posicionado antes de Visão Geral) */}
                     <NavLink
                       to="/dashboard/canais"
                       onClick={() => setMobileMenuOpen(false)}
@@ -694,6 +683,21 @@ export default function Layout() {
                     >
                       <Network className="w-3.5 h-3.5 shrink-0" />
                       <span>Visão Canais</span>
+                    </NavLink>
+
+                    {/* Visão Geral */}
+                    <NavLink
+                      to="/dashboard/geral"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={cn(
+                        'flex items-center gap-2.5 px-3 py-2 rounded-full text-xs font-medium transition-all',
+                        isGeralActive
+                          ? 'bg-[#0B6E99] text-white font-bold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800',
+                      )}
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
+                      <span>Visão Geral</span>
                     </NavLink>
 
                     {/* Manutenção de Canais (ex-item "Canais" do extinto grupo Canais) */}
