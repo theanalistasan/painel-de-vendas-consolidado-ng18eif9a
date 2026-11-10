@@ -11,6 +11,7 @@ export type AuditAction =
   | 'estoque_sap_import'
   | 'tipos_cliente_import'
   | 'migracao_historico'
+  | 'netsales_v4_import'
   | 'zerar_base'
 
 export interface AuditLog {

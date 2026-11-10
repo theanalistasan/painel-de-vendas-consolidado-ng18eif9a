@@ -33,8 +33,12 @@ import { cn } from '@/lib/utils'
 
 const BASES = [
   { key: 'produtos', label: 'Produtos', desc: 'Catálogo de itens', color: 'bg-cyan-500' },
-  { key: 'racnew', label: 'RacNew', desc: 'Base mestra fiscal/financeira', color: 'bg-indigo-500' },
-  { key: 'netsales', label: 'NetSales', desc: 'Campos comerciais', color: 'bg-teal-500' },
+  {
+    key: 'netsales_v4',
+    label: 'NetSales_v4',
+    desc: 'Base única de vendas',
+    color: 'bg-indigo-500',
+  },
   { key: 'vendas', label: 'Vendas', desc: 'Base consolidada', color: 'bg-rose-500' },
 ] as const
 
@@ -44,16 +48,14 @@ export default function Admin() {
   const [loading, setLoading] = useState(false)
   const [counts, setCounts] = useState<Record<string, number>>({
     produtos: 0,
-    racnew: 0,
-    netsales: 0,
+    netsales_v4: 0,
     vendas: 0,
   })
   const [lastResult, setLastResult] = useState<ResetBasesResult | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [selected, setSelected] = useState<Record<string, boolean>>({
     produtos: true,
-    racnew: true,
-    netsales: true,
+    netsales_v4: true,
     vendas: true,
   })
   const { toast } = useToast()
@@ -71,8 +73,7 @@ export default function Admin() {
       const data = await getCountsSummary()
       setCounts({
         produtos: data.produtos,
-        racnew: data.racnew,
-        netsales: data.netsales,
+        netsales_v4: data.netsales_v4,
         vendas: data.vendas,
       })
     } catch (err) {

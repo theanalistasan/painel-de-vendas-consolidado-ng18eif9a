@@ -1,11 +1,11 @@
 // Endpoint: POST /backend/v1/admin/reset-bases
-// Zera registros das coleções produtos, racnew, netsales e vendas.
+// Zera registros das coleções produtos, netsales_v4 (base única de vendas) e vendas.
 // Protegido por senha de administrador — exigida no body.
 //
 // Body:
 //   password    (string, obrigatório) — senha de administrador
 //   collections (string[], opcional)  — nomes das coleções a zerar.
-//     Se ausente/vazio, zera TODAS as 4 (compatível com versão anterior).
+//     Se ausente/vazio, zera TODAS as 3 (compatível com versão anterior).
 //     Se presente, zera SOMENTE as coleções informadas (válidas).
 routerAdd(
   'POST',
@@ -24,8 +24,8 @@ routerAdd(
       })
     }
 
-    // Coleções válidas gerenciadas por esta rota
-    const ALL_COLLECTIONS = ['produtos', 'racnew', 'netsales', 'vendas']
+    // Coleções válidas gerenciadas por esta rota (RacNew/NetSales antigas não existem mais)
+    const ALL_COLLECTIONS = ['produtos', 'netsales_v4', 'vendas']
 
     // Determina quais coleções zerar
     let requested = body.collections

@@ -28,6 +28,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   estoque_sap_import: 'Importação Estoque SAP',
   tipos_cliente_import: 'Importação Tipo de Cliente',
   migracao_historico: 'Migração Histórico (< 2025)',
+  netsales_v4_import: 'Importação NetSales_v4',
   zerar_base: 'Zeramento da Base',
 }
 
@@ -41,6 +42,7 @@ const ACTION_BADGE: Record<AuditAction, string> = {
   estoque_sap_import: 'bg-emerald-100 text-emerald-800 hover:bg-emerald-100',
   tipos_cliente_import: 'bg-purple-100 text-purple-800 hover:bg-purple-100',
   migracao_historico: 'bg-amber-100 text-amber-800 hover:bg-amber-100',
+  netsales_v4_import: 'bg-teal-100 text-teal-800 hover:bg-teal-100',
   zerar_base: 'bg-red-100 text-red-800 hover:bg-red-100',
 }
 
