@@ -183,9 +183,14 @@ export function buildDynamicInitialFilters(options?: {
   }
 }
 
+export const FILTERS_CHANGED_EVENT = 'paineis_vendas_filters_changed'
+
 export function saveFiltersToSession(filters: FilterState): void {
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(filters))
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(FILTERS_CHANGED_EVENT, { detail: filters }))
+    }
   } catch {
     // sessionStorage não disponível ou cheio — ignora silenciosamente
   }
@@ -284,6 +289,9 @@ export function loadFiltersFromSession(): FilterState {
 export function clearFiltersFromSession(): void {
   try {
     sessionStorage.removeItem(STORAGE_KEY)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(FILTERS_CHANGED_EVENT, { detail: null }))
+    }
   } catch {
     // ignora
   }

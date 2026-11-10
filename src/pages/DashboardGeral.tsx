@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   TrendingUp,
   BarChart2,
@@ -34,6 +34,7 @@ import {
   loadFiltersFromSession,
   saveFiltersToSession,
   hasSavedFiltersInSession,
+  FILTERS_CHANGED_EVENT,
 } from '@/lib/filter-persistence'
 import ChartCard from '@/components/ChartCard'
 import KpiCard from '@/components/KpiCard'
@@ -67,8 +68,9 @@ export default function DashboardGeral() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
+  const location = useLocation()
 
-  const [filters] = useState<FilterState>(() => {
+  const [filters, setFilters] = useState<FilterState>(() => {
     const loaded = loadFiltersFromSession()
     if (!hasSavedFiltersInSession()) {
       saveFiltersToSession(loaded)
@@ -76,10 +78,12 @@ export default function DashboardGeral() {
     return loaded
   })
 
+  const filtersRef = useRef<FilterState>(filters)
+  filtersRef.current = filters
   const requestSeqRef = useRef<number>(0)
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  const loadData = async (activeFilters = filters) => {
+  const loadData = useCallback(async (activeFilters = filtersRef.current) => {
     const seq = ++requestSeqRef.current
 
     if (abortControllerRef.current) {
@@ -115,7 +119,70 @@ export default function DashboardGeral() {
       setError(err instanceof Error ? err.message : 'Falha ao carregar dados do painel.')
       setLoading(false)
     }
-  }
+  }, [])
+
+  // Sincroniza os filtros com o sessionStorage de forma reativa:
+  // recarrega ao navegar para esta rota, ao focar na janela, ao disparar
+  // evento de alteração/limpeza ou evento storage nativo.
+  const syncFiltersFromSession = useCallback(() => {
+    const latest = loadFiltersFromSession()
+    const currentSerialized = JSON.stringify(filtersRef.current)
+    const latestSerialized = JSON.stringify(latest)
+
+    if (currentSerialized !== latestSerialized) {
+      setFilters(latest)
+      loadData(latest)
+    }
+  }, [loadData])
+
+  // Reagir quando a rota mudar (usuário volta da tela /dashboard/filtros para /dashboard/geral ou /)
+  useEffect(() => {
+    syncFiltersFromSession()
+  }, [location.pathname, syncFiltersFromSession])
+
+  // Reagir a eventos de foco, storage entre abas e evento customizado de filtros alterados/limpos
+  useEffect(() => {
+    const handleFiltersChanged = (e?: Event) => {
+      const customEvent = e as CustomEvent<FilterState | null> | undefined
+      if (customEvent?.detail) {
+        const nextFilters = customEvent.detail
+        if (JSON.stringify(filtersRef.current) !== JSON.stringify(nextFilters)) {
+          setFilters(nextFilters)
+          loadData(nextFilters)
+          return
+        }
+      }
+      syncFiltersFromSession()
+    }
+
+    const handleFocus = () => {
+      syncFiltersFromSession()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncFiltersFromSession()
+      }
+    }
+
+    const handleStorage = (e: StorageEvent) => {
+      if (!e.key || e.key === 'paineis_vendas_filters') {
+        syncFiltersFromSession()
+      }
+    }
+
+    window.addEventListener(FILTERS_CHANGED_EVENT, handleFiltersChanged)
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('storage', handleStorage)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener(FILTERS_CHANGED_EVENT, handleFiltersChanged)
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('storage', handleStorage)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [syncFiltersFromSession, loadData])
 
   useEffect(() => {
     loadData(filters)
@@ -124,10 +191,10 @@ export default function DashboardGeral() {
         abortControllerRef.current.abort()
       }
     }
-  }, [filters])
+  }, [filters, loadData])
 
   useRealtime('vendas', () => {
-    loadData()
+    loadData(filtersRef.current)
   })
 
   const chartVendasPorMes = data?.charts?.vendasPorMes || []
