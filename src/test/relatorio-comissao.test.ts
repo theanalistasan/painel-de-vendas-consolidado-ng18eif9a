@@ -1,7 +1,71 @@
 import { describe, it, expect } from 'vitest'
 import { isVendedorNaoComissionado } from '@/components/VendasRelatorioTable'
+import { normalizeNomeEmpresa, areNomesEmpresaIguais, isVendaNaoComissionada } from '@/lib/comissao'
 
 describe('Regra de Agrupamento: Comissionados vs Não Comissionados', () => {
+  it('reconhece a nova regra de nome normalizado do caso do usuário (CH SUPRIMENTOS COMUNICAÇÃO VISUAL > LTDA)', () => {
+    // Caso exato do print do usuário:
+    // Vendedor: "CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL"
+    // Cliente: "CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL LTDA"
+    const vendaCasoUsuario = {
+      id: 'v_ch_1',
+      numero_nfe: '84303',
+      vendedor_cliente:
+        'CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL > CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL LTDA',
+      nome_vendedor: 'CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL',
+      nome_cliente: 'CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL LTDA',
+      total_linha: 6136.83,
+    }
+
+    // Tanto no lib/comissao quanto no VendasRelatorioTable:
+    expect(isVendaNaoComissionada(vendaCasoUsuario)).toBe(true)
+    expect(isVendedorNaoComissionado(vendaCasoUsuario)).toBe(true)
+
+    // Teste isolado da normalização e comparação de nomes:
+    expect(normalizeNomeEmpresa('CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL')).toBe(
+      'CH SUPRIMENTOS PARA COMUNICACAO VISUAL',
+    )
+    expect(normalizeNomeEmpresa('CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL LTDA')).toBe(
+      'CH SUPRIMENTOS PARA COMUNICACAO VISUAL',
+    )
+    expect(
+      areNomesEmpresaIguais(
+        'CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL',
+        'CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL LTDA',
+      ),
+    ).toBe(true)
+  })
+
+  it('ignora sufixos societários variados (LTDA, S.A., ME, EPP, EIRELI) e variações de acentuação/pontuação', () => {
+    expect(
+      areNomesEmpresaIguais('ALPHA COMÉRCIO DE MÁQUINAS', 'ALPHA COMERCIO DE MAQUINAS S.A.'),
+    ).toBe(true)
+    expect(areNomesEmpresaIguais('BETA DIGITAL ME', 'BETA DIGITAL EIRELI')).toBe(true)
+    expect(areNomesEmpresaIguais('GAMMA SUPRIMENTOS - EPP', 'GAMMA SUPRIMENTOS LTDA.')).toBe(true)
+  })
+
+  it('mantém em Comissionados quando vendedor e cliente são genuinamente diferentes', () => {
+    const vendaComissionada = {
+      id: 'v_comiss_1',
+      numero_nfe: '27386',
+      vendedor_cliente:
+        'CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL > ARMSTRONG COMUNICACAO VISUAL LTDA',
+      nome_vendedor: 'CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL',
+      nome_cliente: 'ARMSTRONG COMUNICACAO VISUAL LTDA',
+      total_linha: 22000,
+    }
+
+    expect(isVendaNaoComissionada(vendaComissionada)).toBe(false)
+    expect(isVendedorNaoComissionado(vendaComissionada)).toBe(false)
+
+    const outraComissionada = {
+      vendedor_cliente: 'ADENIL SUPRIMENTOS > GRAFICA RAPIDA IMPRIMA',
+      nome_vendedor: 'ADENIL SUPRIMENTOS',
+      nome_cliente: 'GRAFICA RAPIDA IMPRIMA LTDA',
+    }
+    expect(isVendaNaoComissionada(outraComissionada)).toBe(false)
+    expect(isVendedorNaoComissionado(outraComissionada)).toBe(false)
+  })
   it('classifica como Não Comissionado se vendedor_cliente inicia com "Roland DG Brasil > "', () => {
     expect(
       isVendedorNaoComissionado({
@@ -243,6 +307,64 @@ describe('Regra de Agrupamento: Comissionados vs Não Comissionados', () => {
     // Expande ambos (expandAllComissaoGroups)
     const expandedAll = new Set<string>()
     expect(expandedAll.size).toBe(0)
+  })
+
+  it('garante a invariante estrita Comissionados + Não Comissionados = Total em lote misto com a nova regra', () => {
+    const vendasMistas = [
+      // 1. Roland direta
+      {
+        id: '1',
+        vendedor_cliente: 'Roland DG Brasil > Cliente X',
+        total_linha: 1000,
+        valor_liquido: 900,
+      },
+      // 2. Caso CH Suprimentos (nova regra)
+      {
+        id: '2',
+        vendedor_cliente:
+          'CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL > CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL LTDA',
+        total_linha: 6136.83,
+        valor_liquido: 4900.87,
+      },
+      // 3. Autofaturamento por código de cliente
+      {
+        id: '3',
+        vendedor_cliente: 'REV BRASIL > REVENDA MATRIZ',
+        codigo_cliente_revenda: 'C01234',
+        codigo_cliente: 'C01234',
+        total_linha: 2500,
+        valor_liquido: 2200,
+      },
+      // 4. Venda normal para terceiro (Comissionada)
+      {
+        id: '4',
+        vendedor_cliente:
+          'CH SUPRIMENTOS PARA COMUNICAÇÃO VISUAL > ARMSTRONG COMUNICACAO VISUAL LTDA',
+        total_linha: 22000,
+        valor_liquido: 18000,
+      },
+      // 5. Outra venda normal para terceiro (Comissionada)
+      {
+        id: '5',
+        vendedor_cliente: 'CANAL SUL > CLIENTE FINAL LTDA',
+        total_linha: 5000,
+        valor_liquido: 4500,
+      },
+    ]
+
+    const comissionados = vendasMistas.filter((v) => !isVendedorNaoComissionado(v))
+    const naoComissionados = vendasMistas.filter((v) => isVendedorNaoComissionado(v))
+
+    expect(vendasMistas.length).toBe(5)
+    expect(naoComissionados.length).toBe(3) // 1, 2 e 3
+    expect(comissionados.length).toBe(2) // 4 e 5
+    expect(comissionados.length + naoComissionados.length).toBe(vendasMistas.length)
+
+    const somaTotal = vendasMistas.reduce((acc, v) => acc + v.total_linha, 0)
+    const somaComiss = comissionados.reduce((acc, v) => acc + v.total_linha, 0)
+    const somaNaoComiss = naoComissionados.reduce((acc, v) => acc + v.total_linha, 0)
+
+    expect(somaComiss + somaNaoComiss).toBeCloseTo(somaTotal, 2)
   })
 
   it('garante que a soma de Comissionados + Não Comissionados em conjunto completo bate com o Faturamento Total dos KPIs', () => {

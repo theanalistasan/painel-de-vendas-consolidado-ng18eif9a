@@ -814,7 +814,7 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
     const items = []
     for (let i = 0; i < dataRows.length; i++) {
       const r = dataRows[i]
-      items.push({
+      const vendaItem = {
         id: r.id,
         tipo_documento: r.tipo_documento,
         nf_entrega_futura: r.nf_entrega_futura,
@@ -878,7 +878,13 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
         data_carga: r.data_carga,
         created: r.created,
         updated: r.updated,
-      })
+      }
+      try {
+        if (typeof isVendedorNaoComissionadoHook === 'function') {
+          vendaItem.nao_comissionado = isVendedorNaoComissionadoHook(vendaItem)
+        }
+      } catch (_) {}
+      items.push(vendaItem)
     }
 
     return e.json(200, {

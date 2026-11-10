@@ -28,6 +28,13 @@ import { useToast } from '@/hooks/use-toast'
 import { VendasRelatorioRow } from '@/components/VendasRelatorioRow'
 import { ComissaoGroupHeader } from '@/components/ComissaoGroupHeader'
 import { JpClassGroupHeader } from '@/components/JpClassGroupHeader'
+import {
+  PREFIXO_NAO_COMISSIONADO,
+  normalizeNomeEmpresa,
+  areNomesEmpresaIguais,
+  isVendedorNaoComissionado,
+  isVendaNaoComissionada,
+} from '@/lib/comissao'
 
 export type SortDirection = 'asc' | 'desc'
 
@@ -147,64 +154,12 @@ const MIN_COLUMN_WIDTH = 60
 
 export type RelatorioGroupByMode = 'none' | 'jp_class' | 'comissao'
 
-export const PREFIXO_NAO_COMISSIONADO = 'Roland DG Brasil > '
-
-/**
- * Classifica a venda entre Comissionado e Não Comissionado.
- * Regras:
- * 1) Vendas da Roland DG Brasil direta: vendedor_cliente / nome_vendedor inicia com "Roland DG Brasil >" (case-insensitive).
- * 2) Auto-faturamento ("dele para ele mesmo"): a Revenda vendedora é igual ao cliente comprador.
- *    - Pela flag booleana `nao_comissionado` vinda do backend (quando computada).
- *    - Pelo código de cliente: `codigo_cliente_revenda === codigo_cliente`.
- *    - Pelo campo composto `vendedor_cliente`: formato "VENDEDOR > CLIENTE" onde VENDEDOR == CLIENTE.
- *    - Por `nome_vendedor === nome_cliente`.
- * 3) Comissionados: todos os demais.
- */
-export function isVendedorNaoComissionado(venda: {
-  vendedor_cliente?: string | null
-  nome_vendedor?: string | null
-  nome_cliente?: string | null
-  codigo_cliente?: string | null
-  codigo_cliente_revenda?: string | null
-  nao_comissionado?: boolean | null
-}): boolean {
-  if (venda.nao_comissionado === true) {
-    return true
-  }
-
-  const rawVendedor = (venda.vendedor_cliente || venda.nome_vendedor || '').trim()
-
-  // 1) Regra Roland DG Brasil direta
-  if (rawVendedor.toLowerCase().startsWith('roland dg brasil >')) {
-    return true
-  }
-
-  // 2) Auto-faturamento por código de cliente da revenda x comprador
-  const codRevenda = (venda.codigo_cliente_revenda || '').trim()
-  const codCliente = (venda.codigo_cliente || '').trim()
-  if (codRevenda && codCliente && codRevenda.toUpperCase() === codCliente.toUpperCase()) {
-    return true
-  }
-
-  // 3) Auto-faturamento por vendedor_cliente: "REVENDA > COMPRADOR" onde REVENDA == COMPRADOR
-  const comp = (venda.vendedor_cliente || '').trim()
-  if (comp.includes('>')) {
-    const parts = comp.split('>')
-    const parteVendedor = (parts[0] || '').trim().toUpperCase()
-    const parteCliente = (parts.slice(1).join('>') || '').trim().toUpperCase()
-    if (parteVendedor && parteCliente && parteVendedor === parteCliente) {
-      return true
-    }
-  }
-
-  // 4) Auto-faturamento por nome_vendedor == nome_cliente
-  const vend = (venda.nome_vendedor || '').trim().toUpperCase()
-  const cli = (venda.nome_cliente || '').trim().toUpperCase()
-  if (vend && cli && vend === cli) {
-    return true
-  }
-
-  return false
+export {
+  PREFIXO_NAO_COMISSIONADO,
+  normalizeNomeEmpresa,
+  areNomesEmpresaIguais,
+  isVendedorNaoComissionado,
+  isVendaNaoComissionada,
 }
 
 export interface VendasRelatorioTableProps {

@@ -530,7 +530,7 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
           r.tem_racnew === true
         const qtdItens = toInt(r.itens_qtd)
 
-        items.push({
+        const itemGrouped = {
           id: 'nfe_' + String(r.numero_nfe),
           numero_nfe: r.numero_nfe,
           data_lancamento: r.data_lancamento,
@@ -564,7 +564,13 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
           tem_netsales: hasNetsales,
           tem_racnew: hasRacnew,
           origem: hasNetsales && hasRacnew ? 'Consolidado' : hasNetsales ? 'NetSales' : 'RacNew',
-        })
+        }
+        try {
+          if (typeof isVendedorNaoComissionadoHook === 'function') {
+            itemGrouped.nao_comissionado = isVendedorNaoComissionadoHook(itemGrouped)
+          }
+        } catch (_) {}
+        items.push(itemGrouped)
       }
 
       return e.json(200, {
@@ -616,7 +622,7 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
     const items = []
     for (let i = 0; i < dataRows.length; i++) {
       const r = dataRows[i]
-      items.push({
+      const vendaItem = {
         id: r.id,
         tipo_documento: r.tipo_documento,
         nf_entrega_futura: r.nf_entrega_futura,
@@ -680,7 +686,13 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
         data_carga: r.data_carga,
         created: r.created,
         updated: r.updated,
-      })
+      }
+      try {
+        if (typeof isVendedorNaoComissionadoHook === 'function') {
+          vendaItem.nao_comissionado = isVendedorNaoComissionadoHook(vendaItem)
+        }
+      } catch (_) {}
+      items.push(vendaItem)
     }
 
     return e.json(200, {
