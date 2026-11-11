@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { getJpClass } from '@/lib/jp-class'
 import type { VendaComSemana } from '@/components/JpClassRelatorio'
 
-describe('Dashboard JP-Class: Subtotais HARD, INKS e OTHERS por Tipo de Cliente', () => {
+describe('Dashboard JP-Class: Subtotais DGS, HARD, INKS e OTHERS por Tipo de Cliente', () => {
   const mockVendas: VendaComSemana[] = [
     {
       id: 'v1',
@@ -50,8 +50,10 @@ describe('Dashboard JP-Class: Subtotais HARD, INKS e OTHERS por Tipo de Cliente'
     'CLI-002': 'Gráfica Digital',
   }
 
-  it('deve calcular corretamente os subtotais de HARD, INKS e OTHERS por Tipo de Cliente', () => {
+  it('deve calcular corretamente os subtotais de DGS, HARD, INKS e OTHERS por Tipo de Cliente', () => {
     interface Subtotais {
+      dgsFaturamento: number
+      dgsQuantidade: number
       hardFaturamento: number
       hardQuantidade: number
       inksFaturamento: number
@@ -76,6 +78,8 @@ describe('Dashboard JP-Class: Subtotais HARD, INKS e OTHERS por Tipo de Cliente'
 
       const cls = getJpClass(it.grupo_item || it.itms_grp_nam)
       const cur = map.get(tc) || {
+        dgsFaturamento: 0,
+        dgsQuantidade: 0,
         hardFaturamento: 0,
         hardQuantidade: 0,
         inksFaturamento: 0,
@@ -91,7 +95,10 @@ describe('Dashboard JP-Class: Subtotais HARD, INKS e OTHERS por Tipo de Cliente'
       const fat = Number(it.total_linha) || 0
       const qtd = Number(it.quantidade) || 0
 
-      if (cls === 'HARD') {
+      if (cls === 'DGS') {
+        cur.dgsFaturamento += fat
+        cur.dgsQuantidade += qtd
+      } else if (cls === 'HARD') {
         cur.hardFaturamento += fat
         cur.hardQuantidade += qtd
       } else if (cls === 'INKS') {

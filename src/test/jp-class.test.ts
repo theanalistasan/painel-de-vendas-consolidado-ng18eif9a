@@ -43,7 +43,31 @@ describe('Regra de De/Para JP-Class', () => {
       expect(getJpClass('OTHERS')).toBe('OTHERS')
     })
 
+    it('deve mapear os 6 grupos da nova categoria DGS para DGS (case-insensitive, com TRIM)', () => {
+      expect(getJpClass('3D ACCESSORIES')).toBe('DGS')
+      expect(getJpClass('3d accessories')).toBe('DGS')
+      expect(getJpClass('  DENTAL ACCESSORIES  ')).toBe('DGS')
+      expect(getJpClass('Mec Compon Mecanicos')).toBe('DGS')
+      expect(getJpClass('MEC COMPON MECANICOS')).toBe('DGS')
+      expect(getJpClass('DENTAL')).toBe('DGS')
+      expect(getJpClass('dental')).toBe('DGS')
+      expect(getJpClass('GRAVADORAS')).toBe('DGS')
+      expect(getJpClass('Gravadoras')).toBe('DGS')
+      expect(getJpClass('DG SHAPE')).toBe('DGS')
+      expect(getJpClass('dg shape')).toBe('DGS')
+      expect(getJpClass({ itms_grp_nam: 'DENTAL' })).toBe('DGS')
+    })
+
+    it('deve manter TINTAS como INKS e EQUIPAMENTOS como HARD (regras existentes intactas)', () => {
+      expect(getJpClass('TINTAS')).toBe('INKS')
+      expect(getJpClass('EQUIPAMENTOS')).toBe('HARD')
+    })
+
     it('deve mapear QUALQUER OUTRO valor de Grupo para OTHERS', () => {
+      expect(getJpClass('PASTA DE POLIR')).toBe('OTHERS')
+      expect(getJpClass('DENTAL CLINIC')).toBe('OTHERS')
+      expect(getJpClass('3D PRINTERS')).toBe('OTHERS')
+      expect(getJpClass('DGSHAPE')).toBe('OTHERS')
       expect(getJpClass('SERVIÇOS')).toBe('OTHERS')
       expect(getJpClass('BRINDES')).toBe('OTHERS')
       expect(getJpClass('MATERIAIS')).toBe('OTHERS')
@@ -73,6 +97,8 @@ describe('Regra de De/Para JP-Class', () => {
     it('deve classificar conforme opções padronizadas', () => {
       expect(getStandardJpClass('TINTAS')).toBe('INKS')
       expect(getStandardJpClass('EQUIPAMENTOS')).toBe('HARD')
+      expect(getStandardJpClass('GRAVADORAS')).toBe('DGS')
+      expect(getStandardJpClass('DG SHAPE')).toBe('DGS')
       expect(getStandardJpClass('PEÇAS')).toBe('OTHERS')
       expect(getStandardJpClass('SERVIÇOS')).toBe('OTHERS')
       expect(getStandardJpClass('')).toBe('Sem classe')
@@ -104,6 +130,14 @@ describe('Regra de De/Para JP-Class', () => {
       expect(matchesJpClassFilter(undefined, 'SERVIÇOS', ['OTHERS'])).toBe(true)
       expect(matchesJpClassFilter(undefined, 'PEÇAS', ['OTHERS'])).toBe(true)
       expect(matchesJpClassFilter(undefined, 'TINTAS', ['OTHERS'])).toBe(false)
+
+      // Com filtro DGS (grupos da nova categoria)
+      expect(matchesJpClassFilter('DENTAL', ['DGS'])).toBe(true)
+      expect(matchesJpClassFilter('Dental', ['DGS'])).toBe(true)
+      expect(matchesJpClassFilter(' GRAVADORAS ', ['DGS'])).toBe(true)
+      expect(matchesJpClassFilter('3D ACCESSORIES', ['DGS'])).toBe(true)
+      expect(matchesJpClassFilter('DG SHAPE', ['OTHERS'])).toBe(false)
+      expect(matchesJpClassFilter('TINTAS', ['DGS'])).toBe(false)
 
       // Com filtro HARD
       expect(matchesJpClassFilter('EQUIPAMENTOS', ['HARD'])).toBe(true)

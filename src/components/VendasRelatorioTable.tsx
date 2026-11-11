@@ -534,7 +534,12 @@ export function VendasRelatorioTable({
     for (const item of items) {
       const rawDerived = getJpClass(item.grupo_item)
       let standardGroup: string
-      if (rawDerived === 'HARD' || rawDerived === 'INKS' || rawDerived === 'OTHERS') {
+      if (
+        rawDerived === 'DGS' ||
+        rawDerived === 'HARD' ||
+        rawDerived === 'INKS' ||
+        rawDerived === 'OTHERS'
+      ) {
         standardGroup = rawDerived
       } else {
         standardGroup = 'Sem classe'

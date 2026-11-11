@@ -417,7 +417,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
       })
     }
 
-    // Ordenar L1 (JP-Class): ordem alfabética crescente (A→Z: HARD, INKS, OTHERS, Sem classe) por padrão ou por métrica se clicado
+    // Ordenar L1 (JP-Class): ordem alfabética crescente (A→Z: DGS, HARD, INKS, OTHERS, Sem classe) por padrão ou por métrica se clicado
     l1Nodes.sort((a, b) => {
       if (
         sortField === 'total_linha' ||
@@ -716,7 +716,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
                 return (
                   <React.Fragment key={l1.key}>
                     {/* ========================================================= */}
-                    {/* NÍVEL 1: JP-Class (HARD, INKS, OTHERS, Sem classe)        */}
+                    {/* NÍVEL 1: JP-Class (DGS, HARD, INKS, OTHERS, Sem classe)   */}
                     {/* Nunca desaparece quando colapsado; apenas seus filhos somem */}
                     {/* ========================================================= */}
                     <tr

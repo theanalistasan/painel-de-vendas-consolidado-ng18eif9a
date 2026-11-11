@@ -275,6 +275,14 @@ var __vendasExportHandler = (e) => {
     if (jpClassFilter.length > 0) {
       const hardPatterns = ["'EQUIPAMENTOS'", "'EQUIPAMENTO'", "'HARD'"]
       const inksPatterns = ["'TINTAS'", "'TINTA'", "'INKS'"]
+      const dgsPatterns = [
+        "'3D ACCESSORIES'",
+        "'DENTAL ACCESSORIES'",
+        "'MEC COMPON MECANICOS'",
+        "'DENTAL'",
+        "'GRAVADORAS'",
+        "'DG SHAPE'",
+      ]
 
       const conds = []
       for (let j = 0; j < jpClassFilter.length; j++) {
@@ -284,11 +292,13 @@ var __vendasExportHandler = (e) => {
           conds.push("UPPER(TRIM(COALESCE(grupo_item, ''))) IN (" + hardPatterns.join(',') + ')')
         } else if (upper === 'INKS') {
           conds.push("UPPER(TRIM(COALESCE(grupo_item, ''))) IN (" + inksPatterns.join(',') + ')')
+        } else if (upper === 'DGS') {
+          conds.push("UPPER(TRIM(COALESCE(grupo_item, ''))) IN (" + dgsPatterns.join(',') + ')')
         } else if (upper === 'OTHERS') {
-          // OTHERS: qualquer grupo preenchido que não seja HARD nem INKS
+          // OTHERS: qualquer grupo preenchido que não seja HARD, INKS nem DGS
           conds.push(
             "(grupo_item IS NOT NULL AND TRIM(grupo_item) != '' AND UPPER(TRIM(grupo_item)) NOT IN (" +
-              hardPatterns.concat(inksPatterns).join(',') +
+              hardPatterns.concat(inksPatterns, dgsPatterns).join(',') +
               '))',
           )
         } else if (

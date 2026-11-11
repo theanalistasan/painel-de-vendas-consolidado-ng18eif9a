@@ -2,6 +2,8 @@
  * Normalização e De/Para de JP-Class
  *
  * Regras:
+ * - DGS: grupos exatos "3D ACCESSORIES", "DENTAL ACCESSORIES", "MEC COMPON MECANICOS",
+ *   "DENTAL", "GRAVADORAS" e "DG SHAPE" → DGS (checado ANTES do fallback OTHERS)
  * - TINTAS → INKS
  * - EQUIPAMENTOS → HARD
  * - PEÇAS → OTHERS
@@ -36,7 +38,7 @@ export function isMatchedJpClassRule(raw: string | null | undefined): boolean {
   )
 }
 
-export const JP_CLASS_OPTIONS = ['HARD', 'INKS', 'OTHERS', 'Sem classe'] as const
+export const JP_CLASS_OPTIONS = ['DGS', 'HARD', 'INKS', 'OTHERS', 'Sem classe'] as const
 export type JpClassOption = (typeof JP_CLASS_OPTIONS)[number]
 
 /**
@@ -145,6 +147,19 @@ export function getJpClass(
 
   const norm = normalizeText(trimmed)
 
+  // DGS: grupos exatos da nova categoria (case-insensitive, com TRIM) —
+  // deve casar ANTES do fallback OTHERS (e de qualquer regra de PEÇAS/ACESSÓRIOS)
+  if (
+    norm === '3D ACCESSORIES' ||
+    norm === 'DENTAL ACCESSORIES' ||
+    norm === 'MEC COMPON MECANICOS' ||
+    norm === 'DENTAL' ||
+    norm === 'GRAVADORAS' ||
+    norm === 'DG SHAPE'
+  ) {
+    return 'DGS'
+  }
+
   if (norm === 'HARD' || norm === 'EQUIPAMENTOS' || norm === 'EQUIPAMENTO') {
     return 'HARD'
   }
@@ -178,7 +193,7 @@ export function getJpClass(
 
 /**
  * Retorna o grupo de JP-Class para fins de agrupamento na tabela.
- * Equivalente a getJpClass, garantindo 'HARD' | 'INKS' | 'OTHERS' | 'Sem classe'.
+ * Equivalente a getJpClass, garantindo 'DGS' | 'HARD' | 'INKS' | 'OTHERS' | 'Sem classe'.
  */
 export function getJpClassGroup(
   rawOrItem:
@@ -195,7 +210,7 @@ export function getJpClassGroup(
 }
 
 /**
- * Retorna uma das 4 opções padronizadas de JP_CLASS_OPTIONS ('HARD' | 'INKS' | 'OTHERS' | 'Sem classe')
+ * Retorna uma das opções padronizadas de JP_CLASS_OPTIONS ('DGS' | 'HARD' | 'INKS' | 'OTHERS' | 'Sem classe')
  */
 export function getStandardJpClass(
   rawOrItem:
@@ -209,7 +224,7 @@ export function getStandardJpClass(
     | undefined,
 ): (typeof JP_CLASS_OPTIONS)[number] {
   const derived = getJpClass(rawOrItem)
-  if (derived === 'HARD' || derived === 'INKS' || derived === 'OTHERS') {
+  if (derived === 'DGS' || derived === 'HARD' || derived === 'INKS' || derived === 'OTHERS') {
     return derived
   }
   return 'Sem classe'
@@ -290,6 +305,11 @@ export function getJpClassBadgeStyle(jpClass: string | null | undefined): {
   if (norm === 'OTHERS') {
     return {
       className: 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold',
+    }
+  }
+  if (norm === 'DGS') {
+    return {
+      className: 'bg-violet-50 text-violet-800 border-violet-300 font-bold',
     }
   }
   // 'SEM CLASSE' ou vazio

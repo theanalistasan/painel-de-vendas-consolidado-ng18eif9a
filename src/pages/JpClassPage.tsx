@@ -217,7 +217,8 @@ export default function JpClassPage() {
         const sem = encontrarSemanaDaData(item.data_lancamento, semanas)
         if (sem) {
           // JP-Class SEMPRE derivado ao vivo a partir do Grupo do item
-          // (grupo_item ou itms_grp_nam): TINTAS→INKS, EQUIPAMENTOS→HARD, demais→OTHERS
+          // (grupo_item ou itms_grp_nam): TINTAS→INKS, EQUIPAMENTOS→HARD,
+          // DGS (6 grupos)→DGS, demais→OTHERS
           const grupoValor = (item.grupo_item || item.itms_grp_nam || '').trim()
           const derivedJpClass = getJpClass(item)
           comSemanas.push({

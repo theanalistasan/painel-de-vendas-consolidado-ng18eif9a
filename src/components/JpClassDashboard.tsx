@@ -24,6 +24,7 @@ export interface JpClassDashboardProps {
 }
 
 const JP_CLASS_COLORS: Record<string, string> = {
+  DGS: '#7C3AED', // Violeta
   HARD: '#D97706', // Âmbar
   INKS: '#0284C7', // Azul Céu
   OTHERS: '#059669', // Esmeralda
@@ -78,9 +79,11 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
     return list.sort((a, b) => b.value - a.value)
   }, [items])
 
-  // 2. Recorte por Tipo de Cliente com SUBTOTAIS por classe JP-Class (HARD, INKS, OTHERS)
+  // 2. Recorte por Tipo de Cliente com SUBTOTAIS por classe JP-Class (DGS, HARD, INKS, OTHERS)
   const dataTipoCliente = useMemo(() => {
     interface Subtotais {
+      dgsFaturamento: number
+      dgsQuantidade: number
       hardFaturamento: number
       hardQuantidade: number
       inksFaturamento: number
@@ -102,6 +105,8 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
 
       const cls = getJpClass(it.grupo_item || it.itms_grp_nam)
       const cur = map.get(tc) || {
+        dgsFaturamento: 0,
+        dgsQuantidade: 0,
         hardFaturamento: 0,
         hardQuantidade: 0,
         inksFaturamento: 0,
@@ -117,7 +122,10 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
       const fat = Number(it.total_linha) || 0
       const qtd = Number(it.quantidade) || 0
 
-      if (cls === 'HARD') {
+      if (cls === 'DGS') {
+        cur.dgsFaturamento += fat
+        cur.dgsQuantidade += qtd
+      } else if (cls === 'HARD') {
         cur.hardFaturamento += fat
         cur.hardQuantidade += qtd
       } else if (cls === 'INKS') {
@@ -152,10 +160,12 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
       (acc, cur) => ({
         faturamento: acc.faturamento + cur.totalFaturamento,
         quantidade: acc.quantidade + cur.totalQuantidade,
+        dgsFat: acc.dgsFat + cur.dgsFaturamento,
         hardFat: acc.hardFat + cur.hardFaturamento,
         inksFat: acc.inksFat + cur.inksFaturamento,
         othersFat: acc.othersFat + cur.othersFaturamento,
         semClasseFat: acc.semClasseFat + cur.semClasseFaturamento,
+        dgsQtd: acc.dgsQtd + cur.dgsQuantidade,
         hardQtd: acc.hardQtd + cur.hardQuantidade,
         inksQtd: acc.inksQtd + cur.inksQuantidade,
         othersQtd: acc.othersQtd + cur.othersQuantidade,
@@ -164,10 +174,12 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
       {
         faturamento: 0,
         quantidade: 0,
+        dgsFat: 0,
         hardFat: 0,
         inksFat: 0,
         othersFat: 0,
         semClasseFat: 0,
+        dgsQtd: 0,
         hardQtd: 0,
         inksQtd: 0,
         othersQtd: 0,
@@ -356,6 +368,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
 
                         const isFat = metricModeTipoCliente === 'faturamento'
                         const total = isFat ? row.totalFaturamento : row.totalQuantidade
+                        const dgsVal = isFat ? row.dgsFaturamento : row.dgsQuantidade
                         const hardVal = isFat ? row.hardFaturamento : row.hardQuantidade
                         const inksVal = isFat ? row.inksFaturamento : row.inksQuantidade
                         const othersVal = isFat ? row.othersFaturamento : row.othersQuantidade
@@ -375,6 +388,13 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
                               </span>
                             </div>
                             <div className="space-y-1">
+                              <div className="flex items-center justify-between text-violet-300">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="w-2 h-2 rounded-full bg-[#7C3AED]" />
+                                  DGS:
+                                </span>
+                                <span className="font-semibold">{formatVal(dgsVal)}</span>
+                              </div>
                               <div className="flex items-center justify-between text-amber-300">
                                 <span className="flex items-center gap-1.5">
                                   <span className="w-2 h-2 rounded-full bg-[#D97706]" />
@@ -489,6 +509,12 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
               <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
                 <div className="flex items-center gap-3">
                   <span className="font-bold text-slate-700">Subtotais globais:</span>
+                  <span className="text-violet-700 font-semibold">
+                    DGS:{' '}
+                    {metricModeTipoCliente === 'faturamento'
+                      ? formatCompactCurrency(totaisTipoCliente.dgsFat)
+                      : `${formatNumber(totaisTipoCliente.dgsQtd)} un`}
+                  </span>
                   <span className="text-amber-700 font-semibold">
                     HARD:{' '}
                     {metricModeTipoCliente === 'faturamento'
