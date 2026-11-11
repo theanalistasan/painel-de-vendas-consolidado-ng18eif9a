@@ -308,7 +308,11 @@ export default function DashboardCanais() {
     setRelatorioLoading(true)
     setRelatorioError(null)
 
-    const isGroupedMode = relatorioGroupByMode === 'comissao' || relatorioGroupByMode === 'jp_class'
+    const isGroupedMode =
+      relatorioGroupByMode === 'comissao' ||
+      relatorioGroupByMode === 'jp_class' ||
+      relatorioGroupByMode === 'nfe' ||
+      relatorioGroupByMode === 'pedido'
 
     try {
       if (isGroupedMode) {
@@ -318,6 +322,9 @@ export default function DashboardCanais() {
           sortField: relatorioSortField,
           sortDirection: relatorioSortDir,
           filters: filters as unknown as Record<string, unknown>,
+          // Consolidação no backend: 1 linha por NF ou por Nº do Pedido
+          groupByNfe: relatorioGroupByMode === 'nfe',
+          groupByMode: relatorioGroupByMode === 'pedido' ? 'pedido' : undefined,
         })
 
         if (seq !== relatorioRequestSeqRef.current) return
@@ -376,6 +383,15 @@ export default function DashboardCanais() {
       setRelatorioSortField(field)
       setRelatorioSortDir('desc')
     }
+  }
+
+  // Colapso por NF: alterna o modo nfe (refaz o fetch com groupByNfe no backend)
+  const handleToggleGroupByNfe = () => {
+    setRelatorioGroupByMode((prev) => (prev === 'nfe' ? 'none' : 'nfe'))
+  }
+  // Colapso por Pedido: alterna o modo pedido (refaz o fetch com groupByMode='pedido')
+  const handleToggleGroupByPedido = () => {
+    setRelatorioGroupByMode((prev) => (prev === 'pedido' ? 'none' : 'pedido'))
   }
 
   const handleRelatorioExport = async () => {
@@ -780,53 +796,6 @@ export default function DashboardCanais() {
             </ChartCard>
           </div>
           {/* Vendas por Estado (UF) e Região com Mapa do Brasil e Revendas */}
-          =======
-          {/* Modal de Expansão em Tela Cheia do Mapa do Brasil & Regiões */}
-          <Dialog open={mapExpanded} onOpenChange={setMapExpanded}>
-            <DialogContent className="max-w-none w-[96vw] sm:w-[94vw] h-[92vh] sm:rounded-2xl border border-gray-200 bg-white p-0 flex flex-col overflow-hidden shadow-2xl">
-              <DialogTitle className="sr-only">Vendas por Estado (UF) &amp; Região</DialogTitle>
-              <div className="flex items-center justify-between gap-3 px-6 pt-5 pb-4 border-b border-slate-100 bg-white">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-cyan-50 text-[#0B6E99] shrink-0">
-                    <MapPin className="w-5 h-5 text-[#0B6E99]" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <CardTitle className="text-lg font-extrabold text-slate-900 tracking-tight">
-                        Vendas por Estado (UF) &amp; Região
-                      </CardTitle>
-                      {filters.estado.length > 0 && (
-                        <Badge
-                          variant="outline"
-                          className="border-cyan-200 bg-cyan-50 text-[#0B6E99] text-xs font-bold"
-                        >
-                          Filtro ativo: {filters.estado.join(', ')}
-                        </Badge>
-                      )}
-                    </div>
-                    <CardDescription className="text-xs sm:text-sm text-slate-500 mt-0.5">
-                      Distribuição geográfica, ranking regional e mapa térmico com pinos das
-                      revendas autorizadas Roland DG
-                    </CardDescription>
-                  </div>
-                </div>
-              </div>
-              <div className="flex-1 min-h-0 w-full p-4 sm:p-6 overflow-y-auto">
-                <VendasPorEstadoIndicador
-                  data={chartEstado}
-                  selectedUf={filters.estado.length === 1 ? filters.estado[0] : null}
-                  onSelectUf={(uf) => {
-                    setFilters((prev) => ({
-                      ...prev,
-                      estado: uf ? [uf] : [],
-                    }))
-                  }}
-                  revendasFaturamento={revendasFaturamento}
-                  isExpanded={true}
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
           {/* Indicador de Metas Consolidadas (Canal, Deploy, Inside) */}
           <Card className="group relative rounded-xl border border-gray-200 bg-white shadow-xs transition-all duration-200 hover:border-slate-300">
             <CardHeader className="pb-3 border-b border-gray-100">
@@ -1100,8 +1069,10 @@ export default function DashboardCanais() {
                   sortField={relatorioSortField}
                   sortDir={relatorioSortDir}
                   onSort={handleRelatorioSort}
-                  isGroupedByNfe={false}
-                  onToggleGroupByNfe={() => {}}
+                  isGroupedByNfe={relatorioGroupByMode === 'nfe'}
+                  onToggleGroupByNfe={handleToggleGroupByNfe}
+                  isGroupedByPedido={relatorioGroupByMode === 'pedido'}
+                  onToggleGroupByPedido={handleToggleGroupByPedido}
                   storageKeyPrefix="relatorio_canais"
                   exporting={relatorioExporting}
                   onExport={handleRelatorioExport}
@@ -1109,7 +1080,7 @@ export default function DashboardCanais() {
                   groupByMode={relatorioGroupByMode}
                   onGroupByModeChange={setRelatorioGroupByMode}
                   defaultGroupByMode="none"
-                  allowedGroupByModes={['none', 'jp_class', 'comissao']}
+                  allowedGroupByModes={['none', 'jp_class', 'comissao', 'nfe', 'pedido']}
                 />
               )}
             </CardContent>

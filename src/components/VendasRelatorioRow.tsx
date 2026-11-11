@@ -8,7 +8,7 @@ import { Database, FileText } from 'lucide-react'
 import { ColumnDef, DEFAULT_COLUMN_WIDTHS } from './VendasRelatorioTable'
 
 export interface VendasRelatorioRowProps {
-  item: VendaConsolidada & { itens_qtd?: number }
+  item: VendaConsolidada & { itens_qtd?: number; nfs_qtd?: number }
   itemIdx: number
   nfeKey: string
   displayNfe: string
@@ -16,6 +16,8 @@ export interface VendasRelatorioRowProps {
   hasMultiple: boolean
   isCollapsed: boolean
   isGroupedByNfe: boolean
+  /** Modo Pedido consolidado no backend (1 linha por Nº do Pedido) */
+  isGroupedByPedido?: boolean
   columns: ColumnDef[]
   columnWidths: Record<string, number>
   expandedCols: Record<string, boolean>
@@ -31,6 +33,7 @@ function VendasRelatorioRowComponent({
   hasMultiple,
   isCollapsed,
   isGroupedByNfe,
+  isGroupedByPedido = false,
   columns,
   columnWidths,
   expandedCols,
@@ -122,6 +125,7 @@ function VendasRelatorioRowComponent({
                       +{groupItemsLength - 1}
                     </Badge>
                   )}
+                  {/* Badge genérico de consolidação: +N itens (NF) ou +N itens / NFs (Pedido) */}
                   {isGroupedByNfe && item.itens_qtd && item.itens_qtd > 1 ? (
                     <Badge
                       variant="secondary"
@@ -130,14 +134,60 @@ function VendasRelatorioRowComponent({
                     >
                       +{item.itens_qtd - 1}
                     </Badge>
-                  ) : isGroupedByNfe ? (
+                  ) : isGroupedByPedido && item.itens_qtd && item.itens_qtd > 1 ? (
+                    <Badge
+                      variant="secondary"
+                      className="text-[9px] px-1.5 py-0 h-4 bg-cyan-100 text-cyan-900 border-none font-sans font-bold shrink-0"
+                      title={
+                        item.nfs_qtd && item.nfs_qtd > 1
+                          ? `${item.itens_qtd} itens no Pedido em ${item.nfs_qtd} NFs`
+                          : `${item.itens_qtd} itens no Pedido`
+                      }
+                    >
+                      +{item.itens_qtd - 1}
+                    </Badge>
+                  ) : null}
+                  {isGroupedByPedido && item.nfs_qtd && item.nfs_qtd > 1 && (
+                    <Badge
+                      variant="outline"
+                      className="text-[8px] px-1 py-0 h-3.5 bg-slate-100 text-slate-600 border-slate-200 shrink-0 font-sans font-bold"
+                      title={`${item.nfs_qtd} NFs neste Pedido`}
+                    >
+                      {item.nfs_qtd} NFs
+                    </Badge>
+                  )}
+                  {isGroupedByNfe ? (
                     <Badge
                       variant="outline"
                       className="text-[8px] px-1 py-0 h-3.5 bg-slate-100 text-slate-600 border-slate-200 shrink-0 font-sans"
                     >
                       NF
                     </Badge>
+                  ) : isGroupedByPedido ? (
+                    <Badge
+                      variant="outline"
+                      className="text-[8px] px-1 py-0 h-3.5 bg-slate-100 text-slate-600 border-slate-200 shrink-0 font-sans"
+                    >
+                      Pedido
+                    </Badge>
                   ) : null}
+                </div>
+              </td>
+            )
+
+          // 2b. Nr. Pedido (Nº do documento NetSales)
+          case 'numero_documento_netsales':
+            return (
+              <td
+                key={col.key}
+                style={cellStyle}
+                className="py-2 px-3 font-mono font-semibold text-slate-900 border-r border-slate-100"
+              >
+                <div
+                  className={`flex items-center gap-1.5 ${isExpanded ? '' : 'truncate'}`}
+                  title={item.numero_documento_netsales || '-'}
+                >
+                  <span className="truncate">{item.numero_documento_netsales || '-'}</span>
                 </div>
               </td>
             )
@@ -379,6 +429,32 @@ function VendasRelatorioRowComponent({
               >
                 <div className={isExpanded ? '' : 'truncate'}>
                   {formatCurrency(item.total_nf_sem_frete)}
+                </div>
+              </td>
+            )
+          // Valor Total de Mercadorias (agregado no backend nos modos NF/Pedido)
+          case 'total_mercadoria':
+            return (
+              <td
+                key={col.key}
+                style={cellStyle}
+                className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
+              >
+                <div className={isExpanded ? '' : 'truncate'}>
+                  {formatCurrency(item.total_mercadoria)}
+                </div>
+              </td>
+            )
+          // Valor Total da NF (MAX por NF no backend — não infla nos modos agrupados)
+          case 'total_nf_novo':
+            return (
+              <td
+                key={col.key}
+                style={cellStyle}
+                className="py-2 px-3 text-right font-bold text-slate-900 tabular-nums border-r border-slate-100"
+              >
+                <div className={isExpanded ? '' : 'truncate'}>
+                  {formatCurrency(item.total_nf_novo)}
                 </div>
               </td>
             )
