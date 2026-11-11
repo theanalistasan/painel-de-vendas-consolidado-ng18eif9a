@@ -40,6 +40,42 @@ import { Skeleton } from '@/components/ui/skeleton'
  * usado pelas duas visões (filter-persistence), de modo que o que for definido
  * aqui passa a valer para a Visão Geral E para a Visão Canais.
  */
+/**
+ * Tooltip customizado do card "Valores Consolidados (KPIs das Visões)".
+ *
+ * O Tooltip padrão do Recharts herda a cor da barra (Cell fill) no texto do
+ * item, o que deixa o conteúdo ilegível sobre o fundo escuro do tooltip
+ * (ex.: título azul sobre tooltip azul-escuro). Aqui o texto fica sempre
+ * claro (branco/quase-branco) e a cor da barra é indicada apenas por um
+ * pequeno dot/marcador ao lado do título.
+ */
+function KpiValoresTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean
+  payload?: Array<{ payload?: { name?: string; value?: number; fill?: string } }>
+}) {
+  if (!active || !payload || payload.length === 0) return null
+  const entry = payload[0]?.payload
+  if (!entry) return null
+  return (
+    <div className="rounded-lg border border-slate-700 bg-[#0F172A] px-3 py-2 text-xs shadow-lg">
+      <div className="flex items-center gap-2">
+        <span
+          className="inline-block h-2 w-2 shrink-0 rounded-full"
+          style={{ backgroundColor: entry.fill || '#0B6E99' }}
+          aria-hidden="true"
+        />
+        <span className="font-semibold text-white">{entry.name}</span>
+      </div>
+      <div className="mt-1 pl-4 text-slate-200">
+        Valor : {formatCurrency(Number(entry.value) || 0)}
+      </div>
+    </div>
+  )
+}
+
 export default function FiltrosGlobais() {
   const [optionsData, setOptionsData] = useState<DashboardStatsResult | null>(null)
   const [loading, setLoading] = useState(true)
@@ -483,11 +519,8 @@ export default function FiltrosGlobais() {
                 width={185}
               />
               <Tooltip
-                formatter={(val: number | string | undefined) => [
-                  formatCurrency(Number(val) || 0),
-                  'Valor',
-                ]}
-                contentStyle={tooltipContentStyle}
+                cursor={{ fill: 'rgba(148, 163, 184, 0.15)' }}
+                content={<KpiValoresTooltip />}
               />
               <Bar
                 dataKey="value"
