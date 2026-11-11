@@ -441,7 +441,7 @@ function VendasRelatorioRowComponent({
                 className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
               >
                 <div className={isExpanded ? '' : 'truncate'}>
-                  {formatCurrency(Number(item.total_mercadoria) || Number(item.total_linha) || 0)}
+                  {formatCurrency(Number(item.total_linha) || 0)}
                 </div>
               </td>
             )
