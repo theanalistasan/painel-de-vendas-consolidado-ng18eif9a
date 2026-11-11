@@ -147,6 +147,7 @@ export interface VendaConsolidada extends RecordModel {
   itms_grp_nam: string
   numero_documento_netsales: string
   preco_unitario: number
+  total_mercadoria?: number
   total_nf_sem_frete: number
   total_nf_novo: number
   valor_liquido: number
@@ -249,6 +250,27 @@ export interface CanaisSummary {
 
 /** Tipos de documento considerados devolução */
 export const DEVOLUCAO_TIPOS = ['Dev. Entrega', 'Dev. NF', 'DEVNF'] as const
+
+/**
+ * Modos de agrupamento do Relatório Consolidado de Vendas (Visão Canais).
+ * - 'flat': linhas detalhadas por item (padrão)
+ * - 'comissao' / 'jp_class': agrupamentos client-side existentes
+ * - 'nfe' / 'pedido': consolidação no backend — 1 linha por Nota Fiscal
+ *   ou por N° do Pedido (numero_documento_netsales), via fetchVendasExport
+ */
+export type VendasRelatorioGroupByMode = 'flat' | 'comissao' | 'jp_class' | 'nfe' | 'pedido'
+
+/** Campos de valor retornados pelo backend para os modos agrupados NF/Pedido */
+export interface VendasValoresFields {
+  /** Valor Total de Mercadorias */
+  total_mercadoria?: number
+  /** Valor Líquido Total */
+  valor_liquido?: number
+  /** Valor Total NF sem frete */
+  total_nf_sem_frete?: number
+  /** Valor Total da NF (Total NF Novo agregado com MAX por NF — não infla) */
+  total_nf_novo?: number
+}
 
 /** Verifica se um tipo_documento é uma devolução */
 export function isDevolucao(tipoDocumento: string | undefined | null): boolean {

@@ -1,5 +1,6 @@
 import pb from '@/lib/pocketbase/client'
 import { safeAuthRefresh } from '@/lib/pocketbase/auth-session'
+import type { VendasValoresFields } from '@/types/sales'
 import type {
   Produto,
   VendaConsolidada,
@@ -804,7 +805,7 @@ export async function fetchDashboardStats(
 }
 
 export interface VendasListResult {
-  items: (VendaConsolidada & { itens_qtd?: number })[]
+  items: (VendaConsolidada & { itens_qtd?: number } & VendasValoresFields)[]
   page: number
   perPage: number
   totalItems: number
@@ -823,6 +824,8 @@ export async function fetchVendasList(params?: {
   sortDirection?: 'asc' | 'desc'
   filters?: Record<string, unknown>
   groupByNfe?: boolean
+  /** Modo de consolidação no backend: 'nfe' | 'pedido' (1 linha por NF/Pedido) */
+  groupByMode?: 'nfe' | 'pedido'
   collapsed?: boolean
   signal?: AbortSignal
 }): Promise<VendasListResult> {
@@ -893,7 +896,7 @@ export async function fetchVendasList(params?: {
 }
 
 export interface VendasExportResult {
-  items: (VendaConsolidada & { itens_qtd?: number })[]
+  items: (VendaConsolidada & { itens_qtd?: number } & VendasValoresFields)[]
   totalItems: number
   isGrouped?: boolean
 }
@@ -904,6 +907,8 @@ export async function fetchVendasExport(params?: {
   sortDirection?: 'asc' | 'desc'
   filters?: Record<string, unknown>
   groupByNfe?: boolean
+  /** Modo de consolidação no backend: 'nfe' | 'pedido' (1 linha por NF/Pedido) */
+  groupByMode?: 'nfe' | 'pedido'
   collapsed?: boolean
   signal?: AbortSignal
 }): Promise<VendasExportResult> {
