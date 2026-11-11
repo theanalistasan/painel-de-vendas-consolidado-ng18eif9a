@@ -144,6 +144,15 @@ export interface SemanaValores {
  * (total_nf_sem_frete) e (d) Custo Total (custo_total), classificando cada
  * registro na semana pela data de lançamento (regra seg–dom já implementada).
  * Registros fora do calendário (ex.: anteriores à Semana 1) são ignorados.
+ *
+ * IMPORTANTE: total_nf_sem_frete é um valor POR NF, repetido em cada linha de
+ * item da base `vendas`. Somar linha a linha multiplica o valor pelo nº de
+ * itens da NF (mesma causa do bug do card "Valores Consolidados", corrigido no
+ * dashboard_stats.js). Aqui o valor é agregado UMA VEZ POR NF: MAX por
+ * numero_nfe dentro da semana e soma dos máximos no fim — idêntico à lógica do
+ * card (SUM sobre MAX agrupado por numero_nfe). NF sem número cai num único
+ * grupo "vazio" por semana, como no backend. Os demais campos (total_linha,
+ * valor_liquido, custo_total) são por item e continuam somando por linha.
  */
 export function agregarValoresPorSemana<T extends Record<string, unknown>>(
   vendas: T[],
@@ -162,6 +171,9 @@ export function agregarValoresPorSemana<T extends Record<string, unknown>>(
     })
   }
 
+  // MAX de total_nf_sem_frete por numero_nfe, dentro de cada semana
+  const maxNfSemFretePorSemana = new Map<number, Map<string, number>>()
+
   for (const venda of vendas) {
     const sem = encontrarSemanaDaData(venda[campoData] as string | null | undefined, semanas)
     if (!sem) continue
@@ -169,9 +181,26 @@ export function agregarValoresPorSemana<T extends Record<string, unknown>>(
     if (!acc) continue
     acc.valorTotalMercadoria += Number(venda.total_linha) || 0
     acc.valorLiquidoTotal += Number(venda.valor_liquido) || 0
-    acc.valorTotalNfSemFrete += Number(venda.total_nf_sem_frete) || 0
     acc.custoTotal += Number(venda.custo_total) || 0
     acc.linhas += 1
+
+    const nfKey = String(venda.numero_nfe ?? '').trim()
+    let maxPorNf = maxNfSemFretePorSemana.get(sem.numero)
+    if (!maxPorNf) {
+      maxPorNf = new Map<string, number>()
+      maxNfSemFretePorSemana.set(sem.numero, maxPorNf)
+    }
+    const valorNf = Number(venda.total_nf_sem_frete) || 0
+    maxPorNf.set(nfKey, Math.max(maxPorNf.get(nfKey) ?? 0, valorNf))
+  }
+
+  // Valor Total NF sem frete da semana = soma dos MAX por NF
+  for (const [numero, maxPorNf] of maxNfSemFretePorSemana) {
+    const acc = porSemana.get(numero)
+    if (!acc) continue
+    let total = 0
+    for (const valor of maxPorNf.values()) total += valor
+    acc.valorTotalNfSemFrete = total
   }
 
   return semanas.map((semana) => porSemana.get(semana.numero) as SemanaValores)
