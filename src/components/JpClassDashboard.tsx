@@ -21,8 +21,6 @@ import { Badge } from '@/components/ui/badge'
 
 export interface JpClassDashboardProps {
   items: VendaComSemana[]
-  /** Mapa auxiliar código_cliente -> tipo_cliente para garantir resolução com fallback caso necessário */
-  tiposClienteMap?: Record<string, string>
 }
 
 const JP_CLASS_COLORS: Record<string, string> = {
@@ -47,7 +45,7 @@ const PALETTE_COLORS = [
 
 type MetricMode = 'faturamento' | 'quantidade'
 
-export function JpClassDashboard({ items, tiposClienteMap = {} }: JpClassDashboardProps) {
+export function JpClassDashboard({ items }: JpClassDashboardProps) {
   const [metricModeTipoCliente, setMetricModeTipoCliente] = useState<MetricMode>('faturamento')
 
   // 1. Recorte por JP-Class
@@ -98,12 +96,8 @@ export function JpClassDashboard({ items, tiposClienteMap = {} }: JpClassDashboa
     const map = new Map<string, Subtotais>()
 
     for (const it of items) {
-      // Tipo de cliente com fallback existente: tipo_cliente -> mapa tipos_cliente via código_cliente -> '-'
+      // Tipo de cliente com fallback existente: tipo_cliente -> '-' (enriquecido na página)
       let tc = (it.tipo_cliente || '').trim()
-      if ((!tc || tc === '-') && it.codigo_cliente) {
-        const codUpper = it.codigo_cliente.trim().toUpperCase()
-        tc = tiposClienteMap[codUpper] || tc || '-'
-      }
       if (!tc) tc = '-'
 
       const cls = getJpClass(it.grupo_item || it.itms_grp_nam)
@@ -150,7 +144,7 @@ export function JpClassDashboard({ items, tiposClienteMap = {} }: JpClassDashboa
     }))
 
     return list.sort((a, b) => b.totalFaturamento - a.totalFaturamento)
-  }, [items, tiposClienteMap])
+  }, [items])
 
   // Totais agregados gerais do recorte de tipo de cliente
   const totaisTipoCliente = useMemo(() => {

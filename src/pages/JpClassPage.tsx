@@ -1,36 +1,27 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   Calendar,
   Layers,
-  ChevronLeft,
-  ChevronRight,
   RefreshCw,
   TrendingUp,
-  Package,
-  DollarSign,
-  CalendarDays,
+  SlidersHorizontal,
   FileSpreadsheet,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import KpiCard from '@/components/KpiCard'
 import { fetchVendasExport } from '@/services/sales'
-import {
-  getSemanasDoMes,
-  encontrarSemanaDaData,
-  normalizarParaDataISO,
-  type SemanaMes,
-} from '@/lib/semanas'
-import {
-  getJpClass,
-  normalizeText,
-  resolveDefaultGrupoItemSelection,
-  isLegacySinglePecasSelection,
-  DEFAULT_GRUPOS_ITEM_JP_CLASS,
-} from '@/lib/jp-class'
+import { getSemanasDoMes, encontrarSemanaDaData, type SemanaMes } from '@/lib/semanas'
+import { useNavigate } from 'react-router-dom'
+import { getJpClass } from '@/lib/jp-class'
 import { MESES_PT_BR, formatCurrency, formatNumber, exportToCSV } from '@/lib/formatters'
-import { loadFiltersFromSession, hasSavedFiltersInSession } from '@/lib/filter-persistence'
-import pb from '@/lib/pocketbase/client'
+import {
+  loadFiltersFromSession,
+  saveFiltersToSession,
+  hasSavedFiltersInSession,
+  hasValidPeriodFilters,
+  FILTERS_CHANGED_EVENT,
+} from '@/lib/filter-persistence'
+import type { FilterState } from '@/types/sales'
 import {
   JpClassRelatorio,
   type VendaComSemana,
@@ -38,194 +29,133 @@ import {
 } from '@/components/JpClassRelatorio'
 import { JpClassDashboard } from '@/components/JpClassDashboard'
 import {
-  JpClassFilterBar,
-  type JpClassFilterState,
-  DEFAULT_JP_CLASS_FILTERS,
-  EMPTY_JP_CLASS_FILTERS,
-} from '@/components/JpClassFilterBar'
-import { fetchTiposClienteMap, fetchTiposClienteOptions } from '@/services/tiposCliente'
-import { DEVOLUCAO_TIPOS } from '@/types/sales'
+  fetchTiposClienteMap,
+  buildTiposClienteStringMap,
+  enrichVendaTipoCliente,
+} from '@/services/tiposCliente'
 
 export default function JpClassPage() {
+  const navigate = useNavigate()
   const hoje = new Date()
 
-  // Determina o ano/mês inicial:
-  // 1. Se houver filtros salvos na sessão com ano e mês válidos, usa-os (persistência preservada)
-  // 2. Caso contrário, o padrão é SEMPRE o MÊS CORRENTE do ano corrente
-  const [ano, setAno] = useState<number>(() => {
-    try {
-      if (hasSavedFiltersInSession()) {
-        const saved = loadFiltersFromSession()
-        if (saved.ano && saved.ano.length > 0) {
-          const parsedAno = parseInt(saved.ano[0], 10)
-          if (!isNaN(parsedAno) && parsedAno > 2000) return parsedAno
-        }
-      }
-    } catch {
-      /* intentionally ignored */
+  // Filtros GLOBAIS compartilhados (mesma sessão de Visão Geral / Visão Canais / Filtros Globais).
+  // O módulo JP-Class não possui mais filtros próprios: ele REFLETE os Filtros Globais
+  // e recalcula quando eles mudam (evento paineis_vendas_filters_changed, foco, storage).
+  const [filters, setFilters] = useState<FilterState>(() => {
+    const loaded = loadFiltersFromSession()
+    if (!hasSavedFiltersInSession()) {
+      saveFiltersToSession(loaded)
     }
-    return hoje.getFullYear()
+    return loaded
   })
 
-  const [mes, setMes] = useState<number>(() => {
-    try {
-      if (hasSavedFiltersInSession()) {
-        const saved = loadFiltersFromSession()
-        if (saved.mes && saved.mes.length > 0) {
-          const parsedMes = parseInt(saved.mes[0], 10)
-          if (!isNaN(parsedMes) && parsedMes >= 1 && parsedMes <= 12) return parsedMes
-        }
-      }
-    } catch {
-      /* intentionally ignored */
-    }
-    return hoje.getMonth() + 1
-  })
+  const filtersRef = useRef<FilterState>(filters)
+  filtersRef.current = filters
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [rawVendas, setRawVendas] = useState<VendaComSemana[]>([])
   const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
-  const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
-  const [loadingTiposCliente, setLoadingTiposCliente] = useState(false)
+
   const [groupBy, setGroupBy] = useState<JpClassGroupBy>('hierarquia')
   const [filtroSemana, setFiltroSemana] = useState<number | 'todas'>('todas')
-  const [ultimoPeriodoDisponivel, setUltimoPeriodoDisponivel] = useState<{
-    ano: number
-    mes: number
-  } | null>(null)
 
-  // 7 filtros multi-select + JP-Class
-  // Interação com persistência de sessão:
-  // - Se não houver preferência salva: aplica o DEFAULT INICIAL com os 4 grupos
-  //   (EQUIPAMENTOS, PEÇAS, TINTAS, ACESSÓRIOS);
-  // - Se houver preferência salva em sessão: preserva as escolhas do usuário, MAS
-  //   trata a seleção legada pré-0.0.234 (apenas "PEÇAS") corrigindo para os 4 grupos,
-  //   garantindo que o usuário veja os 4 grupos ao abrir a página agora;
-  // - Se o usuário salvou uma seleção explícita que NÃO é a legada "só PEÇAS",
-  //   essa preferência é mantida fielmente.
-  const [hasSessionSavedAtMount] = useState(() => {
-    if (!hasSavedFiltersInSession()) return false
-    try {
-      const saved = loadFiltersFromSession()
-      // Se a sessão continha a seleção legada só-PEÇAS, não bloqueia a auto-resolução
-      // dinâmica com os 4 grupos contra as opções da base
-      if (isLegacySinglePecasSelection(saved.grupoItem)) {
-        return false
+  // Período de análise (ano/mês) derivado dos Filtros Globais.
+  // Padrão: mês corrente; quando o usuário limpa os filtros (ano/mes vazios),
+  // volta ao padrão do mês corrente.
+  const { ano, mes } = useMemo(() => {
+    if (hasValidPeriodFilters(filters)) {
+      const y = parseInt(filters.ano[0], 10)
+      const m = parseInt(filters.mes[0], 10)
+      if (!isNaN(y) && y > 2000 && !isNaN(m) && m >= 1 && m <= 12) {
+        return { ano: y, mes: m }
       }
-      return true
-    } catch {
-      return false
     }
-  })
+    return { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 }
+  }, [filters.ano, filters.mes, hoje])
 
-  const [filters, setFilters] = useState<JpClassFilterState>(() => {
-    try {
-      if (hasSavedFiltersInSession()) {
-        const saved = loadFiltersFromSession()
-        const savedGrupos = saved.grupoItem
+  // Na primeira carga sem preferência salva em sessão, aplica os padrões globais estáticos
+  // (Fase 2: tipoDocumento ['NF'], mês corrente). Os defaults dinâmicos já são gravados
+  // em sessão pelas telas Visão Geral / Visão Canais / Filtros Globais.
 
-        // Se a sessão carregar o valor legado pré-0.0.234 (apenas PEÇAS/PECAS)
-        // ou não tiver grupoItem, sobrepõe com os 4 grupos padrão
-        const shouldUpgradeLegacy = !savedGrupos || isLegacySinglePecasSelection(savedGrupos)
-        const initialGrupoItem = shouldUpgradeLegacy
-          ? [...DEFAULT_GRUPOS_ITEM_JP_CLASS]
-          : savedGrupos
-
-        return {
-          grupoItem: initialGrupoItem,
-          tipoDocumento: saved.tipoDocumento ?? DEFAULT_JP_CLASS_FILTERS.tipoDocumento,
-          tipoCliente: saved.tipoCliente || [],
-          canal: saved.canal || [],
-          deploy: saved.deploy || [],
-          utilizacao: saved.utilizacao ?? DEFAULT_JP_CLASS_FILTERS.utilizacao,
-          tipoDevolucao: saved.tipoDevolucao ? [saved.tipoDevolucao] : [],
-          jpClass: saved.jpClass || [],
-        }
-      }
-      return DEFAULT_JP_CLASS_FILTERS
-    } catch {
-      return DEFAULT_JP_CLASS_FILTERS
-    }
-  })
-
-  // Carrega opções e mapa de tipos_cliente para enriquecer o tipo de cliente (código PN -> nome do tipo, mesmo padrão das outras páginas)
+  // Carrega mapa de tipos_cliente para enriquecer o tipo de cliente
+  // (código PN -> nome do tipo, mesmo padrão das outras páginas)
   useEffect(() => {
     let mounted = true
-    const carregarTiposCliente = async () => {
-      setLoadingTiposCliente(true)
-      try {
-        const [opts, resMap] = await Promise.all([
-          fetchTiposClienteOptions(),
-          fetchTiposClienteMap(),
-        ])
-        if (mounted) {
-          if (Array.isArray(opts) && opts.length > 0) {
-            setTipoClienteOptions(opts)
-          }
-          if (resMap && typeof resMap === 'object') {
-            const stringMap: Record<string, string> = {}
-            for (const [cod, info] of Object.entries(resMap)) {
-              const tipo = info?.tipo_cliente?.trim()
-              if (tipo) {
-                stringMap[cod.toUpperCase()] = tipo
-              }
-            }
-            setTiposClienteMap(stringMap)
-          }
+    fetchTiposClienteMap()
+      .then((resMap) => {
+        if (mounted && resMap && typeof resMap === 'object') {
+          setTiposClienteMap(buildTiposClienteStringMap(resMap))
         }
-      } catch (err) {
+      })
+      .catch((err) => {
         console.warn('Erro ao carregar dados de tipos_cliente no JP-Class:', err)
-      } finally {
-        if (mounted) setLoadingTiposCliente(false)
-      }
-    }
-    carregarTiposCliente()
+      })
     return () => {
       mounted = false
     }
   }, [])
+
+  // Sincroniza os filtros com o sessionStorage de forma reativa:
+  // recarrega ao focar na janela, ao disparar evento de alteração/limpeza
+  // ou evento storage nativo — o mesmo padrão de Visão Geral / Visão Canais.
+  const syncFiltersFromSession = useCallback(() => {
+    const latest = loadFiltersFromSession()
+    const currentSerialized = JSON.stringify(filtersRef.current)
+    const latestSerialized = JSON.stringify(latest)
+
+    if (currentSerialized !== latestSerialized) {
+      setFilters(latest)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleFiltersChanged = (e?: Event) => {
+      const customEvent = e as CustomEvent<FilterState | null> | undefined
+      if (customEvent?.detail) {
+        const nextFilters = customEvent.detail
+        if (JSON.stringify(filtersRef.current) !== JSON.stringify(nextFilters)) {
+          setFilters(nextFilters)
+          return
+        }
+      }
+      syncFiltersFromSession()
+    }
+
+    const handleFocus = () => {
+      syncFiltersFromSession()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        syncFiltersFromSession()
+      }
+    }
+
+    const handleStorage = (e: StorageEvent) => {
+      if (!e.key || e.key === 'paineis_vendas_filters') {
+        syncFiltersFromSession()
+      }
+    }
+
+    window.addEventListener(FILTERS_CHANGED_EVENT, handleFiltersChanged)
+    window.addEventListener('focus', handleFocus)
+    window.addEventListener('storage', handleStorage)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener(FILTERS_CHANGED_EVENT, handleFiltersChanged)
+      window.removeEventListener('focus', handleFocus)
+      window.removeEventListener('storage', handleStorage)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [syncFiltersFromSession])
 
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  // Descobre dinamicamente o último período com vendas na base caso o usuário esteja em um mês vazio
-  useEffect(() => {
-    let mounted = true
-    const detectarUltimoPeriodo = async () => {
-      try {
-        // Tenta buscar o registro mais recente em vendas
-        const latest = await pb.collection('vendas').getList(1, 1, {
-          sort: '-data_lancamento',
-          fields: 'data_lancamento',
-          requestKey: 'jp_class_detect_latest',
-        })
-        if (!mounted) return
-        if (latest.items && latest.items.length > 0 && latest.items[0].data_lancamento) {
-          const iso = normalizarParaDataISO(latest.items[0].data_lancamento)
-          if (iso) {
-            const parts = iso.split('-')
-            const y = parseInt(parts[0], 10)
-            const m = parseInt(parts[1], 10)
-            if (!isNaN(y) && !isNaN(m)) {
-              setUltimoPeriodoDisponivel({ ano: y, mes: m })
-            }
-          }
-        }
-      } catch (_) {
-        // Se falhar a detecção, fallback padrão é o mês e ano correntes
-        if (mounted) {
-          const now = new Date()
-          setUltimoPeriodoDisponivel({ ano: now.getFullYear(), mes: now.getMonth() + 1 })
-        }
-      }
-    }
-    detectarUltimoPeriodo()
-    return () => {
-      mounted = false
-    }
-  }, [])
-
   // Semanas calculadas estritamente de acordo com a regra de negócio
+  // (seg–dom; Semana 1 = 1ª segunda-feira do mês; dias anteriores ficam fora;
+  // última semana incompleta é descartada).
   const semanas = useMemo<SemanaMes[]>(() => {
     return getSemanasDoMes(ano, mes)
   }, [ano, mes])
@@ -239,7 +169,9 @@ export default function JpClassPage() {
   }, [semanas])
 
   // Carrega vendas da base consolidada (mesma base de Visão Geral / Canais)
-  const carregarVendas = async () => {
+  // aplicando os Filtros Globais NO SERVIDOR (mesmos campos f.* do dashboard/stats
+  // e do relatório de vendas) + o recorte do calendário de semanas.
+  const carregarVendas = useCallback(async () => {
     if (!dateRange) {
       setRawVendas([])
       return
@@ -251,13 +183,16 @@ export default function JpClassPage() {
     const controller = new AbortController()
     abortControllerRef.current = controller
 
+    const activeFilters = filtersRef.current
+
     setLoading(true)
     setError(null)
 
     try {
-      // Reutiliza o endpoint oficial de vendas com o filtro de datas do calendário de semanas
+      // Reutiliza o endpoint oficial de vendas com os Filtros Globais + recorte de semanas
       const res = await fetchVendasExport({
         filters: {
+          ...(activeFilters as unknown as Record<string, unknown>),
           dataDe: dateRange.dataDe,
           dataAte: dateRange.dataAte,
         },
@@ -270,8 +205,8 @@ export default function JpClassPage() {
       for (const item of res.items || []) {
         const sem = encontrarSemanaDaData(item.data_lancamento, semanas)
         if (sem) {
-          // JP-Class SEMPRE derivado ao vivo a partir do Grupo do item (grupo_item ou itms_grp_nam),
-          // eliminando qualquer valor pré-calculado antigo de item.jp_class
+          // JP-Class SEMPRE derivado ao vivo a partir do Grupo do item
+          // (grupo_item ou itms_grp_nam): TINTAS→INKS, EQUIPAMENTOS→HARD, demais→OTHERS
           const grupoValor = (item.grupo_item || item.itms_grp_nam || '').trim()
           const derivedJpClass = getJpClass(item)
           comSemanas.push({
@@ -285,19 +220,7 @@ export default function JpClassPage() {
       }
 
       // Enriquecer tipo_cliente usando tiposClienteMap como fallback se vier vazio do backend
-      const comTiposCliente = comSemanas.map((v) => {
-        let tc = (v.tipo_cliente || '').trim()
-        if (!tc && v.codigo_cliente) {
-          const codUpper = v.codigo_cliente.trim().toUpperCase()
-          tc = tiposClienteMap[codUpper] || '-'
-        } else if (!tc) {
-          tc = '-'
-        }
-        return {
-          ...v,
-          tipo_cliente: tc,
-        }
-      })
+      const comTiposCliente = comSemanas.map((v) => enrichVendaTipoCliente(v, tiposClienteMap))
 
       setRawVendas(comTiposCliente)
     } catch (err: unknown) {
@@ -313,7 +236,7 @@ export default function JpClassPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [dateRange, semanas, tiposClienteMap])
 
   useEffect(() => {
     carregarVendas()
@@ -322,222 +245,18 @@ export default function JpClassPage() {
         abortControllerRef.current.abort()
       }
     }
-  }, [ano, mes, dateRange, tiposClienteMap])
-
-  // Opções dinâmicas para os dropdowns de filtro baseadas nas vendas carregadas no mês
-  const filterOptions = useMemo(() => {
-    const gruposSet = new Set<string>()
-    const tiposDocSet = new Set<string>()
-    const tiposCliSet = new Set<string>()
-    const canaisSet = new Set<string>()
-    const deploysSet = new Set<string>()
-    const utilizacoesSet = new Set<string>()
-    const devolucoesSet = new Set<string>()
-
-    // Valores padrão sempre presentes para facilitar a seleção
-    gruposSet.add('EQUIPAMENTOS')
-    gruposSet.add('ACESSÓRIOS')
-    gruposSet.add('TINTAS')
-    gruposSet.add('PEÇAS')
-
-    tiposDocSet.add('NF de Saída')
-    tiposDocSet.add('Dev. NF')
-    tiposDocSet.add('Dev. Entrega')
-
-    deploysSet.add('AGIS')
-    deploysSet.add('Roland')
-    deploysSet.add('Nenhum')
-
-    utilizacoesSet.add('VENDA DE MERCADORIA')
-    utilizacoesSet.add('VENDA CONSUMO')
-
-    DEVOLUCAO_TIPOS.forEach((d) => devolucoesSet.add(d))
-
-    for (const v of rawVendas) {
-      if (v.grupo_item && v.grupo_item.trim()) gruposSet.add(v.grupo_item.trim())
-      if (v.itms_grp_nam && v.itms_grp_nam.trim()) gruposSet.add(v.itms_grp_nam.trim())
-      if (v.tipo_documento && v.tipo_documento.trim()) tiposDocSet.add(v.tipo_documento.trim())
-
-      const tc = (v.tipo_cliente || '').trim() || '-'
-      tiposCliSet.add(tc)
-
-      // Canais
-      const canalNome = (v.vendedor_cliente || v.vendedor_revenda || v.vendedor || '').trim()
-      if (canalNome && !canalNome.toUpperCase().includes('SEM VENDEDOR')) {
-        canaisSet.add(canalNome)
-      }
-
-      // Deploy
-      const dep = (v.revenda || '').trim()
-      if (dep) deploysSet.add(dep)
-
-      // Utilização
-      const util = (v.utilizacao || v.usage || '').trim()
-      if (util) utilizacoesSet.add(util)
-
-      // Devoluções
-      if (
-        v.tipo_documento &&
-        (DEVOLUCAO_TIPOS as readonly string[]).includes(v.tipo_documento.trim())
-      ) {
-        devolucoesSet.add(v.tipo_documento.trim())
-      }
-    }
-
-    // Se temos opções da coleção ou do mapa, adiciona para que o usuário possa escolher
-    tipoClienteOptions.forEach((tc) => {
-      if (tc && tc.trim()) tiposCliSet.add(tc.trim())
-    })
-    Object.values(tiposClienteMap).forEach((tc) => {
-      if (tc && tc.trim()) tiposCliSet.add(tc.trim())
-    })
-
-    return {
-      grupoItem: Array.from(gruposSet)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
-      tipoDocumento: Array.from(tiposDocSet)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
-      tipoCliente: Array.from(tiposCliSet)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
-      canal: Array.from(canaisSet)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
-      deploy: Array.from(deploysSet)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
-      utilizacao: Array.from(utilizacoesSet)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
-      tipoDevolucao: Array.from(devolucoesSet)
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
-      jpClass: ['INKS', 'HARD', 'OTHERS', 'Sem classe'],
-      isLoadingTipoCliente: loadingTiposCliente,
-    }
-  }, [rawVendas, tiposClienteMap, tipoClienteOptions, loadingTiposCliente])
-
-  // Quando as opções de grupoItem ficarem disponíveis na base (via rawVendas),
-  // se o usuário não tiver preferência salva em sessão (ou tinha a seleção legada "só PEÇAS"),
-  // e ainda estiver usando o default canônico (ou resquício da seleção legada),
-  // ajusta o filtro de grupoItem para incluir as variações exatas encontradas na base
-  // (ex.: se a base tiver 'ACESSORIOS' e 'ACESSÓRIOS', ambas ficam marcadas).
-  const autoResolvedOptionsRef = useRef(false)
-  useEffect(() => {
-    if (hasSessionSavedAtMount || autoResolvedOptionsRef.current) return
-    if (filterOptions.grupoItem.length === 0) return
-
-    autoResolvedOptionsRef.current = true
-    const resolved = resolveDefaultGrupoItemSelection(filterOptions.grupoItem)
-    setFilters((prev) => {
-      // Verifica se a seleção atual ainda representa o default canônico dos 4 grupos
-      // ou uma seleção legada só-PEÇAS
-      const isStillDefaultCanonical =
-        prev.grupoItem.length === DEFAULT_JP_CLASS_FILTERS.grupoItem.length &&
-        DEFAULT_JP_CLASS_FILTERS.grupoItem.every((g) => prev.grupoItem.includes(g))
-      const isLegacySinglePecas = isLegacySinglePecasSelection(prev.grupoItem)
-
-      if (!isStillDefaultCanonical && !isLegacySinglePecas) return prev
-
-      // Se a resolução for idêntica, mantém
-      if (
-        resolved.length === prev.grupoItem.length &&
-        resolved.every((g) => prev.grupoItem.includes(g))
-      ) {
-        return prev
-      }
-
-      return {
-        ...prev,
-        grupoItem: resolved,
-      }
-    })
-  }, [filterOptions.grupoItem, hasSessionSavedAtMount])
-
-  // Cache com os valores normalizados dos grupos selecionados no filtro para casamento
-  // resiliente a variações de acentuação ('ACESSÓRIOS' vs 'ACESSORIOS', 'PEÇAS' vs 'PECAS')
-  const grupoItemFilterNormalized = useMemo(() => {
-    if (filters.grupoItem.length === 0) return null
-    return new Set(filters.grupoItem.map((g) => normalizeText(g)))
-  }, [filters.grupoItem])
-
-  // Aplicação dos 7 filtros multi-select + JP-Class (mesmo critério de Visão Geral / Canais)
-  const vendasFiltradasPorCriterios = useMemo(() => {
-    return rawVendas.filter((v) => {
-      // (1) Grupo do Item: casamento exato ou por normalização de texto sem acentos
-      if (filters.grupoItem.length > 0) {
-        const grp = (v.grupo_item || v.itms_grp_nam || '').trim()
-        const exactMatch = filters.grupoItem.includes(grp)
-        const normMatch =
-          !exactMatch &&
-          grupoItemFilterNormalized !== null &&
-          grupoItemFilterNormalized.has(normalizeText(grp))
-        if (!exactMatch && !normMatch) return false
-      }
-
-      // (2) Tipo de Documento
-      if (filters.tipoDocumento.length > 0) {
-        const td = (v.tipo_documento || '').trim()
-        if (!filters.tipoDocumento.includes(td)) return false
-      }
-
-      // (3) Tipo de Cliente
-      if (filters.tipoCliente.length > 0) {
-        const tc = (v.tipo_cliente || '').trim() || '-'
-        if (!filters.tipoCliente.includes(tc)) return false
-      }
-
-      // (4) Canais
-      if (filters.canal.length > 0) {
-        const canalNome = (v.vendedor_cliente || v.vendedor_revenda || v.vendedor || '').trim()
-        if (!filters.canal.includes(canalNome)) return false
-      }
-
-      // (5) Deploy (Canal de Faturamento)
-      if (filters.deploy.length > 0) {
-        const depRaw = (v.revenda || '').trim().toUpperCase()
-        let dep = 'Nenhum'
-        if (depRaw.includes('AGIS')) dep = 'AGIS'
-        else if (depRaw.includes('ROLAND')) dep = 'Roland'
-        else if (depRaw) dep = (v.revenda || '').trim()
-
-        if (!filters.deploy.includes(dep)) return false
-      }
-
-      // (6) Utilização
-      if (filters.utilizacao.length > 0) {
-        const util = (v.utilizacao || v.usage || '').trim()
-        if (!filters.utilizacao.includes(util)) return false
-      }
-
-      // (7) Tipo de Devolução
-      if (filters.tipoDevolucao.length > 0) {
-        const td = (v.tipo_documento || '').trim()
-        if (!filters.tipoDevolucao.includes(td)) return false
-      }
-
-      // (8) JP-Class
-      if (filters.jpClass.length > 0) {
-        const jpc = (v.jpClass || getJpClass(v)).trim()
-        if (!filters.jpClass.includes(jpc)) return false
-      }
-
-      return true
-    })
-  }, [rawVendas, filters])
+  }, [carregarVendas])
 
   // Vendas filtradas por semana (se o usuário selecionar uma semana específica nos KPIs)
   const vendasExibidas = useMemo(() => {
-    if (filtroSemana === 'todas') return vendasFiltradasPorCriterios
-    return vendasFiltradasPorCriterios.filter((v) => v.semanaNumero === filtroSemana)
-  }, [vendasFiltradasPorCriterios, filtroSemana])
+    if (filtroSemana === 'todas') return rawVendas
+    return rawVendas.filter((v) => v.semanaNumero === filtroSemana)
+  }, [rawVendas, filtroSemana])
 
-  // KPIs consolidados por semana (refletem os 7 filtros + JP-Class aplicados)
+  // KPIs consolidados por semana (refletem os Filtros Globais aplicados no servidor)
   const kpisPorSemana = useMemo(() => {
     return semanas.map((sem) => {
-      const vendasSemana = vendasFiltradasPorCriterios.filter((v) => v.semanaNumero === sem.numero)
+      const vendasSemana = rawVendas.filter((v) => v.semanaNumero === sem.numero)
       const faturamento = vendasSemana.reduce((acc, v) => acc + (Number(v.total_linha) || 0), 0)
       const valorLiquido = vendasSemana.reduce((acc, v) => acc + (Number(v.valor_liquido) || 0), 0)
       const quantidade = vendasSemana.reduce((acc, v) => acc + (Number(v.quantidade) || 0), 0)
@@ -551,39 +270,20 @@ export default function JpClassPage() {
         linhas,
       }
     })
-  }, [semanas, vendasFiltradasPorCriterios])
+  }, [semanas, rawVendas])
 
-  // Totalizador geral do mês (reflete os 7 filtros + JP-Class aplicados)
+  // Totalizador geral do mês (reflete os Filtros Globais aplicados no servidor)
   const totalGeral = useMemo(() => {
-    const faturamento = vendasFiltradasPorCriterios.reduce(
-      (acc, v) => acc + (Number(v.total_linha) || 0),
-      0,
-    )
-    const valorLiquido = vendasFiltradasPorCriterios.reduce(
-      (acc, v) => acc + (Number(v.valor_liquido) || 0),
-      0,
-    )
-    const quantidade = vendasFiltradasPorCriterios.reduce(
-      (acc, v) => acc + (Number(v.quantidade) || 0),
-      0,
-    )
+    const faturamento = rawVendas.reduce((acc, v) => acc + (Number(v.total_linha) || 0), 0)
+    const valorLiquido = rawVendas.reduce((acc, v) => acc + (Number(v.valor_liquido) || 0), 0)
+    const quantidade = rawVendas.reduce((acc, v) => acc + (Number(v.quantidade) || 0), 0)
     return {
       faturamento,
       valorLiquido,
       quantidade,
-      linhas: vendasFiltradasPorCriterios.length,
+      linhas: rawVendas.length,
     }
-  }, [vendasFiltradasPorCriterios])
-
-  // Anos disponíveis para seleção (ano atual +/- 5 anos)
-  const anosDisponiveis = useMemo(() => {
-    const list: number[] = []
-    const currentYear = hoje.getFullYear()
-    for (let y = currentYear - 3; y <= currentYear + 2; y++) {
-      list.push(y)
-    }
-    return list
-  }, [hoje])
+  }, [rawVendas])
 
   // Exportação rápida para CSV
   const handleExportCsv = () => {
@@ -609,71 +309,35 @@ export default function JpClassPage() {
 
   return (
     <div className="space-y-6">
-      {/* Barra de Filtro de Período (Mês e Ano) e Ações */}
+      {/* Banner informativo: Filtros Globais geridos na página dedicada /dashboard/filtros */}
       <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="p-2 rounded-lg bg-[#0B6E99]/10 text-[#0B6E99]">
-              <Calendar className="w-5 h-5" />
+              <SlidersHorizontal className="w-5 h-5" />
             </span>
             <div>
-              <h2 className="text-sm font-bold text-slate-900">Período de Análise (Mês/Ano)</h2>
+              <h2 className="text-sm font-bold text-slate-900">
+                Período de Análise: {mesNome} de {ano}
+              </h2>
               <p className="text-xs text-slate-500">
                 Semanas calculadas de segunda a domingo iniciando na 1ª segunda-feira
               </p>
             </div>
           </div>
-
-          {/* Seletores de Mês e Ano */}
-          <div className="flex items-center gap-2">
-            <select
-              value={mes}
-              onChange={(e) => setMes(Number(e.target.value))}
-              className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-800 focus:outline-hidden focus:border-[#0B6E99]"
-            >
-              {MESES_PT_BR.map((m, idx) => (
-                <option key={m} value={idx + 1}>
-                  {m}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={ano}
-              onChange={(e) => setAno(Number(e.target.value))}
-              className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-800 focus:outline-hidden focus:border-[#0B6E99]"
-            >
-              {anosDisponiveis.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
 
-        {/* Ações da Barra de Período */}
+        {/* Ações */}
         <div className="flex items-center gap-2">
-          {ultimoPeriodoDisponivel &&
-            (ano !== ultimoPeriodoDisponivel.ano || mes !== ultimoPeriodoDisponivel.mes) && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setAno(ultimoPeriodoDisponivel.ano)
-                  setMes(ultimoPeriodoDisponivel.mes)
-                }}
-                disabled={loading}
-                className="text-xs font-semibold gap-1.5 h-8 bg-sky-50/60 border-sky-200 text-[#0B6E99] hover:bg-sky-100/60"
-                title={`Ir para ${MESES_PT_BR[ultimoPeriodoDisponivel.mes - 1]} de ${ultimoPeriodoDisponivel.ano} (último mês com dados na base)`}
-              >
-                <Calendar className="w-3.5 h-3.5 text-[#0B6E99]" />
-                <span>
-                  Último c/ dados: {MESES_PT_BR[ultimoPeriodoDisponivel.mes - 1]?.slice(0, 3)}/
-                  {ultimoPeriodoDisponivel.ano}
-                </span>
-              </Button>
-            )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => navigate('/dashboard/filtros')}
+            className="text-xs font-semibold gap-1.5 h-8 bg-white"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+            <span>Filtros Globais</span>
+          </Button>
 
           <Button
             variant="outline"
@@ -699,21 +363,6 @@ export default function JpClassPage() {
         </div>
       </div>
 
-      {/* Barra com os 7 Filtros Multi-Select + JP-Class */}
-      <JpClassFilterBar
-        filters={filters}
-        setFilters={setFilters}
-        options={filterOptions}
-        onResetToDefault={() => {
-          const resolvedGrupos = resolveDefaultGrupoItemSelection(filterOptions.grupoItem)
-          setFilters({
-            ...DEFAULT_JP_CLASS_FILTERS,
-            grupoItem: resolvedGrupos,
-          })
-        }}
-        isLoading={loading}
-      />
-
       {/* Alerta de erro */}
       {error && (
         <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center justify-between gap-3">
@@ -729,49 +378,24 @@ export default function JpClassPage() {
         </div>
       )}
 
-      {/* Alerta amigável caso o mês selecionado não possua vendas */}
+      {/* Alerta amigável caso o período selecionado não possua vendas */}
       {!loading && !error && rawVendas.length === 0 && (
-        <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="space-y-0.5">
-            <p className="font-bold">
-              Nenhuma venda registrada nas semanas de {mesNome} de {ano}.
-            </p>
-            <p className="text-amber-700 text-[11px]">
-              A base consolidada não possui vendas para o intervalo selecionado ou o mês ainda não
-              foi faturado.
-              {ultimoPeriodoDisponivel && (
-                <>
-                  {' '}
-                  O último período com vendas consolidado na base é{' '}
-                  <strong>
-                    {MESES_PT_BR[ultimoPeriodoDisponivel.mes - 1]} de {ultimoPeriodoDisponivel.ano}
-                  </strong>
-                  .
-                </>
-              )}
-            </p>
-          </div>
-          {ultimoPeriodoDisponivel &&
-            (ano !== ultimoPeriodoDisponivel.ano || mes !== ultimoPeriodoDisponivel.mes) && (
-              <Button
-                size="sm"
-                onClick={() => {
-                  setAno(ultimoPeriodoDisponivel.ano)
-                  setMes(ultimoPeriodoDisponivel.mes)
-                }}
-                className="bg-[#0B6E99] hover:bg-[#09577a] text-white text-xs font-semibold h-8 shrink-0"
-              >
-                Visualizar {MESES_PT_BR[ultimoPeriodoDisponivel.mes - 1]} de{' '}
-                {ultimoPeriodoDisponivel.ano}
-              </Button>
-            )}
+        <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs">
+          <p className="font-bold">
+            Nenhuma venda registrada nas semanas de {mesNome} de {ano} com os Filtros Globais
+            atuais.
+          </p>
+          <p className="text-amber-700 text-[11px]">
+            A base consolidada não possui vendas para o intervalo/recorte selecionado ou o mês ainda
+            não foi faturado. Ajuste os Filtros Globais em Dashboard → Filtros Globais.
+          </p>
         </div>
       )}
 
       {/* Regra de calendário em banner informativo */}
       {semanas.length > 0 && (
         <div className="bg-sky-50/70 border border-sky-200/80 rounded-xl p-3.5 flex items-start gap-3 text-xs text-sky-950">
-          <CalendarDays className="w-4 h-4 text-[#0B6E99] shrink-0 mt-0.5" />
+          <Calendar className="w-4 h-4 text-[#0B6E99] shrink-0 mt-0.5" />
           <div className="space-y-1">
             <span className="font-bold text-[#0B6E99]">
               Calendário de Semanas de {mesNome} de {ano}:
@@ -883,7 +507,7 @@ export default function JpClassPage() {
             Dashboard — Recortes por JP-Class, Tipo de Cliente, Grupo e Item
           </h3>
         </div>
-        <JpClassDashboard items={vendasExibidas} tiposClienteMap={tiposClienteMap} />
+        <JpClassDashboard items={vendasExibidas} />
       </div>
 
       {/* Relatório de Vendas por Semanas com Ordenação e Agrupamentos Colapsáveis */}
@@ -902,7 +526,6 @@ export default function JpClassPage() {
 
         <JpClassRelatorio
           items={vendasExibidas}
-          semanas={semanas}
           loading={loading}
           groupBy={groupBy}
           onGroupByChange={setGroupBy}

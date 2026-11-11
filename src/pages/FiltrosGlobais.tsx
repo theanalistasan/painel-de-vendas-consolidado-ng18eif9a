@@ -247,14 +247,14 @@ export default function FiltrosGlobais() {
                 Filtros Globais
               </CardTitle>
               <CardDescription className="text-xs text-slate-500 font-medium mt-0.5">
-                Os filtros definidos aqui valem para o painel inteiro: aplicam-se à Visão Geral e à
-                Visão Canais. Os filtros de Canais (Canal, Clientes, Deploy e Inside) ficam na Visão
-                Canais.
+                Os filtros definidos aqui valem para o painel inteiro: aplicam-se à Visão Geral, à
+                Visão Canais e ao Relatório JP-Class. Os filtros de Canais (Canal, Clientes, Deploy
+                e Inside) ficam na Visão Canais.
               </CardDescription>
             </div>
           </div>
 
-          {/* Botão Restaurar Padrão Geral (mesmo comportamento do botão da página JP-Class) */}
+          {/* Botão Restaurar Padrão Geral */}
           <Button
             type="button"
             variant="outline"

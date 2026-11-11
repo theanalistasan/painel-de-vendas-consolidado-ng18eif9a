@@ -9,7 +9,6 @@ import {
   Sparkles,
   SlidersHorizontal,
   DollarSign,
-  Package,
   FileText,
   Receipt,
 } from 'lucide-react'
@@ -239,9 +238,6 @@ export default function DashboardGeral() {
       valorLiquido: data?.kpis?.valorLiquido || 0,
       totalNfSemFrete: data?.kpis?.totalNfSemFrete || 0,
       totalNfNovo: data?.kpis?.totalNfNovo || 0,
-      itensVendidos: data?.kpis?.itensVendidos || 0,
-      documentos: data?.kpis?.documentos || 0,
-      devolucoes: data?.kpis?.devolucoes || 0,
     }
   }, [data])
 
@@ -409,7 +405,7 @@ export default function DashboardGeral() {
       </Card>
 
       {/* Valores de faturamento / KPIs no início da página */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title="Valor Total de Mercadorias"
           value={reportKpis.faturamento}
@@ -441,30 +437,6 @@ export default function DashboardGeral() {
           icon={FileText}
           iconBgColor="bg-violet-50"
           iconColor="text-violet-600"
-        />
-        <KpiCard
-          title="Itens Vendidos"
-          value={reportKpis.itensVendidos}
-          decimals={0}
-          icon={Package}
-          iconBgColor="bg-cyan-50"
-          iconColor="text-cyan-600"
-        />
-        <KpiCard
-          title="Documentos (NFe)"
-          value={reportKpis.documentos}
-          decimals={0}
-          icon={FileText}
-          iconBgColor="bg-slate-100"
-          iconColor="text-slate-700"
-        />
-        <KpiCard
-          title="Devoluções"
-          value={reportKpis.devolucoes}
-          isCurrency
-          icon={RotateCcw}
-          iconBgColor="bg-rose-50"
-          iconColor="text-rose-600"
         />
       </div>
 
