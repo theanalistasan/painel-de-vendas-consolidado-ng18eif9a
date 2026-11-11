@@ -240,9 +240,12 @@ export default function FiltrosGlobais() {
   const kpiValuesData = useMemo(() => {
     const kpis = optionsData?.kpis
     if (!kpis) return []
+    // Títulos/métricas ALINHADOS com o quadro do JP-Class (/jp-class):
+    // Valor Total Mercadoria = total_linha; Valor Líquido Total = valor_liquido;
+    // Valor Total NF sem frete = total_nf_sem_frete (MAX por NF); Custo Total = custo_total.
     return [
       {
-        name: 'Valor Total de Mercadorias',
+        name: 'Valor Total Mercadoria',
         value: Number(kpis.faturamento) || 0,
         fill: '#0B6E99',
       },
@@ -257,8 +260,8 @@ export default function FiltrosGlobais() {
         fill: '#F59E0B',
       },
       {
-        name: 'Valor Total da NF',
-        value: Number(kpis.totalNfNovo) || 0,
+        name: 'Custo Total',
+        value: Number(kpis.custoTotal) || 0,
         fill: '#8B5CF6',
       },
     ]

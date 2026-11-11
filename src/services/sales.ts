@@ -537,10 +537,12 @@ export interface DashboardStatsResult {
     faturamento: number
     /** Valor Líquido Total (soma de valor_liquido) */
     valorLiquido: number
-    /** Valor Total NF sem frete (soma de total_nf_sem_frete) */
+    /** Valor Total NF sem frete (MAX por numero_nfe sobre total_nf_sem_frete) */
     totalNfSemFrete: number
-    /** Valor Total da NF (soma de total_nf_novo) */
+    /** Valor Total da NF (MAX por numero_nfe sobre total_nf_novo) */
     totalNfNovo: number
+    /** Custo Total (soma de custo_total — alinhado com o quadro do JP-Class) */
+    custoTotal: number
     itensVendidos: number
     documentos: number
     devolucoes: number
