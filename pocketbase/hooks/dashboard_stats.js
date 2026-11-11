@@ -11,7 +11,7 @@
 // (iv) Filtros de período/tipo/grupo/utilização funcionam sobre os resumos.
 // (v) Mapa do Brasil com ranking por região e pinos de revendas com faturamento continuam funcionando.
 // (vi) Filtros iniciais preservados.
-routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
+var __dashboardStatsHandler = (e) => {
   const startTime = Date.now()
   const MAX_EXEC_TIME_MS = 25000 // Teto reduzido para 25s
 
@@ -21,6 +21,19 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       body = e.requestInfo().body || {}
     } catch (_) {
       body = {}
+    }
+    // Aceita também GET: parâmetros vêm da query string (filters=<JSON>)
+    if (!body || typeof body !== 'object' || Object.keys(body).length === 0) {
+      try {
+        const q = e.requestInfo().query || {}
+        if (q.filters) {
+          body = { filters: typeof q.filters === 'string' ? JSON.parse(q.filters) : q.filters }
+        }
+        if (q.ano) body.ano = q.ano
+        if (q.mes) body.mes = q.mes
+      } catch (qsErr) {
+        console.warn('dashboard_stats: falha ao ler query params:', qsErr)
+      }
     }
     const f = body.filters || {}
 
@@ -2071,4 +2084,7 @@ routerAdd('POST', '/backend/v1/dashboard/stats', (e) => {
       error: 'Erro interno ao processar dados do painel: ' + String(err),
     })
   }
-})
+}
+
+routerAdd('POST', '/backend/v1/dashboard/stats', __dashboardStatsHandler)
+routerAdd('GET', '/backend/v1/dashboard/stats', __dashboardStatsHandler)

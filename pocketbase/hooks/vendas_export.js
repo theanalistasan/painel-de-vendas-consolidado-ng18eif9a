@@ -24,7 +24,7 @@
 //     tipoCliente[]           (string[])
 //
 // Retorna: { items, totalItems }
-routerAdd('POST', '/backend/v1/vendas/export', (e) => {
+var __vendasExportHandler = (e) => {
   const startTime = Date.now()
   const MAX_EXEC_TIME_MS = 35000 // Teto de 35s (abaixo do timeout de 45s do cliente)
 
@@ -34,6 +34,20 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
       body = e.requestInfo().body || {}
     } catch (_) {
       body = {}
+    }
+    // Aceita também GET: parâmetros vêm da query string (filters=<JSON>)
+    if (!body || typeof body !== 'object' || Object.keys(body).length === 0) {
+      try {
+        const q = e.requestInfo().query || {}
+        if (q.filters) {
+          body = { filters: typeof q.filters === 'string' ? JSON.parse(q.filters) : q.filters }
+        }
+        ;['sort', 'sortField', 'sortDirection', 'groupByNfe', 'collapsed'].forEach((k) => {
+          if (q[k] !== undefined && q[k] !== '') body[k] = q[k]
+        })
+      } catch (qsErr) {
+        console.warn('vendas_export: falha ao ler query params:', qsErr)
+      }
     }
 
     const validSortFields = {
@@ -712,4 +726,7 @@ routerAdd('POST', '/backend/v1/vendas/export', (e) => {
       error: 'Erro interno ao exportar vendas: ' + String(err),
     })
   }
-})
+}
+
+routerAdd('POST', '/backend/v1/vendas/export', __vendasExportHandler)
+routerAdd('GET', '/backend/v1/vendas/export', __vendasExportHandler)

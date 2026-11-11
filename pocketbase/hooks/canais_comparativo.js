@@ -2,7 +2,7 @@
 // Agrega e compara o faturamento por canal de vendas entre o mês selecionado e o mesmo mês do ano anterior.
 // Respeita todos os filtros dimensionais da página (canais, clientes, deploy, inside, vendedor, estado, etc.)
 
-routerAdd('POST', '/backend/v1/canais/comparativo-mes', function (e) {
+var __canaisComparativoHandler = function (e) {
   var startTime = Date.now()
 
   try {
@@ -11,6 +11,19 @@ routerAdd('POST', '/backend/v1/canais/comparativo-mes', function (e) {
       body = e.requestInfo().body || {}
     } catch (_) {
       body = {}
+    }
+    // Aceita também GET: parâmetros vêm da query string (filters=<JSON>, ano, mes)
+    if (!body || typeof body !== 'object' || Object.keys(body).length === 0) {
+      try {
+        var qs = e.requestInfo().query || {}
+        if (qs.filters) {
+          body = { filters: typeof qs.filters === 'string' ? JSON.parse(qs.filters) : qs.filters }
+        }
+        if (qs.ano) body.ano = qs.ano
+        if (qs.mes) body.mes = qs.mes
+      } catch (qsErr) {
+        console.warn('canais_comparativo: falha ao ler query params:', qsErr)
+      }
     }
 
     var f = body.filters || {}
@@ -488,7 +501,10 @@ routerAdd('POST', '/backend/v1/canais/comparativo-mes', function (e) {
   } catch (err) {
     console.error('canais_comparativo fatal error:', err)
     return e.json(500, {
-      error: 'Erro interno ao processar comparativo de canais: ' + String(err),
+      error: 'Erro interno ao comparar canais: ' + String(err),
     })
   }
-})
+}
+
+routerAdd('POST', '/backend/v1/canais/comparativo-mes', __canaisComparativoHandler)
+routerAdd('GET', '/backend/v1/canais/comparativo-mes', __canaisComparativoHandler)

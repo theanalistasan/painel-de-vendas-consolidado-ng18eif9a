@@ -24,7 +24,7 @@
 //     deploy[]                (string[])
 //     tipoCliente[]           (string[])//
 // Retorna: { items, page, perPage, totalItems, totalPages }
-routerAdd('POST', '/backend/v1/vendas/list', (e) => {
+var __vendasListHandler = (e) => {
   const startTime = Date.now()
   const MAX_EXEC_TIME_MS = 35000 // Teto de 35s (abaixo do timeout de 45s do cliente)
   try {
@@ -33,6 +33,28 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
       body = e.requestInfo().body || {}
     } catch (_) {
       body = {}
+    }
+    // Aceita também GET: parâmetros vêm da query string (filters=<JSON>)
+    if (!body || typeof body !== 'object' || Object.keys(body).length === 0) {
+      try {
+        const q = e.requestInfo().query || {}
+        if (q.filters) {
+          body = { filters: typeof q.filters === 'string' ? JSON.parse(q.filters) : q.filters }
+        }
+        ;[
+          'page',
+          'perPage',
+          'sort',
+          'sortField',
+          'sortDirection',
+          'groupByNfe',
+          'collapsed',
+        ].forEach((k) => {
+          if (q[k] !== undefined && q[k] !== '') body[k] = q[k]
+        })
+      } catch (qsErr) {
+        console.warn('vendas_list: falha ao ler query params:', qsErr)
+      }
     }
     // LIMIT rígido e proteção contra offsets astronômicos
     const page = Math.min(5000, Math.max(1, parseInt(body.page, 10) || 1))
@@ -909,4 +931,7 @@ routerAdd('POST', '/backend/v1/vendas/list', (e) => {
       error: 'Erro interno ao consultar lista de vendas: ' + String(err),
     })
   }
-})
+}
+
+routerAdd('POST', '/backend/v1/vendas/list', __vendasListHandler)
+routerAdd('GET', '/backend/v1/vendas/list', __vendasListHandler)
