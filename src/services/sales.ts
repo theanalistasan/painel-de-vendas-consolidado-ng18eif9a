@@ -532,8 +532,14 @@ export async function fetchUltimaCargaProdutos(): Promise<string | null> {
 
 export interface DashboardStatsResult {
   kpis: {
+    /** Valor Total de Mercadorias (soma de total_linha) */
     faturamento: number
+    /** Valor Líquido Total (soma de valor_liquido) */
     valorLiquido: number
+    /** Valor Total NF sem frete (soma de total_nf_sem_frete) */
+    totalNfSemFrete: number
+    /** Valor Total da NF (soma de total_nf_novo) */
+    totalNfNovo: number
     itensVendidos: number
     documentos: number
     devolucoes: number

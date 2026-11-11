@@ -220,6 +220,8 @@ export default function DashboardCanais() {
     return {
       faturamento: data?.kpis?.faturamento || 0,
       valorLiquido: data?.kpis?.valorLiquido || 0,
+      totalNfSemFrete: data?.kpis?.totalNfSemFrete || 0,
+      totalNfNovo: data?.kpis?.totalNfNovo || 0,
       itensVendidos: data?.kpis?.itensVendidos || 0,
       documentos: data?.kpis?.documentos || 0,
       devolucoes: data?.kpis?.devolucoes || 0,
