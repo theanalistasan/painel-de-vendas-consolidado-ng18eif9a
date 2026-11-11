@@ -771,6 +771,15 @@ var __dashboardStatsHandler = (e) => {
     // ============================================================
     // 1) KPIs
     // ============================================================
+    // BUG 0.0.307 (card "Valores Consolidados" zerado): a query de KPIs somava
+    // total_nf_sem_frete/total_nf_novo na resumo_vendas_mensal — colunas que NÃO
+    // existem na tabela de resumo. A query falhava ("no such column"), o runAgg
+    // engolia o erro e TODOS os 4 valores voltavam 0 ("Nenhum dado encontrado").
+    // Correção: KPIs de linha saem do resumo; os 2 valores de NF saem da base
+    // bruta `vendas` agregados POR NF (MAX por numero_nfe — o valor é constante
+    // por NF e repete em cada item; SUM por linha multiplicaria pelo nº de itens;
+    // mesma convenção de vendas_export.js), respeitando TODOS os filtros ativos
+    // (sqlWhereVendas: período + dimensões + exclusão de SERVICOS).
     let kpis = {
       faturamento: 0,
       valorLiquido: 0,
@@ -785,8 +794,6 @@ var __dashboardStatsHandler = (e) => {
         'SELECT ' +
         'COALESCE(SUM(total_linha),0) AS a, ' +
         'COALESCE(SUM(valor_liquido),0) AS b, ' +
-        'COALESCE(SUM(total_nf_sem_frete),0) AS f, ' +
-        'COALESCE(SUM(total_nf_novo),0) AS g, ' +
         'COALESCE(SUM(quantidade),0) AS c, ' +
         'COALESCE(SUM(qtd_documentos),0) AS d, ' +
         'COALESCE(SUM(total_devolucao),0) AS e ' +
@@ -794,15 +801,11 @@ var __dashboardStatsHandler = (e) => {
         sqlWhere
       const kpiRows = runAgg(kpiSql)
       if (kpiRows.length > 0) {
-        kpis = {
-          faturamento: toNum(kpiRows[0].a),
-          valorLiquido: toNum(kpiRows[0].b),
-          totalNfSemFrete: toNum(kpiRows[0].f),
-          totalNfNovo: toNum(kpiRows[0].g),
-          itensVendidos: toNum(kpiRows[0].c),
-          documentos: toNum(kpiRows[0].d),
-          devolucoes: toNum(kpiRows[0].e),
-        }
+        kpis.faturamento = toNum(kpiRows[0].a)
+        kpis.valorLiquido = toNum(kpiRows[0].b)
+        kpis.itensVendidos = toNum(kpiRows[0].c)
+        kpis.documentos = toNum(kpiRows[0].d)
+        kpis.devolucoes = toNum(kpiRows[0].e)
       }
     } else {
       // Fallback para filtros textuais finos ou dia
@@ -810,8 +813,6 @@ var __dashboardStatsHandler = (e) => {
         'SELECT ' +
         'COALESCE(SUM(total_linha),0) AS a, ' +
         'COALESCE(SUM(valor_liquido),0) AS b, ' +
-        'COALESCE(SUM(total_nf_sem_frete),0) AS f, ' +
-        'COALESCE(SUM(total_nf_novo),0) AS g, ' +
         'COALESCE(SUM(quantidade),0) AS c, ' +
         'COUNT(DISTINCT numero_nfe) AS d, ' +
         "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS e " +
@@ -819,16 +820,37 @@ var __dashboardStatsHandler = (e) => {
         sqlWhereVendas
       const kpiRows = runAgg(kpiSql)
       if (kpiRows.length > 0) {
-        kpis = {
-          faturamento: toNum(kpiRows[0].a),
-          valorLiquido: toNum(kpiRows[0].b),
-          totalNfSemFrete: toNum(kpiRows[0].f),
-          totalNfNovo: toNum(kpiRows[0].g),
-          itensVendidos: toNum(kpiRows[0].c),
-          documentos: toNum(kpiRows[0].d),
-          devolucoes: toNum(kpiRows[0].e),
-        }
+        kpis.faturamento = toNum(kpiRows[0].a)
+        kpis.valorLiquido = toNum(kpiRows[0].b)
+        kpis.itensVendidos = toNum(kpiRows[0].c)
+        kpis.documentos = toNum(kpiRows[0].d)
+        kpis.devolucoes = toNum(kpiRows[0].e)
       }
+    }
+
+    // Valor Total NF sem frete e Valor Total da NF: valores por NF na base bruta
+    // (MAX por numero_nfe; uma NF sem número cai num único grupo "vazio").
+    try {
+      const nfSql =
+        'SELECT COALESCE(SUM(t.f),0) AS f, COALESCE(SUM(t.g),0) AS g FROM (' +
+        'SELECT MAX(COALESCE(total_nf_sem_frete,0)) AS f, MAX(COALESCE(total_nf_novo,0)) AS g ' +
+        'FROM vendas WHERE ' +
+        sqlWhereVendas +
+        ' GROUP BY numero_nfe) AS t'
+      // DynamicModel próprio: o runAgg só tem campos a–f e a coluna "g"
+      // (totalNfNovo) não scanneia nele.
+      const nfRows = arrayOf(new DynamicModel({ f: '', g: '' }))
+      try {
+        $app.db().newQuery(nfSql).all(nfRows)
+      } catch (nfQueryErr) {
+        console.error('dashboard_stats: kpis por NF falhou:', nfQueryErr)
+      }
+      if (nfRows.length > 0) {
+        kpis.totalNfSemFrete = toNum(nfRows[0].f)
+        kpis.totalNfNovo = toNum(nfRows[0].g)
+      }
+    } catch (nfErr) {
+      console.warn('dashboard_stats: kpis por NF warning:', nfErr)
     }
 
     // ============================================================
