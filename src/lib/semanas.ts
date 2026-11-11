@@ -128,6 +128,55 @@ export function encontrarSemanaDaData(
   return null
 }
 
+export interface SemanaValores {
+  semana: SemanaMes
+  valorTotalMercadoria: number
+  valorLiquidoTotal: number
+  valorTotalNfSemFrete: number
+  custoTotal: number
+  linhas: number
+}
+
+/**
+ * Agrega os valores monetários de vendas por semana do calendário do mês.
+ * Soma (a) Valor Mercadoria (campo Valor Mercadoria, gravado como total_linha),
+ * (b) Valor Líquido Total (valor_liquido), (c) Valor Total NF sem frete
+ * (total_nf_sem_frete) e (d) Custo Total (custo_total), classificando cada
+ * registro na semana pela data de lançamento (regra seg–dom já implementada).
+ * Registros fora do calendário (ex.: anteriores à Semana 1) são ignorados.
+ */
+export function agregarValoresPorSemana<T extends Record<string, unknown>>(
+  vendas: T[],
+  semanas: SemanaMes[],
+  campoData: keyof T & string = 'data_lancamento' as keyof T & string,
+): SemanaValores[] {
+  const porSemana = new Map<number, SemanaValores>()
+  for (const semana of semanas) {
+    porSemana.set(semana.numero, {
+      semana,
+      valorTotalMercadoria: 0,
+      valorLiquidoTotal: 0,
+      valorTotalNfSemFrete: 0,
+      custoTotal: 0,
+      linhas: 0,
+    })
+  }
+
+  for (const venda of vendas) {
+    const sem = encontrarSemanaDaData(venda[campoData] as string | null | undefined, semanas)
+    if (!sem) continue
+    const acc = porSemana.get(sem.numero)
+    if (!acc) continue
+    acc.valorTotalMercadoria += Number(venda.total_linha) || 0
+    acc.valorLiquidoTotal += Number(venda.valor_liquido) || 0
+    acc.valorTotalNfSemFrete += Number(venda.total_nf_sem_frete) || 0
+    acc.custoTotal += Number(venda.custo_total) || 0
+    acc.linhas += 1
+  }
+
+  return semanas.map((semana) => porSemana.get(semana.numero) as SemanaValores)
+}
+
 /**
  * Normaliza qualquer formato de data (ISO 'YYYY-MM-DD...' ou BR 'DD/MM/YYYY...') para 'YYYY-MM-DD'
  */

@@ -10,10 +10,21 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { fetchVendasExport } from '@/services/sales'
-import { getSemanasDoMes, encontrarSemanaDaData, type SemanaMes } from '@/lib/semanas'
+import {
+  getSemanasDoMes,
+  encontrarSemanaDaData,
+  agregarValoresPorSemana,
+  type SemanaMes,
+} from '@/lib/semanas'
 import { useNavigate } from 'react-router-dom'
 import { getJpClass } from '@/lib/jp-class'
-import { MESES_PT_BR, formatCurrency, formatNumber, exportToCSV } from '@/lib/formatters'
+import {
+  MESES_PT_BR,
+  formatCurrency,
+  formatCompactCurrency,
+  formatNumber,
+  exportToCSV,
+} from '@/lib/formatters'
 import {
   loadFiltersFromSession,
   saveFiltersToSession,
@@ -285,6 +296,36 @@ export default function JpClassPage() {
     }
   }, [rawVendas])
 
+  // Quadro de valores por semana (Fase 5): Valor Total Mercadoria, Valor Líquido Total,
+  // Valor Total NF sem frete e Custo Total — agregados a partir das MESMAS linhas já
+  // carregadas (rawVendas), respeitando os Filtros Globais e recalculando ao limpar.
+  const valoresPorSemana = useMemo(() => {
+    return agregarValoresPorSemana(rawVendas, semanas)
+  }, [rawVendas, semanas])
+
+  // Totais do quadro (soma das semanas = mês consolidado, pois dias fora do calendário não entram)
+  const totaisQuadroSemanas = useMemo(() => {
+    return valoresPorSemana.reduce(
+      (acc, s) => ({
+        valorTotalMercadoria: acc.valorTotalMercadoria + s.valorTotalMercadoria,
+        valorLiquidoTotal: acc.valorLiquidoTotal + s.valorLiquidoTotal,
+        valorTotalNfSemFrete: acc.valorTotalNfSemFrete + s.valorTotalNfSemFrete,
+        custoTotal: acc.custoTotal + s.custoTotal,
+        linhas: acc.linhas + s.linhas,
+      }),
+      {
+        valorTotalMercadoria: 0,
+        valorLiquidoTotal: 0,
+        valorTotalNfSemFrete: 0,
+        custoTotal: 0,
+        linhas: 0,
+      },
+    )
+  }, [valoresPorSemana])
+
+  const valorCompacto = (v: number) =>
+    Math.abs(v) >= 100000 ? formatCompactCurrency(v) : formatCurrency(v)
+
   // Exportação rápida para CSV
   const handleExportCsv = () => {
     const columns = [
@@ -497,6 +538,85 @@ export default function JpClassPage() {
             )
           })}
         </div>
+      </div>
+
+      {/* Quadro de Valores por Semana (Fase 5) — após o quadro MÊS consolidado */}
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-[#0B6E99]" />
+          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+            Valores por Semana — {mesNome} de {ano}
+          </h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              {/* Linha superior: métricas em colunas */}
+              <tr className="bg-slate-50 text-slate-600">
+                <th className="px-4 py-2 text-left font-bold border-b border-slate-200">Semana</th>
+                <th className="px-4 py-2 text-right font-bold border-b border-slate-200">
+                  Valor Total Mercadoria
+                </th>
+                <th className="px-4 py-2 text-right font-bold border-b border-slate-200">
+                  Valor Líquido Total
+                </th>
+                <th className="px-4 py-2 text-right font-bold border-b border-slate-200">
+                  Valor Total NF sem frete
+                </th>
+                <th className="px-4 py-2 text-right font-bold border-b border-slate-200">
+                  Custo Total
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Linha abaixo: Semana 1, 2, 3, 4, 5 (apenas as semanas existentes no mês) */}
+              {valoresPorSemana.map((v) => (
+                <tr key={v.semana.numero} className="hover:bg-slate-50/60">
+                  <td className="px-4 py-2.5 font-semibold text-slate-700 border-b border-slate-100 whitespace-nowrap">
+                    {v.semana.nome}
+                    <span className="ml-1.5 text-[10px] font-normal text-slate-400">
+                      ({v.semana.inicioFormatado} a {v.semana.fimFormatado})
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 border-b border-slate-100">
+                    {valorCompacto(v.valorTotalMercadoria)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 border-b border-slate-100">
+                    {valorCompacto(v.valorLiquidoTotal)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 border-b border-slate-100">
+                    {valorCompacto(v.valorTotalNfSemFrete)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 border-b border-slate-100">
+                    {valorCompacto(v.custoTotal)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="bg-slate-50 font-bold">
+                <td className="px-4 py-2.5 text-slate-800">Total do Mês</td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-slate-900">
+                  {formatCurrency(totaisQuadroSemanas.valorTotalMercadoria)}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-slate-900">
+                  {formatCurrency(totaisQuadroSemanas.valorLiquidoTotal)}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-slate-900">
+                  {formatCurrency(totaisQuadroSemanas.valorTotalNfSemFrete)}
+                </td>
+                <td className="px-4 py-2.5 text-right tabular-nums text-slate-900">
+                  {formatCurrency(totaisQuadroSemanas.custoTotal)}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+        {semanas.length === 0 && (
+          <div className="px-4 py-3 text-[11px] text-slate-500">
+            Nenhuma semana completa no período selecionado.
+          </div>
+        )}
       </div>
 
       {/* Dashboard do Módulo (Recortes por JP-Class, Tipo de Cliente com Subtotais, Grupo e Item) */}
