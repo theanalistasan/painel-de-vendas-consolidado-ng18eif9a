@@ -378,3 +378,56 @@ export function clearCanaisFiltrosFromSession(): void {
     // ignora
   }
 }
+
+// ============================================================================
+// Filtros locais de Pedidos em Aberto (Categoria = Grupo do Item)
+// ============================================================================
+// Mesma mecânica do JP-Class e da Visão Canais: persistência em sessionStorage
+// com chave própria; array vazio [] = considerar todas as categorias.
+
+const PEDIDOS_ABERTOS_STORAGE_KEY = 'pedidos_abertos_filtros'
+
+/** Filtros locais de Pedidos em Aberto persistidos em sessionStorage */
+export interface PedidosAbertosFiltroLocal {
+  /** Categorias (Grupo do Item) selecionadas; [] = todas as categorias */
+  grupoItem: string[]
+}
+
+export const EMPTY_PEDIDOS_ABERTOS_FILTRO_LOCAL: PedidosAbertosFiltroLocal = {
+  grupoItem: [],
+}
+
+const normalizeFiltroArray = (val: unknown): string[] => {
+  if (Array.isArray(val)) return val.map((v) => String(v).trim()).filter(Boolean)
+  if (typeof val === 'string' && val.trim() !== '') return [val.trim()]
+  return []
+}
+
+export function savePedidosAbertosFiltrosToSession(filtros: PedidosAbertosFiltroLocal): void {
+  try {
+    sessionStorage.setItem(PEDIDOS_ABERTOS_STORAGE_KEY, JSON.stringify(filtros))
+  } catch {
+    // sessionStorage não disponível — ignora silenciosamente
+  }
+}
+
+export function loadPedidosAbertosFiltrosFromSession(): PedidosAbertosFiltroLocal {
+  try {
+    const raw = sessionStorage.getItem(PEDIDOS_ABERTOS_STORAGE_KEY)
+    if (!raw) return { ...EMPTY_PEDIDOS_ABERTOS_FILTRO_LOCAL }
+    const parsed = JSON.parse(raw) as Partial<PedidosAbertosFiltroLocal> | null
+    return {
+      grupoItem: normalizeFiltroArray(parsed?.grupoItem),
+    }
+  } catch {
+    return { ...EMPTY_PEDIDOS_ABERTOS_FILTRO_LOCAL }
+  }
+}
+
+export function clearPedidosAbertosFiltrosFromSession(): void {
+  try {
+    sessionStorage.removeItem(PEDIDOS_ABERTOS_STORAGE_KEY)
+  } catch {
+    // ignora
+  }
+}
