@@ -48,6 +48,7 @@ var __vendasListHandler = (e) => {
           'sortField',
           'sortDirection',
           'groupByNfe',
+          'groupByPedido',
           'collapsed',
         ].forEach((k) => {
           if (q[k] !== undefined && q[k] !== '') body[k] = q[k]
@@ -60,6 +61,7 @@ var __vendasListHandler = (e) => {
     const page = Math.min(5000, Math.max(1, parseInt(body.page, 10) || 1))
     const perPage = Math.min(100, Math.max(1, parseInt(body.perPage, 10) || 20))
     const isGroupByNfe = !!(body.groupByNfe || body.collapsed)
+    const isGroupByPedido = !!(body.groupByPedido || body.groupByMode === 'pedido')
 
     // Mapeamento e validação de ordenação server-side
     const validSortFields = {
@@ -92,6 +94,7 @@ var __vendasListHandler = (e) => {
       usuario_emissor_pedido: 'usuario_emissor_pedido',
       tem_racnew: 'tem_racnew',
       tem_netsales: 'tem_netsales',
+      numero_documento_netsales: 'numero_documento_netsales',
       created: 'created',
       updated: 'updated',
     }
@@ -396,7 +399,7 @@ var __vendasListHandler = (e) => {
       return isNaN(n) ? 0 : n
     }
 
-    if (isGroupByNfe) {
+    if (isGroupByNfe && !isGroupByPedido) {
       // Consulta agrupada por NF (numero_nfe) com paginação de Notas Fiscais
       const groupedRows = arrayOf(
         new DynamicModel({
@@ -413,6 +416,7 @@ var __vendasListHandler = (e) => {
           quantidade: '',
           total_linha: '',
           total_nf_sem_frete: '',
+          total_nf_novo: '',
           valor_liquido: '',
           custo_total: '',
           utilizacao: '',
@@ -452,6 +456,7 @@ var __vendasListHandler = (e) => {
             'CAST(COALESCE(SUM(quantidade),0.0) AS REAL) AS quantidade, ' +
             'CAST(COALESCE(SUM(total_linha),0.0) AS REAL) AS total_linha, ' +
             'CAST(COALESCE(MAX(total_nf_sem_frete), SUM(total_linha), 0.0) AS REAL) AS total_nf_sem_frete, ' +
+            'CAST(COALESCE(MAX(total_nf_novo), MAX(total_linha), 0.0) AS REAL) AS total_nf_novo, ' +
             'CAST(COALESCE(SUM(valor_liquido),0.0) AS REAL) AS valor_liquido, ' +
             'CAST(COALESCE(SUM(custo_total),0.0) AS REAL) AS custo_total, ' +
             "COALESCE(MAX(utilizacao),'') AS utilizacao, " +
@@ -606,6 +611,7 @@ var __vendasListHandler = (e) => {
           preco_unitario: 0,
           total_linha: toNum(r.total_linha),
           total_nf_sem_frete: toNum(r.total_nf_sem_frete),
+          total_nf_novo: toNum(r.total_nf_novo),
           valor_liquido: toNum(r.valor_liquido),
           custo_total: toNum(r.custo_total),
           utilizacao: r.utilizacao,
@@ -635,6 +641,235 @@ var __vendasListHandler = (e) => {
         totalPages: Math.max(1, Math.ceil(totalItems / perPage)),
         hasMore: hasMoreGrouped,
         isGrouped: true,
+      })
+    }
+
+    // Modo agrupado por Pedido (numero_documento_netsales): agrega por NF primeiro
+    // (valores de NF: MAX por NF, somados 1x por NF no pedido) para não inflar o total.
+    if (isGroupByPedido) {
+      const pedidoRows = arrayOf(
+        new DynamicModel({
+          numero_documento_netsales: '',
+          nfe_key: '',
+          data_lancamento: '',
+          numero_sap: '',
+          tipo_documento: '',
+          codigo_cliente: '',
+          nome_cliente: '',
+          vendedor_cliente: '',
+          nome_vendedor: '',
+          grupo_item: '',
+          itens_qtd: '',
+          quantidade: '',
+          total_linha: '',
+          nf_sem_frete: '',
+          nf_novo: '',
+          valor_liquido: '',
+          custo_total: '',
+          estado: '',
+          cidade: '',
+          utilizacao: '',
+          classificacao: '',
+          grupo_cliente: '',
+          mercado: '',
+          usuario_emissor_pedido: '',
+          status_cadastro: '',
+          tipo_pn: '',
+          tipo_cliente: '',
+          tem_netsales: '',
+          tem_racnew: '',
+        }),
+      )
+
+      if (Date.now() - startTime > MAX_EXEC_TIME_MS) {
+        throw new Error('TIMEOUT_EXCEEDED')
+      }
+
+      $app
+        .db()
+        .newQuery(
+          'SELECT ' +
+            "COALESCE(NULLIF(numero_documento_netsales,''), '(Sem Pedido)') AS numero_documento_netsales, " +
+            "COALESCE(NULLIF(numero_nfe,''), '(Sem NFe)') AS nfe_key, " +
+            'MAX(data_lancamento) AS data_lancamento, ' +
+            "COALESCE(MAX(numero_sap),'') AS numero_sap, " +
+            "COALESCE(MAX(tipo_documento),'') AS tipo_documento, " +
+            "COALESCE(MAX(codigo_cliente),'') AS codigo_cliente, " +
+            "COALESCE(MAX(nome_cliente),'') AS nome_cliente, " +
+            "COALESCE(MAX(vendedor_cliente),'') AS vendedor_cliente, " +
+            "COALESCE(MAX(nome_vendedor),'') AS nome_vendedor, " +
+            "COALESCE(MAX(grupo_item),'') AS grupo_item, " +
+            'COUNT(*) AS itens_qtd, ' +
+            'CAST(COALESCE(SUM(quantidade),0.0) AS REAL) AS quantidade, ' +
+            'CAST(COALESCE(SUM(total_linha),0.0) AS REAL) AS total_linha, ' +
+            'CAST(COALESCE(MAX(total_nf_sem_frete), SUM(total_linha), 0.0) AS REAL) AS nf_sem_frete, ' +
+            'CAST(COALESCE(MAX(total_nf_novo), MAX(total_linha), 0.0) AS REAL) AS nf_novo, ' +
+            'CAST(COALESCE(SUM(valor_liquido),0.0) AS REAL) AS valor_liquido, ' +
+            'CAST(COALESCE(SUM(custo_total),0.0) AS REAL) AS custo_total, ' +
+            "COALESCE(MAX(estado),'') AS estado, " +
+            "COALESCE(MAX(cidade),'') AS cidade, " +
+            "COALESCE(MAX(utilizacao),'') AS utilizacao, " +
+            "COALESCE(MAX(classificacao),'') AS classificacao, " +
+            "COALESCE(MAX(grupo_cliente),'') AS grupo_cliente, " +
+            "COALESCE(MAX(mercado),'') AS mercado, " +
+            "COALESCE(MAX(usuario_emissor_pedido),'') AS usuario_emissor_pedido, " +
+            "COALESCE(MAX(status_cadastro),'') AS status_cadastro, " +
+            "COALESCE(MAX(tipo_pn),'') AS tipo_pn, " +
+            "COALESCE(MAX(tipo_cliente),'') AS tipo_cliente, " +
+            'MAX(CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END) AS tem_netsales, ' +
+            'MAX(CASE WHEN tem_racnew = 1 THEN 1 ELSE 0 END) AS tem_racnew ' +
+            'FROM vendas WHERE ' +
+            sqlWhere +
+            " GROUP BY COALESCE(NULLIF(numero_documento_netsales,''), '(Sem Pedido)'), COALESCE(NULLIF(numero_nfe,''), '(Sem NFe)') " +
+            ' ORDER BY ' +
+            sortClause +
+            ' LIMIT 100000',
+        )
+        .all(pedidoRows)
+
+      if (Date.now() - startTime > MAX_EXEC_TIME_MS) {
+        throw new Error('TIMEOUT_EXCEEDED')
+      }
+
+      // Redução por Pedido: valores de NF (nf_novo / nf_sem_frete) somados 1x por NF
+      const pedidos = {}
+      const pedidoOrder = []
+      for (let i = 0; i < pedidoRows.length; i++) {
+        const r = pedidoRows[i]
+        const pedKey = r.numero_documento_netsales || '(Sem Pedido)'
+        let acc = pedidos[pedKey]
+        if (!acc) {
+          acc = {
+            key: pedKey,
+            data_lancamento: r.data_lancamento,
+            numero_sap: r.numero_sap,
+            tipo_documento: r.tipo_documento,
+            codigo_cliente: r.codigo_cliente,
+            nome_cliente: r.nome_cliente,
+            vendedor_cliente: r.vendedor_cliente,
+            nome_vendedor: r.nome_vendedor,
+            grupo_item: r.grupo_item,
+            itens_qtd: 0,
+            nfs_qtd: 0,
+            quantidade: 0,
+            total_linha: 0,
+            total_nf_sem_frete: 0,
+            total_nf_novo: 0,
+            valor_liquido: 0,
+            custo_total: 0,
+            estado: r.estado,
+            cidade: r.cidade,
+            utilizacao: r.utilizacao,
+            classificacao: r.classificacao,
+            grupo_cliente: r.grupo_cliente,
+            mercado: r.mercado,
+            usuario_emissor_pedido: r.usuario_emissor_pedido,
+            status_cadastro: r.status_cadastro,
+            tipo_pn: r.tipo_pn,
+            tipo_cliente: r.tipo_cliente,
+            temNetsales: false,
+            temRacnew: false,
+          }
+          pedidos[pedKey] = acc
+          pedidoOrder.push(pedKey)
+        }
+        acc.itens_qtd += toInt(r.itens_qtd)
+        acc.nfs_qtd += 1
+        acc.quantidade += toNum(r.quantidade)
+        acc.total_linha += toNum(r.total_linha)
+        acc.total_nf_sem_frete += toNum(r.nf_sem_frete)
+        acc.total_nf_novo += toNum(r.nf_novo)
+        acc.valor_liquido += toNum(r.valor_liquido)
+        acc.custo_total += toNum(r.custo_total)
+        if (r.tem_netsales === '1' || r.tem_netsales === 1) acc.temNetsales = true
+        if (r.tem_racnew === '1' || r.tem_racnew === 1) acc.temRacnew = true
+        if (String(r.data_lancamento) > String(acc.data_lancamento)) {
+          acc.data_lancamento = r.data_lancamento
+        }
+      }
+
+      const pedidoItems = []
+      for (let k = 0; k < pedidoOrder.length; k++) {
+        const acc = pedidos[pedidoOrder[k]]
+        const itemPedido = {
+          id: 'ped_' + acc.key,
+          numero_documento_netsales: acc.key === '(Sem Pedido)' ? '' : acc.key,
+          numero_nfe: '',
+          data_lancamento: acc.data_lancamento,
+          numero_sap: acc.numero_sap,
+          tipo_documento: acc.tipo_documento,
+          codigo_cliente: acc.codigo_cliente,
+          nome_cliente: acc.nome_cliente,
+          vendedor_cliente: acc.vendedor_cliente,
+          nome_vendedor: acc.nome_vendedor,
+          codigo_item: acc.itens_qtd > 1 ? `(${acc.itens_qtd} itens)` : '',
+          descricao_item:
+            acc.nfs_qtd > 1
+              ? `Agrupamento de ${acc.itens_qtd} itens em ${acc.nfs_qtd} NFs no Pedido`
+              : `Agrupamento de ${acc.itens_qtd} itens no Pedido`,
+          grupo_item: acc.grupo_item,
+          quantidade: acc.quantidade,
+          preco_item: 0,
+          preco_unitario: 0,
+          total_linha: acc.total_linha,
+          total_nf_sem_frete: acc.total_nf_sem_frete,
+          total_nf_novo: acc.total_nf_novo,
+          valor_liquido: acc.valor_liquido,
+          custo_total: acc.custo_total,
+          utilizacao: acc.utilizacao,
+          estado: acc.estado,
+          cidade: acc.cidade,
+          classificacao: acc.classificacao,
+          grupo_cliente: acc.grupo_cliente,
+          mercado: acc.mercado,
+          usuario_emissor_pedido: acc.usuario_emissor_pedido,
+          status_cadastro: acc.status_cadastro,
+          tipo_pn: acc.tipo_pn,
+          tipo_cliente: acc.tipo_cliente,
+          itens_qtd: acc.itens_qtd,
+          nfs_qtd: acc.nfs_qtd,
+          tem_netsales: acc.temNetsales,
+          tem_racnew: acc.temRacnew,
+          origem:
+            acc.temNetsales && acc.temRacnew
+              ? 'Consolidado'
+              : acc.temNetsales
+                ? 'NetSales'
+                : 'RacNew',
+        }
+        try {
+          if (typeof isVendedorNaoComissionadoHook === 'function') {
+            itemPedido.nao_comissionado = isVendedorNaoComissionadoHook(itemPedido)
+          }
+        } catch (_) {}
+        pedidoItems.push(itemPedido)
+      }
+
+      // Reordena os pedidos pelo campo de ordenação ativo (a SQL ordena por NF)
+      const sfPedido =
+        body.sortField && validSortFields[body.sortField] ? body.sortField : 'data_lancamento'
+      const sdirPedido = sortClause.indexOf('DESC') >= 0 ? -1 : 1
+      pedidoItems.sort((a, b) => {
+        const va = a[sfPedido]
+        const vb = b[sfPedido]
+        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * sdirPedido
+        return String(va == null ? '' : va).localeCompare(String(vb == null ? '' : vb)) * sdirPedido
+      })
+
+      // Paginação em JS (a agregação é feita sobre a base completa)
+      const totalPedidos = pedidoItems.length
+      const startIdx = (page - 1) * perPage
+      const pageItems = pedidoItems.slice(startIdx, startIdx + perPage)
+
+      return e.json(200, {
+        items: pageItems,
+        page: page,
+        perPage: perPage,
+        totalItems: totalPedidos,
+        totalPages: Math.max(1, Math.ceil(totalPedidos / perPage)),
+        hasMore: startIdx + perPage < totalPedidos,
+        isGrouped: true,
+        groupedBy: 'pedido',
       })
     }
 
