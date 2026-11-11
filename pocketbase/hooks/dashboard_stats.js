@@ -741,6 +741,17 @@ var __dashboardStatsHandler = (e) => {
       }
     }
 
+    // Filtros locais da Visão Canais: Nota Fiscal e Pedido (busca textual) —
+    // só existem na base bruta `vendas` (a resumo_vendas_mensal não tem
+    // numero_nfe/numero_documento_netsales), portanto entram APENAS em
+    // sqlVendasParts e forçam o fallback hasSearchOrDay.
+    if (f.numeroNfe) {
+      sqlVendasParts.push("numero_nfe LIKE '%" + sqlEsc(f.numeroNfe) + "%'")
+    }
+    if (f.numeroPedido) {
+      sqlVendasParts.push("numero_documento_netsales LIKE '%" + sqlEsc(f.numeroPedido) + "%'")
+    }
+
     if (f.search) {
       const q = sqlEsc(f.search)
       const like = " LIKE '%" + q + "%'"
@@ -769,7 +780,8 @@ var __dashboardStatsHandler = (e) => {
     const sqlPartsPeriodoEnd = sqlParts.length
 
     // Se o filtro incluir busca textual ('search'), 'dia' específico ou tipoCliente, precisamos consultar a tabela `vendas` bruta para a busca pontual
-    const hasSearchOrDay = !!f.search || diasFilter.length > 0 || hasTipoCliente
+    const hasSearchOrDay =
+      !!f.search || diasFilter.length > 0 || hasTipoCliente || !!f.numeroNfe || !!f.numeroPedido
 
     // Onde aplicar na tabela de resumo
     const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'

@@ -191,6 +191,10 @@ export interface FilterState {
   dia: string[]
   /** Tipos de documento (multi-valor) vindos de `tipo_documento` (ex: "NF de Saída", "Dev. NF", ...) */
   tipoDocumento: string[]
+  /** Busca textual por Nota Fiscal (numero_nfe) — filtro local da Visão Canais */
+  numeroNfe?: string
+  /** Busca textual por N° do Pedido (numero_documento_netsales) — filtro local da Visão Canais */
+  numeroPedido?: string
 }
 
 /** Venda mensal por grupo do item (últimos 3 meses) */

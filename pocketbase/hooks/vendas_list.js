@@ -369,6 +369,13 @@ var __vendasListHandler = (e) => {
     if (f.tipoDevolucao) {
       sqlParts.push("tipo_documento = '" + sqlEsc(f.tipoDevolucao) + "'")
     }
+    // Filtros locais da Visão Canais: Nota Fiscal e Pedido (busca textual)
+    if (f.numeroNfe) {
+      sqlParts.push("numero_nfe LIKE '%" + sqlEsc(f.numeroNfe) + "%'")
+    }
+    if (f.numeroPedido) {
+      sqlParts.push("numero_documento_netsales LIKE '%" + sqlEsc(f.numeroPedido) + "%'")
+    }
     if (f.search) {
       const q = sqlEsc(f.search)
       const like = " LIKE '%" + q + "%'"
