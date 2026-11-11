@@ -86,7 +86,7 @@ export const RELATORIO_COLUMNS: ColumnDef[] = [
     key: 'total_mercadoria',
     label: 'Valor Total de Mercadorias',
     type: 'currency',
-    sortKey: 'total_mercadoria',
+    sortKey: 'total_linha',
     align: 'right',
   },
   { key: 'utilizacao', label: 'Utilização', type: 'text', sortKey: 'utilizacao' },
