@@ -1315,12 +1315,19 @@ var __dashboardStatsHandler = (e) => {
         }
 
         const lim = maxLimit ? ' LIMIT ' + maxLimit : ''
+        // tipo_cliente NÃO existe em resumo_vendas_mensal (é atributo do cliente,
+        // não da linha de venda agregada): a query no resumo estourava
+        // "no such column: tipo_cliente" a cada carga do dashboard. Para essa
+        // coluna o fallback sai da base bruta `vendas`.
+        const sourceTable = col === 'tipo_cliente' ? 'vendas' : 'resumo_vendas_mensal'
         $app
           .db()
           .newQuery(
             'SELECT COALESCE(' +
               col +
-              ",'Sem informação') AS a FROM resumo_vendas_mensal WHERE " +
+              ",'Sem informação') AS a FROM " +
+              sourceTable +
+              ' WHERE ' +
               col +
               ' IS NOT NULL AND ' +
               col +
@@ -1768,7 +1775,7 @@ var __dashboardStatsHandler = (e) => {
           "AND data_lancamento >= '" +
           minMesYm +
           "-01 00:00:00.000Z' " +
-          "(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS') " +
+          "AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS' " +
           'GROUP BY substr(data_lancamento, 1, 7)'
         const cliEquipRows = runAgg(cliEquipSql)
         for (let i = 0; i < cliEquipRows.length; i++) {
@@ -1784,7 +1791,7 @@ var __dashboardStatsHandler = (e) => {
           "AND data_lancamento >= '" +
           minMesYm +
           "-01 00:00:00.000Z' " +
-          "(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS') " +
+          "AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS' " +
           'GROUP BY substr(data_lancamento, 1, 7)'
         const cliInsRows = runAgg(cliInsSql)
         for (let i = 0; i < cliInsRows.length; i++) {

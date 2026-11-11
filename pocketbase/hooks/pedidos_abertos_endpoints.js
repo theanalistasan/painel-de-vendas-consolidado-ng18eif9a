@@ -1144,14 +1144,14 @@ routerAdd(
         const resp = (insideRows[i].resp_val || '').trim()
         if (ins && ins !== '-' && !insideSet.has(ins)) {
           insideSet.add(ins)
-          out.push(ins)
+          insideOptions.push(ins)
         }
         if (resp && resp !== '-' && resp !== 'NULL' && !insideSet.has(resp)) {
           insideSet.add(resp)
-          out.push(resp)
+          insideOptions.push(resp)
         }
       }
-      out.sort((a, b) => a.localeCompare(b))
+      insideOptions.sort((a, b) => a.localeCompare(b))
     } catch (canalErr) {
       console.warn('pedidos_abertos stats: canais filter options err:', canalErr)
     }
