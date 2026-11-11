@@ -1020,41 +1020,6 @@ export default function FilterBar({
             </div>
           </div>
         )}
-        {/* Seleção de Bases */}
-        <div>
-          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">
-            Seleção de Bases
-          </Label>
-          <Select
-            value={localFilters.base || 'ambos'}
-            onValueChange={(v: 'ambos' | 'racnew' | 'netsales') =>
-              setLocalFilters((prev) => ({ ...prev, base: v }))
-            }
-          >
-            <SelectTrigger
-              className={cn(
-                'h-10 text-xs rounded-lg',
-                localFilters.base && localFilters.base !== 'ambos'
-                  ? 'border-[#0B6E99]/60 font-bold text-slate-900 bg-cyan-50/30'
-                  : 'border-gray-200 text-slate-600',
-              )}
-            >
-              <SelectValue placeholder="Ambos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ambos" className="text-xs font-medium">
-                Ambos
-              </SelectItem>
-              <SelectItem value="racnew" className="text-xs font-medium">
-                RacNew
-              </SelectItem>
-              <SelectItem value="netsales" className="text-xs font-medium">
-                NetSales
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         <div className="sm:col-span-2">
           <Label className="text-[11px] font-bold text-slate-500 mb-1 block">Utilização</Label>
           <MultiSelectDropdown

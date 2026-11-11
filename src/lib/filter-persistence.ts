@@ -3,7 +3,6 @@ import type { FilterState } from '@/types/sales'
 const STORAGE_KEY = 'paineis_vendas_filters'
 
 const EMPTY_FILTERS: FilterState = {
-  base: 'ambos',
   dataDe: '',
   dataAte: '',
   vendedorCliente: [],
