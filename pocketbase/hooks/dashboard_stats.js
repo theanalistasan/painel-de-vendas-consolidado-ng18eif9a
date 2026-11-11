@@ -771,12 +771,22 @@ var __dashboardStatsHandler = (e) => {
     // ============================================================
     // 1) KPIs
     // ============================================================
-    let kpis = { faturamento: 0, valorLiquido: 0, itensVendidos: 0, documentos: 0, devolucoes: 0 }
+    let kpis = {
+      faturamento: 0,
+      valorLiquido: 0,
+      totalNfSemFrete: 0,
+      totalNfNovo: 0,
+      itensVendidos: 0,
+      documentos: 0,
+      devolucoes: 0,
+    }
     if (!hasSearchOrDay) {
       const kpiSql =
         'SELECT ' +
         'COALESCE(SUM(total_linha),0) AS a, ' +
         'COALESCE(SUM(valor_liquido),0) AS b, ' +
+        'COALESCE(SUM(total_nf_sem_frete),0) AS f, ' +
+        'COALESCE(SUM(total_nf_novo),0) AS g, ' +
         'COALESCE(SUM(quantidade),0) AS c, ' +
         'COALESCE(SUM(qtd_documentos),0) AS d, ' +
         'COALESCE(SUM(total_devolucao),0) AS e ' +
@@ -787,6 +797,8 @@ var __dashboardStatsHandler = (e) => {
         kpis = {
           faturamento: toNum(kpiRows[0].a),
           valorLiquido: toNum(kpiRows[0].b),
+          totalNfSemFrete: toNum(kpiRows[0].f),
+          totalNfNovo: toNum(kpiRows[0].g),
           itensVendidos: toNum(kpiRows[0].c),
           documentos: toNum(kpiRows[0].d),
           devolucoes: toNum(kpiRows[0].e),
@@ -798,6 +810,8 @@ var __dashboardStatsHandler = (e) => {
         'SELECT ' +
         'COALESCE(SUM(total_linha),0) AS a, ' +
         'COALESCE(SUM(valor_liquido),0) AS b, ' +
+        'COALESCE(SUM(total_nf_sem_frete),0) AS f, ' +
+        'COALESCE(SUM(total_nf_novo),0) AS g, ' +
         'COALESCE(SUM(quantidade),0) AS c, ' +
         'COUNT(DISTINCT numero_nfe) AS d, ' +
         "COALESCE(SUM(CASE WHEN tipo_documento IN ('Dev. Entrega','Dev. NF','DEVNF') THEN total_linha ELSE 0 END),0) AS e " +
@@ -808,6 +822,8 @@ var __dashboardStatsHandler = (e) => {
         kpis = {
           faturamento: toNum(kpiRows[0].a),
           valorLiquido: toNum(kpiRows[0].b),
+          totalNfSemFrete: toNum(kpiRows[0].f),
+          totalNfNovo: toNum(kpiRows[0].g),
           itensVendidos: toNum(kpiRows[0].c),
           documentos: toNum(kpiRows[0].d),
           devolucoes: toNum(kpiRows[0].e),

@@ -4,6 +4,7 @@ import {
   TrendingUp,
   Package,
   FileText,
+  Receipt,
   Sparkles,
   RefreshCw,
   RotateCcw,
@@ -577,9 +578,9 @@ export default function DashboardCanais() {
       ) : (
         <>
           {/* Valores de faturamento / KPIs no início da página */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
             <KpiCard
-              title="Faturamento Total"
+              title="Valor Total de Mercadorias"
               value={kpis.faturamento}
               isCurrency
               icon={DollarSign}
@@ -587,12 +588,28 @@ export default function DashboardCanais() {
               iconColor="text-[#0B6E99]"
             />
             <KpiCard
-              title="Valor Líquido"
+              title="Valor Líquido Total"
               value={kpis.valorLiquido}
               isCurrency
               icon={TrendingUp}
               iconBgColor="bg-teal-50"
               iconColor="text-teal-600"
+            />
+            <KpiCard
+              title="Valor Total NF sem frete"
+              value={kpis.totalNfSemFrete || 0}
+              isCurrency
+              icon={Receipt}
+              iconBgColor="bg-emerald-50"
+              iconColor="text-emerald-600"
+            />
+            <KpiCard
+              title="Valor Total da NF"
+              value={kpis.totalNfNovo || 0}
+              isCurrency
+              icon={FileText}
+              iconBgColor="bg-violet-50"
+              iconColor="text-violet-600"
             />
             <KpiCard
               title="Itens Vendidos"

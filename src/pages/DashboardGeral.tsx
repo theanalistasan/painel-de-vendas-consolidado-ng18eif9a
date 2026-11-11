@@ -11,6 +11,7 @@ import {
   DollarSign,
   Package,
   FileText,
+  Receipt,
 } from 'lucide-react'
 import {
   XAxis,
@@ -236,6 +237,8 @@ export default function DashboardGeral() {
     return {
       faturamento: data?.kpis?.faturamento || 0,
       valorLiquido: data?.kpis?.valorLiquido || 0,
+      totalNfSemFrete: data?.kpis?.totalNfSemFrete || 0,
+      totalNfNovo: data?.kpis?.totalNfNovo || 0,
       itensVendidos: data?.kpis?.itensVendidos || 0,
       documentos: data?.kpis?.documentos || 0,
       devolucoes: data?.kpis?.devolucoes || 0,
@@ -406,9 +409,9 @@ export default function DashboardGeral() {
       </Card>
 
       {/* Valores de faturamento / KPIs no início da página */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
         <KpiCard
-          title="Faturamento Total"
+          title="Valor Total de Mercadorias"
           value={reportKpis.faturamento}
           isCurrency
           icon={DollarSign}
@@ -416,12 +419,28 @@ export default function DashboardGeral() {
           iconColor="text-[#0B6E99]"
         />
         <KpiCard
-          title="Valor Líquido"
+          title="Valor Líquido Total"
           value={reportKpis.valorLiquido}
           isCurrency
           icon={TrendingUp}
           iconBgColor="bg-teal-50"
           iconColor="text-teal-600"
+        />
+        <KpiCard
+          title="Valor Total NF sem frete"
+          value={reportKpis.totalNfSemFrete}
+          isCurrency
+          icon={Receipt}
+          iconBgColor="bg-emerald-50"
+          iconColor="text-emerald-600"
+        />
+        <KpiCard
+          title="Valor Total da NF"
+          value={reportKpis.totalNfNovo}
+          isCurrency
+          icon={FileText}
+          iconBgColor="bg-violet-50"
+          iconColor="text-violet-600"
         />
         <KpiCard
           title="Itens Vendidos"
