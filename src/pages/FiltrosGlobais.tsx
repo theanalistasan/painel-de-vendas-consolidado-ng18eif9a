@@ -16,8 +16,18 @@ import {
   fetchTiposClienteMap,
   buildTiposClienteStringMap,
 } from '@/services/tiposCliente'
-import { formatCurrency } from '@/lib/formatters'
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
+import { formatCurrency, formatCompactCurrency } from '@/lib/formatters'
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Cell,
+} from 'recharts'
+import { DollarSign, Boxes, Percent } from 'lucide-react'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -181,6 +191,37 @@ export default function FiltrosGlobais() {
       }))
       .filter((item) => item.value > 0)
       .sort((a, b) => b.value - a.value)
+  }, [optionsData])
+
+  // Fase 3: 4 valores de KPI das visões (Geral/Canais) em barras horizontais.
+  // Vêm do mesmo endpoint dashboard/stats que já alimenta a página — os valores
+  // chegam já filtrados pelos Filtros Globais ativos e recalculam ao limpar
+  // (loadOptions roda a cada mudança de `filters`).
+  const kpiValuesData = useMemo(() => {
+    const kpis = optionsData?.kpis
+    if (!kpis) return []
+    return [
+      {
+        name: 'Valor Total de Mercadorias',
+        value: Number(kpis.faturamento) || 0,
+        fill: '#0B6E99',
+      },
+      {
+        name: 'Valor Líquido Total',
+        value: Number(kpis.valorLiquido) || 0,
+        fill: '#0D9488',
+      },
+      {
+        name: 'Valor Total NF sem frete',
+        value: Number(kpis.totalNfSemFrete) || 0,
+        fill: '#F59E0B',
+      },
+      {
+        name: 'Valor Total da NF',
+        value: Number(kpis.totalNfNovo) || 0,
+        fill: '#8B5CF6',
+      },
+    ]
   }, [optionsData])
 
   const tooltipContentStyle: React.CSSProperties = {
@@ -395,6 +436,80 @@ export default function FiltrosGlobais() {
           )}
         </ChartCard>
       </div>
+
+      {/* Fase 3: 4 valores de KPI em barras horizontais (um por métrica,
+          comparáveis entre si no mesmo eixo), logo abaixo dos dashs existentes */}
+      <ChartCard
+        title="Valores Consolidados (KPIs das Visões)"
+        description="Valor Total de Mercadorias, Valor Líquido Total, Valor Total NF sem frete e Valor Total da NF — no período/filtros ativos"
+        icon={DollarSign}
+        iconColor="text-[#0B6E99]"
+      >
+        {loading && !optionsData ? (
+          <div className="h-full flex items-center justify-center">
+            <Skeleton className="h-64 w-full rounded-lg" />
+          </div>
+        ) : kpiValuesData.every((item) => item.value === 0) ? (
+          <div className="h-full flex items-center justify-center text-xs text-slate-400">
+            Nenhum dado encontrado para o período/filtros selecionados
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={kpiValuesData}
+              layout="vertical"
+              margin={{ top: 10, right: 140, left: 10, bottom: 10 }}
+              barCategoryGap="25%"
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" horizontal={false} />
+              <XAxis
+                type="number"
+                tickLine={false}
+                axisLine={{ stroke: '#E2E8F0' }}
+                tick={{ fill: '#64748B', fontSize: 11 }}
+                tickFormatter={(val) => {
+                  const n = Number(val)
+                  if (Math.abs(n) >= 1_000_000) return `R$ ${(n / 1_000_000).toFixed(1)}M`
+                  if (Math.abs(n) >= 1_000) return `R$ ${(n / 1_000).toFixed(0)}k`
+                  return `R$ ${n}`
+                }}
+              />
+              <YAxis
+                type="category"
+                dataKey="name"
+                tickLine={false}
+                axisLine={{ stroke: '#E2E8F0' }}
+                tick={{ fill: '#334155', fontSize: 11, fontWeight: 600 }}
+                width={185}
+              />
+              <Tooltip
+                formatter={(val: number | string | undefined) => [
+                  formatCurrency(Number(val) || 0),
+                  'Valor',
+                ]}
+                contentStyle={tooltipContentStyle}
+              />
+              <Bar
+                dataKey="value"
+                name="Valor"
+                radius={[0, 4, 4, 0]}
+                maxBarSize={30}
+                label={{
+                  position: 'right',
+                  formatter: (value: number) => formatCompactCurrency(Number(value) || 0),
+                  fill: '#334155',
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                {kpiValuesData.map((item) => (
+                  <Cell key={item.name} fill={item.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </ChartCard>
     </div>
   )
 }
