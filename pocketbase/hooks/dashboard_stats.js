@@ -754,7 +754,8 @@ var __dashboardStatsHandler = (e) => {
       sqlGlobalRestrictedVendasParts.length > 0
         ? sqlGlobalRestrictedVendasParts.join(' AND ')
         : '1=1'
-    const sqlWhereVendas = sqlVendasParts.join(' AND ')
+    // Guard: sem partes de filtro, usa 1=1 para não gerar "WHERE " inválido
+    const sqlWhereVendas = sqlVendasParts.length > 0 ? sqlVendasParts.join(' AND ') : '1=1'
 
     // Helper de execução rápida
     const runAgg = (sql) => {
@@ -792,6 +793,7 @@ var __dashboardStatsHandler = (e) => {
       valorLiquido: 0,
       totalNfSemFrete: 0,
       totalNfNovo: 0,
+      custoTotal: 0,
       itensVendidos: 0,
       documentos: 0,
       devolucoes: 0,
