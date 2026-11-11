@@ -11,6 +11,7 @@ import {
   DollarSign,
   FileText,
   Receipt,
+  Wallet,
 } from 'lucide-react'
 import {
   XAxis,
@@ -238,6 +239,7 @@ export default function DashboardGeral() {
       valorLiquido: data?.kpis?.valorLiquido || 0,
       totalNfSemFrete: data?.kpis?.totalNfSemFrete || 0,
       totalNfNovo: data?.kpis?.totalNfNovo || 0,
+      custoTotal: data?.kpis?.custoTotal || 0,
     }
   }, [data])
 
@@ -405,7 +407,7 @@ export default function DashboardGeral() {
       </Card>
 
       {/* Valores de faturamento / KPIs no início da página */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <KpiCard
           title="Valor Total de Mercadorias"
           value={reportKpis.faturamento}
@@ -437,6 +439,14 @@ export default function DashboardGeral() {
           icon={FileText}
           iconBgColor="bg-violet-50"
           iconColor="text-violet-600"
+        />
+        <KpiCard
+          title="Custo Total"
+          value={reportKpis.custoTotal}
+          isCurrency
+          icon={Wallet}
+          iconBgColor="bg-amber-50"
+          iconColor="text-amber-600"
         />
       </div>
 

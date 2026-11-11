@@ -264,6 +264,11 @@ export default function FiltrosGlobais() {
         value: Number(kpis.custoTotal) || 0,
         fill: '#8B5CF6',
       },
+      {
+        name: 'Valor Total da NF',
+        value: Number(kpis.totalNfNovo) || 0,
+        fill: '#EC4899',
+      },
     ]
   }, [optionsData])
 
@@ -480,11 +485,11 @@ export default function FiltrosGlobais() {
         </ChartCard>
       </div>
 
-      {/* Fase 3: 4 valores de KPI em barras horizontais (um por métrica,
+      {/* Fase 3: 5 valores de KPI em barras horizontais (um por métrica,
           comparáveis entre si no mesmo eixo), logo abaixo dos dashs existentes */}
       <ChartCard
         title="Valores Consolidados (KPIs das Visões)"
-        description="Valor Total Mercadoria, Valor Líquido Total, Valor Total NF sem frete e Custo Total — no período/filtros ativos (mesmos títulos e valores do quadro do JP-Class)"
+        description="Valor Total Mercadoria, Valor Líquido Total, Valor Total NF sem frete, Custo Total e Valor Total da NF — no período/filtros ativos (mesmos títulos e valores do quadro do JP-Class)"
         icon={DollarSign}
         iconColor="text-[#0B6E99]"
       >
