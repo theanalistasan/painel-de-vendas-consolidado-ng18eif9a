@@ -12,6 +12,7 @@ import type {
   ClientesAtivosEquipamentos,
   ClientesAtivosInsumos,
   CanalOption,
+  DashboardPorAnoItem,
 } from '@/types/sales'
 
 export async function fetchProdutos(): Promise<Produto[]> {
@@ -587,6 +588,8 @@ export interface DashboardStatsResult {
     utilizacao?: Array<{ name: string; value: number }>
     canaisSummary?: { canaisAtivos: number; clientesVinculados: number; faturamentoTotal: number }
   }
+  /** Breakdown por ano dos 5 KPIs de valor (mesma base/critério dos kpis) */
+  porAno?: DashboardPorAnoItem[]
   recentSales: Array<{
     id: string
     data_lancamento: string

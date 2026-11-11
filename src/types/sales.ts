@@ -201,6 +201,16 @@ export interface VendaGrupoMensal {
   grupos: Array<{ grupo: string; total: number }>
 }
 
+/** Breakdown por ano dos 5 KPIs de valor (resposta de /backend/v1/dashboard/stats) */
+export interface DashboardPorAnoItem {
+  ano: string
+  valor_total_mercadorias: number
+  valor_liquido_total: number
+  total_nf_sem_frete: number
+  total_nf_novo: number
+  custo_total: number
+}
+
 export interface VendaHistoricoPeriodo {
   periodo: string
   total: number

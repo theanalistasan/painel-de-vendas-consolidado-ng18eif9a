@@ -24,8 +24,8 @@ import {
   Legend,
   ComposedChart,
   LineChart,
-  Line,
   ReferenceLine,
+  Line,
 } from 'recharts'
 import { fetchDashboardStats, type DashboardStatsResult } from '@/services/sales'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -243,6 +243,34 @@ export default function DashboardGeral() {
     }
   }, [data])
 
+  // Multi-ano: 2+ anos nos Filtros Globais (ou janela dataDe→dataAte multi-ano)
+  // ⇒ os 5 KPIs de valor também são exibidos por ano em barras verticais, com o
+  // mesmo critério do backend (MAX por NF para os 2 totais de NF).
+  const multiAno = useMemo(() => {
+    const anosSel = (filters?.ano || []).length
+    if (anosSel > 1) return true
+    if (anosSel > 0) return false
+    if (filters?.dataDe && filters?.dataAte) {
+      const yMin = Number(String(filters.dataDe).slice(0, 4))
+      const yMax = Number(String(filters.dataAte).slice(0, 4))
+      if (!isNaN(yMin) && !isNaN(yMax)) return yMax > yMin
+    }
+    return false
+  }, [filters])
+
+  const porAnoValuesData = useMemo(() => {
+    return (data?.porAno || [])
+      .map((item) => ({
+        ano: item.ano,
+        'Valor Total Mercadoria': Number(item.valor_total_mercadorias) || 0,
+        'Valor Líquido Total': Number(item.valor_liquido_total) || 0,
+        'Valor Total NF sem frete': Number(item.total_nf_sem_frete) || 0,
+        'Valor Total da NF': Number(item.total_nf_novo) || 0,
+        'Custo Total': Number(item.custo_total) || 0,
+      }))
+      .sort((a, b) => Number(a.ano) - Number(b.ano))
+  }, [data])
+
   const isNoData =
     !loading &&
     !error &&
@@ -405,6 +433,82 @@ export default function DashboardGeral() {
           </CardDescription>
         </div>
       </Card>
+
+      {/* Multi-ano: barras verticais POR ANO com os 5 KPIs de valor (uma barra
+          por ano, uma série colorida por métrica — mesmo critério do backend) */}
+      {multiAno && porAnoValuesData.length > 1 && !loading && (
+        <div>
+          <ChartCard
+            title="Valores por Ano"
+            description="Valor Total Mercadoria, Valor Líquido Total, Valor Total NF sem frete, Valor Total da NF e Custo Total — comparados ano a ano no período filtrado"
+            icon={BarChart2}
+            iconColor="text-[#0B6E99]"
+          >
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={porAnoValuesData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+                <XAxis
+                  dataKey="ano"
+                  tickLine={false}
+                  axisLine={{ stroke: '#E2E8F0' }}
+                  tick={{ fill: '#334155', fontSize: 12, fontWeight: 600 }}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: '#64748B', fontSize: 11 }}
+                  tickFormatter={(val) => {
+                    const n = Number(val)
+                    if (Math.abs(n) >= 1_000_000) return `R$ ${(n / 1_000_000).toFixed(1)}M`
+                    if (Math.abs(n) >= 1_000) return `R$ ${(n / 1_000).toFixed(0)}k`
+                    return `R$ ${n}`
+                  }}
+                />
+                <Tooltip
+                  cursor={{ fill: 'rgba(148, 163, 184, 0.15)' }}
+                  formatter={(val: number | string | undefined) => [
+                    formatCurrency(Number(val) || 0),
+                    '',
+                  ]}
+                  contentStyle={tooltipContentStyle}
+                />
+                <Legend
+                  verticalAlign="top"
+                  height={36}
+                  formatter={(value) => (
+                    <span className="text-xs font-bold text-slate-700">{value}</span>
+                  )}
+                />
+                <Bar
+                  dataKey="Valor Total Mercadoria"
+                  fill="#0B6E99"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={32}
+                />
+                <Bar
+                  dataKey="Valor Líquido Total"
+                  fill="#0D9488"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={32}
+                />
+                <Bar
+                  dataKey="Valor Total NF sem frete"
+                  fill="#F59E0B"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={32}
+                />
+                <Bar
+                  dataKey="Valor Total da NF"
+                  fill="#EC4899"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={32}
+                />
+                <Bar dataKey="Custo Total" fill="#8B5CF6" radius={[4, 4, 0, 0]} maxBarSize={32} />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        </div>
+      )}
 
       {/* Valores de faturamento / KPIs no início da página */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">

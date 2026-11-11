@@ -25,6 +25,7 @@ import {
   CartesianGrid,
   Tooltip,
   Cell,
+  Legend,
 } from 'recharts'
 import { DollarSign, Boxes, Percent } from 'lucide-react'
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -272,6 +273,36 @@ export default function FiltrosGlobais() {
     ]
   }, [optionsData])
 
+  // Multi-ano: quando a seleção de Ano (ou a janela dataDe→dataAte) cobre 2+ anos,
+  // o card "Valores Consolidados" troca as barras por métrica por barras VERTICAIS
+  // POR ANO (uma barra por ano, uma série cor por métrica), com o MESMO critério
+  // do backend (MAX por NF para os 2 totais de NF). Com 1 ano só, nada muda.
+  const multiAno = (() => {
+    const anosSel = (filters.ano || []).length
+    if (anosSel > 1) return true
+    if (anosSel > 0) return false
+    if (filters.dataDe && filters.dataAte) {
+      const yMin = Number(String(filters.dataDe).slice(0, 4))
+      const yMax = Number(String(filters.dataAte).slice(0, 4))
+      if (!isNaN(yMin) && !isNaN(yMax)) return yMax > yMin
+    }
+    return false
+  })()
+
+  const porAnoValuesData = useMemo(() => {
+    const list = optionsData?.porAno || []
+    return list
+      .map((item) => ({
+        ano: item.ano,
+        'Valor Total Mercadoria': Number(item.valor_total_mercadorias) || 0,
+        'Valor Líquido Total': Number(item.valor_liquido_total) || 0,
+        'Valor Total NF sem frete': Number(item.total_nf_sem_frete) || 0,
+        'Valor Total da NF': Number(item.total_nf_novo) || 0,
+        'Custo Total': Number(item.custo_total) || 0,
+      }))
+      .sort((a, b) => Number(a.ano) - Number(b.ano))
+  }, [optionsData])
+
   const tooltipContentStyle: React.CSSProperties = {
     backgroundColor: '#0F172A',
     borderColor: '#334155',
@@ -497,10 +528,67 @@ export default function FiltrosGlobais() {
           <div className="h-full flex items-center justify-center">
             <Skeleton className="h-64 w-full rounded-lg" />
           </div>
-        ) : kpiValuesData.every((item) => item.value === 0) ? (
-          <div className="h-full flex items-center justify-center text-xs text-slate-400">
-            Nenhum dado encontrado para o período/filtros selecionados
-          </div>
+        ) : multiAno && porAnoValuesData.length > 1 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={porAnoValuesData}
+              margin={{ top: 10, right: 16, left: 10, bottom: 10 }}
+              barCategoryGap="25%"
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
+              <XAxis
+                dataKey="ano"
+                tickLine={false}
+                axisLine={{ stroke: '#E2E8F0' }}
+                tick={{ fill: '#334155', fontSize: 11, fontWeight: 600 }}
+              />
+              <YAxis
+                tickLine={false}
+                axisLine={{ stroke: '#E2E8F0' }}
+                tick={{ fill: '#64748B', fontSize: 11 }}
+                tickFormatter={(val) => {
+                  const n = Number(val)
+                  if (Math.abs(n) >= 1_000_000) return `R$ ${(n / 1_000_000).toFixed(1)}M`
+                  if (Math.abs(n) >= 1_000) return `R$ ${(n / 1_000).toFixed(0)}k`
+                  return `R$ ${n}`
+                }}
+              />
+              <Tooltip
+                cursor={{ fill: 'rgba(148, 163, 184, 0.15)' }}
+                formatter={(val: number | string | undefined) => [
+                  formatCurrency(Number(val) || 0),
+                  '',
+                ]}
+                contentStyle={tooltipContentStyle}
+              />
+              <Legend wrapperStyle={{ fontSize: 11, fontWeight: 600 }} />
+              <Bar
+                dataKey="Valor Total Mercadoria"
+                fill="#0B6E99"
+                radius={[4, 4, 0, 0]}
+                maxBarSize={32}
+              />
+              <Bar
+                dataKey="Valor Líquido Total"
+                fill="#0D9488"
+                radius={[4, 4, 0, 0]}
+                maxBarSize={32}
+              />
+              <Bar
+                dataKey="Valor Total NF sem frete"
+                fill="#F59E0B"
+                radius={[4, 4, 0, 0]}
+                maxBarSize={32}
+              />
+              <Bar
+                dataKey="Valor Total da NF"
+                fill="#EC4899"
+                radius={[4, 4, 0, 0]}
+                maxBarSize={32}
+              />
+              <Bar dataKey="Custo Total" fill="#8B5CF6" radius={[4, 4, 0, 0]} maxBarSize={32} />
+            </BarChart>
+          </ResponsiveContainer>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart

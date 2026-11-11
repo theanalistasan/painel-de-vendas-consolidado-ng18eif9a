@@ -498,6 +498,7 @@ var __dashboardStatsHandler = (e) => {
     // como 'yyyy-mm-dd hh:mm:ss.SSSZ'. As faixas abaixo cobrem dias inteiros.
     const pad2 = (n) => String(n).padStart(2, '0')
     const anoMesBounds = [] // pares [inclusivo 'yyyy-mm-01', exclusivo 'yyyy-mm+1-01']
+    let vendasPeriodoViaOr = false // true quando o período da base bruta entrou como grupo OR de faixas
 
     // Marcador: tudo que entrar em sqlParts entre aqui e o fim do bloco de período
     // abaixo é CLÁUSULA DE PERÍODO — usada para montar sqlWhereSemPeriodo, que alimenta
@@ -555,15 +556,48 @@ var __dashboardStatsHandler = (e) => {
       const mesUpper = mesesInt.length > 0 ? Math.max.apply(null, mesesInt) : 12
       const mesLower = mesesInt.length > 0 ? Math.min.apply(null, mesesInt) : 1
 
-      // Uma faixa por ano selecionado: de (ano, mesLower) até o fim de (ano, mesUpper)
+      // BUG multi-ano (KPIs "Valor Total NF sem frete", "Valor Total da NF" e
+      // "Custo Total" zerados com 2+ anos): antes, UMA faixa de data por ano era
+      // empilhada com AND em sqlVendasParts — com 2 anos a interseção das faixas
+      // era vazia ("data >= '2025-01-01' AND data < '2026-01-01' AND
+      // data >= '2026-01-01' ...") e as 3 consultas na base bruta `vendas`
+      // voltavam 0. Agora as faixas dos anos selecionados são MERGEADAS quando
+      // contíguas (anos consecutivos viram UMA única faixa, que segue usando o
+      // índice de data_lancamento) e, quando restam faixas disjuntas (ex. 2024
+      // e 2026), entram como UM ÚNICO grupo OR de ranges — nunca AND de faixas
+      // que se excluem.
+      const faixasAno = []
       for (let ai = 0; ai < anosParaFaixa.length; ai++) {
         const y = anosParaFaixa[ai]
         const startYm = y + '-' + pad2(mesLower)
         // fim exclusivo: primeiro dia do mês seguinte ao mês superior
         const endY = mesUpper === 12 ? y + 1 : y
         const endM = mesUpper === 12 ? 1 : mesUpper + 1
-        anoMesBounds.push(['>=', startYm + '-01 00:00:00.000Z'])
-        anoMesBounds.push(['<', endY + '-' + pad2(endM) + '-01 00:00:00.000Z'])
+        faixasAno.push([
+          startYm + '-01 00:00:00.000Z',
+          endY + '-' + pad2(endM) + '-01 00:00:00.000Z',
+        ])
+      }
+      faixasAno.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+      const faixasMescladas = []
+      for (let fi = 0; fi < faixasAno.length; fi++) {
+        const fx = faixasAno[fi]
+        const last = faixasMescladas[faixasMescladas.length - 1]
+        if (last && fx[0] <= last[1]) {
+          if (fx[1] > last[1]) last[1] = fx[1]
+        } else {
+          faixasMescladas.push([fx[0], fx[1]])
+        }
+      }
+      if (faixasMescladas.length === 1) {
+        anoMesBounds.push(['>=', faixasMescladas[0][0]])
+        anoMesBounds.push(['<', faixasMescladas[0][1]])
+      } else {
+        vendasPeriodoViaOr = true
+        const orRanges = faixasMescladas
+          .map((m) => "(data_lancamento >= '" + m[0] + "' AND data_lancamento < '" + m[1] + "')")
+          .join(' OR ')
+        sqlVendasParts.push('(' + orRanges + ')')
       }
     }
 
@@ -881,6 +915,131 @@ var __dashboardStatsHandler = (e) => {
       }
     } catch (custoErr) {
       console.warn('dashboard_stats: kpi custo_total warning:', custoErr)
+    }
+
+    // ============================================================
+    // 1.1) porAno — breakdown por ano dos 5 KPIs de valor
+    // (Valor Total de Mercadorias, Valor Líquido Total, Valor Total NF sem
+    // frete, Valor Total da NF e Custo Total), calculado na MESMA base bruta
+    // `vendas` e com o MESMO critério dos KPIs acima (MAX por numero_nfe para
+    // os 2 valores de NF; SUM por linha para mercadorias/líquido/custo).
+    // Alimenta o gráfico de barras por ano quando o período tem 2+ anos.
+    // ============================================================
+    const porAno = []
+    try {
+      // Janela por ano: replica EXATAMENTE as faixas efetivas do período
+      // (anos/meses selecionados, com clamp por dataDe/dataAte quando houver).
+      const buildAnoWindow = (y) => {
+        let startIso = y + '-01-01 00:00:00.000Z'
+        let endIso = y + 1 + '-01-01 00:00:00.000Z'
+        if (anosInt.length > 0) {
+          const mLower = mesesInt.length > 0 ? Math.min.apply(null, mesesInt) : 1
+          const mUpper = mesesInt.length > 0 ? Math.max.apply(null, mesesInt) : 12
+          startIso = y + '-' + pad2(mLower) + '-01 00:00:00.000Z'
+          endIso =
+            (mUpper === 12 ? y + 1 : y) +
+            '-' +
+            pad2(mUpper === 12 ? 1 : mUpper + 1) +
+            '-01 00:00:00.000Z'
+        }
+        if (f.dataDe) {
+          const dStart = f.dataDe + ' 00:00:00.000Z'
+          if (dStart > startIso) startIso = dStart
+        }
+        if (f.dataAte) {
+          const dAte = new Date(f.dataAte + 'T00:00:00Z')
+          const dNext = new Date(dAte.getTime() + 86400000)
+          const dEndIso =
+            dNext.getUTCFullYear() +
+            '-' +
+            pad2(dNext.getUTCMonth() + 1) +
+            '-' +
+            pad2(dNext.getUTCDate()) +
+            ' 00:00:00.000Z'
+          if (dEndIso < endIso) endIso = dEndIso
+        }
+        return [startIso, endIso]
+      }
+
+      // Anos do breakdown: os selecionados; sem seleção, os anos da janela
+      // efetiva (dataDe→dataAte, ou o ano do último mês da base).
+      let anosBreakdown = []
+      if (anosInt.length > 0) {
+        anosBreakdown = anosInt.slice().sort((a, b) => a - b)
+      } else {
+        let minYm = f.dataDe ? f.dataDe.slice(0, 7) : ''
+        let maxYm = f.dataAte ? f.dataAte.slice(0, 7) : ''
+        if (!minYm) minYm = maxYm || ultimoYmGeral
+        if (!maxYm) maxYm = minYm
+        const yMin = parseInt(minYm.slice(0, 4), 10)
+        const yMax = parseInt(maxYm.slice(0, 4), 10)
+        if (!isNaN(yMin) && !isNaN(yMax) && yMax >= yMin) {
+          for (let y = yMin; y <= yMax; y++) anosBreakdown.push(y)
+        }
+      }
+
+      // Dimensões da base bruta SEM as cláusulas de janela de data (as faixas
+      // multi-ano/mês são substituídas pela janela de CADA ano abaixo; os
+      // demais filtros — canal, vendedor, grupo, utilização, tipo doc/cliente,
+      // dia, busca, exclusão de SERVICOS — continuam valendo).
+      const isDataWindowPart = (p) =>
+        p.indexOf('data_lancamento >=') === 0 ||
+        p.indexOf('data_lancamento <') === 0 ||
+        (p.indexOf('(data_lancamento >=') === 0 && p.indexOf(' OR ') >= 0) ||
+        p.indexOf('substr(data_lancamento, 9, 2)') === 0
+      const dimPartsPorAno = sqlVendasParts.filter((p) => !isDataWindowPart(p))
+      const dimWherePorAno = dimPartsPorAno.length > 0 ? dimPartsPorAno.join(' AND ') : '1=1'
+
+      for (let yi = 0; yi < anosBreakdown.length; yi++) {
+        if (Date.now() - startTime > MAX_EXEC_TIME_MS) throw new Error('TIMEOUT_EXCEEDED')
+        const y = anosBreakdown[yi]
+        const w = buildAnoWindow(y)
+        if (!w[0] || !w[1] || w[0] >= w[1]) continue
+        const whereAno =
+          '(' +
+          dimWherePorAno +
+          ") AND data_lancamento >= '" +
+          w[0] +
+          "' AND data_lancamento < '" +
+          w[1] +
+          "'"
+
+        // Valores por LINHA (mercadorias, líquido, custo)
+        const linhaRowsAno = arrayOf(new DynamicModel({ a: '', b: '', c: '' }))
+        $app
+          .db()
+          .newQuery(
+            'SELECT COALESCE(SUM(total_linha),0) AS a, COALESCE(SUM(valor_liquido),0) AS b, ' +
+              'COALESCE(SUM(COALESCE(custo_total,0)),0) AS c FROM vendas WHERE ' +
+              whereAno,
+          )
+          .all(linhaRowsAno)
+
+        // Valores por NF (MAX por numero_nfe — valor é por NF, repete por item)
+        const nfRowsAno = arrayOf(new DynamicModel({ f: '', g: '' }))
+        $app
+          .db()
+          .newQuery(
+            'SELECT COALESCE(SUM(t.f),0) AS f, COALESCE(SUM(t.g),0) AS g FROM (' +
+              'SELECT MAX(COALESCE(total_nf_sem_frete,0)) AS f, MAX(COALESCE(total_nf_novo,0)) AS g ' +
+              'FROM vendas WHERE ' +
+              whereAno +
+              ' GROUP BY numero_nfe) AS t',
+          )
+          .all(nfRowsAno)
+
+        porAno.push({
+          ano: String(y),
+          valor_total_mercadorias: linhaRowsAno.length > 0 ? toNum(linhaRowsAno[0].a) : 0,
+          valor_liquido_total: linhaRowsAno.length > 0 ? toNum(linhaRowsAno[0].b) : 0,
+          total_nf_sem_frete: nfRowsAno.length > 0 ? toNum(nfRowsAno[0].f) : 0,
+          total_nf_novo: nfRowsAno.length > 0 ? toNum(nfRowsAno[0].g) : 0,
+          custo_total: linhaRowsAno.length > 0 ? toNum(linhaRowsAno[0].c) : 0,
+        })
+      }
+    } catch (porAnoErr) {
+      if (porAnoErr && String(porAnoErr.message).indexOf('TIMEOUT_EXCEEDED') >= 0) throw porAnoErr
+      console.error('dashboard_stats: breakdown porAno falhou:', porAnoErr)
     }
 
     // ============================================================
@@ -1223,7 +1382,8 @@ var __dashboardStatsHandler = (e) => {
       // ORDER BY a uma janela indexada dos últimos 2 meses da base — sem isso o
       // SQLite faria sort de toda a tabela antes do LIMIT 8 (timeout em 310k).
       let recentOrderClause = ''
-      const hasFaixaData = sqlVendasParts.some((p) => p.indexOf('data_lancamento >=') === 0)
+      const hasFaixaData =
+        vendasPeriodoViaOr || sqlVendasParts.some((p) => p.indexOf('data_lancamento >=') === 0)
       if (!hasFaixaData) {
         const pU = ultimoYmGeral.split('-')
         const yU = parseInt(pU[0], 10)
@@ -2089,6 +2249,9 @@ var __dashboardStatsHandler = (e) => {
 
     const responsePayload = {
       kpis: kpis,
+      // Breakdown por ano dos 5 KPIs de valor (ver seção 1.1). Com 1 ano só o
+      // front mantém o comportamento atual (cards); com 2+ anos, plota as barras.
+      porAno: porAno,
       charts: {
         vendasPorMes: vendasPorMes,
         vendasPorAno: vendasPorAno,
