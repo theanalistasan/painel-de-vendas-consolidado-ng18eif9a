@@ -319,15 +319,25 @@ export default function FilterBar({
   }
 
   const clearAllFilters = () => {
-    // "Limpar filtros" restaura o Padrão Geral (mesmos defaults da carga inicial),
-    // preservando a janela dinâmica de 3 anos (ano atual + 2 anteriores):
+    // "Limpar filtros" restaura o Padrão Geral COMPLETO (mesmos defaults da carga inicial):
+    // - Grupo do Item = [] (em branco = todos os grupos)
+    // - Tipo de documento = ['NF'] (Tipo de Devolução fica sem seleção)
+    // - Utilização = apenas as opções que começam com "VENDA" (e não vazio!)
+    // - Cliente / Vendedor / Busca / Estado / Tipo de Cliente = vazio
+    // - Janela de anos dinâmica (ano atual + 2 anteriores, ex. 2024–2026)
+    // - Canais: LIMPOS por padrão; preservados SOMENTE quando a tela oculta o
+    //   bloco de canais (hideCanais), pois lá o usuário não consegue vê-los/editá-los
+    //   (a gestão de canais fica na Visão Canais).
     const emptyState: FilterState = {
       ...DEFAULT_FILTERS,
       ano: buildDynamicAnoDefaults(options.anos),
-      canal: hideCanais ? [] : filters.canal,
-      canalClientes: hideCanais ? [] : filters.canalClientes,
-      deploy: hideCanais ? [] : filters.deploy,
-      inside: hideCanais ? [] : filters.inside,
+      utilizacao: (options.utilizacao || []).filter((u) =>
+        u.toUpperCase().trim().startsWith('VENDA'),
+      ),
+      canal: hideCanais ? filters.canal || [] : [],
+      canalClientes: hideCanais ? filters.canalClientes || [] : [],
+      deploy: hideCanais ? filters.deploy || [] : [],
+      inside: hideCanais ? filters.inside || [] : [],
     }
     setLocalFilters(emptyState)
     setFilters(emptyState)

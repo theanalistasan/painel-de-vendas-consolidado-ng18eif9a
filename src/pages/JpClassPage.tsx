@@ -30,6 +30,9 @@ import {
   saveFiltersToSession,
   hasSavedFiltersInSession,
   hasValidPeriodFilters,
+  loadJpClassPeriodoFromSession,
+  saveJpClassPeriodoToSession,
+  type JpClassPeriodoLocal,
   FILTERS_CHANGED_EVENT,
 } from '@/lib/filter-persistence'
 import type { FilterState } from '@/types/sales'
@@ -71,19 +74,61 @@ export default function JpClassPage() {
   const [groupBy, setGroupBy] = useState<JpClassGroupBy>('hierarquia')
   const [filtroSemana, setFiltroSemana] = useState<number | 'todas'>('todas')
 
-  // Período de análise (ano/mês) derivado dos Filtros Globais.
-  // Padrão: mês corrente; quando o usuário limpa os filtros (ano/mes vazios),
-  // volta ao padrão do mês corrente.
-  const { ano, mes } = useMemo(() => {
+  // Filtro LOCAL de Ano/Mês do JP-Class (sessionStorage, chave "jpclass_periodo").
+  // PRIORIDADE sobre os Filtros Globais: campo preenchido sobrepõe o valor global;
+  // campo vazio ("") = segue o valor dos Filtros Globais.
+  const [periodoLocal, setPeriodoLocal] = useState<JpClassPeriodoLocal>(() =>
+    loadJpClassPeriodoFromSession(),
+  )
+
+  const handlePeriodoLocalChange = useCallback((campo: 'ano' | 'mes', valor: string) => {
+    setPeriodoLocal((prev) => {
+      const next: JpClassPeriodoLocal = { ...prev, [campo]: valor }
+      saveJpClassPeriodoToSession(next)
+      return next
+    })
+  }, [])
+
+  // Anos disponíveis no filtro local: janela dinâmica da base ativa
+  // (ano atual + 2 anteriores, ex.: 2024–2026).
+  const anoAtualSistema = hoje.getFullYear()
+  const anosDisponiveis = useMemo(() => {
+    return [anoAtualSistema, anoAtualSistema - 1, anoAtualSistema - 2]
+  }, [anoAtualSistema])
+
+  // Período de análise (ano/mês) EFETIVO:
+  // 1º) Ano/Mês local do JP-Class, quando preenchidos;
+  // 2º) Filtros Globais (ano/mes) quando o campo local correspondente está vazio;
+  // 3º) Padrão geral: mês corrente do sistema.
+  const periodo = useMemo(() => {
+    let globalAno: number | null = null
+    let globalMes: number | null = null
     if (hasValidPeriodFilters(filters)) {
       const y = parseInt(filters.ano[0], 10)
       const m = parseInt(filters.mes[0], 10)
-      if (!isNaN(y) && y > 2000 && !isNaN(m) && m >= 1 && m <= 12) {
-        return { ano: y, mes: m }
-      }
+      if (!isNaN(y) && y > 2000) globalAno = y
+      if (!isNaN(m) && m >= 1 && m <= 12) globalMes = m
     }
-    return { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 }
-  }, [filters.ano, filters.mes, hoje])
+
+    const localAno = periodoLocal.ano ? parseInt(periodoLocal.ano, 10) : NaN
+    const localMes = periodoLocal.mes ? parseInt(periodoLocal.mes, 10) : NaN
+
+    const anoEfetivo =
+      !isNaN(localAno) && localAno > 2000 ? localAno : (globalAno ?? hoje.getFullYear())
+    const mesEfetivo =
+      !isNaN(localMes) && localMes >= 1 && localMes <= 12
+        ? localMes
+        : (globalMes ?? hoje.getMonth() + 1)
+
+    return { ano: anoEfetivo, mes: mesEfetivo }
+  }, [filters.ano, filters.mes, periodoLocal.ano, periodoLocal.mes, anoAtualSistema])
+  const { ano, mes } = periodo
+
+  // Ref de leitura síncrona do período efetivo para o fetch (evita refetch
+  // desnecessário disparado por inclusão do objeto `periodo` nas dependências
+  // de carregarVendas — as semanas/dateRange já capturam a mudança de período).
+  const periodoRef = useRef(periodo)
+  periodoRef.current = periodo
 
   // Na primeira carga sem preferência salva em sessão, aplica os padrões globais estáticos
   // (Fase 2: tipoDocumento ['NF'], mês corrente). Os defaults dinâmicos já são gravados
@@ -195,15 +240,22 @@ export default function JpClassPage() {
     abortControllerRef.current = controller
 
     const activeFilters = filtersRef.current
+    const periodoAtual = periodoRef.current
 
     setLoading(true)
     setError(null)
 
     try {
-      // Reutiliza o endpoint oficial de vendas com os Filtros Globais + recorte de semanas
+      // Reutiliza o endpoint oficial de vendas com os Filtros Globais + recorte de semanas.
+      // PRIORIDADE DO FILTRO LOCAL: o ano/mês EFETIVO (local sobrepõe o global)
+      // substitui os valores globais no payload — sem isso, o backend aplicaria
+      // os dois períodos (global E local) em interseção, e um mês/ano local
+      // diferente do global devolveria vazio.
       const res = await fetchVendasExport({
         filters: {
           ...(activeFilters as unknown as Record<string, unknown>),
+          ano: [String(periodoAtual.ano)],
+          mes: [String(periodoAtual.mes)],
           dataDe: dateRange.dataDe,
           dataAte: dateRange.dataAte,
         },
@@ -248,7 +300,7 @@ export default function JpClassPage() {
     } finally {
       setLoading(false)
     }
-  }, [dateRange, semanas, tiposClienteMap])
+  }, [dateRange, semanas, tiposClienteMap, periodoLocal.ano, periodoLocal.mes])
 
   useEffect(() => {
     carregarVendas()
@@ -348,6 +400,9 @@ export default function JpClassPage() {
   }
 
   const mesNome = MESES_PT_BR[mes - 1]
+  // Indicador visual de prioridade: quando o local está ativo, destaca no cabeçalho
+  const usandoAnoLocal = !!periodoLocal.ano
+  const usandoMesLocal = !!periodoLocal.mes
 
   return (
     <div className="space-y-6">
@@ -361,12 +416,55 @@ export default function JpClassPage() {
             <div>
               <h2 className="text-sm font-bold text-slate-900">
                 Período de Análise: {mesNome} de {ano}
+                {(usandoAnoLocal || usandoMesLocal) && (
+                  <Badge className="ml-2 bg-[#0B6E99] text-white text-[10px] font-bold align-middle">
+                    filtro local
+                  </Badge>
+                )}
               </h2>
               <p className="text-xs text-slate-500">
                 Semanas calculadas de segunda a domingo iniciando na 1ª segunda-feira
+                {(usandoAnoLocal || usandoMesLocal) &&
+                  ' — período definido pelo filtro LOCAL deste módulo (sobrepõe os Filtros Globais)'}
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Filtro LOCAL de Ano/Mês do JP-Class (prioridade sobre os Filtros Globais) */}
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+            <span>Ano</span>
+            <select
+              value={periodoLocal.ano}
+              onChange={(e) => handlePeriodoLocalChange('ano', e.target.value)}
+              disabled={loading}
+              className="h-8 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 shadow-2xs focus:border-[#0B6E99] focus:outline-none focus:ring-1 focus:ring-[#0B6E99]/30"
+            >
+              <option value="">Global (do painel)</option>
+              {anosDisponiveis.map((a) => (
+                <option key={a} value={String(a)}>
+                  {a}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+            <span>Mês</span>
+            <select
+              value={periodoLocal.mes}
+              onChange={(e) => handlePeriodoLocalChange('mes', e.target.value)}
+              disabled={loading}
+              className="h-8 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 shadow-2xs focus:border-[#0B6E99] focus:outline-none focus:ring-1 focus:ring-[#0B6E99]/30"
+            >
+              <option value="">Todos (global)</option>
+              {MESES_PT_BR.map((nome, idx) => (
+                <option key={idx + 1} value={String(idx + 1)}>
+                  {nome}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
 
         {/* Ações */}

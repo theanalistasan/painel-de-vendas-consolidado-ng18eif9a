@@ -60,18 +60,6 @@ export const DEFAULT_FILTERS: FilterState = {
 }
 
 /**
- * Constrói o estado inicial dinâmico de filtros a partir das opções disponíveis na base de dados:
- * Regra para Ano e Mês inicial:
- * - Deve vir preenchido com o mês atual, SE o mês atual existir na base de vendas (ano e mês atuais com registros).
- * - Caso contrário, deve vir com o ÚLTIMO mês disponível na base (hoje agosto/2026: ano 2026, mês 8).
- * - Nunca deve cair num mês sem dados (como dezembro/2026).
- *
- * Outros filtros mantidos:
- * - Tipo de Documento: "NF" (valor real de tipo_documento)
- * - Grupo do Item: VAZIO [] = TODOS os grupos (padrão geral)
- * - Utilização: todas as opções distintas que INICIAM com "VENDA"
- */
-/**
  * Verifica se um conjunto de filtros possui ano e mês válidos e preenchidos
  */
 export function hasValidPeriodFilters(filters?: FilterState | null): boolean {
@@ -267,6 +255,56 @@ export function clearFiltersFromSession(): void {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent(FILTERS_CHANGED_EVENT, { detail: null }))
     }
+  } catch {
+    // ignora
+  }
+}
+
+// ============================================================================
+// Filtro local de período do módulo JP-Class
+// ============================================================================
+// Prioridade sobre os Filtros Globais: se o usuário escolher Ano (e/ou Mês)
+// aqui, esses valores SOBREPÕEM o período vindo dos Filtros Globais ao buscar
+// dados (fetchVendasExport). Campo local vazio ("") = segue o valor global.
+// Persistência em sessionStorage com chave própria do JP-Class.
+
+const JPCLASS_STORAGE_KEY = 'jpclass_periodo'
+
+/** Preferência local de período do JP-Class persistida em sessionStorage */
+export interface JpClassPeriodoLocal {
+  /** Ano escolhido localmente (string '2026') ou '' = segue os Filtros Globais */
+  ano: string
+  /** Mês escolhido localmente ('1'..'12') ou '' = segue os Filtros Globais */
+  mes: string
+}
+
+export const EMPTY_JPCLASS_PERIODO: JpClassPeriodoLocal = { ano: '', mes: '' }
+
+export function saveJpClassPeriodoToSession(periodo: JpClassPeriodoLocal): void {
+  try {
+    sessionStorage.setItem(JPCLASS_STORAGE_KEY, JSON.stringify(periodo))
+  } catch {
+    // sessionStorage não disponível — ignora silenciosamente
+  }
+}
+
+export function loadJpClassPeriodoFromSession(): JpClassPeriodoLocal {
+  try {
+    const raw = sessionStorage.getItem(JPCLASS_STORAGE_KEY)
+    if (!raw) return { ...EMPTY_JPCLASS_PERIODO }
+    const parsed = JSON.parse(raw) as Partial<JpClassPeriodoLocal> | null
+    return {
+      ano: typeof parsed?.ano === 'string' ? parsed.ano : '',
+      mes: typeof parsed?.mes === 'string' ? parsed.mes : '',
+    }
+  } catch {
+    return { ...EMPTY_JPCLASS_PERIODO }
+  }
+}
+
+export function clearJpClassPeriodoFromSession(): void {
+  try {
+    sessionStorage.removeItem(JPCLASS_STORAGE_KEY)
   } catch {
     // ignora
   }
