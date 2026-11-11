@@ -309,3 +309,72 @@ export function clearJpClassPeriodoFromSession(): void {
     // ignora
   }
 }
+
+// ============================================================================
+// Filtros locais da Visão Canais (Ano, Mês, Data, Nota Fiscal e Pedido)
+// ============================================================================
+// Mesma mecânica do JP-Class: campo local PREENCHIDO SOBREPÕE o filtro global
+// correspondente ao montar o payload de busca da Visão Canais; campo VAZIO
+// ("") = segue o valor do Filtro Global. Persistência em sessionStorage com
+// chave própria da Visão Canais.
+
+const CANAIS_STORAGE_KEY = 'canais_filtros'
+
+/** Filtros locais da Visão Canais persistidos em sessionStorage */
+export interface CanaisFiltroLocal {
+  /** Ano escolhido localmente ('2026') ou '' = segue os Filtros Globais */
+  ano: string
+  /** Mês escolhido localmente ('1'..'12') ou '' = segue os Filtros Globais */
+  mes: string
+  /** Data inicial do período (yyyy-mm-dd) ou '' = segue os Filtros Globais */
+  dataDe: string
+  /** Data final do período (yyyy-mm-dd) ou '' = segue os Filtros Globais */
+  dataAte: string
+  /** Busca textual por Nota Fiscal (numero_nfe) ou '' = segue o global */
+  numeroNfe: string
+  /** Busca textual por N° do Pedido (numero_documento_netsales) ou '' = segue o global */
+  numeroPedido: string
+}
+
+export const EMPTY_CANAIS_FILTRO_LOCAL: CanaisFiltroLocal = {
+  ano: '',
+  mes: '',
+  dataDe: '',
+  dataAte: '',
+  numeroNfe: '',
+  numeroPedido: '',
+}
+
+export function saveCanaisFiltrosToSession(filtros: CanaisFiltroLocal): void {
+  try {
+    sessionStorage.setItem(CANAIS_STORAGE_KEY, JSON.stringify(filtros))
+  } catch {
+    // sessionStorage não disponível — ignora silenciosamente
+  }
+}
+
+export function loadCanaisFiltrosFromSession(): CanaisFiltroLocal {
+  try {
+    const raw = sessionStorage.getItem(CANAIS_STORAGE_KEY)
+    if (!raw) return { ...EMPTY_CANAIS_FILTRO_LOCAL }
+    const parsed = JSON.parse(raw) as Partial<CanaisFiltroLocal> | null
+    return {
+      ano: typeof parsed?.ano === 'string' ? parsed.ano : '',
+      mes: typeof parsed?.mes === 'string' ? parsed.mes : '',
+      dataDe: typeof parsed?.dataDe === 'string' ? parsed.dataDe : '',
+      dataAte: typeof parsed?.dataAte === 'string' ? parsed.dataAte : '',
+      numeroNfe: typeof parsed?.numeroNfe === 'string' ? parsed.numeroNfe : '',
+      numeroPedido: typeof parsed?.numeroPedido === 'string' ? parsed.numeroPedido : '',
+    }
+  } catch {
+    return { ...EMPTY_CANAIS_FILTRO_LOCAL }
+  }
+}
+
+export function clearCanaisFiltrosFromSession(): void {
+  try {
+    sessionStorage.removeItem(CANAIS_STORAGE_KEY)
+  } catch {
+    // ignora
+  }
+}
