@@ -170,8 +170,6 @@ export interface VendaConsolidada extends RecordModel {
 }
 
 export interface FilterState {
-  /** Seleção de Bases: 'ambos' (default) | 'racnew' | 'netsales' */
-  base?: 'ambos' | 'racnew' | 'netsales'
   dataDe: string
   dataAte: string
   vendedorCliente: string[]

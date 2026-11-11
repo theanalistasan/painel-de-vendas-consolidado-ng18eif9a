@@ -15,7 +15,26 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import type { FilterState, CanalOption, CanalClienteOption } from '@/types/sales'
 import { DEVOLUCAO_TIPOS } from '@/types/sales'
 import { MESES_PT_BR, nomeMes } from '@/lib/formatters'
+import { DEFAULT_FILTERS } from '@/lib/filter-persistence'
 import { cn } from '@/lib/utils'
+
+/**
+ * Janela dinâmica de anos do "Padrão Geral": ano atual + 2 anteriores (mesma janela
+ * da base ativa). Se as opções da base vierem carregadas, restringe aos anos que
+ * existem nelas (evita selecionar anos sem dados).
+ */
+export function buildDynamicAnoDefaults(anosDisponiveis?: number[]): string[] {
+  const now = new Date()
+  const janela: string[] = [
+    String(now.getFullYear()),
+    String(now.getFullYear() - 1),
+    String(now.getFullYear() - 2),
+  ]
+  if (!anosDisponiveis || anosDisponiveis.length === 0) return janela
+  const set = new Set(anosDisponiveis.map(String))
+  const presentes = janela.filter((a) => set.has(a))
+  return presentes.length > 0 ? presentes : janela
+}
 
 interface FilterBarProps {
   filters: FilterState
@@ -275,7 +294,6 @@ export default function FilterBar({
 
   const activeFiltersCount = useMemo(() => {
     return (
-      (filters.base && filters.base !== 'ambos' ? 1 : 0) +
       (filters.dataDe ? 1 : 0) +
       (filters.dataAte ? 1 : 0) +
       (hideCanais ? 0 : filters.canal?.length || 0) +
@@ -306,27 +324,15 @@ export default function FilterBar({
   }
 
   const clearAllFilters = () => {
+    // "Limpar filtros" restaura o Padrão Geral (mesmos defaults da carga inicial),
+    // preservando a janela dinâmica de 3 anos (ano atual + 2 anteriores):
     const emptyState: FilterState = {
-      base: 'ambos',
-      dataDe: '',
-      dataAte: '',
-      vendedorCliente: [],
-      vendedor: [],
-      grupoItem: [],
-      estado: [],
-      utilizacao: [],
-      tipoDocumento: [],
-      canal: hideCanais ? filters.canal : [],
-      canalClientes: hideCanais ? filters.canalClientes : [],
-      deploy: hideCanais ? filters.deploy : [],
-      inside: hideCanais ? filters.inside : [],
-      tipoCliente: [],
-      jpClass: [],
-      search: '',
-      ano: [],
-      mes: [],
-      dia: [],
-      tipoDevolucao: '',
+      ...DEFAULT_FILTERS,
+      ano: buildDynamicAnoDefaults(options.anos),
+      canal: hideCanais ? [] : filters.canal,
+      canalClientes: hideCanais ? [] : filters.canalClientes,
+      deploy: hideCanais ? [] : filters.deploy,
+      inside: hideCanais ? [] : filters.inside,
     }
     setLocalFilters(emptyState)
     setFilters(emptyState)
@@ -338,14 +344,7 @@ export default function FilterBar({
   const removeSingleFilter = (type: keyof FilterState, value?: string) => {
     let nextState: FilterState = { ...filters }
 
-    if (type === 'base') {
-      nextState = { ...nextState, base: 'ambos' }
-    } else if (
-      type === 'dataDe' ||
-      type === 'dataAte' ||
-      type === 'search' ||
-      type === 'tipoDevolucao'
-    ) {
+    if (type === 'dataDe' || type === 'dataAte' || type === 'search' || type === 'tipoDevolucao') {
       nextState = { ...nextState, [type]: '' }
     } else if (
       value &&
@@ -380,16 +379,6 @@ export default function FilterBar({
 
   const allActivePills = useMemo<ActivePill[]>(() => {
     const list: ActivePill[] = []
-
-    if (filters.base && filters.base !== 'ambos') {
-      const baseLabel = filters.base === 'racnew' ? 'RacNew' : 'NetSales'
-      list.push({
-        id: 'base',
-        label: `Base: ${baseLabel}`,
-        type: 'base',
-        bgClass: 'bg-cyan-50 border-cyan-200 text-cyan-950 font-semibold',
-      })
-    }
 
     if (filters.dataDe) {
       list.push({

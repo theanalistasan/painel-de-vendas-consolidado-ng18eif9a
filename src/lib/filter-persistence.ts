@@ -32,13 +32,15 @@ export const DEFAULT_GRUPOS_ITEM: string[] = ['EQUIPAMENTOS', 'ACESSÓRIOS', 'TI
 
 /**
  * Filtros padrão estáticos básicos (quando ainda não computou dinamicamente com base nas opções da base)
+ * Padrão Geral (Fase 2): Tipo de documento = NF; Utilização = iniciadas com "VENDA"
+ * (resolvidas dinamicamente em buildDynamicInitialFilters); Grupo do Item = os 4 grupos;
+ * Tipo de Devolução = '' (sem seleção).
  */
 const _currentDate = new Date()
 const _currentYearStr = String(_currentDate.getFullYear())
 const _currentMonthStr = String(_currentDate.getMonth() + 1)
 
 export const DEFAULT_FILTERS: FilterState = {
-  base: 'ambos',
   dataDe: '',
   dataAte: '',
   vendedorCliente: [],
@@ -46,7 +48,7 @@ export const DEFAULT_FILTERS: FilterState = {
   grupoItem: [...DEFAULT_GRUPOS_ITEM],
   estado: [],
   utilizacao: [],
-  tipoDocumento: ['NF de Saída'],
+  tipoDocumento: ['NF'],
   canal: [],
   canalClientes: [],
   deploy: [],
@@ -68,10 +70,10 @@ export const DEFAULT_FILTERS: FilterState = {
  * - Nunca deve cair num mês sem dados (como dezembro/2026).
  *
  * Outros filtros mantidos:
- * - Tipo de Documento: "NF de Saída"
- * - Grupo do Item: multi-seleção com "Equipamentos", "Acessórios", "Tintas" e "Peças"
- * - Utilização: todos os tipos contendo "VENDA"
- * - Base: 'ambos'
+ * - Tipo de Documento: "NF" (valor real de tipo_documento)
+ * - Grupo do Item: os 4 grupos padrão (DEFAULT_GRUPOS_ITEM)
+ * - Utilização: todas as opções distintas que INICIAM com "VENDA"
+ * - Tipo de Devolução: '' (sem seleção)
  */
 /**
  * Verifica se um conjunto de filtros possui ano e mês válidos e preenchidos
@@ -93,10 +95,10 @@ export function hasValidPeriodFilters(filters?: FilterState | null): boolean {
  * Regra detalhada:
  * - ano: [String(ultimoAnoDisponivel)] (ex: '2026')
  * - mes: [String(ultimoMesDisponivel)] (ex: '8' = Ago/2026, último mês com dados na base — nunca mês atual do sistema sem dados, nunca vazio)
- * - tipoDocumento: ['NF de Saída']
- * - grupoItem: ['Equipamentos', 'Acessórios', 'Tintas', 'Peças']
- * - utilizacao: ['VENDA DE MERCADORIA', 'VENDA CONSUMO']
- * - base: 'ambos'
+ * - tipoDocumento: ['NF']
+ * - grupoItem: os 4 grupos padrão (DEFAULT_GRUPOS_ITEM)
+ * - utilizacao: todas as opções distintas que começam com "VENDA"
+ * - tipoDevolucao: '' (sem seleção)
  */
 export function buildDynamicInitialFilters(options?: {
   anos?: number[]
@@ -147,26 +149,17 @@ export function buildDynamicInitialFilters(options?: {
     selectedGrupos = [...DEFAULT_GRUPOS_ITEM]
   }
 
-  // Utilização: todos os tipos que contenham "VENDA"
+  // Utilização: todas as opções distintas que INICIAM com "VENDA"
   const rawUtilizacao = options?.utilizacao || []
-  let selectedUtilizacao: string[] = []
-  if (rawUtilizacao.length > 0) {
-    selectedUtilizacao = rawUtilizacao.filter((u) => u.toUpperCase().includes('VENDA'))
-  }
-  if (selectedUtilizacao.length === 0) {
-    selectedUtilizacao = ['VENDA DE MERCADORIA', 'VENDA CONSUMO']
-  }
+  const selectedUtilizacao = rawUtilizacao.filter((u) => u.toUpperCase().trim().startsWith('VENDA'))
 
-  // Tipo de Documento: "NF de Saída"
+  // Tipo de Documento: "NF" (valor real da base; sem fallback legado 'NF de Saída')
   const rawDocs = options?.tipoDocumento || []
-  const docMatch = rawDocs.find(
-    (d) => d.toUpperCase().trim() === 'NF DE SAÍDA' || d.toUpperCase().trim() === 'NF DE SAIDA',
-  )
-  const selectedDoc = docMatch ? [docMatch] : ['NF de Saída']
+  const docMatch = rawDocs.find((d) => d.toUpperCase().trim() === 'NF')
+  const selectedDoc = docMatch ? [docMatch] : ['NF']
 
   return {
     ...EMPTY_FILTERS,
-    base: 'ambos',
     ano: [selectedAno],
     mes: [selectedMes],
     dia: [],
@@ -218,11 +211,6 @@ export function loadFiltersFromSession(): FilterState {
       return []
     }
 
-    const normalizeBase = (val: unknown): 'ambos' | 'racnew' | 'netsales' => {
-      if (val === 'racnew' || val === 'netsales' || val === 'ambos') return val
-      return 'ambos'
-    }
-
     const parsedAno = normalizeArray(parsed.ano)
     const parsedMes = normalizeArray(parsed.mes)
     const parsedGrupoItem = normalizeArray(parsed.grupoItem)
@@ -254,10 +242,30 @@ export function loadFiltersFromSession(): FilterState {
 
     const finalGrupoItem = isLegacySinglePecas ? [...DEFAULT_GRUPOS_ITEM] : grupoItemMapped
 
+    // Migração legada: sessões anteriores ao 0.0.306 usavam 'NF de Saída' (valor que não
+    // existe mais na base — hoje tipo_documento ∈ {NF, DEVNF, NFCOMDEV, ...}). Promove
+    // para 'NF'. Seleção explícita de outros tipos é respeitada.
+    const tipoDocPromoted =
+      parsedTipoDoc.length > 0 &&
+      parsedTipoDoc.every(
+        (d) => d.toUpperCase().trim() === 'NF DE SAÍDA' || d.toUpperCase().trim() === 'NF DE SAIDA',
+      )
+        ? ['NF']
+        : parsedTipoDoc
+
+    // Migração legada: sessões anteriores ao 0.0.306 selecionavam utilização contendo
+    // "VENDA" (inclusive "REMESSA ENTR FUTURA" case contém? não — mas "DEVENDA..." etc.);
+    // restringe para as que INICIAM com "VENDA", alinhando sessões antigas ao novo padrão.
+    // Sessões com seleção vazia (usuário limpou) permanecem vazias.
+    const utilizacaoPromoted =
+      parsedUtilizacao.length > 0 &&
+      parsedUtilizacao.some((u) => !u.toUpperCase().trim().startsWith('VENDA'))
+        ? parsedUtilizacao.filter((u) => u.toUpperCase().trim().startsWith('VENDA'))
+        : parsedUtilizacao
+
     const merged: FilterState = {
       ...EMPTY_FILTERS,
       ...parsed,
-      base: normalizeBase(parsed.base),
       ano: parsedAno,
       mes: parsedMes,
       dia: normalizeArray(parsed.dia),
@@ -265,8 +273,8 @@ export function loadFiltersFromSession(): FilterState {
       vendedor: normalizeArray(parsed.vendedor),
       grupoItem: finalGrupoItem,
       estado: normalizeArray(parsed.estado),
-      utilizacao: parsedUtilizacao,
-      tipoDocumento: parsedTipoDoc,
+      utilizacao: utilizacaoPromoted,
+      tipoDocumento: tipoDocPromoted,
       canal: normalizeArray(parsed.canal),
       canalClientes: normalizeArray(parsed.canalClientes),
       deploy: normalizeArray(parsed.deploy),

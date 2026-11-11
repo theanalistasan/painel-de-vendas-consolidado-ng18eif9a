@@ -194,7 +194,6 @@ describe('Regra de De/Para JP-Class', () => {
     it('quando sessão tem apenas PEÇAS, loadFiltersFromSession deve promover para os 4 grupos padrão', () => {
       // Simula sessão legada salva antes do 0.0.234
       saveFiltersToSession({
-        base: 'ambos',
         dataDe: '',
         dataAte: '',
         vendedorCliente: [],
@@ -226,7 +225,6 @@ describe('Regra de De/Para JP-Class', () => {
 
     it('quando sessão tem escolha explícita legítima (ex: apenas TINTAS), deve ser respeitada', () => {
       saveFiltersToSession({
-        base: 'ambos',
         dataDe: '',
         dataAte: '',
         vendedorCliente: [],

@@ -136,7 +136,7 @@ describe('Consolidação e Endpoints de Vendas/Pedidos Abertos', () => {
       kpis?: Record<string, unknown>
     }>('/backend/v1/dashboard/stats', {
       method: 'POST',
-      body: { filters: { base: 'ambos' } },
+      body: { filters: {} },
     })
     console.log('dashboard/stats resposta ok:', !!resDashStats)
 
