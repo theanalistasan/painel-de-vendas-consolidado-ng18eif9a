@@ -61,6 +61,12 @@ export interface ColumnDef {
 export const RELATORIO_COLUMNS: ColumnDef[] = [
   { key: 'data_lancamento', label: 'Data', type: 'date', sortKey: 'data_lancamento' },
   { key: 'numero_nfe', label: 'Nr. NF', type: 'text', sortKey: 'numero_nfe' },
+  {
+    key: 'numero_documento_netsales',
+    label: 'Nr. Pedido',
+    type: 'text',
+    sortKey: 'numero_documento_netsales',
+  },
   { key: 'tipo_documento', label: 'Tipo de Documento', type: 'text', sortKey: 'tipo_documento' },
   { key: 'nome_cliente', label: 'Cliente', type: 'text', sortKey: 'nome_cliente' },
   { key: 'tipo_cliente', label: 'Tipo de Cliente', type: 'badge', sortKey: 'tipo_cliente' },
@@ -74,6 +80,13 @@ export const RELATORIO_COLUMNS: ColumnDef[] = [
     label: 'Total da Linha',
     type: 'currency',
     sortKey: 'total_linha',
+    align: 'right',
+  },
+  {
+    key: 'total_mercadoria',
+    label: 'Valor Total de Mercadorias',
+    type: 'currency',
+    sortKey: 'total_mercadoria',
     align: 'right',
   },
   { key: 'utilizacao', label: 'Utilização', type: 'text', sortKey: 'utilizacao' },
@@ -103,6 +116,13 @@ export const RELATORIO_COLUMNS: ColumnDef[] = [
     label: 'Total NF sem Frete',
     type: 'currency',
     sortKey: 'total_nf_sem_frete',
+    align: 'right',
+  },
+  {
+    key: 'total_nf_novo',
+    label: 'Valor Total da NF',
+    type: 'currency',
+    sortKey: 'total_nf_novo',
     align: 'right',
   },
   {
@@ -147,12 +167,17 @@ export const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   quantidade: 90,
   grupo_item: 140,
   total_linha: 140,
+  total_mercadoria: 170,
+  numero_documento_netsales: 130,
+  total_nf_novo: 150,
+  total_nf_sem_frete: 160,
+  valor_liquido: 150,
   utilizacao: 180,
 }
 
 const MIN_COLUMN_WIDTH = 60
 
-export type RelatorioGroupByMode = 'none' | 'jp_class' | 'comissao'
+export type RelatorioGroupByMode = 'none' | 'jp_class' | 'comissao' | 'nfe' | 'pedido'
 
 export {
   PREFIXO_NAO_COMISSIONADO,
@@ -177,6 +202,9 @@ export interface VendasRelatorioTableProps {
   onSort: (field: string) => void
   isGroupedByNfe: boolean
   onToggleGroupByNfe: () => void
+  /** Modo Pedido consolidado no backend (1 linha por Nº do Pedido) */
+  isGroupedByPedido?: boolean
+  onToggleGroupByPedido?: () => void
   storageKeyPrefix?: string // Ex: "relatorio_canais" vs "relatorio_vendas"
   exporting?: boolean
   onExport?: (forceGrouped?: boolean) => void
@@ -204,6 +232,8 @@ export function VendasRelatorioTable({
   onSort,
   isGroupedByNfe,
   onToggleGroupByNfe,
+  isGroupedByPedido = false,
+  onToggleGroupByPedido,
   storageKeyPrefix = 'relatorio_vendas',
   exporting = false,
   onExport,
@@ -330,7 +360,11 @@ export function VendasRelatorioTable({
     try {
       const saved = localStorage.getItem(storageKeyGroupBy)
       if (
-        (saved === 'none' || saved === 'jp_class' || saved === 'comissao') &&
+        (saved === 'none' ||
+          saved === 'jp_class' ||
+          saved === 'comissao' ||
+          saved === 'nfe' ||
+          saved === 'pedido') &&
         allowedGroupByModes.includes(saved as RelatorioGroupByMode)
       ) {
         return saved as RelatorioGroupByMode
@@ -652,6 +686,10 @@ export function VendasRelatorioTable({
 
   const columns = RELATORIO_COLUMNS
 
+  // Modos consolidados no backend ('nfe' | 'pedido'): o hook já devolve 1 linha por NF/Pedido,
+  // portanto a renderização é flat (sem reagrupamento local por NFe)
+  const isBackendGrouped = groupByMode === 'nfe' || groupByMode === 'pedido'
+
   // Renderizador de linha de item de venda (reutilizado tanto no modo flat quanto no modo agrupado por JP-Class)
   const renderItemRow = React.useCallback(
     (
@@ -675,6 +713,7 @@ export function VendasRelatorioTable({
           hasMultiple={group.hasMultiple}
           isCollapsed={collapsedNfes.has(group.nfeKey)}
           isGroupedByNfe={isGroupedByNfe}
+          isGroupedByPedido={isGroupedByPedido}
           columns={columns}
           columnWidths={columnWidths}
           expandedCols={expandedCols}
@@ -835,6 +874,45 @@ export function VendasRelatorioTable({
               className="bg-cyan-50 text-[#0B6E99] border-cyan-200 font-medium px-2 py-0.5 text-[11px]"
             >
               1 linha por NF
+            </Badge>
+          )}
+
+          {/* Botão de Colapsar / Expandir itens por Nº do Pedido */}
+          <Button
+            variant={isGroupedByPedido ? 'default' : 'outline'}
+            size="sm"
+            onClick={onToggleGroupByPedido}
+            disabled={loading}
+            className={
+              isGroupedByPedido
+                ? 'bg-[#0B6E99] hover:bg-[#085273] text-white font-bold gap-1.5 text-xs shadow-2xs h-8'
+                : 'bg-white border-gray-200 text-slate-700 hover:bg-slate-50 hover:text-[#0B6E99] font-bold gap-1.5 text-xs shadow-2xs h-8'
+            }
+            title={
+              isGroupedByPedido
+                ? 'Expandir para visualizar todos os itens detalhados'
+                : 'Colapsar todos os dados por Nº do Pedido (consolidado em 1 linha por Pedido)'
+            }
+          >
+            {isGroupedByPedido ? (
+              <>
+                <ChevronsUpDown className="w-3.5 h-3.5" />
+                Expandir Itens Pedido
+              </>
+            ) : (
+              <>
+                <ChevronsDownUp className="w-3.5 h-3.5 text-[#0B6E99]" />
+                Colapsar por Pedido
+              </>
+            )}
+          </Button>
+
+          {isGroupedByPedido && (
+            <Badge
+              variant="outline"
+              className="bg-cyan-50 text-[#0B6E99] border-cyan-200 font-medium px-2 py-0.5 text-[11px]"
+            >
+              1 linha por Pedido
             </Badge>
           )}
 
@@ -1114,19 +1192,38 @@ export function VendasRelatorioTable({
                           </React.Fragment>
                         )
                       })
-                    : /* MODO SEM AGRUPAMENTO (FLAT / AGRUPADO POR NFE) */
-                      groupedRows.map((group) => {
-                        const isCollapsed = collapsedNfes.has(group.nfeKey)
-                        const visibleItems = isCollapsed ? [group.items[0]] : group.items
+                    : /* MODO SEM AGRUPAMENTO OU CONSOLIDADO NO BACKEND (1 linha por NF/Pedido) */
+                      isBackendGrouped
+                      ? items.map((item, idx) => (
+                          <VendasRelatorioRow
+                            key={item.id ?? idx}
+                            item={item}
+                            itemIdx={idx}
+                            nfeKey={item.numero_nfe || item.id || String(idx)}
+                            displayNfe={item.numero_nfe || '-'}
+                            groupItemsLength={1}
+                            hasMultiple={false}
+                            isCollapsed={false}
+                            isGroupedByNfe={groupByMode === 'nfe'}
+                            isGroupedByPedido={groupByMode === 'pedido'}
+                            columns={columns}
+                            columnWidths={columnWidths}
+                            expandedCols={expandedCols}
+                            onToggleCollapseNfe={toggleCollapseNfe}
+                          />
+                        ))
+                      : groupedRows.map((group) => {
+                          const isCollapsed = collapsedNfes.has(group.nfeKey)
+                          const visibleItems = isCollapsed ? [group.items[0]] : group.items
 
-                        return (
-                          <React.Fragment key={group.nfeKey}>
-                            {visibleItems.map((item, itemIdx) =>
-                              renderItemRow(item, itemIdx, group),
-                            )}
-                          </React.Fragment>
-                        )
-                      })}
+                          return (
+                            <React.Fragment key={group.nfeKey}>
+                              {visibleItems.map((item, itemIdx) =>
+                                renderItemRow(item, itemIdx, group),
+                              )}
+                            </React.Fragment>
+                          )
+                        })}
               </tbody>
             </table>
           </div>
@@ -1134,48 +1231,51 @@ export function VendasRelatorioTable({
       </div>
 
       {/* Paginação da Tabela (nos modos Comissão e JP-Class opera em página única consolidada sem quebra de paginação) */}
-      {!hidePagination && groupByMode !== 'comissao' && groupByMode !== 'jp_class' && (
-        <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-          <div>
-            Mostrando{' '}
-            <span className="font-semibold text-slate-800">
-              {totalItems === 0 ? 0 : (page - 1) * pageSize + 1}
-            </span>{' '}
-            a{' '}
-            <span className="font-semibold text-slate-800">
-              {Math.min(page * pageSize, totalItems)}
-            </span>{' '}
-            de <span className="font-semibold text-slate-800">{totalItems}</span>{' '}
-            {isGroupedByNfe ? 'notas fiscais' : 'registros'}
-          </div>
-
-          {totalPages > 1 && (
-            <div className="flex items-center gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onPageChange(Math.max(1, page - 1))}
-                disabled={page === 1}
-                className="h-8 w-8 p-0"
-              >
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <span className="px-3 py-1 font-medium text-slate-700">
-                Página {page} de {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onPageChange(Math.min(totalPages, page + 1))}
-                disabled={page === totalPages}
-                className="h-8 w-8 p-0"
-              >
-                <ChevronRight className="w-4 h-4" />
-              </Button>
+      {!hidePagination &&
+        groupByMode !== 'comissao' &&
+        groupByMode !== 'jp_class' &&
+        !isBackendGrouped && (
+          <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+            <div>
+              Mostrando{' '}
+              <span className="font-semibold text-slate-800">
+                {totalItems === 0 ? 0 : (page - 1) * pageSize + 1}
+              </span>{' '}
+              a{' '}
+              <span className="font-semibold text-slate-800">
+                {Math.min(page * pageSize, totalItems)}
+              </span>{' '}
+              de <span className="font-semibold text-slate-800">{totalItems}</span>{' '}
+              {isGroupedByNfe ? 'notas fiscais' : 'registros'}
             </div>
-          )}
-        </div>
-      )}
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onPageChange(Math.max(1, page - 1))}
+                  disabled={page === 1}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <span className="px-3 py-1 font-medium text-slate-700">
+                  Página {page} de {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+                  disabled={page === totalPages}
+                  className="h-8 w-8 p-0"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
     </div>
   )
 }
