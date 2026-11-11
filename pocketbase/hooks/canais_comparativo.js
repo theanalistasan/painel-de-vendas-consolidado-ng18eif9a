@@ -463,12 +463,10 @@ var __canaisComparativoHandler = function (e) {
       })
     }
 
-    // Ordena por faturamento do mês atual decrescente
+    // Ordena por nome do canal em ordem ALFABÉTICA (regra do usuário para o gráfico
+    // "Distribuição por Canal de Vendas (Barras Agrupadas)"; o mesmo order vale para a tabela)
     canaisList.sort(function (a, b) {
-      if (b.faturamentoAtual !== a.faturamentoAtual) {
-        return b.faturamentoAtual - a.faturamentoAtual
-      }
-      return b.faturamentoAnterior - a.faturamentoAnterior
+      return String(a.canal).localeCompare(String(b.canal), 'pt-BR', { sensitivity: 'base' })
     })
 
     var diffTotal = totalAtual - totalAnterior

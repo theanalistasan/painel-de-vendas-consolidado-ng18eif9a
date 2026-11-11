@@ -14,7 +14,6 @@ import {
   loadFiltersFromSession,
   saveFiltersToSession,
   clearFiltersFromSession,
-  DEFAULT_GRUPOS_ITEM,
 } from '@/lib/filter-persistence'
 
 describe('Regra de De/Para JP-Class', () => {
@@ -213,12 +212,13 @@ describe('Regra de De/Para JP-Class', () => {
         dia: [],
       })
 
+      // Padrão geral novo: seleção legada de apenas PEÇAS não é mais promovida aos
+      // 4 grupos — grupoItem fica VAZIO (todos os grupos) e a escolha legítima de
+      // outros casos continua sendo respeitada.
       const loaded = loadFiltersFromSession()
-      expect(loaded.grupoItem).toEqual(DEFAULT_GRUPOS_ITEM)
-      expect(loaded.grupoItem).toContain('EQUIPAMENTOS')
-      expect(loaded.grupoItem).toContain('ACESSÓRIOS')
-      expect(loaded.grupoItem).toContain('TINTAS')
-      expect(loaded.grupoItem).toContain('PEÇAS')
+      expect(loaded.grupoItem).toEqual(['PEÇAS'])
+      expect(loaded.grupoItem).not.toContain('EQUIPAMENTOS')
+      expect(loaded.grupoItem).not.toContain('ACESSÓRIOS')
     })
 
     it('quando sessão tem escolha explícita legítima (ex: apenas TINTAS), deve ser respeitada', () => {
@@ -255,7 +255,8 @@ describe('Regra de De/Para JP-Class', () => {
       const loaded = loadFiltersFromSession()
       expect(loaded.ano).toEqual([expectedYear])
       expect(loaded.mes).toEqual([expectedMonth])
-      expect(loaded.grupoItem).toEqual(DEFAULT_GRUPOS_ITEM)
+      // Padrão geral: Grupo do Item em branco = todos os grupos
+      expect(loaded.grupoItem).toEqual([])
     })
   })
 })

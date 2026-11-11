@@ -1679,16 +1679,6 @@ export default function PedidosAbertos() {
         onApplyFilters={handleApplyFilters}
       />
 
-      {/* Dashboard de Pedidos em Aberto:
-          - Pedidos com Itens em Transito e Pedidos com itens em Estoque Físico vs. Sem Estoque
-          - Valor por Canal com destaque para Revendas sem canal
-          - Pedidos Abertos por Mês cronológico */}
-      <PedidosAbertosDashboard
-        pedidos={dashboardPedidos}
-        isLoading={loading || statsLoading}
-        filters={filters}
-      />
-
       {/* 4 KPIs de Pedidos em Aberto */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
@@ -1724,6 +1714,16 @@ export default function PedidosAbertos() {
           iconColor="text-emerald-600"
         />
       </div>
+
+      {/* Dashboard de Pedidos em Aberto:
+          - Pedidos com Itens em Transito e Pedidos com itens em Estoque Físico vs. Sem Estoque
+          - Valor por Canal com destaque para Revendas sem canal
+          - Pedidos Abertos por Mês cronológico */}
+      <PedidosAbertosDashboard
+        pedidos={dashboardPedidos}
+        isLoading={loading || statsLoading}
+        filters={filters}
+      />
 
       {/* Tabela de Relatório */}
       <Card className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-xs">

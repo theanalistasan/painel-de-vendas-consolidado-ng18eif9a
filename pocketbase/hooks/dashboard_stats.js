@@ -499,6 +499,12 @@ var __dashboardStatsHandler = (e) => {
     const pad2 = (n) => String(n).padStart(2, '0')
     const anoMesBounds = [] // pares [inclusivo 'yyyy-mm-01', exclusivo 'yyyy-mm+1-01']
 
+    // Marcador: tudo que entrar em sqlParts entre aqui e o fim do bloco de período
+    // abaixo é CLÁUSULA DE PERÍODO — usada para montar sqlWhereSemPeriodo, que alimenta
+    // o gráfico "Venda Mensal por Grupo do Item" (sempre últimos 6 meses, ignora o
+    // filtro de datas do usuário APENAS nesse gráfico; dimensões continuam valendo).
+    const sqlPartsPeriodoStart = sqlParts.length
+
     if (f.dataDe) {
       const ymDe = f.dataDe.slice(0, 7)
       sqlParts.push("ano_mes >= '" + sqlEsc(ymDe) + "'")
@@ -724,11 +730,22 @@ var __dashboardStatsHandler = (e) => {
     // TAREFA 1: Desabilitar o produto "SERVICOS" em todas as visões
     sqlVendasParts.push("(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')")
 
+    // Fim do bloco de cláusulas de PERÍODO (dataDe/dataAte/ano/mes/dia) em sqlParts;
+    // o bloco seguinte (dimensões) volta a entrar em sqlWhereSemPeriodo
+    const sqlPartsPeriodoEnd = sqlParts.length
+
     // Se o filtro incluir busca textual ('search'), 'dia' específico ou tipoCliente, precisamos consultar a tabela `vendas` bruta para a busca pontual
     const hasSearchOrDay = !!f.search || diasFilter.length > 0 || hasTipoCliente
 
     // Onde aplicar na tabela de resumo
     const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'
+    // sqlWhereSemPeriodo: MESMAS cláusulas de dimensão, SEM o recorte de período
+    // (alimenta o gráfico mensal por Grupo do Item, sempre últimos 6 meses)
+    const sqlWhereSemPeriodo =
+      sqlParts
+        .slice(0, sqlPartsPeriodoStart)
+        .concat(sqlParts.slice(sqlPartsPeriodoEnd))
+        .join(' AND ') || '1=1'
     const sqlWhereBase = sqlDimParts.length > 0 ? sqlDimParts.join(' AND ') : '1=1'
     const sqlWhereHistorical = sqlHistParts.length > 0 ? sqlHistParts.join(' AND ') : '1=1'
     const sqlWhereGlobalRestricted =
@@ -841,6 +858,27 @@ var __dashboardStatsHandler = (e) => {
       }
     } catch (nfErr) {
       console.warn('dashboard_stats: kpis por NF warning:', nfErr)
+    }
+
+    // Custo Total: coluna custo_total existe na base bruta `vendas`, mas NÃO na
+    // resumo_vendas_mensal (mesma situação dos 2 valores de NF acima). Soma por
+    // LINHA na base bruta com TODOS os filtros ativos (sqlWhereVendas), dentro do
+    // mesmo try/catch defensivo — se a coluna faltar, o KPI fica 0 sem derrubar
+    // o restante da resposta (o runAgg engole erros de SQL silenciosamente).
+    try {
+      const custoSql =
+        'SELECT COALESCE(SUM(COALESCE(custo_total,0)),0) AS h FROM vendas WHERE ' + sqlWhereVendas
+      const custoRows = arrayOf(new DynamicModel({ h: '' }))
+      try {
+        $app.db().newQuery(custoSql).all(custoRows)
+      } catch (custoQueryErr) {
+        console.error('dashboard_stats: kpi custo_total falhou:', custoQueryErr)
+      }
+      if (custoRows.length > 0) {
+        kpis.custoTotal = toNum(custoRows[0].h)
+      }
+    } catch (custoErr) {
+      console.warn('dashboard_stats: kpi custo_total warning:', custoErr)
     }
 
     // ============================================================
@@ -1128,8 +1166,10 @@ var __dashboardStatsHandler = (e) => {
     }
 
     // 2.8) vendasPorGrupoItemMensal — últimos 6 meses
-    // Harmonizado com os filtros globais e de canais aplicados (sqlWhere), para evitar divergência
-    // de valores com o quadro "Vendas por Grupo do Item" (grupoItem) no mesmo período.
+    // REGRA DE NEGÓCIO (Visão Canais): este gráfico mostra SEMPRE os últimos 6 meses
+    // completos da base, IGNORANDO o filtro de período (ano/mês/dia/dataDe/dataAte)
+    // — apenas para este gráfico. Dimensões (grupo do item, canal, vendedor, cliente,
+    // estado, utilização, tipo de documento etc.) continuam valendo via sqlWhereSemPeriodo.
     const vendasPorGrupoItemMensal = []
     try {
       const mesesAlvoGrupo = ultimos6MesesAlvo
@@ -1140,7 +1180,7 @@ var __dashboardStatsHandler = (e) => {
         "COALESCE(NULLIF(grupo_item,''),'Sem informação') AS b, " +
         'COALESCE(SUM(total_linha),0) AS c ' +
         'FROM resumo_vendas_mensal WHERE ' +
-        sqlWhere +
+        sqlWhereSemPeriodo +
         " AND ano_mes >= '" +
         minMesTarget +
         "' AND ano_mes <= '" +

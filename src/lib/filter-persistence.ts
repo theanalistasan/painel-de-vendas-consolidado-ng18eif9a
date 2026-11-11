@@ -31,7 +31,9 @@ export const DEFAULT_GRUPOS_ITEM: string[] = ['EQUIPAMENTOS', 'ACESSÓRIOS', 'TI
 /**
  * Filtros padrão estáticos básicos (quando ainda não computou dinamicamente com base nas opções da base)
  * Padrão Geral (Fase 2): Tipo de documento = NF; Utilização = iniciadas com "VENDA"
- * (resolvidas dinamicamente em buildDynamicInitialFilters); Grupo do Item = os 4 grupos.
+ * (resolvidas dinamicamente em buildDynamicInitialFilters); Grupo do Item = VAZIO []
+ * (array vazio = TODOS os grupos — o backend dashboard_stats.js trata grupoItem vazio
+ * como "todos" e o MultiSelectDropdown mostra "Todos", não "Nenhum").
  */
 const _currentDate = new Date()
 const _currentYearStr = String(_currentDate.getFullYear())
@@ -42,7 +44,7 @@ export const DEFAULT_FILTERS: FilterState = {
   dataAte: '',
   vendedorCliente: [],
   vendedor: [],
-  grupoItem: [...DEFAULT_GRUPOS_ITEM],
+  grupoItem: [],
   estado: [],
   utilizacao: [],
   tipoDocumento: ['NF'],
@@ -66,7 +68,7 @@ export const DEFAULT_FILTERS: FilterState = {
  *
  * Outros filtros mantidos:
  * - Tipo de Documento: "NF" (valor real de tipo_documento)
- * - Grupo do Item: os 4 grupos padrão (DEFAULT_GRUPOS_ITEM)
+ * - Grupo do Item: VAZIO [] = TODOS os grupos (padrão geral)
  * - Utilização: todas as opções distintas que INICIAM com "VENDA"
  */
 /**
@@ -90,7 +92,7 @@ export function hasValidPeriodFilters(filters?: FilterState | null): boolean {
  * - ano: [String(ultimoAnoDisponivel)] (ex: '2026')
  * - mes: [String(ultimoMesDisponivel)] (ex: '8' = Ago/2026, último mês com dados na base — nunca mês atual do sistema sem dados, nunca vazio)
  * - tipoDocumento: ['NF']
- * - grupoItem: os 4 grupos padrão (DEFAULT_GRUPOS_ITEM)
+ * - grupoItem: [] (VAZIO = todos os grupos — padrão geral)
  * - utilizacao: todas as opções distintas que começam com "VENDA"
  */
 export function buildDynamicInitialFilters(options?: {
@@ -122,25 +124,9 @@ export function buildDynamicInitialFilters(options?: {
     selectedMes = String(options.ultimoMes || currentMonth)
   }
 
-  // Grupo do Item: mapeia para os nomes existentes que correspondam a Equipamentos, Acessórios, Tintas e Peças
-  const rawGrupos = options?.grupoItem || []
-  let selectedGrupos: string[] = []
-  if (rawGrupos.length > 0) {
-    selectedGrupos = rawGrupos.filter((g) => {
-      const up = g.toUpperCase().trim()
-      return (
-        up === 'EQUIPAMENTOS' ||
-        up === 'ACESSÓRIOS' ||
-        up === 'ACESSORIOS' ||
-        up === 'TINTAS' ||
-        up === 'PEÇAS' ||
-        up === 'PECAS'
-      )
-    })
-  }
-  if (selectedGrupos.length === 0) {
-    selectedGrupos = [...DEFAULT_GRUPOS_ITEM]
-  }
+  // Grupo do Item: padrão geral = VAZIO [] (todos os grupos).
+  // O backend dashboard_stats.js trata grupoItem vazio como "todos".
+  const selectedGrupos: string[] = []
 
   // Utilização: todas as opções distintas que INICIAM com "VENDA"
   const rawUtilizacao = options?.utilizacao || []
@@ -222,17 +208,9 @@ export function loadFiltersFromSession(): FilterState {
       return g
     })
 
-    // Caso a sessão carregue a seleção legada pré-0.0.234 de grupoItem contendo apenas PEÇAS/PECAS,
-    // atualiza para os 4 grupos padrão (DEFAULT_GRUPOS_ITEM: EQUIPAMENTOS, ACESSÓRIOS, TINTAS, PEÇAS).
-    // Isso garante que tanto Visão Geral/Canais quanto JP-Class não fiquem travados na seleção antiga
-    // e o usuário veja os 4 grupos ao abrir qualquer painel.
-    const isLegacySinglePecas =
-      grupoItemMapped.length === 1 &&
-      (grupoItemMapped[0] === 'PEÇAS' ||
-        grupoItemMapped[0].toUpperCase().trim() === 'PECAS' ||
-        grupoItemMapped[0].toUpperCase().trim() === 'PECA')
-
-    const finalGrupoItem = isLegacySinglePecas ? [...DEFAULT_GRUPOS_ITEM] : grupoItemMapped
+    // Sessões legadas: seleção apenas de PEÇAS/PECAS (pré-0.0.234) NÃO é mais promovida
+    // aos 4 grupos — o padrão geral agora é array vazio [] (todos os grupos).
+    const finalGrupoItem = grupoItemMapped
 
     // Migração legada: sessões anteriores ao 0.0.306 usavam 'NF de Saída' (valor que não
     // existe mais na base — hoje tipo_documento ∈ {NF, DEVNF, NFCOMDEV, ...}). Promove

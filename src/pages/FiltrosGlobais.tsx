@@ -484,7 +484,7 @@ export default function FiltrosGlobais() {
           comparáveis entre si no mesmo eixo), logo abaixo dos dashs existentes */}
       <ChartCard
         title="Valores Consolidados (KPIs das Visões)"
-        description="Valor Total de Mercadorias, Valor Líquido Total, Valor Total NF sem frete e Valor Total da NF — no período/filtros ativos"
+        description="Valor Total Mercadoria, Valor Líquido Total, Valor Total NF sem frete e Custo Total — no período/filtros ativos (mesmos títulos e valores do quadro do JP-Class)"
         icon={DollarSign}
         iconColor="text-[#0B6E99]"
       >
