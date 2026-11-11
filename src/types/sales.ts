@@ -182,7 +182,6 @@ export interface FilterState {
   deploy?: string[]
   inside?: string[]
   tipoCliente?: string[]
-  jpClass?: string[]
   search: string
   /** Anos (string[]) extraídos da Data de Lançamento, ex: ["2024", "2025"] */
   ano: string[]
@@ -190,8 +189,6 @@ export interface FilterState {
   mes: string[]
   /** Dias (1-31 como string[]) */
   dia: string[]
-  /** Tipo de Devolução: '' = Todas, ou um de 'Dev. Entrega' | 'Dev. NF' | 'DEVNF' */
-  tipoDevolucao: string
   /** Tipos de documento (multi-valor) vindos de `tipo_documento` (ex: "NF de Saída", "Dev. NF", ...) */
   tipoDocumento: string[]
 }

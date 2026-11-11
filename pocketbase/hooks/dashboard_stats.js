@@ -664,19 +664,9 @@ var __dashboardStatsHandler = (e) => {
       sqlGlobalRestrictedVendasParts.push(clause)
     }
 
-    // Filtro Global 4: Tipo de Devolução (f.tipoDevolucao / f.tipo_devolucao)
-    const rawTipoDevolucao = f.tipoDevolucao || f.tipo_devolucao
-    if (rawTipoDevolucao) {
-      const td = sqlEsc(rawTipoDevolucao)
-      const clause = "tipo_documento = '" + td + "'"
-      sqlParts.push(clause)
-      sqlDimParts.push(clause)
-      sqlVendasParts.push(clause)
-      sqlGlobalRestrictedParts.push(clause)
-      sqlGlobalRestrictedVendasParts.push(clause)
-    }
-
     // Filtro Global 5: Tipo de Cliente (f.tipoCliente / f.tipo_cliente)
+    // (Filtro "Tipo de Devolução" removido dos Filtros Globais — aceita o campo como
+    // no-op para sessões antigas, sem cláusula SQL.)
     const rawTipoCliente = f.tipoCliente || f.tipo_cliente
     const tipoClienteFilter = Array.isArray(rawTipoCliente)
       ? rawTipoCliente
@@ -994,6 +984,10 @@ var __dashboardStatsHandler = (e) => {
     const multiDimRows = arrayOf(new DynamicModel({ dim: '', k: '', v: '' }))
     try {
       const dimBase = 'FROM resumo_vendas_mensal WHERE ' + sqlWhere + ' GROUP BY 2'
+      // tipo_documento/utilizacao: linhas NFCOMDEV têm total_linha = 0 (valor em
+      // valor_liquido/total_nf_novo) e DEVNF é negativa (estorno). Para os gráficos
+      // mostrarem TODOS os tipos/utilizações selecionados nos filtros, usa o maior
+      // entre SUM(total_linha) e SUM(valor_liquido) por chave.
       const multiDimSql =
         "SELECT 'grupo' AS dim, COALESCE(NULLIF(grupo_item,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
         dimBase +
@@ -1007,10 +1001,10 @@ var __dashboardStatsHandler = (e) => {
         "SELECT 'estado' AS dim, COALESCE(NULLIF(estado,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
         dimBase +
         ' UNION ALL ' +
-        "SELECT 'tipo_documento' AS dim, COALESCE(NULLIF(tipo_documento,''),'Sem classificação') AS k, COALESCE(SUM(total_linha),0) AS v " +
+        "SELECT 'tipo_documento' AS dim, COALESCE(NULLIF(tipo_documento,''),'Sem classificação') AS k, MAX(COALESCE(SUM(total_linha),0), COALESCE(SUM(valor_liquido),0)) AS v " +
         dimBase +
         ' UNION ALL ' +
-        "SELECT 'utilizacao' AS dim, COALESCE(NULLIF(utilizacao,''),'Sem classificação') AS k, COALESCE(SUM(total_linha),0) AS v " +
+        "SELECT 'utilizacao' AS dim, COALESCE(NULLIF(utilizacao,''),'Sem classificação') AS k, MAX(COALESCE(SUM(total_linha),0), COALESCE(SUM(valor_liquido),0)) AS v " +
         dimBase +
         ' ORDER BY v DESC'
       $app.db().newQuery(multiDimSql).all(multiDimRows)

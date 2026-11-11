@@ -207,12 +207,10 @@ describe('Regra de De/Para JP-Class', () => {
         deploy: [],
         inside: [],
         tipoCliente: [],
-        jpClass: [],
         search: '',
         ano: ['2026'],
         mes: ['9'],
         dia: [],
-        tipoDevolucao: '',
       })
 
       const loaded = loadFiltersFromSession()
@@ -238,12 +236,10 @@ describe('Regra de De/Para JP-Class', () => {
         deploy: [],
         inside: [],
         tipoCliente: [],
-        jpClass: [],
         search: '',
         ano: [],
         mes: [],
         dia: [],
-        tipoDevolucao: '',
       })
 
       const loaded = loadFiltersFromSession()

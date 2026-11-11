@@ -10,7 +10,6 @@ import {
   hasSavedFiltersInSession,
   buildDynamicInitialFilters,
 } from '@/lib/filter-persistence'
-import { JP_CLASS_OPTIONS } from '@/lib/jp-class'
 import {
   fetchTiposClienteOptions,
   fetchTiposClienteMap,
@@ -191,7 +190,6 @@ export default function FiltrosGlobais() {
     }
     return {
       ...baseOpts,
-      jpClass: JP_CLASS_OPTIONS as unknown as string[],
       tipoCliente: (() => {
         const set = new Set<string>()
         if (baseOpts.tipoCliente) {
@@ -207,6 +205,12 @@ export default function FiltrosGlobais() {
     }
   }, [optionsData, tipoClienteOptions, tiposClienteMap])
 
+  // Gráfico "Faturamento por Tipo de Documento": DERIVA da seleção ativa do filtro
+  // Tipo de documento. Com a seleção padrão ['NF'], mostra só a NF; quando o usuário
+  // seleciona outros tipos (DEVNF, NFCOMDEV, ...), eles entram no gráfico.
+  // NFCOMDEV traz o valor em valor_liquido/total_nf_novo (total_linha = 0) e DEVNF é
+  // negativo (estorno), por isso o backend devolve o maior entre SUM(total_linha) e
+  // SUM(valor_liquido) por tipo — exibimos essa série.
   const chartTipoDocumentoData = useMemo(() => {
     const list = optionsData?.charts?.tipoDocumento || []
     return list

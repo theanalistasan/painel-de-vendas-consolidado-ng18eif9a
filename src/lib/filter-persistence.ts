@@ -16,12 +16,10 @@ const EMPTY_FILTERS: FilterState = {
   deploy: [],
   inside: [],
   tipoCliente: [],
-  jpClass: [],
   search: '',
   ano: [],
   mes: [],
   dia: [],
-  tipoDevolucao: '',
 }
 
 /**
@@ -33,8 +31,7 @@ export const DEFAULT_GRUPOS_ITEM: string[] = ['EQUIPAMENTOS', 'ACESSÓRIOS', 'TI
 /**
  * Filtros padrão estáticos básicos (quando ainda não computou dinamicamente com base nas opções da base)
  * Padrão Geral (Fase 2): Tipo de documento = NF; Utilização = iniciadas com "VENDA"
- * (resolvidas dinamicamente em buildDynamicInitialFilters); Grupo do Item = os 4 grupos;
- * Tipo de Devolução = '' (sem seleção).
+ * (resolvidas dinamicamente em buildDynamicInitialFilters); Grupo do Item = os 4 grupos.
  */
 const _currentDate = new Date()
 const _currentYearStr = String(_currentDate.getFullYear())
@@ -54,12 +51,10 @@ export const DEFAULT_FILTERS: FilterState = {
   deploy: [],
   inside: [],
   tipoCliente: [],
-  jpClass: [],
   search: '',
   ano: [_currentYearStr],
   mes: [_currentMonthStr],
   dia: [],
-  tipoDevolucao: '',
 }
 
 /**
@@ -73,7 +68,6 @@ export const DEFAULT_FILTERS: FilterState = {
  * - Tipo de Documento: "NF" (valor real de tipo_documento)
  * - Grupo do Item: os 4 grupos padrão (DEFAULT_GRUPOS_ITEM)
  * - Utilização: todas as opções distintas que INICIAM com "VENDA"
- * - Tipo de Devolução: '' (sem seleção)
  */
 /**
  * Verifica se um conjunto de filtros possui ano e mês válidos e preenchidos
@@ -98,7 +92,6 @@ export function hasValidPeriodFilters(filters?: FilterState | null): boolean {
  * - tipoDocumento: ['NF']
  * - grupoItem: os 4 grupos padrão (DEFAULT_GRUPOS_ITEM)
  * - utilizacao: todas as opções distintas que começam com "VENDA"
- * - tipoDevolucao: '' (sem seleção)
  */
 export function buildDynamicInitialFilters(options?: {
   anos?: number[]
@@ -171,7 +164,6 @@ export function buildDynamicInitialFilters(options?: {
     deploy: [],
     inside: [],
     tipoCliente: [],
-    jpClass: [],
   }
 }
 
@@ -280,11 +272,9 @@ export function loadFiltersFromSession(): FilterState {
       deploy: normalizeArray(parsed.deploy),
       inside: normalizeArray(parsed.inside),
       tipoCliente: normalizeArray(parsed.tipoCliente),
-      jpClass: normalizeArray(parsed.jpClass),
       dataDe: typeof parsed.dataDe === 'string' ? parsed.dataDe : '',
       dataAte: typeof parsed.dataAte === 'string' ? parsed.dataAte : '',
       search: typeof parsed.search === 'string' ? parsed.search : '',
-      tipoDevolucao: typeof parsed.tipoDevolucao === 'string' ? parsed.tipoDevolucao : '',
     }
     return merged
   } catch {

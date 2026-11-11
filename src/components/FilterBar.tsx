@@ -13,7 +13,6 @@ import {
 } from '@/components/ui/select'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import type { FilterState, CanalOption, CanalClienteOption } from '@/types/sales'
-import { DEVOLUCAO_TIPOS } from '@/types/sales'
 import { MESES_PT_BR, nomeMes } from '@/lib/formatters'
 import { DEFAULT_FILTERS } from '@/lib/filter-persistence'
 import { cn } from '@/lib/utils'
@@ -51,8 +50,6 @@ interface FilterBarProps {
     inside?: string[]
     tipoCliente?: string[]
     isLoadingTipoCliente?: boolean
-    jpClass?: string[]
-    isLoadingJpClass?: boolean
     anos: number[]
     meses: number[]
     dias: number[]
@@ -301,7 +298,6 @@ export default function FilterBar({
       (hideCanais ? 0 : filters.deploy?.length || 0) +
       (hideCanais ? 0 : filters.inside?.length || 0) +
       (filters.tipoCliente?.length || 0) +
-      (filters.jpClass?.length || 0) +
       filters.vendedorCliente.length +
       filters.vendedor.length +
       filters.grupoItem.length +
@@ -311,8 +307,7 @@ export default function FilterBar({
       (filters.search ? 1 : 0) +
       filters.ano.length +
       filters.mes.length +
-      filters.dia.length +
-      (filters.tipoDevolucao ? 1 : 0)
+      filters.dia.length
     )
   }, [filters])
 
@@ -344,7 +339,7 @@ export default function FilterBar({
   const removeSingleFilter = (type: keyof FilterState, value?: string) => {
     let nextState: FilterState = { ...filters }
 
-    if (type === 'dataDe' || type === 'dataAte' || type === 'search' || type === 'tipoDevolucao') {
+    if (type === 'dataDe' || type === 'dataAte' || type === 'search') {
       nextState = { ...nextState, [type]: '' }
     } else if (
       value &&
@@ -361,7 +356,6 @@ export default function FilterBar({
         type === 'deploy' ||
         type === 'inside' ||
         type === 'tipoCliente' ||
-        type === 'jpClass' ||
         type === 'tipoDocumento')
     ) {
       nextState = {
@@ -551,33 +545,12 @@ export default function FilterBar({
       })
     }
 
-    if (Array.isArray(filters.jpClass)) {
-      filters.jpClass.forEach((item) => {
-        list.push({
-          id: `jpClass-${item}`,
-          label: `JP-Class: ${item}`,
-          type: 'jpClass',
-          value: item,
-          bgClass: 'bg-sky-50 border-sky-300 text-sky-900 font-bold',
-        })
-      })
-    }
-
     if (filters.search) {
       list.push({
         id: 'search',
         label: `Busca: "${filters.search}"`,
         type: 'search',
         bgClass: 'bg-cyan-50 border-cyan-200 text-cyan-900 font-medium',
-      })
-    }
-
-    if (filters.tipoDevolucao) {
-      list.push({
-        id: 'tipoDevolucao',
-        label: `Devolução: ${filters.tipoDevolucao}`,
-        type: 'tipoDevolucao',
-        bgClass: 'bg-rose-50 border-rose-200 text-rose-900 font-medium',
       })
     }
 
@@ -820,21 +793,6 @@ export default function FilterBar({
             emptyMessage="Importe a base de Tipo de Cliente (SAP)"
           />
         </div>
-
-        {/* JP-Class (De/Para Descrição) */}
-        <div>
-          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">JP-Class</Label>
-          <MultiSelectDropdown
-            label="JP-Class"
-            options={options.jpClass || []}
-            selected={localFilters.jpClass || []}
-            onChange={(values) => setLocalFilters((prev) => ({ ...prev, jpClass: values }))}
-            placeholder="Todas as classes"
-            highlight={(localFilters.jpClass || []).length > 0}
-            isLoading={options.isLoadingJpClass}
-            emptyMessage="Nenhuma classe disponível"
-          />
-        </div>
       </div>
 
       {/* Linha 2: Canal (destaque), Seleção de Bases, Utilização e Busca */}
@@ -1018,40 +976,6 @@ export default function FilterBar({
             onChange={(values) => setLocalFilters((prev) => ({ ...prev, utilizacao: values }))}
             placeholder="Todas utilizações"
           />
-        </div>
-
-        {/* Tipo de Devolução */}
-        <div>
-          <Label className="text-[11px] font-bold text-slate-500 mb-1 block">
-            Tipo de Devolução
-          </Label>
-          <Select
-            value={localFilters.tipoDevolucao || '__all'}
-            onValueChange={(v) =>
-              setLocalFilters((prev) => ({ ...prev, tipoDevolucao: v === '__all' ? '' : v }))
-            }
-          >
-            <SelectTrigger
-              className={cn(
-                'h-10 text-xs rounded-lg',
-                localFilters.tipoDevolucao
-                  ? 'border-[#0B6E99]/60 font-bold text-slate-900 bg-cyan-50/30'
-                  : 'border-gray-200 text-slate-600',
-              )}
-            >
-              <SelectValue placeholder="Todas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all" className="text-xs font-medium">
-                Todas
-              </SelectItem>
-              {DEVOLUCAO_TIPOS.map((tipo) => (
-                <SelectItem key={tipo} value={tipo} className="text-xs font-medium">
-                  {tipo}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
 
         {showSearch ? (
