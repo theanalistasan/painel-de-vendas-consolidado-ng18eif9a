@@ -10,6 +10,8 @@ export interface ZerarBaseStatus {
   total_apagado: number
   apagado_por_colecao: Record<string, number>
   contagem_inicial: Record<string, number>
+  /** Contagens PÓS-limpeza capturadas pelo backend ao concluir (apagado ⇒ 0) */
+  contagem_final?: Record<string, number>
   mensagem: string
   erro: string
   started_at: string
@@ -50,6 +52,7 @@ export async function stepZerarBase(): Promise<{
   restantes_colecao?: number
   duracao_ms?: number
   apagado_por_colecao?: Record<string, number>
+  contagens_finais?: Record<string, number>
   status: ZerarBaseStatus
 }> {
   return pb.send<{
@@ -62,6 +65,7 @@ export async function stepZerarBase(): Promise<{
     restantes_colecao?: number
     duracao_ms?: number
     apagado_por_colecao?: Record<string, number>
+    contagens_finais?: Record<string, number>
     status: ZerarBaseStatus
   }>(`${BASE_PATH}/step`, { method: 'POST', body: {} })
 }
@@ -74,6 +78,7 @@ export async function zerarBaseApi(options?: {
   status: ZerarBaseStatus
   total_apagado: number
   apagado_por_colecao: Record<string, number>
+  contagens_finais?: Record<string, number>
   duracao_ms?: number
   nada_a_apagar?: boolean
 }> {
@@ -111,6 +116,7 @@ export async function zerarBaseApi(options?: {
       status: initRes.status,
       total_apagado: initRes.status.total_apagado || 0,
       apagado_por_colecao: initRes.status.apagado_por_colecao || {},
+      contagens_finais: initRes.status.contagem_final || {},
       nada_a_apagar: initRes.nada_a_apagar || initRes.status.etapa === 'nada_a_apagar',
     }
   }
@@ -143,6 +149,7 @@ export async function zerarBaseApi(options?: {
     status: currentStatus,
     total_apagado: currentStatus.total_apagado || 0,
     apagado_por_colecao: currentStatus.apagado_por_colecao || {},
+    contagens_finais: currentStatus.contagem_final || {},
     duracao_ms: currentStatus.started_at
       ? Math.max(
           0,

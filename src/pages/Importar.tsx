@@ -1010,6 +1010,10 @@ export default function Importar() {
   const [zerando, setZerando] = useState(false)
   const [zerarStatus, setZerarStatus] = useState<ZerarBaseStatus | null>(null)
   const [zerarContagens, setZerarContagens] = useState<Record<string, number> | null>(null)
+  // Lista REAL de coleções-alvo do zeramento — vem do BACKEND (status.contagens
+  // reflete as listas derivadas do schema no hook), nunca hardcoded: se uma
+  // coleção for derrubada (ex.: racnew), ela simplesmente deixa de aparecer.
+  const [zerarAlvosBackend, setZerarAlvosBackend] = useState<string[]>([])
   const [zerarError, setZerarError] = useState<string | null>(null)
   const [zerarResultado, setZerarResultado] = useState<{
     total_apagado: number
@@ -1094,7 +1098,18 @@ export default function Importar() {
       .then((res: ZerarBaseStatusResponse) => {
         setZerarStatus(res.status)
         setZerarContagens(res.contagens_atuais)
+        // Alvos REAIS do zeramento, derivados do backend (listas derivadas do
+        // schema no hook) — garante que coleções derrubadas nunca reapareçam.
+        const alvos = Object.keys(res.contagens_atuais || {})
+        if (alvos.length > 0) setZerarAlvosBackend(alvos)
         if (res.status.status === 'completed' && res.status.total_apagado > 0) {
+          // O cartão mostra as CONTAGENS PÓS-LIMPEZA (contagem_final, apagado ⇒ 0),
+          // nunca o apagado_por_colecao (pré-limpeza) nem a contagem_inicial.
+          setZerarContagens(
+            res.status.contagem_final && Object.keys(res.status.contagem_final).length > 0
+              ? res.status.contagem_final
+              : res.contagens_atuais,
+          )
           setZerarResultado({
             total_apagado: res.status.total_apagado,
             apagado_por_colecao: res.status.apagado_por_colecao || {},
@@ -1320,22 +1335,20 @@ export default function Importar() {
   }
 
   // ===== Zeramento da Base de Dados =====
-  const zerarAlvos = [
-    'vendas',
-    'vendas_historico',
-    'pedidos_abertos',
-    'estoque_sap',
-    'resumo_vendas_mensal',
-    'resumo_clientes_ativos',
-    'resumo_vendas_uf_regiao',
-    'vendas_staging',
-    'vendas_consolidacao_status',
-    'vendas_migracao_historico_status',
-  ]
+  // Alvos derivados do BACKEND (ordem de coleta + resumos do hook, que deriva
+  // as listas do schema real). Fallback estático SOMENTE se o backend ainda
+  // não respondeu — nunca reintroduz coleção derrubada no cartão.
+  const zerarAlvos = zerarAlvosBackend.length
+    ? zerarAlvosBackend
+    : ['vendas', 'netsales', 'vendas_historico', 'pedidos_abertos', 'estoque_sap', 'audit_logs']
 
   const zerarTotalAtual = zerarContagens
     ? zerarAlvos.reduce((acc, t) => acc + (zerarContagens[t] || 0), 0)
     : 0
+
+  // Contagens PÓS-limpeza salvas pelo backend no fim do zeramento
+  // (contagem_final): apagado ⇒ 0. Alimenta o cartão de conclusão.
+  const contagensFinais = zerarStatus?.contagem_final as Record<string, number> | undefined
 
   const handleZerarBase = async () => {
     setZerando(true)
@@ -1349,12 +1362,24 @@ export default function Importar() {
         },
       })
       setZerarStatus(res.status)
+      // Snapshot PÓS-limpeza: contagens finais capturadas pelo backend APÓS
+      // apagar (apagado ⇒ 0). Fallback: contagens_atuais do status endpoint.
+      setZerarContagens(res.contagens_finais || res.status.contagem_final || null)
       setZerarResultado({
         total_apagado: res.total_apagado,
         apagado_por_colecao: res.apagado_por_colecao || {},
         duracao_s: res.duracao_ms ? Math.round(res.duracao_ms / 1000) : 0,
         nada_a_apagar: res.nada_a_apagar,
       })
+      getZerarBaseStatus()
+        .then((s) => {
+          setZerarStatus(s.status)
+          if (s.contagens_atuais && Object.keys(s.contagens_atuais).length > 0) {
+            setZerarAlvosBackend(Object.keys(s.contagens_atuais))
+            setZerarContagens(s.contagens_atuais)
+          }
+        })
+        .catch(() => undefined)
       logAudit(
         'zerar_base',
         `Zeramento da base: ${res.total_apagado} registros apagados${
@@ -1387,7 +1412,10 @@ export default function Importar() {
       getZerarBaseStatus()
         .then((s) => {
           setZerarStatus(s.status)
-          setZerarContagens(s.contagens_atuais)
+          if (s.contagens_atuais && Object.keys(s.contagens_atuais).length > 0) {
+            setZerarContagens(s.contagens_atuais)
+            setZerarAlvosBackend(Object.keys(s.contagens_atuais))
+          }
         })
         .catch(() => undefined)
       toast({
@@ -1730,7 +1758,7 @@ export default function Importar() {
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
               {zerarContagens ? (
-                zerarAlvos.map((t) => (
+                (zerarAlvosBackend.length > 0 ? zerarAlvosBackend : zerarAlvos).map((t) => (
                   <div
                     key={t}
                     className="flex items-center justify-between gap-2 bg-white rounded border border-slate-200 px-2 py-1"
@@ -1847,7 +1875,20 @@ export default function Importar() {
               </div>
               {!zerarResultado.nada_a_apagar && (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-                  {Object.entries(zerarResultado.apagado_por_colecao).map(([t, n]) => (
+                  {(zerarAlvosBackend.length > 0
+                    ? zerarAlvosBackend.map(
+                        (t) =>
+                          [
+                            t,
+                            contagensFinais && contagensFinais[t] !== undefined
+                              ? contagensFinais[t]
+                              : (zerarContagens?.[t] ?? 0),
+                          ] as [string, number],
+                      )
+                    : zerarContagens && Object.keys(zerarContagens).length > 0
+                      ? Object.entries(zerarContagens)
+                      : Object.entries(zerarResultado.apagado_por_colecao)
+                  ).map(([t, n]) => (
                     <div
                       key={t}
                       className="flex items-center justify-between gap-2 bg-emerald-900/40 rounded border border-emerald-700/50 px-2 py-1"
@@ -1919,7 +1960,7 @@ export default function Importar() {
                 </p>
                 {zerarContagens && (
                   <div className="max-h-40 overflow-y-auto rounded border border-slate-200 bg-slate-50 p-2 space-y-0.5">
-                    {zerarAlvos.map((t) => (
+                    {(zerarAlvosBackend.length > 0 ? zerarAlvosBackend : zerarAlvos).map((t) => (
                       <div key={t} className="flex items-center justify-between gap-2 text-[10px]">
                         <code className="text-slate-600">{t}</code>
                         <span className="font-bold text-slate-800 tabular-nums">

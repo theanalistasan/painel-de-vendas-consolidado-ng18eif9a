@@ -7,12 +7,21 @@
 // chamada HTTP (< 3-5s), SOB COMANDO DO USUÁRIO (nada roda automaticamente no
 // deploy), erros estruturados com etapa/coleção/motivo.
 //
-// APAGA (coleções transacionais):
-//   - PocketBase: vendas, vendas_historico, racnew, netsales, pedidos_abertos,
+// APAGA (coleções transacionais) — lista DERIVADA DO SCHEMA REAL (app.hasTable),
+// nunca hardcoded, para não voltar a citar coleção derrubada (ex.: racnew):
+//   - PocketBase: vendas, vendas_historico, netsales, pedidos_abertos,
 //     estoque_sap, audit_logs (logs de auditoria de carga)
 //   - SQLite: resumos pré-calculados (resumo_vendas_mensal,
 //     resumo_clientes_ativos, resumo_vendas_uf_regiao) e tabelas de controle
 //     (vendas_staging, vendas_consolidacao_status, vendas_migracao_historico_status)
+//
+// SNAPSHOT FINAL: ao concluir, grava `contagem_final` (contagens PÓS-limpeza,
+// apagado = 0) junto de apagado_por_colecao — o cartão da tela /importar lê
+// essas contagens finais, nunca as pré-limpeza.
+//
+// A coluna `contagem_final` é criada pelo CREATE TABLE abaixo (e por um ALTER
+// defensivo nas tabelas já existentes), pois a migration 1742600011 derrubou a
+// tabela junto com o snapshot antigo.
 //
 // NÃO APAGA: produtos, tipos_cliente, users, canais, canais_clientes,
 // canais_metas, canais_sync_state e demais coleções de configuração.
@@ -31,7 +40,6 @@ routerAdd('POST', '/backend/v1/base/zerar', function (e) {
   const ALVO_PB = [
     'vendas',
     'vendas_historico',
-    'racnew',
     'netsales',
     'pedidos_abertos',
     'estoque_sap',
@@ -65,6 +73,7 @@ routerAdd('POST', '/backend/v1/base/zerar', function (e) {
           'total_apagado INTEGER DEFAULT 0,' +
           'apagado_por_colecao TEXT,' +
           'contagem_inicial TEXT,' +
+          'contagem_final TEXT,' +
           'mensagem TEXT,' +
           'erro TEXT,' +
           'started_at TEXT,' +
@@ -73,12 +82,29 @@ routerAdd('POST', '/backend/v1/base/zerar', function (e) {
           ');',
       )
       .execute()
+    // Tabelas criadas por versões antigas, sem contagem_final: ALTER defensivo.
+    try {
+      $app
+        .db()
+        .newQuery(
+          "SELECT COUNT(*) AS c FROM pragma_table_info('zerar_base_status') WHERE name = 'contagem_final'",
+        )
+        .all(cols)
+      if (toInt(cols[0].c) === 0) {
+        $app
+          .db()
+          .newQuery("ALTER TABLE zerar_base_status ADD COLUMN contagem_final TEXT DEFAULT '{}'")
+          .execute()
+      }
+    } catch (errAlter) {
+      console.warn('[zerar_base] ALTER contagem_final falhou:', errAlter)
+    }
     $app
       .db()
       .newQuery(
         'INSERT OR IGNORE INTO zerar_base_status ' +
-          '(id, status, etapa, colecao_atual, total_planejado, total_apagado, apagado_por_colecao, contagem_inicial, mensagem, erro, started_at, updated_at, finished_at) ' +
-          "VALUES (1, 'idle', 'pronto', '', 0, 0, '{}', '{}', 'Pronto para zerar a base de dados.', '', '', '', '');",
+          '(id, status, etapa, colecao_atual, total_planejado, total_apagado, apagado_por_colecao, contagem_inicial, contagem_final, mensagem, erro, started_at, updated_at, finished_at) ' +
+          "VALUES (1, 'idle', 'pronto', '', 0, 0, '{}', '{}', '{}', 'Pronto para zerar a base de dados.', '', '', '', '');",
       )
       .execute()
 
@@ -113,6 +139,7 @@ routerAdd('POST', '/backend/v1/base/zerar', function (e) {
           total_apagado: '',
           apagado_por_colecao: '',
           contagem_inicial: '',
+          contagem_final: '',
           mensagem: '',
           erro: '',
           started_at: '',
@@ -129,6 +156,7 @@ routerAdd('POST', '/backend/v1/base/zerar', function (e) {
             'COALESCE(total_apagado, 0) AS total_apagado, ' +
             "COALESCE(apagado_por_colecao, '{}') AS apagado_por_colecao, " +
             "COALESCE(contagem_inicial, '{}') AS contagem_inicial, " +
+            "COALESCE(contagem_final, '{}') AS contagem_final, " +
             "COALESCE(mensagem, '') AS mensagem, COALESCE(erro, '') AS erro, " +
             "COALESCE(started_at, '') AS started_at, COALESCE(updated_at, '') AS updated_at, " +
             "COALESCE(finished_at, '') AS finished_at " +
@@ -152,6 +180,7 @@ routerAdd('POST', '/backend/v1/base/zerar', function (e) {
           total_apagado: 0,
           apagado_por_colecao: {},
           contagem_inicial: {},
+          contagem_final: {},
           mensagem: 'Pronto para zerar a base de dados.',
           erro: '',
           started_at: '',
@@ -168,6 +197,7 @@ routerAdd('POST', '/backend/v1/base/zerar', function (e) {
         total_apagado: toInt(r.total_apagado),
         apagado_por_colecao: parseMap(String(r.apagado_por_colecao || '{}')),
         contagem_inicial: parseMap(String(r.contagem_inicial || '{}')),
+        contagem_final: parseMap(String(r.contagem_final || '{}')),
         mensagem: String(r.mensagem || ''),
         erro: String(r.erro || ''),
         started_at: String(r.started_at || ''),
@@ -231,6 +261,7 @@ routerAdd('POST', '/backend/v1/base/zerar', function (e) {
         total_apagado: 0,
         apagado_por_colecao: {},
         contagem_inicial: contagens,
+        contagem_final: contagens,
         mensagem: 'Nada a apagar — todas as coleções transacionais já estão vazias (base zerada).',
         erro: '',
         finished_at: nowIso,
@@ -254,6 +285,7 @@ routerAdd('POST', '/backend/v1/base/zerar', function (e) {
       total_apagado: 0,
       apagado_por_colecao: {},
       contagem_inicial: contagens,
+      contagem_final: {},
       mensagem: 'Zeramento iniciado: ' + total + ' registros distribuídos nas coleções alvo.',
       erro: '',
       started_at: nowIso,
@@ -285,7 +317,6 @@ routerAdd('GET', '/backend/v1/base/zerar/status', function (e) {
   const ALVO_PB = [
     'vendas',
     'vendas_historico',
-    'racnew',
     'netsales',
     'pedidos_abertos',
     'estoque_sap',
@@ -319,6 +350,7 @@ routerAdd('GET', '/backend/v1/base/zerar/status', function (e) {
           'total_apagado INTEGER DEFAULT 0,' +
           'apagado_por_colecao TEXT,' +
           'contagem_inicial TEXT,' +
+          'contagem_final TEXT,' +
           'mensagem TEXT,' +
           'erro TEXT,' +
           'started_at TEXT,' +
@@ -327,12 +359,29 @@ routerAdd('GET', '/backend/v1/base/zerar/status', function (e) {
           ');',
       )
       .execute()
+    try {
+      const cols = arrayOf(new DynamicModel({ c: '' }))
+      $app
+        .db()
+        .newQuery(
+          "SELECT COUNT(*) AS c FROM pragma_table_info('zerar_base_status') WHERE name = 'contagem_final'",
+        )
+        .all(cols)
+      if (toInt(cols[0].c) === 0) {
+        $app
+          .db()
+          .newQuery("ALTER TABLE zerar_base_status ADD COLUMN contagem_final TEXT DEFAULT '{}'")
+          .execute()
+      }
+    } catch (errAlter) {
+      console.warn('[zerar_base_status] ALTER contagem_final falhou:', errAlter)
+    }
     $app
       .db()
       .newQuery(
         'INSERT OR IGNORE INTO zerar_base_status ' +
-          '(id, status, etapa, colecao_atual, total_planejado, total_apagado, apagado_por_colecao, contagem_inicial, mensagem, erro, started_at, updated_at, finished_at) ' +
-          "VALUES (1, 'idle', 'pronto', '', 0, 0, '{}', '{}', 'Pronto para zerar a base de dados.', '', '', '', '');",
+          '(id, status, etapa, colecao_atual, total_planejado, total_apagado, apagado_por_colecao, contagem_inicial, contagem_final, mensagem, erro, started_at, updated_at, finished_at) ' +
+          "VALUES (1, 'idle', 'pronto', '', 0, 0, '{}', '{}', '{}', 'Pronto para zerar a base de dados.', '', '', '', '');",
       )
       .execute()
 
@@ -366,6 +415,7 @@ routerAdd('GET', '/backend/v1/base/zerar/status', function (e) {
         total_apagado: '',
         apagado_por_colecao: '',
         contagem_inicial: '',
+        contagem_final: '',
         mensagem: '',
         erro: '',
         started_at: '',
@@ -382,6 +432,7 @@ routerAdd('GET', '/backend/v1/base/zerar/status', function (e) {
           'COALESCE(total_apagado, 0) AS total_apagado, ' +
           "COALESCE(apagado_por_colecao, '{}') AS apagado_por_colecao, " +
           "COALESCE(contagem_inicial, '{}') AS contagem_inicial, " +
+          "COALESCE(contagem_final, '{}') AS contagem_final, " +
           "COALESCE(mensagem, '') AS mensagem, COALESCE(erro, '') AS erro, " +
           "COALESCE(started_at, '') AS started_at, COALESCE(updated_at, '') AS updated_at, " +
           "COALESCE(finished_at, '') AS finished_at " +
@@ -408,6 +459,7 @@ routerAdd('GET', '/backend/v1/base/zerar/status', function (e) {
         total_apagado: 0,
         apagado_por_colecao: {},
         contagem_inicial: {},
+        contagem_final: {},
         mensagem: 'Pronto para zerar a base de dados.',
         erro: '',
         started_at: '',
@@ -424,6 +476,7 @@ routerAdd('GET', '/backend/v1/base/zerar/status', function (e) {
         total_apagado: toInt(r.total_apagado),
         apagado_por_colecao: parseMap(String(r.apagado_por_colecao || '{}')),
         contagem_inicial: parseMap(String(r.contagem_inicial || '{}')),
+        contagem_final: parseMap(String(r.contagem_final || '{}')),
         mensagem: String(r.mensagem || ''),
         erro: String(r.erro || ''),
         started_at: String(r.started_at || ''),
@@ -455,7 +508,6 @@ routerAdd('POST', '/backend/v1/base/zerar/step', function (e) {
   const ALVO_PB = [
     'vendas',
     'vendas_historico',
-    'racnew',
     'netsales',
     'pedidos_abertos',
     'estoque_sap',
@@ -497,12 +549,29 @@ routerAdd('POST', '/backend/v1/base/zerar/step', function (e) {
           ');',
       )
       .execute()
+    try {
+      const cols = arrayOf(new DynamicModel({ c: '' }))
+      $app
+        .db()
+        .newQuery(
+          "SELECT COUNT(*) AS c FROM pragma_table_info('zerar_base_status') WHERE name = 'contagem_final'",
+        )
+        .all(cols)
+      if (toInt(cols[0].c) === 0) {
+        $app
+          .db()
+          .newQuery("ALTER TABLE zerar_base_status ADD COLUMN contagem_final TEXT DEFAULT '{}'")
+          .execute()
+      }
+    } catch (errAlter) {
+      console.warn('[zerar_base_step] ALTER contagem_final falhou:', errAlter)
+    }
     $app
       .db()
       .newQuery(
         'INSERT OR IGNORE INTO zerar_base_status ' +
-          '(id, status, etapa, colecao_atual, total_planejado, total_apagado, apagado_por_colecao, contagem_inicial, mensagem, erro, started_at, updated_at, finished_at) ' +
-          "VALUES (1, 'idle', 'pronto', '', 0, 0, '{}', '{}', 'Pronto para zerar a base de dados.', '', '', '', '');",
+          '(id, status, etapa, colecao_atual, total_planejado, total_apagado, apagado_por_colecao, contagem_inicial, contagem_final, mensagem, erro, started_at, updated_at, finished_at) ' +
+          "VALUES (1, 'idle', 'pronto', '', 0, 0, '{}', '{}', '{}', 'Pronto para zerar a base de dados.', '', '', '', '');",
       )
       .execute()
 
@@ -530,6 +599,7 @@ routerAdd('POST', '/backend/v1/base/zerar/step', function (e) {
           total_apagado: '',
           apagado_por_colecao: '',
           contagem_inicial: '',
+          contagem_final: '',
           mensagem: '',
           erro: '',
           started_at: '',
@@ -546,6 +616,7 @@ routerAdd('POST', '/backend/v1/base/zerar/step', function (e) {
             'COALESCE(total_apagado, 0) AS total_apagado, ' +
             "COALESCE(apagado_por_colecao, '{}') AS apagado_por_colecao, " +
             "COALESCE(contagem_inicial, '{}') AS contagem_inicial, " +
+            "COALESCE(contagem_final, '{}') AS contagem_final, " +
             "COALESCE(mensagem, '') AS mensagem, COALESCE(erro, '') AS erro, " +
             "COALESCE(started_at, '') AS started_at, COALESCE(updated_at, '') AS updated_at, " +
             "COALESCE(finished_at, '') AS finished_at " +
@@ -569,6 +640,7 @@ routerAdd('POST', '/backend/v1/base/zerar/step', function (e) {
           total_apagado: 0,
           apagado_por_colecao: {},
           contagem_inicial: {},
+          contagem_final: {},
           mensagem: 'Pronto para zerar a base de dados.',
           erro: '',
           started_at: '',
@@ -585,6 +657,7 @@ routerAdd('POST', '/backend/v1/base/zerar/step', function (e) {
         total_apagado: toInt(r.total_apagado),
         apagado_por_colecao: parseMap(String(r.apagado_por_colecao || '{}')),
         contagem_inicial: parseMap(String(r.contagem_inicial || '{}')),
+        contagem_final: parseMap(String(r.contagem_final || '{}')),
         mensagem: String(r.mensagem || ''),
         erro: String(r.erro || ''),
         started_at: String(r.started_at || ''),
@@ -726,10 +799,16 @@ routerAdd('POST', '/backend/v1/base/zerar/step', function (e) {
     // Nenhum alvo com registros → conclusão explícita e persistida
     const duracaoMs = current.started_at ? Date.now() - new Date(current.started_at).getTime() : 0
     const duracaoS = Math.round(duracaoMs / 1000)
+    // SNAPSHOT FINAL = contagens PÓS-limpeza (apagado ⇒ 0). O cartão da tela
+    // /importar lê estas contagens, nunca as pré-limpeza (contagem_inicial).
+    const contagensFinais = {}
+    for (let f = 0; f < todosAlvos.length; f++)
+      contagensFinais[todosAlvos[f]] = countTable(todosAlvos[f])
     setStatus({
       status: 'completed',
       etapa: 'concluido',
       colecao_atual: '',
+      contagem_final: contagensFinais,
       mensagem:
         'Zeramento concluído: ' +
         current.total_apagado +
@@ -743,13 +822,15 @@ routerAdd('POST', '/backend/v1/base/zerar/step', function (e) {
     invalidarCache()
     registrarAuditoria(current.total_apagado, duracaoS, current.apagado_por_colecao || {})
 
+    const finalStatus = readStatus()
     return e.json(200, {
       success: true,
       done: true,
       total_apagado: current.total_apagado,
       apagado_por_colecao: current.apagado_por_colecao || {},
+      contagens_finais: finalStatus.contagem_final || contagensFinais,
       duracao_ms: duracaoMs,
-      status: readStatus(),
+      status: finalStatus,
     })
   } catch (err) {
     const errorMsg = String(err && err.message ? err.message : err)

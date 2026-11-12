@@ -813,7 +813,6 @@ export interface VendasListResult {
   perPage: number
   totalItems: number
   totalNetsales?: number
-  totalRacnew?: number
   totalPages: number
   hasMore?: boolean
   isGrouped?: boolean
