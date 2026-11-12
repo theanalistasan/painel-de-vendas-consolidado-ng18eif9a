@@ -22,8 +22,10 @@
 //
 // IDEMPOTENTE: rodar sobre uma base já vazia é no-op (contagens antes/depois
 // iguais a 0). Não toca em migrations já aplicadas nem na janela dinâmica de
-// anos. Ao final, invalida o cache em memória do dashboard e registra o
-// evento em audit_logs.
+// anos. Ao final, invalida o cache em memória do dashboard. O registro em
+// audit_logs é feito pelo app (hook zerar_base) quando o usuário limpa pela
+// tela — dentro da migration apenas logamos no console para não depender de
+// write em coleção durante o apply.
 
 migrate(
   (app) => {
@@ -52,12 +54,26 @@ migrate(
     const alvosPb = ['vendas', 'vendas_historico', 'racnew', 'netsales']
     for (let i = 0; i < alvosPb.length; i++) {
       const nome = alvosPb[i]
-      const antes = app.countRecords(nome)
-      if (antes > 0) {
-        const col = app.findCollectionByNameOrId(nome)
-        app.truncateCollection(col)
+      let antes = 0
+      try {
+        antes = app.countRecords(nome)
+      } catch (_) {
+        antes = 0
       }
-      const depois = app.countRecords(nome)
+      if (antes > 0) {
+        try {
+          const col = app.findCollectionByNameOrId(nome)
+          app.truncateCollection(col)
+        } catch (errDel) {
+          console.warn('[limpeza_netsales_v4] falha ao truncar ' + nome + ':', errDel)
+        }
+      }
+      let depois = 0
+      try {
+        depois = app.countRecords(nome)
+      } catch (_) {
+        depois = 0
+      }
       mapa[nome] = { antes: antes, depois: depois }
       console.log('[limpeza_netsales_v4] ' + nome + ': antes=' + antes + ' depois=' + depois)
     }
@@ -109,21 +125,7 @@ migrate(
       /* cache indisponível nesta runtime — segue sem invalidar */
     }
 
-    // ---- 4. Auditoria ----
-    try {
-      const colAudit = app.findCollectionByNameOrId('audit_logs')
-      const rec = new Record(colAudit)
-      rec.set('action', 'limpeza_base_netsales_v4')
-      rec.set(
-        'details',
-        'Limpeza total das bases de vendas (migration 1742600006): ' +
-          JSON.stringify(mapa) +
-          ' — produtos, tipos_cliente, canais, metas, usuários, pedidos_abertos e estoque_sap preservados.',
-      )
-      app.save(rec)
-    } catch (errAudit) {
-      console.warn('[limpeza_netsales_v4] Falha ao registrar auditoria:', errAudit)
-    }
+    console.log('[limpeza_netsales_v4] concluída: ' + JSON.stringify(mapa))
   },
   (app) => {
     // down: no-op deliberado — a limpeza não é reversível (os dados antigos foram
