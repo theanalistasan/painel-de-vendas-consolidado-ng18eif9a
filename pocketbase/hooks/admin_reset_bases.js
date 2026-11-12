@@ -1,99 +1,108 @@
-// Endpoint: POST /backend/v1/admin/reset-bases
-// Zera registros das coleções produtos, netsales_v4 (base única de vendas) e vendas.
-// Protegido por senha de administrador — exigida no body.
+// admin_reset_bases.js — Endpoint de Zeramento (POST /backend/v1/admin/reset-bases).
 //
-// Body:
-//   password    (string, obrigatório) — senha de administrador
-//   collections (string[], opcional)  — nomes das coleções a zerar.
-//     Se ausente/vazio, zera TODAS as 3 (compatível com versão anterior).
-//     Se presente, zera SOMENTE as coleções informadas (válidas).
-routerAdd(
-  'POST',
-  '/backend/v1/admin/reset-bases',
-  (e) => {
-    const body = e.requestInfo().body || {}
-    const provided = (body.password || '').toString()
+// BUG CORRIGIDO (0.0.34x): o Zeramento apagava apenas `produtos` e `vendas`
+// (e tentava uma coleção inexistente `netsales_v4`), de modo que a bruta
+// `netsales` ACUMULAVA cargas: cada reimportação somava em vez de substituir
+// (53.030 linhas = 3 cargas de ~17.677). O consolidador 1:1 então triplicava
+// tudo em `vendas`.
+//
+// AGORA: apaga TODAS as bases brutas de importação (netsales) e as bases
+// consolidadas (vendas, vendas_historico) + staging/resumos pré-calculados,
+// e PRESERVA produtos, tipos_cliente, canais_clientes, canais_metas,
+// pedidos_abertos, estoque_sap, usuários e demais coleções de configuração.
+// Ao final invalida os caches de dashboard/filtros (mesmo mecanismo do importador).
 
-    // Senha de administrador (hardcodeada — não depende de variável de ambiente).
-    const expected = 'Reset@Painel2025'
+routerAdd('POST', '/backend/v1/admin/reset-bases', (e) => {
+  const auth = e.auth
+  if (!auth || auth.get('role') !== 'admin') {
+    return e.json(403, { error: 'Somente administradores podem zerar as bases.' })
+  }
 
-    if (!provided || provided !== expected) {
-      return e.json(403, {
-        success: false,
-        message: 'Senha de administrador incorreta.',
-      })
-    }
+  // Coleções PocketBase a esvaziar, na ordem: brutas primeiro, consolidadas depois.
+  const pbCollections = ['netsales', 'vendas', 'vendas_historico']
+  // Tabelas SQLite auxiliares (staging e resumos pré-calculados do dashboard).
+  const sqlTables = [
+    'vendas_staging',
+    'resumo_vendas_mensal',
+    'resumo_clientes_ativos',
+    'resumo_vendas_uf_regiao',
+  ]
 
-    // Coleções válidas gerenciadas por esta rota (RacNew/NetSales antigas não existem mais)
-    const ALL_COLLECTIONS = ['produtos', 'netsales_v4', 'vendas']
+  const deleted = {}
+  const errors = []
 
-    // Determina quais coleções zerar
-    let requested = body.collections
-    if (requested != null) {
-      if (!Array.isArray(requested)) {
-        return e.json(400, {
-          success: false,
-          message: 'O campo "collections" deve ser um array de strings.',
-        })
-      }
-      // mantém apenas strings válidas e conhecidas, sem duplicatas
-      const seen = {}
-      requested = requested.filter((c) => {
-        const name = (c || '').toString()
-        if (!name || ALL_COLLECTIONS.indexOf(name) === -1 || seen[name]) return false
-        seen[name] = true
-        return true
-      })
-    }
-    if (!requested || requested.length === 0) {
-      requested = ALL_COLLECTIONS.slice()
-    }
-
-    // Conta registros antes de limpar (apenas das coleções afetadas)
-    const counts = {}
-    let totalRemovido = 0
-
-    for (let i = 0; i < requested.length; i++) {
-      const name = requested[i]
-      if (!$app.hasTable(name)) {
-        counts[name] = 0
-        continue
-      }
-      const c = $app.countRecords(name)
-      counts[name] = c
-      totalRemovido += c
-    }
-
-    // Caso todas as bases selecionadas já estejam vazias
-    if (totalRemovido === 0) {
-      return e.json(200, {
-        success: true,
-        alreadyEmpty: true,
-        message: 'As bases selecionadas já estão limpas.',
-        counts: counts,
-        total_removido: 0,
-      })
-    }
-
-    // Limpa as coleções dentro de uma transação atômica
-    $app.runInTransaction((txApp) => {
-      for (let i = 0; i < requested.length; i++) {
-        const name = requested[i]
-        if (!txApp.hasTable(name)) continue
-        txApp
+  for (let i = 0; i < pbCollections.length; i++) {
+    const name = pbCollections[i]
+    try {
+      const col = app.findCollectionByNameOrId(name)
+      app.truncateCollection(col)
+      deleted[name] = true
+    } catch (errTrunc) {
+      try {
+        app
           .db()
           .newQuery('DELETE FROM ' + name)
           .execute()
+        deleted[name] = true
+      } catch (errDel) {
+        deleted[name] = false
+        errors.push(name + ': ' + errDel)
       }
-    })
+    }
+  }
 
-    return e.json(200, {
-      success: true,
-      alreadyEmpty: false,
-      message: 'Bases zeradas com sucesso.',
-      counts: counts,
-      total_removido: totalRemovido,
-    })
-  },
-  $apis.requireAuth(),
-)
+  for (let j = 0; j < sqlTables.length; j++) {
+    const t = sqlTables[j]
+    try {
+      app
+        .db()
+        .newQuery('DELETE FROM ' + t)
+        .execute()
+      deleted[t] = true
+    } catch (errSql) {
+      // Tabela pode não existir (base nova) — segue.
+      deleted[t] = true
+    }
+  }
+
+  // Auditoria do zeramento.
+  try {
+    const logsCol = app.findCollectionByNameOrId('audit_logs')
+    const record = new Record(logsCol)
+    record.set('action', 'reset_bases')
+    record.set('user', auth.get('id'))
+    record.set(
+      'details',
+      'Zeramento: brutas (netsales) + consolidadas (vendas, vendas_historico) + staging/resumos',
+    )
+    app.save(record)
+  } catch (errAudit) {
+    console.warn('[reset-bases] auditoria falhou:', errAudit)
+  }
+
+  // Invalida os mesmos caches do importador (dashboard/filtros), reutilizando o
+  // mecanismo global via $app.store — chaves canônicas são podadas na próxima leitura.
+  try {
+    const store = $app.store()
+    const keys = store.keys()
+    for (let k = 0; k < keys.length; k++) {
+      if (
+        String(keys[k]).indexOf('__skipDashboardCache') === 0 ||
+        String(keys[k]).indexOf('__skipFilterCache') === 0
+      ) {
+        store.delete(keys[k])
+      }
+    }
+  } catch (errCache) {
+    console.warn('[reset-bases] invalidação de cache falhou:', errCache)
+  }
+
+  if (errors.length) {
+    return e.json(500, { error: 'Falha ao zerar bases.', details: errors })
+  }
+  return e.json(200, {
+    ok: true,
+    message: 'Bases zeradas com sucesso.',
+    deleted: deleted,
+  })
+})
