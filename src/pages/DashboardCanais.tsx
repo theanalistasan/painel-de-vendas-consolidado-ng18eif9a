@@ -37,6 +37,7 @@ import {
 import { ComparativoCanaisMesCard } from '@/components/ComparativoCanaisMesCard'
 import {
   VendasRelatorioTable,
+  RELATORIO_COLUMNS,
   type RelatorioGroupByMode,
   type SortDirection,
 } from '@/components/VendasRelatorioTable'
@@ -70,6 +71,8 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { MultiSelectDropdown } from '@/components/FilterBar'
+import { exportToCSV } from '@/lib/formatters'
+import { useToast } from '@/hooks/use-toast'
 
 const COLOR_BLUE = '#0B6E99'
 
@@ -87,6 +90,7 @@ const currencyFormatter =
     [formatCurrency(typeof val === 'number' ? val : Number(val)), label] as [string, string]
 
 export default function DashboardCanais() {
+  const { toast } = useToast()
   const [data, setData] = useState<DashboardStatsResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -457,12 +461,51 @@ export default function DashboardCanais() {
   const handleRelatorioExport = async () => {
     if (relatorioExporting) return
     setRelatorioExporting(true)
+    const isGroupedExport =
+      relatorioGroupByMode === 'comissao' ||
+      relatorioGroupByMode === 'jp_class' ||
+      relatorioGroupByMode === 'nfe' ||
+      relatorioGroupByMode === 'pedido'
     try {
-      await fetchVendasExport({
+      // Exporta o MESMO recorte exibido: filtros efetivos (local > global) e a
+      // ordenação ativa; nos modos agrupados, 1 linha por NF/Pedido.
+      const res = await fetchVendasExport({
+        sort: `${relatorioSortDir === 'desc' ? '-' : ''}${relatorioSortField}`,
+        sortField: relatorioSortField,
+        sortDirection: relatorioSortDir,
         filters: filtrosEfetivos as unknown as Record<string, unknown>,
+        groupByNfe: isGroupedExport && relatorioGroupByMode === 'nfe' ? true : undefined,
+        groupByMode: isGroupedExport && relatorioGroupByMode === 'pedido' ? 'pedido' : undefined,
+      })
+
+      const items = res.items || []
+      if (items.length === 0) {
+        toast({
+          title: 'Nada para exportar',
+          description: 'Nenhum registro encontrado com os filtros atuais.',
+        })
+        return
+      }
+
+      exportToCSV(
+        `relatorio_consolidado_vendas_${new Date().toISOString().slice(0, 10)}`,
+        items as unknown as Record<string, unknown>[],
+        RELATORIO_COLUMNS.map((c) => ({ key: c.key, label: c.label })),
+      )
+      toast({
+        title: 'Exportação concluída',
+        description: `${formatNumber(items.length)} registro(s) exportado(s) para CSV.`,
       })
     } catch (err) {
       console.error('[DashboardCanais:handleRelatorioExport] Erro ao exportar:', err)
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao exportar CSV',
+        description:
+          err instanceof Error
+            ? err.message
+            : 'Falha ao exportar o Relatório Consolidado de Vendas. Tente novamente.',
+      })
     } finally {
       setRelatorioExporting(false)
     }
