@@ -20,7 +20,9 @@ import { cn } from '@/lib/utils'
 /**
  * Janela dinâmica de anos do "Padrão Geral": ano atual + 2 anteriores (mesma janela
  * da base ativa). Se as opções da base vierem carregadas, restringe aos anos que
- * existem nelas (evita selecionar anos sem dados).
+ * existem nelas (evita selecionar anos sem dados). Com a base ZERADA (nenhum ano
+ * disponível) o default é a lista vazia — o default nunca oferece um ano que não
+ * existe na base.
  */
 export function buildDynamicAnoDefaults(anosDisponiveis?: number[]): string[] {
   const now = new Date()
@@ -29,10 +31,11 @@ export function buildDynamicAnoDefaults(anosDisponiveis?: number[]): string[] {
     String(now.getFullYear() - 1),
     String(now.getFullYear() - 2),
   ]
-  if (!anosDisponiveis || anosDisponiveis.length === 0) return janela
+  if (!anosDisponiveis || anosDisponiveis.length === 0) return []
   const set = new Set(anosDisponiveis.map(String))
   const presentes = janela.filter((a) => set.has(a))
-  return presentes.length > 0 ? presentes : janela
+  if (presentes.length === 0) return janela
+  return presentes
 }
 
 interface FilterBarProps {
@@ -60,6 +63,20 @@ interface FilterBarProps {
   loadingMessage?: string
   /** Oculta o bloco de filtros de Canais (Canal, Clientes, Deploy, Inside), que vivem na Visão Canais */
   hideCanais?: boolean
+}
+
+/**
+ * Ordem ALFABÉTICA dos nomes dos meses (pt-BR), em maiúsculas para o sort.
+ * Meses inválidos (fora de 1–12) vão para o fim, ordenados por número.
+ */
+export function sortMesesPorNome(meses: Array<number | string>): string[] {
+  return [...meses].sort((a, b) => {
+    const na = Number(a)
+    const nb = Number(b)
+    const va = na >= 1 && na <= 12 ? MESES_PT_BR[na - 1].toUpperCase() : `~${String(a)}`
+    const vb = nb >= 1 && nb <= 12 ? MESES_PT_BR[nb - 1].toUpperCase() : `~${String(b)}`
+    return va.localeCompare(vb, 'pt-BR')
+  })
 }
 
 // Reusable MultiSelect Dropdown with Roland DG Accent
@@ -699,7 +716,7 @@ export default function FilterBar({
             <Label className="text-[11px] font-bold text-slate-500 mb-1 block">Mês</Label>
             <MultiSelectDropdown
               label="Mês"
-              options={options.meses.map(String)}
+              options={sortMesesPorNome(options.meses)}
               selected={localFilters.mes}
               onChange={(values) => setLocalFilters((prev) => ({ ...prev, mes: values }))}
               placeholder="Todos"

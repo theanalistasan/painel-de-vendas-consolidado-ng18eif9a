@@ -617,6 +617,12 @@ routerAdd('POST', '/backend/v1/base/zerar/step', function (e) {
 
     const invalidarCache = function () {
       try {
+        // O cache de opções dinâmicas dos filtros (__skipFilterOptionsCache) é
+        // reconstruído a partir da base: com a base zerada, as listas de
+        // Cliente/Vendedor/Grupo/Ano... voltam VAZIAS na próxima consulta.
+        if (typeof globalThis.__skipFilterOptionsCache !== 'undefined') {
+          globalThis.__skipFilterOptionsCache = new Map()
+        }
         if (globalThis.__skipDashboardCache) {
           if (typeof globalThis.__skipDashboardCache.clear === 'function') {
             globalThis.__skipDashboardCache.clear()

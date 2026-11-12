@@ -1639,9 +1639,10 @@ var __dashboardStatsHandler = (e) => {
       } catch (err) {
         console.warn('dashboard_stats: anos min/max resumo (base vazia ou sem resumo):', err)
       }
-      if (anosList.length === 0) {
-        anosList = [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
-      }
+      // Base zerada ⇒ NENHUM ano é oferecido como opção clicável: as opções de
+      // Ano refletem SOMENTE os anos que existem na base ativa hoje. A janela
+      // dinâmica (ano atual + 2 anteriores) continua existindo apenas como
+      // DEFAULT de filtro no frontend (buildDynamicAnoDefaults), nunca como opção.
       return {
         anos: anosList,
         maxDataLancamento: maxLancamento,
