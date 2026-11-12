@@ -391,8 +391,8 @@ const PEDIDOS_ABERTOS_STORAGE_KEY = 'pedidos_abertos_filtros'
 export interface PedidosAbertosFiltroLocal {
   /** Grupos derivados (Tintas, Acessórios, Peças, Equipamentos, Outros); [] = todos */
   grupoItem: string[]
-  /** Tipo de Item (grupo_item bruto da base); [] = todos */
-  tipoItem: string[]
+  /** Tipo de Item (grupo_item bruto da base); [] = todos (reservado p/ uso futuro) */
+  tipoItem?: string[]
 }
 
 export const EMPTY_PEDIDOS_ABERTOS_FILTRO_LOCAL: PedidosAbertosFiltroLocal = {

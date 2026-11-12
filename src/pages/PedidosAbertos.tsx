@@ -288,13 +288,13 @@ export default function PedidosAbertos() {
   }, [statusLinhaFilter])
 
   const [filters, setFilters] = useState<PedidosAbertosFilters>(() => {
-    // Categoria (Grupo do Item) tem persistência própria em sessionStorage
-    // (helpers PedidosAbertosFiltrosLocal); [] = todas as categorias.
-    let categoriaSalva: string[] = []
+    // Grupo do Item tem persistência própria em sessionStorage
+    // (helpers PedidosAbertosFiltrosLocal); [] = todos os grupos.
+    let grupoItemSalvo: string[] = []
     try {
-      categoriaSalva = loadPedidosAbertosFiltrosFromSession().grupoItem || []
+      grupoItemSalvo = loadPedidosAbertosFiltrosFromSession().grupoItem || []
     } catch {
-      categoriaSalva = []
+      grupoItemSalvo = []
     }
     try {
       const raw = sessionStorage.getItem('paineis_vendas_filters')
@@ -318,7 +318,7 @@ export default function PedidosAbertos() {
           tipoCliente: savedTipoCliente,
           statusCadastro: savedStatusCadastro,
           tipoPn: savedTipoPn,
-          categoria: categoriaSalva,
+          grupoItem: grupoItemSalvo,
         }
       }
     } catch {
@@ -326,7 +326,7 @@ export default function PedidosAbertos() {
     }
     return {
       ...EMPTY_PEDIDOS_ABERTOS_FILTERS,
-      categoria: categoriaSalva,
+      grupoItem: grupoItemSalvo,
     }
   })
 
@@ -351,6 +351,7 @@ export default function PedidosAbertos() {
     statusCadastro?: string[]
     tipoPn?: string[]
     categoria?: string[]
+    grupoItem?: string[]
   }>({
     canais: [],
     canaisClientes: [],
@@ -359,6 +360,7 @@ export default function PedidosAbertos() {
     statusCadastro: [],
     tipoPn: [],
     categoria: [],
+    grupoItem: [],
   })
 
   const [statsLoading, setStatsLoading] = useState(false)
@@ -720,6 +722,10 @@ export default function PedidosAbertos() {
             statsPedidos.filterOptions.categoria && statsPedidos.filterOptions.categoria.length > 0
               ? statsPedidos.filterOptions.categoria
               : prev.categoria,
+          grupoItem:
+            statsPedidos.filterOptions.grupoItem && statsPedidos.filterOptions.grupoItem.length > 0
+              ? statsPedidos.filterOptions.grupoItem
+              : prev.grupoItem,
         }))
         if (
           Array.isArray(statsPedidos.filterOptions.tipoCliente) &&
@@ -1008,10 +1014,10 @@ export default function PedidosAbertos() {
     } catch {
       // ignora se sessionStorage indisponível
     }
-    // Categoria (Grupo do Item) tem persistência própria em sessionStorage
-    // (helpers PedidosAbertosFiltrosLocal); [] = todas as categorias.
+    // Grupo do Item tem persistência própria em sessionStorage
+    // (helpers PedidosAbertosFiltrosLocal); [] = todos os grupos.
     try {
-      savePedidosAbertosFiltrosToSession({ grupoItem: newFilters.categoria || [] })
+      savePedidosAbertosFiltrosToSession({ grupoItem: newFilters.grupoItem || [] })
     } catch {
       // ignora se sessionStorage indisponível
     }
@@ -1037,7 +1043,7 @@ export default function PedidosAbertos() {
       // ignora se sessionStorage indisponível
     }
     try {
-      savePedidosAbertosFiltrosToSession({ grupoItem: applied.categoria || [] })
+      savePedidosAbertosFiltrosToSession({ grupoItem: applied.grupoItem || [] })
     } catch {
       // ignora se sessionStorage indisponível
     }

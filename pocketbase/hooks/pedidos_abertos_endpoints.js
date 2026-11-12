@@ -263,7 +263,20 @@ routerAdd(
     const giNorm = giFilter.map((g) => String(g).trim()).filter((g) => g !== '')
     if (giNorm.length > 0) {
       const giSql = giNorm.map((g) => "'" + sqlEsc(g) + "'").join(',')
-      whereClauses.push('grupo_item_derivado IN (' + giSql + ')')
+      // Fallback p/ registros antigos: quando grupo_item_derivado está vazio,
+      // deriva na hora a partir do grupo_item (mesma regra do import).
+      whereClauses.push(
+        "((COALESCE(grupo_item_derivado, '') != '' AND grupo_item_derivado IN (" +
+          giSql +
+          ")) OR (COALESCE(grupo_item_derivado, '') = '' AND CASE " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%TINTA%' THEN 'Tintas' " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%ACESSOR%' THEN 'Acessórios' " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%PECA%' OR UPPER(COALESCE(grupo_item, '')) LIKE '%PEÇA%' THEN 'Peças' " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%EQUIP%' THEN 'Equipamentos' " +
+          "ELSE 'Outros' END IN (" +
+          giSql +
+          ')))',
+      )
     }
 
     // Filtro por Tipo de Cliente
@@ -849,7 +862,20 @@ routerAdd(
     const giNormStats = giFilterStats.map((g) => String(g).trim()).filter((g) => g !== '')
     if (giNormStats.length > 0) {
       const giSql = giNormStats.map((g) => "'" + sqlEsc(g) + "'").join(',')
-      paWhereClauses.push('grupo_item_derivado IN (' + giSql + ')')
+      // Fallback p/ registros antigos: quando grupo_item_derivado está vazio,
+      // deriva na hora a partir do grupo_item (mesma regra do import).
+      paWhereClauses.push(
+        "((COALESCE(grupo_item_derivado, '') != '' AND grupo_item_derivado IN (" +
+          giSql +
+          ")) OR (COALESCE(grupo_item_derivado, '') = '' AND CASE " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%TINTA%' THEN 'Tintas' " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%ACESSOR%' THEN 'Acessórios' " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%PECA%' OR UPPER(COALESCE(grupo_item, '')) LIKE '%PEÇA%' THEN 'Peças' " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%EQUIP%' THEN 'Equipamentos' " +
+          "ELSE 'Outros' END IN (" +
+          giSql +
+          ')))',
+      )
     }
 
     // Filtro por Tipo de Cliente

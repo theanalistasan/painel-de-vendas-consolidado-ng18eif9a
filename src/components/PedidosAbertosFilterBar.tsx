@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { CanalOption, CanalClienteOption } from '@/types/sales'
 import { DEFAULT_GRUPOS_ITEM } from '@/lib/filter-persistence'
+import { GRUPO_ITEM_FILTER_OPTIONS } from '@/lib/grupo-categoria'
 import { cn } from '@/lib/utils'
 
 export interface PedidosAbertosFilters {
