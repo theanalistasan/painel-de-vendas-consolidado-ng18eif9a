@@ -440,5 +440,6 @@ export interface PedidosAbertosStatsResult {
     tipoCliente?: string[]
     statusCadastro?: string[]
     tipoPn?: string[]
+    categoria?: string[]
   }
 }

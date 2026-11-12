@@ -48,6 +48,10 @@ import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/hooks/use-toast'
 import type { SortDir } from '@/lib/sort'
 import { cn } from '@/lib/utils'
+import {
+  loadPedidosAbertosFiltrosFromSession,
+  savePedidosAbertosFiltrosToSession,
+} from '@/lib/filter-persistence'
 
 const PAGE_SIZE = 25
 
@@ -259,6 +263,14 @@ export default function PedidosAbertos() {
   }, [statusLinhaFilter])
 
   const [filters, setFilters] = useState<PedidosAbertosFilters>(() => {
+    // Categoria (Grupo do Item) tem persistência própria em sessionStorage
+    // (helpers PedidosAbertosFiltrosLocal); [] = todas as categorias.
+    let categoriaSalva: string[] = []
+    try {
+      categoriaSalva = loadPedidosAbertosFiltrosFromSession().grupoItem || []
+    } catch {
+      categoriaSalva = []
+    }
     try {
       const raw = sessionStorage.getItem('paineis_vendas_filters')
       if (raw) {
@@ -281,6 +293,7 @@ export default function PedidosAbertos() {
           tipoCliente: savedTipoCliente,
           statusCadastro: savedStatusCadastro,
           tipoPn: savedTipoPn,
+          categoria: categoriaSalva,
         }
       }
     } catch {
@@ -288,6 +301,7 @@ export default function PedidosAbertos() {
     }
     return {
       ...EMPTY_PEDIDOS_ABERTOS_FILTERS,
+      categoria: categoriaSalva,
     }
   })
 
@@ -311,6 +325,7 @@ export default function PedidosAbertos() {
     tipoCliente?: string[]
     statusCadastro?: string[]
     tipoPn?: string[]
+    categoria?: string[]
   }>({
     canais: [],
     canaisClientes: [],
@@ -318,6 +333,7 @@ export default function PedidosAbertos() {
     tipoCliente: [],
     statusCadastro: [],
     tipoPn: [],
+    categoria: [],
   })
 
   const [statsLoading, setStatsLoading] = useState(false)
@@ -675,6 +691,10 @@ export default function PedidosAbertos() {
             statsPedidos.filterOptions.tipoPn && statsPedidos.filterOptions.tipoPn.length > 0
               ? statsPedidos.filterOptions.tipoPn
               : prev.tipoPn,
+          categoria:
+            statsPedidos.filterOptions.categoria && statsPedidos.filterOptions.categoria.length > 0
+              ? statsPedidos.filterOptions.categoria
+              : prev.categoria,
         }))
         if (
           Array.isArray(statsPedidos.filterOptions.tipoCliente) &&
@@ -963,11 +983,19 @@ export default function PedidosAbertos() {
     } catch {
       // ignora se sessionStorage indisponível
     }
+    // Categoria (Grupo do Item) tem persistência própria em sessionStorage
+    // (helpers PedidosAbertosFiltrosLocal); [] = todas as categorias.
+    try {
+      savePedidosAbertosFiltrosToSession({ grupoItem: newFilters.categoria || [] })
+    } catch {
+      // ignora se sessionStorage indisponível
+    }
   }
 
   const handleApplyFilters = (applied: PedidosAbertosFilters) => {
     setPage(1)
-    // Garante persistência da seleção ao aplicar
+    // Garante persistência da seleção ao aplicar (tipoCliente/statusCadastro/
+    // tipoPn no sessionStorage compartilhado; categoria nos helpers próprios).
     try {
       const raw = sessionStorage.getItem('paineis_vendas_filters')
       const current = raw ? JSON.parse(raw) : {}
@@ -980,6 +1008,11 @@ export default function PedidosAbertos() {
           tipoPn: applied.tipoPn || [],
         }),
       )
+    } catch {
+      // ignora se sessionStorage indisponível
+    }
+    try {
+      savePedidosAbertosFiltrosToSession({ grupoItem: applied.categoria || [] })
     } catch {
       // ignora se sessionStorage indisponível
     }
@@ -1648,6 +1681,7 @@ export default function PedidosAbertos() {
         setFilters={handleFiltersChange}
         options={{
           ...filterOptions,
+          categoria: filterOptions.categoria || [],
           tipoCliente:
             tipoClienteOptions.length > 0 ? tipoClienteOptions : filterOptions.tipoCliente || [],
           isLoadingTipoCliente: loadingTipoClienteOptions,

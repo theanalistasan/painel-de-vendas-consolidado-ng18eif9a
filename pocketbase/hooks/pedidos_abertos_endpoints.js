@@ -237,10 +237,21 @@ routerAdd(
       whereClauses.push('substr(data_pedido, 6, 2) IN (' + mesesSql + ')')
     }
 
-    // 3. Filtro por grupo do item
-    if (Array.isArray(f.grupoItem) && f.grupoItem.length > 0) {
-      const gruposSql = f.grupoItem.map((g) => "'" + sqlEsc(g) + "'").join(',')
-      whereClauses.push('grupo_item IN (' + gruposSql + ')')
+    // 3. Filtro por grupo do item (Categoria) — aceita array ou string "A,B,C"
+    const grupoItemNorm = Array.isArray(f.grupoItem)
+      ? f.grupoItem
+      : f.grupoItem
+        ? String(f.grupoItem).split(',')
+        : []
+    if (grupoItemNorm.length > 0) {
+      const gruposSql = grupoItemNorm
+        .map((g) => String(g).trim())
+        .filter((g) => g !== '')
+        .map((g) => "'" + sqlEsc(g) + "'")
+        .join(',')
+      if (gruposSql) {
+        whereClauses.push('grupo_item IN (' + gruposSql + ')')
+      }
     }
 
     // Filtro por Tipo de Cliente
@@ -798,11 +809,22 @@ routerAdd(
       vendasWhereClauses.push('CAST(mes AS TEXT) IN (' + f.mes.join(',') + ')')
     }
 
-    // 3. Grupo de item
-    if (Array.isArray(f.grupoItem) && f.grupoItem.length > 0) {
-      const gruposSql = f.grupoItem.map((g) => "'" + sqlEsc(g) + "'").join(',')
-      paWhereClauses.push('grupo_item IN (' + gruposSql + ')')
-      vendasWhereClauses.push('grupo_item IN (' + gruposSql + ')')
+    // 3. Grupo de item (Categoria) — aceita array ou string "A,B,C"
+    const grupoItemNormStats = Array.isArray(f.grupoItem)
+      ? f.grupoItem
+      : f.grupoItem
+        ? String(f.grupoItem).split(',')
+        : []
+    if (grupoItemNormStats.length > 0) {
+      const gruposSql = grupoItemNormStats
+        .map((g) => String(g).trim())
+        .filter((g) => g !== '')
+        .map((g) => "'" + sqlEsc(g) + "'")
+        .join(',')
+      if (gruposSql) {
+        paWhereClauses.push('grupo_item IN (' + gruposSql + ')')
+        vendasWhereClauses.push('grupo_item IN (' + gruposSql + ')')
+      }
     }
 
     // Filtro por Tipo de Cliente
@@ -1189,6 +1211,25 @@ routerAdd(
       console.warn('pedidos_abertos stats: tipos_cliente options err:', tcErr)
     }
 
+    // Opções de Categoria (Grupo do Item) distintas da própria base de pedidos
+    let categoriaOptions = []
+    try {
+      const catRows = arrayOf(new DynamicModel({ cat: '' }))
+      $app
+        .db()
+        .newQuery(
+          "SELECT DISTINCT grupo_item AS cat FROM pedidos_abertos WHERE grupo_item IS NOT NULL AND TRIM(grupo_item) != ''",
+        )
+        .all(catRows)
+      for (let i = 0; i < catRows.length; i++) {
+        const val = (catRows[i].cat || '').trim()
+        if (val) categoriaOptions.push(val)
+      }
+      categoriaOptions.sort((a, b) => a.localeCompare(b))
+    } catch (catErr) {
+      console.warn('pedidos_abertos stats: categoria options err:', catErr)
+    }
+
     const statsPayload = {
       kpis: {
         valorTotalAberto,
@@ -1204,6 +1245,7 @@ routerAdd(
         tipoCliente: tipoClienteOptions,
         statusCadastro: statusCadastroOptions,
         tipoPn: tipoPnOptions,
+        categoria: categoriaOptions,
       },
     }
 

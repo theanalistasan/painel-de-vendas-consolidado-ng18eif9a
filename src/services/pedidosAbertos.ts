@@ -37,10 +37,24 @@ export async function fetchPedidosAbertosList(params?: {
   filters?: Record<string, unknown>
   signal?: AbortSignal
 }): Promise<PedidosAbertosListResult> {
+  // Mapeia o filtro local "categoria" (Grupo do Item, mesmo critério dos Filtros
+  // Globais) para o parâmetro "grupoItem" esperado pelo endpoint. Vazio [] =
+  // sem filtro (considera todas as categorias).
+  let payload: typeof params = params
+  const listFlt = params?.filters as { categoria?: unknown; grupoItem?: unknown } | undefined
+  if (
+    listFlt &&
+    !listFlt.grupoItem &&
+    Array.isArray(listFlt.categoria) &&
+    listFlt.categoria.length > 0
+  ) {
+    payload = { ...params, filters: { ...listFlt, grupoItem: listFlt.categoria } }
+  }
+
   const run = () =>
     pb.send<PedidosAbertosListResult>('/backend/v1/pedidos-abertos/list', {
       method: 'POST',
-      body: params || {},
+      body: payload || {},
       signal: params?.signal,
     })
 
@@ -66,10 +80,18 @@ export async function fetchPedidosAbertosStats(
   filters?: Record<string, unknown>,
   options?: { signal?: AbortSignal },
 ): Promise<PedidosAbertosStatsResult> {
+  // Mesmo mapeamento da listagem: "categoria" (Grupo do Item) vira "grupoItem"
+  // no endpoint; vazio [] = sem filtro (todas as categorias).
+  let payloadFilters: Record<string, unknown> = filters || {}
+  const statsFlt = payloadFilters as { categoria?: unknown; grupoItem?: unknown }
+  if (!statsFlt.grupoItem && Array.isArray(statsFlt.categoria) && statsFlt.categoria.length > 0) {
+    payloadFilters = { ...statsFlt, grupoItem: statsFlt.categoria }
+  }
+
   const run = () =>
     pb.send<PedidosAbertosStatsResult>('/backend/v1/pedidos-abertos/stats', {
       method: 'POST',
-      body: { filters: filters || {} },
+      body: { filters: payloadFilters },
       signal: options?.signal,
     })
 
