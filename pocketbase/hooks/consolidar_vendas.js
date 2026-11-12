@@ -6,9 +6,9 @@
 // FONTE ÚNICA (NetSales_v4): consolida a coleção `vendas` a partir de
 // `netsales` (staging da carga NetSales_v4), com grupo_item da Produtos
 // (join por codigo_item), tipos de cliente (join codigo_pn = codigo_cliente)
-// e vendedor via vendedor_revenda. Não existe mais join RacNew ↔ NetSales.
+// e vendedor via vendedor_revenda.
 //
-// Marcadores: tem_racnew = 0 (RacNew deixou de existir); tem_netsales = 1.
+// Marcador: tem_netsales = 1.
 //
 // ARQUITETURA RESILIENTE COM EXECUÇÃO SEGURA E PROGRESSO PERSISTIDO:
 // 1. Tabela vendas_staging:
@@ -70,15 +70,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       $app
         .db()
         .newQuery(
-          'CREATE INDEX IF NOT EXISTS idx_netsales_join_racnew ON netsales (chave_documento, serial, docdate, codigo_cliente, codigo_item);',
-        )
-        .execute()
-    } catch (_) {}
-    try {
-      $app
-        .db()
-        .newQuery(
-          'CREATE INDEX IF NOT EXISTS idx_racnew_join_keys ON racnew (numero_sap, numero_nfe, data_lancamento, codigo_cliente, codigo_item);',
+          'CREATE INDEX IF NOT EXISTS idx_netsales_join_keys ON netsales (chave_documento, serial, docdate, codigo_cliente, codigo_item);',
         )
         .execute()
     } catch (_) {}
@@ -171,7 +163,6 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
         grupo_item TEXT,
         vendedor_cliente TEXT,
         origem TEXT,
-        tem_racnew INTEGER,
         tem_netsales INTEGER,
         status_cadastro TEXT,
         tipo_pn TEXT,
@@ -310,18 +301,19 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
     // Limpa staging para nova consolidação (vendas original fica intacta!)
     $app.db().newQuery('DELETE FROM vendas_staging').execute()
 
-    // Contagem de NetSales_v4 elegível (fonte única — não existe mais RacNew)
-    const totalRacnewRows = arrayOf(new DynamicModel({ total: '' }))
+    // Contagem de NetSales_v4 elegível (fonte única)
+    const totalNetsalesRows = arrayOf(new DynamicModel({ total: '' }))
     $app
       .db()
       .newQuery(
         "SELECT COUNT(*) AS total FROM netsales WHERE UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS'",
       )
-      .all(totalRacnewRows)
+      .all(totalNetsalesRows)
 
-    const totalRegistrosRacnew = totalRacnewRows.length > 0 ? toInt(totalRacnewRows[0].total) : 0
+    const totalRegistrosNetsales =
+      totalNetsalesRows.length > 0 ? toInt(totalNetsalesRows[0].total) : 0
 
-    if (totalRegistrosRacnew === 0) {
+    if (totalRegistrosNetsales === 0) {
       setStatus({
         status: 'completed',
         etapa: 'sem_registros',
@@ -344,7 +336,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       })
     }
 
-    const totalBatches = Math.ceil(totalRegistrosRacnew / BATCH_SIZE)
+    const totalBatches = Math.ceil(totalRegistrosNetsales / BATCH_SIZE)
 
     setStatus({
       status: 'in_progress',
@@ -352,7 +344,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       lote_atual: 0,
       total_lotes: totalBatches,
       registros_processados: 0,
-      total_registros: totalRegistrosRacnew,
+      total_registros: totalRegistrosNetsales,
       mensagem:
         'Iniciando consolidação em ' +
         totalBatches +
@@ -370,7 +362,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
       started: true,
       total_batches: totalBatches,
       batch_size: BATCH_SIZE,
-      total_registros: totalRegistrosRacnew,
+      total_registros: totalRegistrosNetsales,
       data_carga: nowIso,
       status: getStatus(),
       message: 'Consolidação iniciada com sucesso. Acompanhando progresso...',
@@ -713,7 +705,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
             numero_documento_netsales, preco_unitario, total_nf_sem_frete,
             total_nf_novo, valor_liquido, custo_total, classificacao,
             vendedor_revenda, grupo_item, vendedor_cliente, origem,
-            tem_racnew, tem_netsales,
+            tem_netsales,
             status_cadastro, tipo_pn, tipo_cliente,
             data_carga, created, updated
           )
@@ -729,7 +721,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
             numero_documento_netsales, preco_unitario, total_nf_sem_frete,
             total_nf_novo, valor_liquido, custo_total, classificacao,
             vendedor_revenda, grupo_item, vendedor_cliente, origem,
-            tem_racnew, tem_netsales,
+            tem_netsales,
             status_cadastro, tipo_pn, tipo_cliente,
             data_carga, created, updated
           FROM vendas_staging
@@ -851,7 +843,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
       "  COALESCE(NULLIF(p.grupo_item, ''), NULLIF(n.itms_grp_nam, ''), 'Não Categorizado') AS grupo_item, " +
       "  (COALESCE(NULLIF(TRIM(n.revenda), ''), n.nome_cliente) || ' > ' || n.nome_cliente) AS vendedor_cliente, " +
       "  'Consolidado' AS origem, " +
-      '  0 AS tem_racnew, 1 AS tem_netsales, ' +
+      '  1 AS tem_netsales, ' +
       "  COALESCE(NULLIF(tc.status_cadastro, ''), NULLIF(n.status_cadastro, ''), '') AS status_cadastro, " +
       "  COALESCE(NULLIF(tc.tipo_pn, ''), NULLIF(n.tipo_pn, ''), '') AS tipo_pn, " +
       "  COALESCE(NULLIF(tc.tipo_cliente, ''), NULLIF(n.tipo_cliente, ''), '') AS tipo_cliente " +
@@ -916,7 +908,6 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
           grupo_item: '',
           vendedor_cliente: '',
           origem: '',
-          tem_racnew: '',
           tem_netsales: '',
           status_cadastro: '',
           tipo_pn: '',
@@ -1058,7 +1049,6 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
           record.set('origem', 'Consolidado')
           record.set('data_carga', nowIso)
           // Preserva proveniência do cálculo de consolidação
-          record.set('tem_racnew', toInt(row.tem_racnew) === 1)
           record.set('tem_netsales', toInt(row.tem_netsales) === 1)
           record.set('status_cadastro', (row.status_cadastro || '').toString().trim())
           record.set('tipo_pn', (row.tipo_pn || '').toString().trim())
@@ -1082,7 +1072,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
                 '  numero_documento_netsales, preco_unitario, total_nf_sem_frete, ' +
                 '  total_nf_novo, valor_liquido, custo_total, classificacao, ' +
                 '  vendedor_revenda, grupo_item, vendedor_cliente, origem, ' +
-                '  tem_racnew, tem_netsales, ' +
+                '  tem_netsales, ' +
                 '  status_cadastro, tipo_pn, tipo_cliente, ' +
                 '  data_carga, created, updated' +
                 ') VALUES (' +
@@ -1097,7 +1087,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
                 '  {:numero_documento_netsales}, {:preco_unitario}, {:total_nf_sem_frete}, ' +
                 '  {:total_nf_novo}, {:valor_liquido}, {:custo_total}, {:classificacao}, ' +
                 '  {:vendedor_revenda}, {:grupo_item}, {:vendedor_cliente}, {:origem}, ' +
-                '  {:tem_racnew}, {:tem_netsales}, ' +
+                '  {:tem_netsales}, ' +
                 '  {:status_cadastro}, {:tipo_pn}, {:tipo_cliente}, ' +
                 '  {:now}, {:now}, {:now}' +
                 ')',
@@ -1150,7 +1140,6 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
               grupo_item: row.grupo_item || 'Não Categorizado',
               vendedor_cliente: row.vendedor_cliente || '',
               origem: 'Consolidado',
-              tem_racnew: toInt(row.tem_racnew),
               tem_netsales: toInt(row.tem_netsales),
               status_cadastro: row.status_cadastro || '',
               tipo_pn: row.tipo_pn || '',

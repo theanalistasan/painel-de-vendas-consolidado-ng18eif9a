@@ -154,9 +154,9 @@ export default function Admin() {
               </h2>
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-2xl">
                 Esta operação remove <strong>todos os registros</strong> das coleções{' '}
-                <strong>Produtos</strong>, <strong>RacNew</strong>, <strong>NetSales</strong> e{' '}
-                <strong>Vendas</strong> consolidadas, permitindo subir dados limpos do zero. A ação
-                é <strong>irreversível</strong> e exige confirmação em duas etapas.
+                <strong>Produtos</strong>, <strong>NetSales</strong> e <strong>Vendas</strong>{' '}
+                consolidadas, permitindo subir dados limpos do zero. A ação é{' '}
+                <strong>irreversível</strong> e exige confirmação em duas etapas.
               </p>
             </div>
           </div>

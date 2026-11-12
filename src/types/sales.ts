@@ -9,42 +9,6 @@ export interface Produto extends RecordModel {
   data_carga: string
 }
 
-export interface RacNew extends RecordModel {
-  tipo_documento: string
-  nf_entrega_futura: string
-  numero_sap: string
-  numero_nfe: string
-  data_lancamento: string
-  ultima_data_vencimento: string
-  docto_origem_destino: string
-  data_origem_destino: string
-  condicao_pagamento: string
-  codigo_cliente: string
-  nome_cliente: string
-  numero_linha: number
-  codigo_item: string
-  descricao_item: string
-  quantidade: number
-  qty_kg_lt: number
-  preco_item: number
-  desconto_linha: number
-  icms: number
-  pis: number
-  cofins: number
-  ipi: number
-  icms_partilha: number
-  total_linha: number
-  utilizacao: string
-  nome_vendedor: string
-  custo_item: number
-  nome_filial: string
-  conta: string
-  estado: string
-  cidade: string
-  origem: string
-  data_carga: string
-}
-
 export interface NetSales extends RecordModel {
   tipo: string
   codigo_cliente: string
@@ -162,7 +126,7 @@ export interface VendaConsolidada extends RecordModel {
   tipo_cliente?: string
   jp_class?: string
   origem: string
-  tem_racnew?: boolean
+
   tem_netsales?: boolean
   data_carga: string
   codigo_cliente_revenda?: string

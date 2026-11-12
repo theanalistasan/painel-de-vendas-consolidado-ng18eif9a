@@ -5,7 +5,7 @@
 //
 // Regras de negócio preservadas:
 // (i) Tendência de Vendas — Equipamentos e Acumulado — Insumos trazem SEMPRE toda a base histórica (2015+),
-//     ignorando filtros de período, respeitando apenas a seleção de base (ambos/racnew/netsales).
+//     ignorando filtros de período, respeitando apenas a seleção de base (netsales).
 // (ii) Evolução de Vendas por Ano traz todos os anos independente dos filtros, respeitando apenas a seleção de base.
 // (iii) Clientes Ativos — Equipamentos e Insumos com comparativo do ano anterior.
 // (iv) Filtros de período/tipo/grupo/utilização funcionam sobre os resumos.
@@ -472,14 +472,8 @@ var __dashboardStatsHandler = (e) => {
       }
     }
 
-    // Filtro de base
-    if (f.base === 'racnew') {
-      const clause = '(tem_netsales = 0 OR tem_netsales IS NULL)'
-      sqlParts.push(clause)
-      sqlDimParts.push(clause)
-      sqlHistParts.push(clause)
-      sqlVendasParts.push(clause)
-    } else if (f.base === 'netsales') {
+    // Filtro de base (base única NetSales_v4 — 'racnew' não existe mais)
+    if (f.base === 'netsales') {
       const clause = 'tem_netsales = 1'
       sqlParts.push(clause)
       sqlDimParts.push(clause)
@@ -1561,7 +1555,7 @@ var __dashboardStatsHandler = (e) => {
     // As opções de filtro NÃO dependem do período filtrado (vêm do resumo
     // pré-calculado, sem recorte de data), então são cacheadas por TIPO de
     // opção em globalThis.__skipFilterOptionsCache com TTL de 30 minutos.
-    // Os hooks de carga (import_racnew.js, import_netsales.js,
+    // Os hooks de carga (import_netsales.js,
     // consolidar_vendas.js) limpam este cache ao concluir, garantindo frescor.
     const FILTER_OPTIONS_TTL_MS = 1800000
     const getFilterOptionsCache = () => {

@@ -392,7 +392,6 @@ export interface ResetBasesResult {
   message: string
   counts: {
     produtos: number
-    racnew: number
     netsales: number
     vendas: number
   }

@@ -2160,10 +2160,10 @@ export default function Importar() {
           onImported={(r) => handleImported('produtos', r)}
         />
 
-        {/* Card 2: NetSales_v4 — base única de vendas (substitui RacNew e NetSales) */}
+        {/* Card 2: NetSales_v4 — base única de vendas */}
         <BaseImportCard
           title="NetSales_v4 — Base Única de Vendas"
-          subtitle="Zeramento + carga única. Substitui definitivamente RacNew e NetSales."
+          subtitle="Zeramento + carga única. Base verídica de vendas."
           badgeLabel="NetSales_v4"
           badgeColor="bg-teal-600"
           lastImportDate={ultimaCargaNetsalesV4}

@@ -452,7 +452,7 @@ export function ComparativoCanaisMesCard({ data, loading }: ComparativoCanaisMes
         <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
           <Info className="w-4 h-4 text-[#0B6E99] shrink-0" />
           <span>
-            Os dados comparativos refletem as vendas consolidadas (RacNew + NetSales) atribuídas aos
+            Os dados comparativos refletem as vendas consolidadas (NetSales v4) atribuídas aos
             canais oficiais de faturamento, respeitando os filtros ativos de canais, clientes e
             vendedores.
           </span>

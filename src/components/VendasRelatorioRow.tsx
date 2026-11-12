@@ -11,7 +11,7 @@ import {
   TITULO_CUSTO_TOTAL,
 } from '@/lib/valor-titulos'
 import { Badge } from '@/components/ui/badge'
-import { Database, FileText } from 'lucide-react'
+import { Database } from 'lucide-react'
 import { ColumnDef, DEFAULT_COLUMN_WIDTHS } from './VendasRelatorioTable'
 
 export interface VendasRelatorioRowProps {
@@ -646,14 +646,7 @@ function VendasRelatorioRowComponent({
           case 'origem':
             return (
               <td key={col.key} style={cellStyle} className="py-2 px-3 border-r border-slate-100">
-                {item.tem_netsales && item.tem_racnew ? (
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-0.5 inline-flex items-center gap-1"
-                  >
-                    Consolidado
-                  </Badge>
-                ) : item.tem_netsales ? (
+                {item.tem_netsales ? (
                   <Badge
                     variant="outline"
                     className="text-[10px] font-semibold bg-indigo-50/70 text-indigo-700 border-indigo-200/80 px-2 py-0.5 inline-flex items-center gap-1"
@@ -662,13 +655,7 @@ function VendasRelatorioRowComponent({
                     <span>NetSales</span>
                   </Badge>
                 ) : (
-                  <Badge
-                    variant="outline"
-                    className="text-[10px] font-semibold bg-cyan-100 text-cyan-800 border-cyan-300 px-2 py-0.5 inline-flex items-center gap-1"
-                  >
-                    <FileText className="w-3 h-3 text-cyan-700" />
-                    <span>RacNew</span>
-                  </Badge>
+                  <span className="text-slate-400 text-xs">-</span>
                 )}
               </td>
             )

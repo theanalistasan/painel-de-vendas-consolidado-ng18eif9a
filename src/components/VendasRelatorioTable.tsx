@@ -13,7 +13,6 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Database,
-  FileText,
   Download,
   RefreshCw,
   Loader2,
@@ -185,7 +184,7 @@ export interface VendasRelatorioTableProps {
   loading: boolean
   totalItems: number
   totalNetsales?: number
-  totalRacnew?: number
+
   page: number
   pageSize: number
   totalPages: number
@@ -215,7 +214,7 @@ export function VendasRelatorioTable({
   loading,
   totalItems,
   totalNetsales,
-  totalRacnew,
+
   page,
   pageSize,
   totalPages,
@@ -928,26 +927,15 @@ export function VendasRelatorioTable({
 
         {/* Lado direito: Resumo de origens ou ações extras */}
         <div className="flex items-center flex-wrap gap-2">
-          {showOriginSummary && totalNetsales !== undefined && totalRacnew !== undefined && (
-            <>
-              <span className="text-slate-500 font-medium mr-1">Resumo por origem:</span>
-              <Badge
-                variant="outline"
-                className="bg-indigo-50/80 text-indigo-700 border-indigo-200/80 px-2.5 py-1 text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs"
-              >
-                <span className="inline-block w-2 h-2 rounded-full bg-indigo-600" />
-                <Database className="w-3.5 h-3.5 text-indigo-600" />
-                <span>NetSales: {formatNumber(totalNetsales)}</span>
-              </Badge>
-              <Badge
-                variant="outline"
-                className="bg-cyan-100 text-cyan-800 border-cyan-300 px-2.5 py-1 text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs"
-              >
-                <span className="inline-block w-2 h-2 rounded-full bg-cyan-500" />
-                <FileText className="w-3.5 h-3.5 text-cyan-700" />
-                <span>RacNew: {formatNumber(totalRacnew)}</span>
-              </Badge>
-            </>
+          {showOriginSummary && totalNetsales !== undefined && (
+            <Badge
+              variant="outline"
+              className="bg-indigo-50/80 text-indigo-700 border-indigo-200/80 px-2.5 py-1 text-xs font-semibold inline-flex items-center gap-1.5 shadow-2xs"
+            >
+              <span className="inline-block w-2 h-2 rounded-full bg-indigo-600" />
+              <Database className="w-3.5 h-3.5 text-indigo-600" />
+              <span>NetSales: {formatNumber(totalNetsales)}</span>
+            </Badge>
           )}
 
           {onExport && (
