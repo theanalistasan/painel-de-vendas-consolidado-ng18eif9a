@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { MESES_PT_BR } from '@/lib/formatters'
+import { sortMesesPorNome } from '@/components/FilterBar'
 import { type CanaisFiltroLocal, EMPTY_CANAIS_FILTRO_LOCAL } from '@/lib/filter-persistence'
 import type { FilterState } from '@/types/sales'
 
@@ -58,6 +59,8 @@ interface CanaisFiltrosLocaisBarProps {
  * Barra de filtros LOCAIS da Visão Canais: Ano, Mês, Data (faixa), Nota Fiscal
  * e Pedido — no mesmo molde dos filtros locais do JP-Class (selects no topo).
  * Filtro preenchido sobrepõe o Filtro Global; vazio = segue o global.
+ * Anos e meses vêm SEMPRE da base ativa: sem fallback fixo de anos; meses em
+ * ordem alfabética (pt-BR) com "Todos" primeiro.
  */
 export function CanaisFiltrosLocaisBar({
   filtros,
@@ -66,13 +69,12 @@ export function CanaisFiltrosLocaisBar({
   anosDisponiveis,
   disabled,
 }: CanaisFiltrosLocaisBarProps) {
-  const anoAtualSistema = new Date().getFullYear()
-  const anos = useMemo(() => {
-    if (anosDisponiveis && anosDisponiveis.length > 0) {
-      return [...anosDisponiveis].sort((a, b) => b - a)
-    }
-    return [anoAtualSistema, anoAtualSistema - 1, anoAtualSistema - 2]
-  }, [anosDisponiveis, anoAtualSistema])
+  // Sem fallback hardcoded: com a base zerada o select de Ano fica só com
+  // "Global (do painel)" — opções refletem EXCLUSIVAMENTE a base ativa.
+  const anos = useMemo(
+    () => (anosDisponiveis ? [...anosDisponiveis].sort((a, b) => b - a) : []),
+    [anosDisponiveis],
+  )
 
   const handleField = (campo: keyof CanaisFiltroLocal, valor: string) => {
     onChange({ ...filtros, [campo]: valor })
@@ -132,11 +134,14 @@ export function CanaisFiltrosLocaisBar({
               className={selectClass}
             >
               <option value="">Todos (global)</option>
-              {MESES_PT_BR.map((nome, idx) => (
-                <option key={idx + 1} value={String(idx + 1)}>
-                  {nome}
-                </option>
-              ))}
+              {sortMesesPorNome(MESES_PT_BR.length).map((val) => {
+                const n = Number(val)
+                return (
+                  <option key={n} value={String(n)}>
+                    {MESES_PT_BR[n - 1]}
+                  </option>
+                )
+              })}
             </select>
           </label>
 

@@ -10,11 +10,7 @@ import {
   hasSavedFiltersInSession,
   buildDynamicInitialFilters,
 } from '@/lib/filter-persistence'
-import {
-  fetchTiposClienteOptions,
-  fetchTiposClienteMap,
-  buildTiposClienteStringMap,
-} from '@/services/tiposCliente'
+import { fetchTiposClienteMap, buildTiposClienteStringMap } from '@/services/tiposCliente'
 import { formatCurrency, formatCompactCurrency } from '@/lib/formatters'
 import {
   ResponsiveContainer,
@@ -83,7 +79,6 @@ export default function FiltrosGlobais() {
   // Último resultado bem-sucedido: usado como fallback quando a consulta falha
   // (ex.: timeout) — evita tela de erro e mantém as opções já conhecidas.
   const lastGoodOptionsRef = useRef<DashboardStatsResult | null>(null)
-  const [tipoClienteOptions, setTipoClienteOptions] = useState<string[]>([])
   const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
 
   const hadSavedFiltersAtMount = useRef(hasSavedFiltersInSession())
@@ -157,12 +152,11 @@ export default function FiltrosGlobais() {
 
   useEffect(() => {
     let mounted = true
-    Promise.all([fetchTiposClienteOptions(), fetchTiposClienteMap()])
-      .then(([opts, rawMap]) => {
+    // Mapa código PN -> nome do tipo (coleção de referência tipos_cliente):
+    // NÃO alimenta o select de Tipo de Cliente — apenas enriquece a exibição.
+    fetchTiposClienteMap()
+      .then((rawMap) => {
         if (!mounted) return
-        if (Array.isArray(opts) && opts.length > 0) {
-          setTipoClienteOptions(opts)
-        }
         if (rawMap && typeof rawMap === 'object') {
           const stringMap = buildTiposClienteStringMap(rawMap)
           setTiposClienteMap(stringMap)
@@ -175,6 +169,10 @@ export default function FiltrosGlobais() {
   }, [])
 
   const filterOptions = useMemo(() => {
+    // Opções SEMPRE da base ativa (resumo pré-calculado via dashboard/stats):
+    // base zerada = listas vazias. SEM fallback de coleção auxiliar — os únicos
+    // valores legítimos fora da base ativa são os de canais (coleção de
+    // referência que sobrevive ao zeramento, já vindos do backend).
     const baseOpts = optionsData?.filterOptions || {
       vendedorCliente: [],
       vendedor: [],
@@ -196,7 +194,8 @@ export default function FiltrosGlobais() {
         if (baseOpts.tipoCliente) {
           baseOpts.tipoCliente.forEach((tc) => tc && set.add(tc.trim()))
         }
-        tipoClienteOptions.forEach((tc) => tc && set.add(tc.trim()))
+        // Mapa de códigos -> tipo (tipos_cliente): apenas enriquece tipos que
+        // já existem nas opções derivadas da base ativa.
         Object.values(tiposClienteMap).forEach((tc) => tc && set.add(tc.trim()))
         return Array.from(set)
           .filter(Boolean)
@@ -204,7 +203,7 @@ export default function FiltrosGlobais() {
       })(),
       isLoadingTipoCliente: false,
     }
-  }, [optionsData, tipoClienteOptions, tiposClienteMap])
+  }, [optionsData, tiposClienteMap])
 
   // Gráfico "Faturamento por Tipo de Documento": DERIVA da seleção ativa do filtro
   // Tipo de documento. Com a seleção padrão ['NF'], mostra só a NF; quando o usuário

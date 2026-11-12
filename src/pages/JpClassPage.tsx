@@ -25,6 +25,7 @@ import {
   formatNumber,
   exportToCSV,
 } from '@/lib/formatters'
+import { sortMesesPorNome } from '@/components/FilterBar'
 import {
   loadFiltersFromSession,
   saveFiltersToSession,
@@ -89,12 +90,15 @@ export default function JpClassPage() {
     })
   }, [])
 
-  // Anos disponíveis no filtro local: janela dinâmica da base ativa
-  // (ano atual + 2 anteriores, ex.: 2024–2026).
-  const anoAtualSistema = hoje.getFullYear()
+  // Anos disponíveis no filtro local: janela dinâmica da BASE ATIVA (Filtros
+  // Globais), sem fallback hardcoded — base zerada = lista vazia e o select
+  // fica só com "Global (do painel)".
   const anosDisponiveis = useMemo(() => {
-    return [anoAtualSistema, anoAtualSistema - 1, anoAtualSistema - 2]
-  }, [anoAtualSistema])
+    const anos = filters.ano
+      .map((a) => parseInt(String(a), 10))
+      .filter((a) => !isNaN(a) && a > 2000)
+    return [...new Set(anos)].sort((a, b) => b - a)
+  }, [filters.ano])
 
   // Período de análise (ano/mês) EFETIVO:
   // 1º) Ano/Mês local do JP-Class, quando preenchidos;
@@ -121,7 +125,7 @@ export default function JpClassPage() {
         : (globalMes ?? hoje.getMonth() + 1)
 
     return { ano: anoEfetivo, mes: mesEfetivo }
-  }, [filters.ano, filters.mes, periodoLocal.ano, periodoLocal.mes, anoAtualSistema])
+  }, [filters.ano, filters.mes, periodoLocal.ano, periodoLocal.mes, hoje])
   const { ano, mes } = periodo
 
   // Ref de leitura síncrona do período efetivo para o fetch (evita refetch
@@ -458,11 +462,14 @@ export default function JpClassPage() {
               className="h-8 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 shadow-2xs focus:border-[#0B6E99] focus:outline-none focus:ring-1 focus:ring-[#0B6E99]/30"
             >
               <option value="">Todos (global)</option>
-              {MESES_PT_BR.map((nome, idx) => (
-                <option key={idx + 1} value={String(idx + 1)}>
-                  {nome}
-                </option>
-              ))}
+              {sortMesesPorNome(MESES_PT_BR.length).map((val) => {
+                const n = Number(val)
+                return (
+                  <option key={n} value={String(n)}>
+                    {MESES_PT_BR[n - 1]}
+                  </option>
+                )
+              })}
             </select>
           </label>
         </div>

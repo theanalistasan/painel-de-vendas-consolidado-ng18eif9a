@@ -1762,6 +1762,13 @@ var __dashboardStatsHandler = (e) => {
       return out
     })
 
+    // REGRAS DE OPÇÕES (decisão do usuário):
+    // - Cliente/Vendedor/Grupo/Estado/Utilização/Tipo Doc/Tipo Cliente: EXCLUSIVAMENTE
+    //   da base ativa (resumo pré-calculado da janela dinâmica) — a base zerada
+    //   devolve listas vazias.
+    // - Canal/Clientes do Canal/Inside (canais_clientes): coleção de referência que
+    //   SOBREVIVE ao zeramento (fonte única "Gestão de Canais de Vendas") — são as
+    //   opções legítimas desses filtros; o consolidado é derivado delas.
     const filterOptions = {
       vendedorCliente: cachedOptions('optVendedorCliente', () =>
         cleanFilterOptions(distinctSummaryCol('vendedor_cliente', 3000), true),

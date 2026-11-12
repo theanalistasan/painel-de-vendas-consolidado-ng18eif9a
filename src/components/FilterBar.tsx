@@ -69,14 +69,16 @@ interface FilterBarProps {
  * Ordem ALFABÉTICA dos nomes dos meses (pt-BR), em maiúsculas para o sort.
  * Meses inválidos (fora de 1–12) vão para o fim, ordenados por número.
  */
-export function sortMesesPorNome(meses: Array<number | string>): string[] {
-  return [...meses].sort((a, b) => {
-    const na = Number(a)
-    const nb = Number(b)
-    const va = na >= 1 && na <= 12 ? MESES_PT_BR[na - 1].toUpperCase() : `~${String(a)}`
-    const vb = nb >= 1 && nb <= 12 ? MESES_PT_BR[nb - 1].toUpperCase() : `~${String(b)}`
-    return va.localeCompare(vb, 'pt-BR')
-  })
+export function sortMesesPorNome(meses: Array<number | string>): Array<number | string> {
+  return [...meses]
+    .map((m) => String(m))
+    .sort((a, b) => {
+      const na = Number(a)
+      const nb = Number(b)
+      const va = na >= 1 && na <= 12 ? MESES_PT_BR[na - 1].toUpperCase() : `~${a}`
+      const vb = nb >= 1 && nb <= 12 ? MESES_PT_BR[nb - 1].toUpperCase() : `~${b}`
+      return va.localeCompare(vb, 'pt-BR')
+    })
 }
 
 // Reusable MultiSelect Dropdown with Roland DG Accent
