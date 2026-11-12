@@ -18,6 +18,7 @@ export interface PedidosAbertosFilters {
   statusCadastro?: string[]
   tipoPn?: string[]
   categoria?: string[]
+  grupoItem?: string[]
 }
 
 export const EMPTY_PEDIDOS_ABERTOS_FILTERS: PedidosAbertosFilters = {
@@ -30,6 +31,7 @@ export const EMPTY_PEDIDOS_ABERTOS_FILTERS: PedidosAbertosFilters = {
   statusCadastro: [],
   tipoPn: [],
   categoria: [],
+  grupoItem: [],
 }
 
 export interface PedidosAbertosFilterBarProps {
@@ -50,6 +52,7 @@ export interface PedidosAbertosFilterBarProps {
     onOpenTipoPn?: () => void
     categoria?: string[]
   }
+  showGrupoItemFilter?: boolean
   onApplyFilters?: (filters: PedidosAbertosFilters) => void
   isLoading?: boolean
   loadingMessage?: string
@@ -254,6 +257,7 @@ export default function PedidosAbertosFilterBar({
   filters,
   setFilters,
   options = {},
+  showGrupoItemFilter = true,
   onApplyFilters,
   isLoading = false,
   loadingMessage = 'Atualizando...',
@@ -278,6 +282,7 @@ export default function PedidosAbertosFilterBar({
       (filters.statusCadastro?.length || 0) +
       (filters.tipoPn?.length || 0) +
       (filters.categoria?.length || 0) +
+      (filters.grupoItem?.length || 0) +
       (filters.ehCanal && filters.ehCanal !== 'todos' ? 1 : 0)
     )
   }, [filters])
@@ -617,6 +622,24 @@ export default function PedidosAbertosFilterBar({
                 highlight={(localFilters.categoria || []).length > 0}
               />
             </div>
+
+            {/* Grupo do Item — categorias derivadas do grupo do item da base
+                (mesma derivação de src/lib/grupo-categoria.ts); vazio = todos */}
+            {showGrupoItemFilter && (
+              <div>
+                <Label className="text-[10px] font-bold text-slate-600 mb-1 block">
+                  Grupo do Item
+                </Label>
+                <MultiSelectDropdown
+                  label="Grupo do Item"
+                  options={[...GRUPO_ITEM_FILTER_OPTIONS]}
+                  selected={localFilters.grupoItem || []}
+                  onChange={(values) => setLocalFilters((prev) => ({ ...prev, grupoItem: values }))}
+                  placeholder="Todos os grupos"
+                  highlight={(localFilters.grupoItem || []).length > 0}
+                />
+              </div>
+            )}
           </div>
 
           {/* Filtros de Cadastro de Cliente (Status do Cadastro e Tipo de PN) */}

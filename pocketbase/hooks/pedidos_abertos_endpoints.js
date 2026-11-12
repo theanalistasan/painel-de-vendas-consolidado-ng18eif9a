@@ -237,14 +237,14 @@ routerAdd(
       whereClauses.push('substr(data_pedido, 6, 2) IN (' + mesesSql + ')')
     }
 
-    // 3. Filtro por grupo do item (Categoria) — aceita array ou string "A,B,C"
-    const grupoItemNorm = Array.isArray(f.grupoItem)
-      ? f.grupoItem
-      : f.grupoItem
-        ? String(f.grupoItem).split(',')
+    // 3. Filtro por Tipo de Item (grupo_item bruto) — aceita array ou string "A,B,C"
+    const tipoItemNorm = Array.isArray(f.tipoItem)
+      ? f.tipoItem
+      : f.tipoItem
+        ? String(f.tipoItem).split(',')
         : []
-    if (grupoItemNorm.length > 0) {
-      const gruposSql = grupoItemNorm
+    if (tipoItemNorm.length > 0) {
+      const gruposSql = tipoItemNorm
         .map((g) => String(g).trim())
         .filter((g) => g !== '')
         .map((g) => "'" + sqlEsc(g) + "'")
@@ -252,6 +252,18 @@ routerAdd(
       if (gruposSql) {
         whereClauses.push('grupo_item IN (' + gruposSql + ')')
       }
+    }
+
+    // 3b. Filtro por Grupo do Item (categoria DERIVADA de grupo_item; vazio = todos)
+    const giFilter = Array.isArray(f.grupoItem)
+      ? f.grupoItem
+      : f.grupoItem
+        ? String(f.grupoItem).split(',')
+        : []
+    const giNorm = giFilter.map((g) => String(g).trim()).filter((g) => g !== '')
+    if (giNorm.length > 0) {
+      const giSql = giNorm.map((g) => "'" + sqlEsc(g) + "'").join(',')
+      whereClauses.push('grupo_item_derivado IN (' + giSql + ')')
     }
 
     // Filtro por Tipo de Cliente
@@ -809,14 +821,14 @@ routerAdd(
       vendasWhereClauses.push('CAST(mes AS TEXT) IN (' + f.mes.join(',') + ')')
     }
 
-    // 3. Grupo de item (Categoria) — aceita array ou string "A,B,C"
-    const grupoItemNormStats = Array.isArray(f.grupoItem)
-      ? f.grupoItem
-      : f.grupoItem
-        ? String(f.grupoItem).split(',')
+    // 3. Tipo de Item (grupo_item bruto) — aceita array ou string "A,B,C"
+    const tipoItemNormStats = Array.isArray(f.tipoItem)
+      ? f.tipoItem
+      : f.tipoItem
+        ? String(f.tipoItem).split(',')
         : []
-    if (grupoItemNormStats.length > 0) {
-      const gruposSql = grupoItemNormStats
+    if (tipoItemNormStats.length > 0) {
+      const gruposSql = tipoItemNormStats
         .map((g) => String(g).trim())
         .filter((g) => g !== '')
         .map((g) => "'" + sqlEsc(g) + "'")
@@ -825,6 +837,19 @@ routerAdd(
         paWhereClauses.push('grupo_item IN (' + gruposSql + ')')
         vendasWhereClauses.push('grupo_item IN (' + gruposSql + ')')
       }
+    }
+
+    // 3b. Grupo do Item (categoria DERIVADA de grupo_item; vazio = todos).
+    // Só afeta pedidos_abertos (resumo_vendas_mensal não tem a coluna derivada).
+    const giFilterStats = Array.isArray(f.grupoItem)
+      ? f.grupoItem
+      : f.grupoItem
+        ? String(f.grupoItem).split(',')
+        : []
+    const giNormStats = giFilterStats.map((g) => String(g).trim()).filter((g) => g !== '')
+    if (giNormStats.length > 0) {
+      const giSql = giNormStats.map((g) => "'" + sqlEsc(g) + "'").join(',')
+      paWhereClauses.push('grupo_item_derivado IN (' + giSql + ')')
     }
 
     // Filtro por Tipo de Cliente

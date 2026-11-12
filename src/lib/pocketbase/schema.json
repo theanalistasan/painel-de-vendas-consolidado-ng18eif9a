@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-12T10:04:30.934Z",
+  "generatedAt": "2026-11-12T10:40:09.281Z",
   "collections": [
     {
       "name": "users",
@@ -1481,6 +1481,12 @@
         },
         {
           "name": "nome_vendedor",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "grupo_item_derivado",
           "type": "text",
           "required": false,
           "system": false

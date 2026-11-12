@@ -45,6 +45,23 @@ routerAdd(
     const now = new Date()
     const nowIso = now.toISOString()
 
+    // Derivação de Grupo do Item (mesma regra de src/lib/grupo-categoria.ts,
+    // replicada aqui por rodar no Go/PocketBase):
+    // TINTAS→Tintas, ACESSÓRIOS→Acessórios, PEÇAS→Peças, EQUIPAMENTOS→Equipamentos, demais→Outros.
+    const deriveGrupoItemCategoria = (raw) => {
+      const s = String(raw || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim()
+      if (!s) return 'Outros'
+      if (s.indexOf('TINTA') >= 0) return 'Tintas'
+      if (s.indexOf('ACESSOR') >= 0) return 'Acessórios'
+      if (s.indexOf('PECA') >= 0) return 'Peças'
+      if (s.indexOf('EQUIP') >= 0) return 'Equipamentos'
+      return 'Outros'
+    }
+
     let importados = 0
     let atualizados = 0
     let mesclados = 0
@@ -552,6 +569,7 @@ routerAdd(
         record.set('codigo_item', item.codigo_item)
         record.set('descricao_item', item.descricao_item)
         record.set('grupo_item', item.grupo_item)
+        record.set('grupo_item_derivado', deriveGrupoItemCategoria(String(item.grupo_item || '')))
         record.set('qtd_solicitada', item.qtd_solicitada)
         record.set('status_linha', item.status_linha)
         record.set('qtd_aberto', item.qtd_aberto)

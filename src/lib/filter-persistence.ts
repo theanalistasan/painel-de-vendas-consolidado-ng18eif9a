@@ -389,12 +389,15 @@ const PEDIDOS_ABERTOS_STORAGE_KEY = 'pedidos_abertos_filtros'
 
 /** Filtros locais de Pedidos em Aberto persistidos em sessionStorage */
 export interface PedidosAbertosFiltroLocal {
-  /** Categorias (Grupo do Item) selecionadas; [] = todas as categorias */
+  /** Grupos derivados (Tintas, Acessórios, Peças, Equipamentos, Outros); [] = todos */
   grupoItem: string[]
+  /** Tipo de Item (grupo_item bruto da base); [] = todos */
+  tipoItem: string[]
 }
 
 export const EMPTY_PEDIDOS_ABERTOS_FILTRO_LOCAL: PedidosAbertosFiltroLocal = {
   grupoItem: [],
+  tipoItem: [],
 }
 
 const normalizeFiltroArray = (val: unknown): string[] => {
@@ -418,6 +421,7 @@ export function loadPedidosAbertosFiltrosFromSession(): PedidosAbertosFiltroLoca
     const parsed = JSON.parse(raw) as Partial<PedidosAbertosFiltroLocal> | null
     return {
       grupoItem: normalizeFiltroArray(parsed?.grupoItem),
+      tipoItem: normalizeFiltroArray(parsed?.tipoItem),
     }
   } catch {
     return { ...EMPTY_PEDIDOS_ABERTOS_FILTRO_LOCAL }
@@ -427,6 +431,42 @@ export function loadPedidosAbertosFiltrosFromSession(): PedidosAbertosFiltroLoca
 export function clearPedidosAbertosFiltrosFromSession(): void {
   try {
     sessionStorage.removeItem(PEDIDOS_ABERTOS_STORAGE_KEY)
+  } catch {
+    // ignora
+  }
+}
+
+// ---------------------------------------------------------------------------
+// "Grupo do Item" de Pedidos em Aberto — helpers dedicados com chave própria
+// ("pedidosabertos_grupoitem"), no mesmo molde dos helpers acima.
+// ---------------------------------------------------------------------------
+
+const PEDIDOS_ABERTOS_GRUPO_ITEM_KEY = 'pedidosabertos_grupoitem'
+
+export function savePedidosAbertosGrupoItemToSession(grupoItem: string[]): void {
+  try {
+    sessionStorage.setItem(
+      PEDIDOS_ABERTOS_GRUPO_ITEM_KEY,
+      JSON.stringify(normalizeFiltroArray(grupoItem)),
+    )
+  } catch {
+    // sessionStorage não disponível — ignora silenciosamente
+  }
+}
+
+export function loadPedidosAbertosGrupoItemFromSession(): string[] {
+  try {
+    const raw = sessionStorage.getItem(PEDIDOS_ABERTOS_GRUPO_ITEM_KEY)
+    if (!raw) return []
+    return normalizeFiltroArray(JSON.parse(raw))
+  } catch {
+    return []
+  }
+}
+
+export function clearPedidosAbertosGrupoItemFromSession(): void {
+  try {
+    sessionStorage.removeItem(PEDIDOS_ABERTOS_GRUPO_ITEM_KEY)
   } catch {
     // ignora
   }
