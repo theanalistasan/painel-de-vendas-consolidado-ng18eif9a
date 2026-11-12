@@ -106,8 +106,8 @@ function ComissaoGroupHeaderComponent({
 
             <span className="text-[11px] text-slate-400 font-normal">•</span>
 
-            {/* Somatório de Total da Linha (Total Vendas) */}
-            <span className="text-xs text-slate-600 font-semibold">Total de Vendas:</span>
+            {/* Somatório de Total da Linha (Total Vendas) — legenda oficial "Valor Mercadoria" */}
+            <span className="text-xs text-slate-600 font-semibold">Valor Mercadoria:</span>
             <Badge
               variant="outline"
               className="text-xs bg-emerald-50 text-emerald-800 border-emerald-300 font-black px-2.5 py-0.5"
@@ -116,8 +116,8 @@ function ComissaoGroupHeaderComponent({
               {formatCurrency(subtotal)}
             </Badge>
 
-            {/* Somatório de Valor Líquido */}
-            <span className="text-xs text-slate-600 font-semibold">Valor Líquido:</span>
+            {/* Somatório de Valor Líquido (NET) */}
+            <span className="text-xs text-slate-600 font-semibold">Valor Líquido (NET):</span>
             <Badge
               variant="outline"
               className="text-xs bg-teal-50 text-teal-800 border-teal-300 font-black px-2.5 py-0.5"

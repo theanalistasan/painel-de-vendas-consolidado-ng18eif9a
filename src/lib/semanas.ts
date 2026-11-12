@@ -130,6 +130,8 @@ export function encontrarSemanaDaData(
 
 export interface SemanaValores {
   semana: SemanaMes
+  /** "Valor Total (Bruto)" — total_nf_novo é POR NF (MAX por numero_nfe) */
+  valorTotalBruto: number
   valorTotalMercadoria: number
   valorLiquidoTotal: number
   valorTotalNfSemFrete: number
@@ -139,9 +141,10 @@ export interface SemanaValores {
 
 /**
  * Agrega os valores monetários de vendas por semana do calendário do mês.
- * Soma (a) Valor Mercadoria (campo Valor Mercadoria, gravado como total_linha),
- * (b) Valor Líquido Total (valor_liquido), (c) Valor Total NF sem frete
- * (total_nf_sem_frete) e (d) Custo Total (custo_total), classificando cada
+ * Soma (a) Valor Total (Bruto) (total_nf_novo, MAX por NF), (b) Valor Mercadoria
+ * (campo Valor Mercadoria, gravado como total_linha), (c) Valor Líquido Total
+ * (valor_liquido), (d) Valor Total NF sem frete (total_nf_sem_frete) e
+ * (e) Custo Total (custo_total), classificando cada
  * registro na semana pela data de lançamento (regra seg–dom já implementada).
  * Registros fora do calendário (ex.: anteriores à Semana 1) são ignorados.
  *
@@ -151,8 +154,10 @@ export interface SemanaValores {
  * dashboard_stats.js). Aqui o valor é agregado UMA VEZ POR NF: MAX por
  * numero_nfe dentro da semana e soma dos máximos no fim — idêntico à lógica do
  * card (SUM sobre MAX agrupado por numero_nfe). NF sem número cai num único
- * grupo "vazio" por semana, como no backend. Os demais campos (total_linha,
- * valor_liquido, custo_total) são por item e continuam somando por linha.
+* grupo "vazio" por semana, como no backend. Os demais campos (total_linha,
+* valor_liquido, custo_total) são por item e continuam somando por linha.
+* total_nf_novo segue a MESMA regra de NF (MAX por numero_nfe) que
+* total_nf_sem_frete: é um valor da NF inteira, repetido por item.
  */
 export function agregarValoresPorSemana<T extends Record<string, unknown>>(
   vendas: T[],
@@ -163,6 +168,7 @@ export function agregarValoresPorSemana<T extends Record<string, unknown>>(
   for (const semana of semanas) {
     porSemana.set(semana.numero, {
       semana,
+     valorTotalBruto: 0,
       valorTotalMercadoria: 0,
       valorLiquidoTotal: 0,
       valorTotalNfSemFrete: 0,
@@ -170,9 +176,11 @@ export function agregarValoresPorSemana<T extends Record<string, unknown>>(
       linhas: 0,
     })
   }
-
+ 
   // MAX de total_nf_sem_frete por numero_nfe, dentro de cada semana
   const maxNfSemFretePorSemana = new Map<number, Map<string, number>>()
+ // MAX de total_nf_novo por numero_nfe, dentro de cada semana (valor POR NF)
+ const maxNfNovoPorSemana = new Map<number, Map<string, number>>()
 
   for (const venda of vendas) {
     const sem = encontrarSemanaDaData(venda[campoData] as string | null | undefined, semanas)
@@ -185,6 +193,16 @@ export function agregarValoresPorSemana<T extends Record<string, unknown>>(
     acc.linhas += 1
 
     const nfKey = String(venda.numero_nfe ?? '').trim()
+
+   // total_nf_novo é valor POR NF (repetido por item): MAX por NF
+   let maxNovoPorNf = maxNfNovoPorSemana.get(sem.numero)
+   if (!maxNovoPorNf) {
+     maxNovoPorNf = new Map<string, number>()
+     maxNfNovoPorSemana.set(sem.numero, maxNovoPorNf)
+   }
+   const valorNfNovo = Number(venda.total_nf_novo) || 0
+   maxNovoPorNf.set(nfKey, Math.max(maxNovoPorNf.get(nfKey) ?? 0, valorNfNovo))
+
     let maxPorNf = maxNfSemFretePorSemana.get(sem.numero)
     if (!maxPorNf) {
       maxPorNf = new Map<string, number>()
@@ -202,6 +220,15 @@ export function agregarValoresPorSemana<T extends Record<string, unknown>>(
     for (const valor of maxPorNf.values()) total += valor
     acc.valorTotalNfSemFrete = total
   }
+ 
+ // Valor Total (Bruto) da semana = soma dos MAX de total_nf_novo por NF
+ for (const [numero, maxPorNf] of maxNfNovoPorSemana) {
+   const acc = porSemana.get(numero)
+   if (!acc) continue
+   let total = 0
+   for (const valor of maxPorNf.values()) total += valor
+   acc.valorTotalBruto = total
+ }
 
   return semanas.map((semana) => porSemana.get(semana.numero) as SemanaValores)
 }

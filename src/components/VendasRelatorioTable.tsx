@@ -55,9 +55,9 @@ export interface ColumnDef {
 // 6. Item (descricao_item)
 // 7. Qtde (quantidade)
 // 8. Grupo (grupo_item)
-// 9. Total da Linha (total_linha)
-// 10. Utilização (utilizacao)
-// Seguidas pelas complementares de detalhamento
+// 9. Utilização (utilizacao)
+// Seguidas pelas complementares de detalhamento e pelos 5 totais na ordem
+// oficial do mapeamento NetSales v4 (Faixa Comercial e Faixa Contábil)
 export const RELATORIO_COLUMNS: ColumnDef[] = [
   { key: 'data_lancamento', label: 'Data', type: 'date', sortKey: 'data_lancamento' },
   { key: 'numero_nfe', label: 'Nr. NF', type: 'text', sortKey: 'numero_nfe' },
@@ -75,20 +75,6 @@ export const RELATORIO_COLUMNS: ColumnDef[] = [
   { key: 'jp_class', label: 'JP-Class', type: 'badge', sortKey: 'jp_class' },
   { key: 'quantidade', label: 'Qtde', type: 'number', sortKey: 'quantidade', align: 'center' },
   { key: 'grupo_item', label: 'Grupo', type: 'badge', sortKey: 'grupo_item' },
-  {
-    key: 'total_linha',
-    label: 'Total da Linha',
-    type: 'currency',
-    sortKey: 'total_linha',
-    align: 'right',
-  },
-  {
-    key: 'total_mercadoria',
-    label: 'Valor Total de Mercadorias',
-    type: 'currency',
-    sortKey: 'total_linha',
-    align: 'right',
-  },
   { key: 'utilizacao', label: 'Utilização', type: 'text', sortKey: 'utilizacao' },
   // Colunas complementares de enriquecimento
   { key: 'status_cadastro', label: 'Status do Cadastro', type: 'text', sortKey: 'status_cadastro' },
@@ -112,24 +98,31 @@ export const RELATORIO_COLUMNS: ColumnDef[] = [
     align: 'right',
   },
   {
-    key: 'total_nf_sem_frete',
-    label: 'Total NF sem Frete',
-    type: 'currency',
-    sortKey: 'total_nf_sem_frete',
-    align: 'right',
-  },
-  {
     key: 'total_nf_novo',
-    label: 'Valor Total da NF',
+    label: 'Valor Total (Bruto)',
     type: 'currency',
     sortKey: 'total_nf_novo',
     align: 'right',
   },
   {
     key: 'valor_liquido',
-    label: 'Valor Líquido',
+    label: 'Valor Líquido (NET)',
     type: 'currency',
     sortKey: 'valor_liquido',
+    align: 'right',
+  },
+  {
+    key: 'total_nf_sem_frete',
+    label: 'Valor Total (Sem Frete)',
+    type: 'currency',
+    sortKey: 'total_nf_sem_frete',
+    align: 'right',
+  },
+  {
+    key: 'total_linha',
+    label: 'Valor Mercadoria',
+    type: 'currency',
+    sortKey: 'total_linha',
     align: 'right',
   },
   {

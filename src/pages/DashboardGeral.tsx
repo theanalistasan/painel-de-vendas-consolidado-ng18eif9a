@@ -9,9 +9,6 @@ import {
   Sparkles,
   SlidersHorizontal,
   DollarSign,
-  FileText,
-  Receipt,
-  Wallet,
 } from 'lucide-react'
 import {
   XAxis,
@@ -31,6 +28,10 @@ import { fetchDashboardStats, type DashboardStatsResult } from '@/services/sales
 import { useRealtime } from '@/hooks/use-realtime'
 import type { FilterState } from '@/types/sales'
 import { formatCurrency, formatCompactCurrency, formatNumber, MESES_CURTOS } from '@/lib/formatters'
+import {
+ TITULO_VALOR_TOTAL_BRUTO,
+ TITULO_VALOR_LIQUIDO_NET,
+} from '@/lib/valor-titulos'
 import {
   loadFiltersFromSession,
   saveFiltersToSession,
@@ -233,19 +234,18 @@ export default function DashboardGeral() {
     }
   }, [chartClientesAtivosEquipamentos, chartVendasPorMes])
 
+  // Visão Geral exibe SOMENTE os 2 totais da Faixa Comercial (pedido do Silvio):
+  // "Valor Total (Bruto)" (total_nf_novo) e "Valor Líquido (NET)" (valor_liquido).
   const reportKpis = useMemo(() => {
     return {
-      faturamento: data?.kpis?.faturamento || 0,
+      valorTotalBruto: data?.kpis?.totalNfNovo || 0,
       valorLiquido: data?.kpis?.valorLiquido || 0,
-      totalNfSemFrete: data?.kpis?.totalNfSemFrete || 0,
-      totalNfNovo: data?.kpis?.totalNfNovo || 0,
-      custoTotal: data?.kpis?.custoTotal || 0,
     }
   }, [data])
 
   // Multi-ano: 2+ anos nos Filtros Globais (ou janela dataDe→dataAte multi-ano)
-  // ⇒ os 5 KPIs de valor também são exibidos por ano em barras verticais, com o
-  // mesmo critério do backend (MAX por NF para os 2 totais de NF).
+  // ⇒ os 2 KPIs de valor também são exibidos por ano em barras verticais, com o
+  // mesmo critério do backend (MAX por NF para o total bruto).
   const multiAno = useMemo(() => {
     const anosSel = (filters?.ano || []).length
     if (anosSel > 1) return true
@@ -262,11 +262,8 @@ export default function DashboardGeral() {
     return (data?.porAno || [])
       .map((item) => ({
         ano: item.ano,
-        'Valor Total Mercadoria': Number(item.valor_total_mercadorias) || 0,
-        'Valor Líquido Total': Number(item.valor_liquido_total) || 0,
-        'Valor Total NF sem frete': Number(item.total_nf_sem_frete) || 0,
-        'Valor Total da NF': Number(item.total_nf_novo) || 0,
-        'Custo Total': Number(item.custo_total) || 0,
+        'Valor Total (Bruto)': Number(item.total_nf_novo) || 0,
+        'Valor Líquido (NET)': Number(item.valor_liquido_total) || 0,
       }))
       .sort((a, b) => Number(a.ano) - Number(b.ano))
   }, [data])
@@ -440,7 +437,7 @@ export default function DashboardGeral() {
         <div>
           <ChartCard
             title="Valores por Ano"
-            description="Valor Total Mercadoria, Valor Líquido Total, Valor Total NF sem frete, Valor Total da NF e Custo Total — comparados ano a ano no período filtrado"
+            description="Valor Total (Bruto) e Valor Líquido (NET) — comparados ano a ano no período filtrado"
             icon={BarChart2}
             iconColor="text-[#0B6E99]"
           >
@@ -480,77 +477,40 @@ export default function DashboardGeral() {
                   )}
                 />
                 <Bar
-                  dataKey="Valor Total Mercadoria"
+                  dataKey="Valor Total (Bruto)"
                   fill="#0B6E99"
                   radius={[4, 4, 0, 0]}
                   maxBarSize={32}
                 />
                 <Bar
-                  dataKey="Valor Líquido Total"
+                  dataKey="Valor Líquido (NET)"
                   fill="#0D9488"
                   radius={[4, 4, 0, 0]}
                   maxBarSize={32}
                 />
-                <Bar
-                  dataKey="Valor Total NF sem frete"
-                  fill="#F59E0B"
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={32}
-                />
-                <Bar
-                  dataKey="Valor Total da NF"
-                  fill="#EC4899"
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={32}
-                />
-                <Bar dataKey="Custo Total" fill="#8B5CF6" radius={[4, 4, 0, 0]} maxBarSize={32} />
               </BarChart>
             </ResponsiveContainer>
           </ChartCard>
         </div>
       )}
 
-      {/* Valores de faturamento / KPIs no início da página */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* KPIs — Faixa Comercial: apenas os 2 totais oficiais (pedido do Silvio) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
         <KpiCard
-          title="Valor Total de Mercadorias"
-          value={reportKpis.faturamento}
+          title={TITULO_VALOR_TOTAL_BRUTO}
+          value={reportKpis.valorTotalBruto}
           isCurrency
           icon={DollarSign}
           iconBgColor="bg-cyan-50"
           iconColor="text-[#0B6E99]"
         />
         <KpiCard
-          title="Valor Líquido Total"
+          title={TITULO_VALOR_LIQUIDO_NET}
           value={reportKpis.valorLiquido}
           isCurrency
           icon={TrendingUp}
           iconBgColor="bg-teal-50"
           iconColor="text-teal-600"
-        />
-        <KpiCard
-          title="Valor Total NF sem frete"
-          value={reportKpis.totalNfSemFrete}
-          isCurrency
-          icon={Receipt}
-          iconBgColor="bg-emerald-50"
-          iconColor="text-emerald-600"
-        />
-        <KpiCard
-          title="Valor Total da NF"
-          value={reportKpis.totalNfNovo}
-          isCurrency
-          icon={FileText}
-          iconBgColor="bg-violet-50"
-          iconColor="text-violet-600"
-        />
-        <KpiCard
-          title="Custo Total"
-          value={reportKpis.custoTotal}
-          isCurrency
-          icon={Wallet}
-          iconBgColor="bg-amber-50"
-          iconColor="text-amber-600"
         />
       </div>
 

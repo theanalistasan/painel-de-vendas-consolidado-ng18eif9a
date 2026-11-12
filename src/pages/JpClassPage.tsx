@@ -37,11 +37,21 @@ import {
 } from '@/lib/filter-persistence'
 import type { FilterState } from '@/types/sales'
 import {
+  TITULO_VALOR_TOTAL_BRUTO,
+  TITULO_VALOR_LIQUIDO_NET,
+  TITULO_VALOR_TOTAL_SEM_FRETE,
+  TITULO_VALOR_MERCADORIA,
+  TITULO_CUSTO_TOTAL,
+  FAIXA_COMERCIAL_LABEL,
+  FAIXA_CONTABIL_LABEL,
+} from '@/lib/valor-titulos'
+import {
   JpClassRelatorio,
   type VendaComSemana,
   type JpClassGroupBy,
 } from '@/components/JpClassRelatorio'
 import { JpClassDashboard } from '@/components/JpClassDashboard'
+import { QuadroValoresFaixa } from '@/components/QuadroValoresFaixa'
 import {
   fetchTiposClienteMap,
   buildTiposClienteStringMap,
@@ -363,16 +373,18 @@ export default function JpClassPage() {
   const totaisQuadroSemanas = useMemo(() => {
     return valoresPorSemana.reduce(
       (acc, s) => ({
-        valorTotalMercadoria: acc.valorTotalMercadoria + s.valorTotalMercadoria,
+        valorTotalBruto: acc.valorTotalBruto + s.valorTotalBruto,
         valorLiquidoTotal: acc.valorLiquidoTotal + s.valorLiquidoTotal,
         valorTotalNfSemFrete: acc.valorTotalNfSemFrete + s.valorTotalNfSemFrete,
+        valorTotalMercadoria: acc.valorTotalMercadoria + s.valorTotalMercadoria,
         custoTotal: acc.custoTotal + s.custoTotal,
         linhas: acc.linhas + s.linhas,
       }),
       {
-        valorTotalMercadoria: 0,
+        valorTotalBruto: 0,
         valorLiquidoTotal: 0,
         valorTotalNfSemFrete: 0,
+        valorTotalMercadoria: 0,
         custoTotal: 0,
         linhas: 0,
       },
@@ -396,8 +408,11 @@ export default function JpClassPage() {
       { key: 'nome_cliente', label: 'Cliente' },
       { key: 'tipo_cliente', label: 'Tipo Cliente' },
       { key: 'quantidade', label: 'Quantidade' },
-      { key: 'total_linha', label: 'Total da Linha (R$)' },
-      { key: 'valor_liquido', label: 'Valor Líquido (R$)' },
+      { key: 'total_nf_novo', label: `${TITULO_VALOR_TOTAL_BRUTO} (R$)` },
+      { key: 'total_linha', label: `${TITULO_VALOR_MERCADORIA} (R$)` },
+      { key: 'valor_liquido', label: `${TITULO_VALOR_LIQUIDO_NET} (R$)` },
+      { key: 'total_nf_sem_frete', label: `${TITULO_VALOR_TOTAL_SEM_FRETE} (R$)` },
+      { key: 'custo_total', label: `${TITULO_CUSTO_TOTAL} (R$)` },
     ]
     exportToCSV(`vendas_jp_class_${ano}_${String(mes).padStart(2, '0')}`, vendasExibidas, columns)
   }
@@ -642,78 +657,41 @@ export default function JpClassPage() {
         </div>
       </div>
 
-      {/* Quadro de Valores por Semana (Fase 5) — após o quadro MÊS consolidado */}
-      <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-[#0B6E99]" />
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-            Valores por Semana — {mesNome} de {ano}
-          </h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              {/* Linha superior: métricas em colunas */}
-              <tr className="bg-slate-50 text-slate-600">
-                <th className="px-4 py-2 text-left font-bold border-b border-slate-200">Semana</th>
-                <th className="px-4 py-2 text-right font-bold border-b border-slate-200">
-                  Valor Total Mercadoria
-                </th>
-                <th className="px-4 py-2 text-right font-bold border-b border-slate-200">
-                  Valor Líquido Total
-                </th>
-                <th className="px-4 py-2 text-right font-bold border-b border-slate-200">
-                  Valor Total NF sem frete
-                </th>
-                <th className="px-4 py-2 text-right font-bold border-b border-slate-200">
-                  Custo Total
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* Linha abaixo: Semana 1, 2, 3, 4, 5 (apenas as semanas existentes no mês) */}
-              {valoresPorSemana.map((v) => (
-                <tr key={v.semana.numero} className="hover:bg-slate-50/60">
-                  <td className="px-4 py-2.5 font-semibold text-slate-700 border-b border-slate-100 whitespace-nowrap">
-                    {v.semana.nome}
-                    <span className="ml-1.5 text-[10px] font-normal text-slate-400">
-                      ({v.semana.inicioFormatado} a {v.semana.fimFormatado})
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 border-b border-slate-100">
-                    {valorCompacto(v.valorTotalMercadoria)}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 border-b border-slate-100">
-                    {valorCompacto(v.valorLiquidoTotal)}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 border-b border-slate-100">
-                    {valorCompacto(v.valorTotalNfSemFrete)}
-                  </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-900 border-b border-slate-100">
-                    {valorCompacto(v.custoTotal)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="bg-slate-50 font-bold">
-                <td className="px-4 py-2.5 text-slate-800">Total do Mês</td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-slate-900">
-                  {formatCurrency(totaisQuadroSemanas.valorTotalMercadoria)}
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-slate-900">
-                  {formatCurrency(totaisQuadroSemanas.valorLiquidoTotal)}
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-slate-900">
-                  {formatCurrency(totaisQuadroSemanas.valorTotalNfSemFrete)}
-                </td>
-                <td className="px-4 py-2.5 text-right tabular-nums text-slate-900">
-                  {formatCurrency(totaisQuadroSemanas.custoTotal)}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+     {/* Quadro de Valores por Semana (Fase 5) — dividido em Visão Comercial e Visão Contábil */}
+    <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden">
+      <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+        <TrendingUp className="w-4 h-4 text-[#0B6E99]" />
+        <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+          Valores por Semana — {mesNome} de {ano}
+        </h3>
+      </div>
+
+      {/* Bloco 1 — Visão Comercial: Valor Total (Bruto) e Valor Líquido (NET) */}
+      <QuadroValoresFaixa
+        faixaLabel={FAIXA_COMERCIAL_LABEL}
+        semanasCount={semanas.length}
+        colunas={[
+          { titulo: TITULO_VALOR_TOTAL_BRUTO, campo: 'valorTotalBruto' },
+          { titulo: TITULO_VALOR_LIQUIDO_NET, campo: 'valorLiquidoTotal' },
+        ]}
+        valoresPorSemana={valoresPorSemana}
+        totais={totaisQuadroSemanas}
+        valorCompacto={valorCompacto}
+      />
+
+      {/* Bloco 2 — Visão Contábil: Valor Total (Sem Frete), Valor Mercadoria e Custo Total */}
+      <QuadroValoresFaixa
+        faixaLabel={FAIXA_CONTABIL_LABEL}
+        semanasCount={semanas.length}
+        colunas={[
+          { titulo: TITULO_VALOR_TOTAL_SEM_FRETE, campo: 'valorTotalNfSemFrete' },
+          { titulo: TITULO_VALOR_MERCADORIA, campo: 'valorTotalMercadoria' },
+          { titulo: TITULO_CUSTO_TOTAL, campo: 'custoTotal' },
+        ]}
+        valoresPorSemana={valoresPorSemana}
+        totais={totaisQuadroSemanas}
+        valorCompacto={valorCompacto}
+      />
         {semanas.length === 0 && (
           <div className="px-4 py-3 text-[11px] text-slate-500">
             Nenhuma semana completa no período selecionado.
