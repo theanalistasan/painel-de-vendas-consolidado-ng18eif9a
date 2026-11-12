@@ -530,28 +530,6 @@ export default function Layout() {
           )}
         </nav>
 
-        {/* Integration Status Badge */}
-        {!sidebarCollapsed ? (
-          <div className="px-4 py-3 mx-3 mb-3 rounded-xl bg-slate-800/60 border border-slate-700/50 flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-[#0B6E99]/20 text-[#0B6E99] shrink-0">
-              <Layers className="w-4 h-4" />
-            </div>
-            <div className="flex flex-col text-xs min-w-0">
-              <span className="text-slate-200 font-bold truncate">Bases Integradas</span>
-              <span className="text-slate-400 text-[11px] truncate">RacNew + NetSales + Prod</span>
-            </div>
-          </div>
-        ) : (
-          <div
-            className="flex justify-center mb-3"
-            title="Bases Integradas: RacNew + NetSales + Prod"
-          >
-            <div className="p-2 rounded-xl bg-slate-800/60 border border-slate-700/50 text-[#0B6E99]">
-              <Layers className="w-4 h-4" />
-            </div>
-          </div>
-        )}
-
         {/* User Footer Sidebar */}
         <div className="p-3 border-t border-slate-800/80 bg-slate-950/60">
           <div

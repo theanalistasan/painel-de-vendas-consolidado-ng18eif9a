@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { CanalOption, CanalClienteOption } from '@/types/sales'
-import { DEFAULT_GRUPOS_ITEM } from '@/lib/filter-persistence'
 import { GRUPO_ITEM_FILTER_OPTIONS } from '@/lib/grupo-categoria'
 import { cn } from '@/lib/utils'
 
@@ -18,7 +17,6 @@ export interface PedidosAbertosFilters {
   tipoCliente?: string[]
   statusCadastro?: string[]
   tipoPn?: string[]
-  categoria?: string[]
   grupoItem?: string[]
 }
 
@@ -31,7 +29,6 @@ export const EMPTY_PEDIDOS_ABERTOS_FILTERS: PedidosAbertosFilters = {
   tipoCliente: [],
   statusCadastro: [],
   tipoPn: [],
-  categoria: [],
   grupoItem: [],
 }
 
@@ -51,7 +48,6 @@ export interface PedidosAbertosFilterBarProps {
     tipoPn?: string[]
     isLoadingTipoPn?: boolean
     onOpenTipoPn?: () => void
-    categoria?: string[]
   }
   showGrupoItemFilter?: boolean
   onApplyFilters?: (filters: PedidosAbertosFilters) => void
@@ -282,7 +278,6 @@ export default function PedidosAbertosFilterBar({
       (filters.tipoCliente?.length || 0) +
       (filters.statusCadastro?.length || 0) +
       (filters.tipoPn?.length || 0) +
-      (filters.categoria?.length || 0) +
       (filters.grupoItem?.length || 0) +
       (filters.ehCanal && filters.ehCanal !== 'todos' ? 1 : 0)
     )
@@ -602,25 +597,6 @@ export default function PedidosAbertosFilterBar({
                 isLoading={options.isLoadingTipoCliente}
                 emptyMessage="Importe a base de Tipo de Cliente (SAP)"
                 onOpen={options.onOpenTipoCliente}
-              />
-            </div>
-
-            {/* 6. Tipo de Item — mesmo critério do "Grupo do Item" dos Filtros Globais */}
-            <div>
-              <Label className="text-[10px] font-bold text-slate-600 mb-1 block">
-                Tipo de Item
-              </Label>
-              <MultiSelectDropdown
-                label="Tipo de Item"
-                options={
-                  options.categoria && options.categoria.length > 0
-                    ? options.categoria
-                    : DEFAULT_GRUPOS_ITEM
-                }
-                selected={localFilters.categoria || []}
-                onChange={(values) => setLocalFilters((prev) => ({ ...prev, categoria: values }))}
-                placeholder="Todos os tipos de item"
-                highlight={(localFilters.categoria || []).length > 0}
               />
             </div>
 

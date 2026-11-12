@@ -290,6 +290,8 @@ export default function PedidosAbertos() {
   const [filters, setFilters] = useState<PedidosAbertosFilters>(() => {
     // Grupo do Item tem persistência própria em sessionStorage
     // (helpers PedidosAbertosFiltrosLocal); [] = todos os grupos.
+    // Obs.: o antigo filtro "Tipo de Item" (categoria) foi removido — Grupo do
+    // Item (src/lib/grupo-categoria.ts) cumpre a mesma função.
     let grupoItemSalvo: string[] = []
     try {
       grupoItemSalvo = loadPedidosAbertosFiltrosFromSession().grupoItem || []
@@ -350,7 +352,6 @@ export default function PedidosAbertos() {
     tipoCliente?: string[]
     statusCadastro?: string[]
     tipoPn?: string[]
-    categoria?: string[]
     grupoItem?: string[]
   }>({
     canais: [],
@@ -359,7 +360,6 @@ export default function PedidosAbertos() {
     tipoCliente: [],
     statusCadastro: [],
     tipoPn: [],
-    categoria: [],
     grupoItem: [],
   })
 
@@ -718,10 +718,6 @@ export default function PedidosAbertos() {
             statsPedidos.filterOptions.tipoPn && statsPedidos.filterOptions.tipoPn.length > 0
               ? statsPedidos.filterOptions.tipoPn
               : prev.tipoPn,
-          categoria:
-            statsPedidos.filterOptions.categoria && statsPedidos.filterOptions.categoria.length > 0
-              ? statsPedidos.filterOptions.categoria
-              : prev.categoria,
           grupoItem:
             statsPedidos.filterOptions.grupoItem && statsPedidos.filterOptions.grupoItem.length > 0
               ? statsPedidos.filterOptions.grupoItem
@@ -1792,13 +1788,12 @@ export default function PedidosAbertos() {
         </div>
       </div>
 
-      {/* Filtros específicos de Pedidos em Aberto (Canais, Clientes, Deploy, Inside, Tipo de Cliente, Status do Cadastro, Tipo de PN e Período) */}
+      {/* Filtros específicos de Pedidos em Aberto (Canais, Clientes, Deploy, Inside, Tipo de Cliente, Status do Cadastro, Tipo de PN, Grupo do Item e Período) */}
       <PedidosAbertosFilterBar
         filters={filters}
         setFilters={handleFiltersChange}
         options={{
           ...filterOptions,
-          categoria: filterOptions.categoria || [],
           tipoCliente:
             tipoClienteOptions.length > 0 ? tipoClienteOptions : filterOptions.tipoCliente || [],
           isLoadingTipoCliente: loadingTipoClienteOptions,
