@@ -506,7 +506,12 @@ export default function DashboardCanais() {
     }
   }
 
-  const isNoData = !loading && !error && data !== null && kpis.faturamento === 0
+  const isNoData =
+    !loading &&
+    !error &&
+    data !== null &&
+    kpis.valorTotalBruto === 0 &&
+    kpis.valorLiquido === 0
 
   // Limpa APENAS os filtros locais de Canais — os filtros globais são gerenciados
   // na página Dashboard > Filtros Globais e não devem ser alterados daqui.

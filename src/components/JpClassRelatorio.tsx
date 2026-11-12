@@ -1127,13 +1127,13 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
             <strong className="text-slate-900 font-bold">{formatNumber(totalGeral.qtd)} un.</strong>
           </div>
           <div>
-            Faturamento total:{' '}
+            {TITULO_VALOR_MERCADORIA} total:{' '}
             <strong className="text-emerald-700 font-bold">
               {formatCurrency(totalGeral.valor)}
             </strong>
           </div>
           <div>
-            Líquido total:{' '}
+            {TITULO_VALOR_LIQUIDO_NET} total:{' '}
             <strong className="text-teal-700 font-bold">
               {formatCurrency(totalGeral.liquido)}
             </strong>

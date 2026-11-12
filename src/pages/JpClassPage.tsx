@@ -15,6 +15,7 @@ import {
   encontrarSemanaDaData,
   agregarValoresPorSemana,
   type SemanaMes,
+  type SemanaValores,
 } from '@/lib/semanas'
 import { useNavigate } from 'react-router-dom'
 import { getJpClass } from '@/lib/jp-class'
@@ -334,15 +335,11 @@ export default function JpClassPage() {
   const kpisPorSemana = useMemo(() => {
     return semanas.map((sem) => {
       const vendasSemana = rawVendas.filter((v) => v.semanaNumero === sem.numero)
-      const faturamento = vendasSemana.reduce((acc, v) => acc + (Number(v.total_linha) || 0), 0)
-      const valorLiquido = vendasSemana.reduce((acc, v) => acc + (Number(v.valor_liquido) || 0), 0)
       const quantidade = vendasSemana.reduce((acc, v) => acc + (Number(v.quantidade) || 0), 0)
       const linhas = vendasSemana.length
 
       return {
         semana: sem,
-        faturamento,
-        valorLiquido,
         quantidade,
         linhas,
       }
@@ -351,19 +348,15 @@ export default function JpClassPage() {
 
   // Totalizador geral do mês (reflete os Filtros Globais aplicados no servidor)
   const totalGeral = useMemo(() => {
-    const faturamento = rawVendas.reduce((acc, v) => acc + (Number(v.total_linha) || 0), 0)
-    const valorLiquido = rawVendas.reduce((acc, v) => acc + (Number(v.valor_liquido) || 0), 0)
     const quantidade = rawVendas.reduce((acc, v) => acc + (Number(v.quantidade) || 0), 0)
     return {
-      faturamento,
-      valorLiquido,
       quantidade,
       linhas: rawVendas.length,
     }
   }, [rawVendas])
 
-  // Quadro de valores por semana (Fase 5): Valor Total Mercadoria, Valor Líquido Total,
-  // Valor Total NF sem frete e Custo Total — agregados a partir das MESMAS linhas já
+  // Quadro de valores por semana (Fase 5): os 5 indicadores (Bruto, NET, Sem Frete,
+  // Mercadoria, Custo Total) — agregados a partir das MESMAS linhas já
   // carregadas (rawVendas), respeitando os Filtros Globais e recalculando ao limpar.
   const valoresPorSemana = useMemo(() => {
     return agregarValoresPorSemana(rawVendas, semanas)
@@ -393,6 +386,19 @@ export default function JpClassPage() {
 
   const valorCompacto = (v: number) =>
     Math.abs(v) >= 100000 ? formatCompactCurrency(v) : formatCurrency(v)
+
+  // KPIs dos cards por Semana: os 5 indicadores na ordem oficial (Bruto, NET,
+  // Sem Frete, Mercadoria, Custo), a partir do MESMO agregado do quadro.
+  const colunasKpiSemana: { titulo: string; campo: keyof SemanaValores }[] = [
+    { titulo: TITULO_VALOR_TOTAL_BRUTO, campo: 'valorTotalBruto' },
+    { titulo: TITULO_VALOR_LIQUIDO_NET, campo: 'valorLiquidoTotal' },
+    { titulo: TITULO_VALOR_TOTAL_SEM_FRETE, campo: 'valorTotalNfSemFrete' },
+    { titulo: TITULO_VALOR_MERCADORIA, campo: 'valorTotalMercadoria' },
+    { titulo: TITULO_CUSTO_TOTAL, campo: 'custoTotal' },
+  ]
+
+  const valoresDaSemana = (numero: number): SemanaValores | undefined =>
+    valoresPorSemana.find((s) => s.semana.numero === numero)
 
   // Exportação rápida para CSV
   const handleExportCsv = () => {
@@ -612,8 +618,31 @@ export default function JpClassPage() {
                 {semanas.length} semanas
               </Badge>
             </div>
-            <div className="text-lg font-black text-slate-900 tabular-nums">
-              {formatCurrency(totalGeral.faturamento)}
+            {/* Visão Comercial */}
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mb-1.5">
+              {colunasKpiSemana.slice(0, 2).map((col) => (
+                <div key={col.campo}>
+                  <div className="text-[9px] font-semibold text-slate-400 uppercase leading-tight">
+                    {col.titulo}
+                  </div>
+                  <div className="text-[11px] font-bold text-slate-900 tabular-nums">
+                    {formatCurrency(totaisQuadroSemanas[col.campo])}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Visão Contábil */}
+            <div className="grid grid-cols-3 gap-x-2 gap-y-0.5">
+              {colunasKpiSemana.slice(2).map((col) => (
+                <div key={col.campo}>
+                  <div className="text-[9px] font-semibold text-slate-400 uppercase leading-tight">
+                    {col.titulo}
+                  </div>
+                  <div className="text-[11px] font-bold text-slate-900 tabular-nums">
+                    {formatCurrency(totaisQuadroSemanas[col.campo])}
+                  </div>
+                </div>
+              ))}
             </div>
             <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
               <span>Qtde: {formatNumber(totalGeral.quantidade)} un.</span>
@@ -644,9 +673,39 @@ export default function JpClassPage() {
                     {kpi.semana.inicioFormatado} a {kpi.semana.fimFormatado}
                   </span>
                 </div>
-                <div className="text-base font-extrabold text-[#0B6E99] tabular-nums">
-                  {formatCurrency(kpi.faturamento)}
-                </div>
+                {(() => {
+                  const valores = valoresDaSemana(kpi.semana.numero)
+                  return (
+                    <>
+                      {/* Visão Comercial */}
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mb-1.5">
+                        {colunasKpiSemana.slice(0, 2).map((col) => (
+                          <div key={col.campo}>
+                            <div className="text-[9px] font-semibold text-slate-400 uppercase leading-tight">
+                              {col.titulo}
+                            </div>
+                            <div className="text-[11px] font-bold text-slate-900 tabular-nums">
+                              {formatCurrency(Number(valores?.[col.campo]) || 0)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* Visão Contábil */}
+                      <div className="grid grid-cols-3 gap-x-2 gap-y-0.5">
+                        {colunasKpiSemana.slice(2).map((col) => (
+                          <div key={col.campo}>
+                            <div className="text-[9px] font-semibold text-slate-400 uppercase leading-tight">
+                              {col.titulo}
+                            </div>
+                            <div className="text-[11px] font-bold text-slate-900 tabular-nums">
+                              {formatCurrency(Number(valores?.[col.campo]) || 0)}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )
+                })()}
                 <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
                   <span>Qtde: {formatNumber(kpi.quantidade)}</span>
                   <span>{kpi.linhas} linhas</span>

@@ -240,7 +240,7 @@ export default function FiltrosGlobais() {
       },
       {
         name: TITULO_VALOR_MERCADORIA,
-        value: Number(kpis.faturamento) || 0,
+        value: Number(kpis.faturamento) || 0, // faturamento = soma de total_linha (Valor Mercadoria)
         fill: '#8B5CF6',
       },
       {
