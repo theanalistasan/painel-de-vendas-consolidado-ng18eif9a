@@ -599,13 +599,13 @@ export default function PedidosAbertosFilterBar({
               />
             </div>
 
-            {/* 6. Categoria — mesmo critério do "Grupo do Item" dos Filtros Globais */}
+            {/* 6. Tipo de Item — mesmo critério do "Grupo do Item" dos Filtros Globais */}
             <div>
               <Label className="text-[10px] font-bold text-slate-600 mb-1 block">
-                Categoria (Grupo do Item)
+                Tipo de Item
               </Label>
               <MultiSelectDropdown
-                label="Categoria"
+                label="Tipo de Item"
                 options={
                   options.categoria && options.categoria.length > 0
                     ? options.categoria
@@ -613,7 +613,7 @@ export default function PedidosAbertosFilterBar({
                 }
                 selected={localFilters.categoria || []}
                 onChange={(values) => setLocalFilters((prev) => ({ ...prev, categoria: values }))}
-                placeholder="Todas as categorias"
+                placeholder="Todos os tipos de item"
                 highlight={(localFilters.categoria || []).length > 0}
               />
             </div>
