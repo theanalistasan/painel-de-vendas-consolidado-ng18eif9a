@@ -1,58 +1,43 @@
 import { describe, it, expect } from 'vitest'
-import { sortMesesPorNome } from '@/components/FilterBar'
-import { MESES_PT_BR, MESES_PT_BR_ALFABETICA } from '@/lib/formatters'
+import { MESES_PT_BR } from '@/lib/formatters'
 
-// Ordem alfabética pt-BR esperada pelo usuário (Filtros Globais e demais telas)
-const ORDEM_ALFABETICA_ESPERADA = [
-  'Abril',
-  'Agosto',
-  'Dezembro',
-  'Fevereiro',
+// Ordem do CALENDÁRIO esperada pelo usuário em TODOS os filtros de mês do app
+// (reversão da ordem alfabética pedida anteriormente).
+const ORDEM_CALENDARIO = [
   'Janeiro',
-  'Julho',
-  'Junho',
-  'Maio',
+  'Fevereiro',
   'Março',
-  'Novembro',
-  'Outubro',
+  'Abril',
+  'Maio',
+  'Junho',
+  'Julho',
+  'Agosto',
   'Setembro',
+  'Outubro',
+  'Novembro',
+  'Dezembro',
 ]
 
-describe('Ordem alfabética dos meses nos filtros', () => {
-  it('MESES_PT_BR_ALFABETICA mantém o value como número do mês e ordena o rótulo', () => {
-    expect(MESES_PT_BR_ALFABETICA.map((m) => m.nome)).toEqual(ORDEM_ALFABETICA_ESPERADA)
-    // value = número do mês (1=janeiro ... 12=dezembro)
-    expect(MESES_PT_BR_ALFABETICA[0]).toEqual({ mes: 4, nome: 'Abril' })
-    expect(MESES_PT_BR_ALFABETICA[11]).toEqual({ mes: 9, nome: 'Setembro' })
-    expect(MESES_PT_BR_ALFABETICA).toHaveLength(12)
+describe('Ordem do calendário dos meses nos filtros', () => {
+  it('MESES_PT_BR está na ordem do calendário (Janeiro→Dezembro)', () => {
+    expect([...MESES_PT_BR]).toEqual(ORDEM_CALENDARIO)
   })
 
-  it('sortMesesPorNome ordena 1..12 em ordem alfabética dos nomes', () => {
-    const ordenados = sortMesesPorNome(MESES_PT_BR.map((_, i) => i + 1)).map(Number)
-    expect(ordenados).toEqual([4, 8, 12, 2, 1, 7, 6, 5, 3, 11, 10, 9])
+  it('não existe mais constante/ordenador alfabético de meses', () => {
+    // A reversão removeu sortMesesPorNome e MESES_PT_BR_ALFABETICA; este teste
+    // garante que a ordem calendário sai direto da iteração natural 1..12.
+    const mesesComoOptions = MESES_PT_BR.map((_, i) => String(i + 1))
+    const rotulos = mesesComoOptions.map((v) => {
+      const n = Number(v)
+      return !isNaN(n) && n >= 1 && n <= 12 ? MESES_PT_BR[n - 1] || v : v
+    })
+    expect(rotulos).toEqual(ORDEM_CALENDARIO)
   })
 
-  it('sortMesesPorNome não aceita ordem numérica de strings (1, 10, 11, 12, 2...)', () => {
-    const ordenados = sortMesesPorNome(MESES_PT_BR.map((_, i) => String(i + 1))).map(Number)
-    expect(ordenados).toEqual([4, 8, 12, 2, 1, 7, 6, 5, 3, 11, 10, 9])
-  })
-
-  it('meses inválidos (fora de 1–12) vão para o fim', () => {
-    const ordenados = sortMesesPorNome([13, 0, 5, 99]).map(Number)
-    expect(ordenados).toEqual([5, 0, 13, 99])
-  })
-
-  it('sort com localeCompare pt-BR sobre os rótulos reproduz a ordem esperada (bug do cleanOptions)', () => {
-    // Simula o que o MultiSelectDropdown faz agora: ordena pelo RÓTULO exibido
-    // (getOptionLabel), não pelo valor bruto "1","10","11","12","2"...
-    const meses = MESES_PT_BR.map((_, i) => String(i + 1))
-    const getOptionLabel = (val: string) => {
-      const n = Number(val)
-      return !isNaN(n) && n >= 1 && n <= 12 ? MESES_PT_BR[n - 1] || val : val
-    }
-    const ordenados = [...meses].sort((a, b) =>
-      getOptionLabel(a).localeCompare(getOptionLabel(b), 'pt-BR'),
-    )
-    expect(ordenados.map(getOptionLabel)).toEqual(ORDEM_ALFABETICA_ESPERADA)
+  it('value dos options continua sendo o número do mês (1..12)', () => {
+    const values = MESES_PT_BR.map((_, i) => String(i + 1))
+    expect(values[0]).toBe('1')
+    expect(values[11]).toBe('12')
+    expect(values).toHaveLength(12)
   })
 })

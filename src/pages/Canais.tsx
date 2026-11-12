@@ -54,13 +54,7 @@ import {
 } from '@/services/pedidosAbertos'
 import { MultiSelectDropdown } from '@/components/FilterBar'
 import type { CanalCliente, CanalMeta } from '@/types/sales'
-import {
-  formatCurrency,
-  formatDateTime,
-  formatNumber,
-  MESES_PT_BR,
-  MESES_PT_BR_ALFABETICA,
-} from '@/lib/formatters'
+import { formatCurrency, formatDateTime, formatNumber, MESES_PT_BR } from '@/lib/formatters'
 import { Target } from 'lucide-react'
 import { CanalDetailModal } from '@/components/CanalDetailModal'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -3444,8 +3438,8 @@ export default function Canais() {
                     <SelectValue placeholder="Mês" />
                   </SelectTrigger>
                   <SelectContent className="max-h-60 text-xs">
-                    {MESES_PT_BR_ALFABETICA.map(({ mes, nome }) => (
-                      <SelectItem key={nome} value={String(mes)}>
+                    {MESES_PT_BR.map((nome, i) => (
+                      <SelectItem key={nome} value={String(i + 1)}>
                         {nome}
                       </SelectItem>
                     ))}

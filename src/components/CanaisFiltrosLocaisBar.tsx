@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { MESES_PT_BR } from '@/lib/formatters'
-import { sortMesesPorNome } from '@/components/FilterBar'
 import { type CanaisFiltroLocal, EMPTY_CANAIS_FILTRO_LOCAL } from '@/lib/filter-persistence'
 import type { FilterState } from '@/types/sales'
 
@@ -60,7 +59,7 @@ interface CanaisFiltrosLocaisBarProps {
  * e Pedido — no mesmo molde dos filtros locais do JP-Class (selects no topo).
  * Filtro preenchido sobrepõe o Filtro Global; vazio = segue o global.
  * Anos e meses vêm SEMPRE da base ativa: sem fallback fixo de anos; meses em
- * ordem alfabética (pt-BR) com "Todos" primeiro.
+ * ordem do calendário (Janeiro→Dezembro) com "Todos" primeiro.
  */
 export function CanaisFiltrosLocaisBar({
   filtros,
@@ -134,14 +133,11 @@ export function CanaisFiltrosLocaisBar({
               className={selectClass}
             >
               <option value="">Todos (global)</option>
-              {sortMesesPorNome(MESES_PT_BR.map((_, i) => i + 1)).map((val) => {
-                const n = Number(val)
-                return (
-                  <option key={n} value={String(n)}>
-                    {MESES_PT_BR[n - 1]}
-                  </option>
-                )
-              })}
+              {MESES_PT_BR.map((nome, i) => (
+                <option key={i + 1} value={String(i + 1)}>
+                  {nome}
+                </option>
+              ))}
             </select>
           </label>
 

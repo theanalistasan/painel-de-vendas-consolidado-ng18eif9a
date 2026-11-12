@@ -65,22 +65,6 @@ interface FilterBarProps {
   hideCanais?: boolean
 }
 
-/**
- * Ordem ALFABÉTICA dos nomes dos meses (pt-BR), em maiúsculas para o sort.
- * Meses inválidos (fora de 1–12) vão para o fim, ordenados por número.
- */
-export function sortMesesPorNome(meses: Array<number | string>): Array<number | string> {
-  return [...meses]
-    .map((m) => String(m))
-    .sort((a, b) => {
-      const na = Number(a)
-      const nb = Number(b)
-      const va = na >= 1 && na <= 12 ? MESES_PT_BR[na - 1].toUpperCase() : `~${a}`
-      const vb = nb >= 1 && nb <= 12 ? MESES_PT_BR[nb - 1].toUpperCase() : `~${b}`
-      return va.localeCompare(vb, 'pt-BR')
-    })
-}
-
 // Reusable MultiSelect Dropdown with Roland DG Accent
 export function MultiSelectDropdown({
   label,
@@ -119,11 +103,6 @@ export function MultiSelectDropdown({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const labelOf = useCallback(
-    (opt: string) => (getOptionLabel ? getOptionLabel(opt) : opt),
-    [getOptionLabel],
-  )
-
   const cleanOptions = useMemo(() => {
     const set = new Set<string>()
     for (const opt of options) {
@@ -138,11 +117,10 @@ export function MultiSelectDropdown({
       }
       set.add(trimmed)
     }
-    // Ordena pelo RÓTULO exibido (getOptionLabel quando houver), não pelo valor
-    // bruto — assim os meses ("1".."12" exibidos como Janeiro.."Dezembro")
-    // abrem em ordem alfabética em vez de 1, 10, 11, 12, 2, 3...
-    return Array.from(set).sort((a, b) => labelOf(a).localeCompare(labelOf(b), 'pt-BR'))
-  }, [options, labelOf])
+    // Preserva a ordem em que as opções chegam (meses já chegam 1..12 = ordem do
+    // calendário, Janeiro→Dezembro). Sem re-ordenação pelo rótulo.
+    return Array.from(set)
+  }, [options])
 
   const filteredOptions = useMemo(() => {
     if (!search) return cleanOptions
@@ -726,7 +704,7 @@ export default function FilterBar({
             <Label className="text-[11px] font-bold text-slate-500 mb-1 block">Mês</Label>
             <MultiSelectDropdown
               label="Mês"
-              options={sortMesesPorNome(options.meses).map(String)}
+              options={options.meses.map(String)}
               selected={localFilters.mes}
               onChange={(values) => setLocalFilters((prev) => ({ ...prev, mes: values }))}
               placeholder="Todos"
