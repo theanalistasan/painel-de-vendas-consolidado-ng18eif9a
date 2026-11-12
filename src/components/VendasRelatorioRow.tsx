@@ -3,6 +3,13 @@ import { ChevronDown, ChevronRight as ChevronRightIcon } from 'lucide-react'
 import type { VendaConsolidada } from '@/types/sales'
 import { formatCurrency, formatNumber, formatDate, getGrupoColor } from '@/lib/formatters'
 import { getJpClass, getJpClassBadgeStyle } from '@/lib/jp-class'
+import {
+  TITULO_VALOR_TOTAL_BRUTO,
+  TITULO_VALOR_LIQUIDO_NET,
+  TITULO_VALOR_TOTAL_SEM_FRETE,
+  TITULO_VALOR_MERCADORIA,
+  TITULO_CUSTO_TOTAL,
+} from '@/lib/valor-titulos'
 import { Badge } from '@/components/ui/badge'
 import { Database, FileText } from 'lucide-react'
 import { ColumnDef, DEFAULT_COLUMN_WIDTHS } from './VendasRelatorioTable'
@@ -313,12 +320,13 @@ function VendasRelatorioRowComponent({
               </td>
             )
 
-          // 9. Total da Linha (Valor Mercadoria)
+          // 9. Total da Linha — legenda oficial "Valor Mercadoria"
           case 'total_linha':
             return (
               <td
                 key={col.key}
                 style={cellStyle}
+                title={TITULO_VALOR_MERCADORIA}
                 className="py-2 px-3 text-right font-bold text-slate-900 tabular-nums bg-cyan-50/20 border-r border-slate-100"
               >
                 <div className={isExpanded ? '' : 'truncate'}>
@@ -425,6 +433,7 @@ function VendasRelatorioRowComponent({
               <td
                 key={col.key}
                 style={cellStyle}
+                title={TITULO_VALOR_TOTAL_SEM_FRETE}
                 className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
               >
                 <div className={isExpanded ? '' : 'truncate'}>
@@ -438,6 +447,7 @@ function VendasRelatorioRowComponent({
               <td
                 key={col.key}
                 style={cellStyle}
+                title={TITULO_VALOR_MERCADORIA}
                 className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
               >
                 <div className={isExpanded ? '' : 'truncate'}>
@@ -451,6 +461,7 @@ function VendasRelatorioRowComponent({
               <td
                 key={col.key}
                 style={cellStyle}
+                title={TITULO_VALOR_TOTAL_BRUTO}
                 className="py-2 px-3 text-right font-bold text-slate-900 tabular-nums border-r border-slate-100"
               >
                 <div className={isExpanded ? '' : 'truncate'}>
@@ -463,6 +474,7 @@ function VendasRelatorioRowComponent({
               <td
                 key={col.key}
                 style={cellStyle}
+                title={TITULO_VALOR_LIQUIDO_NET}
                 className="py-2 px-3 text-right font-bold text-teal-700 tabular-nums border-r border-slate-100"
               >
                 <div className={isExpanded ? '' : 'truncate'}>
@@ -475,6 +487,7 @@ function VendasRelatorioRowComponent({
               <td
                 key={col.key}
                 style={cellStyle}
+                title={TITULO_CUSTO_TOTAL}
                 className="py-2 px-3 text-right text-slate-700 tabular-nums border-r border-slate-100"
               >
                 <div className={isExpanded ? '' : 'truncate'}>

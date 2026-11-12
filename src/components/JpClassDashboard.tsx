@@ -14,6 +14,7 @@ import {
 } from 'recharts'
 import ChartCard from '@/components/ChartCard'
 import { formatCurrency, formatCompactCurrency, formatNumber } from '@/lib/formatters'
+import { TITULO_VALOR_MERCADORIA } from '@/lib/valor-titulos'
 import { getJpClass } from '@/lib/jp-class'
 import type { VendaComSemana } from '@/components/JpClassRelatorio'
 import { Users, PieChart as PieChartIcon, BarChart3, Package, Layers } from 'lucide-react'
@@ -244,7 +245,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
         {/* 1. Vendas por JP-Class (Donut responsivo em largura total do container) */}
         <ChartCard
           title="Vendas por JP-Class"
-          description="Distribuição do faturamento por classe padronizada"
+          description={`Distribuição do ${TITULO_VALOR_MERCADORIA} por classe padronizada`}
           icon={PieChartIcon}
           iconColor="text-[#0B6E99]"
         >
@@ -271,7 +272,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value: number) => [formatCurrency(value), 'Faturamento']}
+                    formatter={(value: number) => [formatCurrency(value), TITULO_VALOR_MERCADORIA]}
                     contentStyle={{
                       backgroundColor: '#0F172A',
                       borderRadius: '8px',
@@ -299,7 +300,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
         {/* 2. NOVO PAINEL: Vendas por Tipo de Cliente com Subtotais por HARD, INKS e OTHERS */}
         <ChartCard
           title="Vendas por Tipo de Cliente (Subtotais JP-Class)"
-          description="Faturamento e quantidade segmentados por Tipo de Cliente com decomposição HARD, INKS e OTHERS"
+          description={`${TITULO_VALOR_MERCADORIA} e quantidade segmentados por Tipo de Cliente com decomposição HARD, INKS e OTHERS`}
           icon={Users}
           iconColor="text-[#0B6E99]"
           action={
@@ -314,7 +315,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
                 }`}
                 title="Visualizar em Valor Monetário (R$)"
               >
-                R$ Faturamento
+                R$ {TITULO_VALOR_MERCADORIA}
               </button>
               <button
                 type="button"
@@ -582,7 +583,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
                     tickFormatter={(val) => formatCompactCurrency(val)}
                   />
                   <Tooltip
-                    formatter={(val: number) => [formatCurrency(val), 'Faturamento']}
+                    formatter={(val: number) => [formatCurrency(val), TITULO_VALOR_MERCADORIA]}
                     contentStyle={{
                       backgroundColor: '#0F172A',
                       borderRadius: '8px',
@@ -607,7 +608,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
         {/* 4. Vendas por Item (Top 10 Barras Horizontais) */}
         <ChartCard
           title="Top 10 Itens Vendidos"
-          description="Itens com maior faturamento no período"
+          description={`Itens com maior ${TITULO_VALOR_MERCADORIA} no período`}
           icon={Package}
           iconColor="text-[#0B6E99]"
         >

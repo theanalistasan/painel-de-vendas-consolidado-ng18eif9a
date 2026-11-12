@@ -657,41 +657,41 @@ export default function JpClassPage() {
         </div>
       </div>
 
-     {/* Quadro de Valores por Semana (Fase 5) — dividido em Visão Comercial e Visão Contábil */}
-    <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
-        <TrendingUp className="w-4 h-4 text-[#0B6E99]" />
-        <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-          Valores por Semana — {mesNome} de {ano}
-        </h3>
-      </div>
+      {/* Quadro de Valores por Semana (Fase 5) — dividido em Visão Comercial e Visão Contábil */}
+      <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-[#0B6E99]" />
+          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+            Valores por Semana — {mesNome} de {ano}
+          </h3>
+        </div>
 
-      {/* Bloco 1 — Visão Comercial: Valor Total (Bruto) e Valor Líquido (NET) */}
-      <QuadroValoresFaixa
-        faixaLabel={FAIXA_COMERCIAL_LABEL}
-        semanasCount={semanas.length}
-        colunas={[
-          { titulo: TITULO_VALOR_TOTAL_BRUTO, campo: 'valorTotalBruto' },
-          { titulo: TITULO_VALOR_LIQUIDO_NET, campo: 'valorLiquidoTotal' },
-        ]}
-        valoresPorSemana={valoresPorSemana}
-        totais={totaisQuadroSemanas}
-        valorCompacto={valorCompacto}
-      />
+        {/* Bloco 1 — Visão Comercial: Valor Total (Bruto) e Valor Líquido (NET) */}
+        <QuadroValoresFaixa
+          faixaLabel={FAIXA_COMERCIAL_LABEL}
+          semanasCount={semanas.length}
+          colunas={[
+            { titulo: TITULO_VALOR_TOTAL_BRUTO, campo: 'valorTotalBruto' },
+            { titulo: TITULO_VALOR_LIQUIDO_NET, campo: 'valorLiquidoTotal' },
+          ]}
+          valoresPorSemana={valoresPorSemana}
+          totais={totaisQuadroSemanas}
+          valorCompacto={valorCompacto}
+        />
 
-      {/* Bloco 2 — Visão Contábil: Valor Total (Sem Frete), Valor Mercadoria e Custo Total */}
-      <QuadroValoresFaixa
-        faixaLabel={FAIXA_CONTABIL_LABEL}
-        semanasCount={semanas.length}
-        colunas={[
-          { titulo: TITULO_VALOR_TOTAL_SEM_FRETE, campo: 'valorTotalNfSemFrete' },
-          { titulo: TITULO_VALOR_MERCADORIA, campo: 'valorTotalMercadoria' },
-          { titulo: TITULO_CUSTO_TOTAL, campo: 'custoTotal' },
-        ]}
-        valoresPorSemana={valoresPorSemana}
-        totais={totaisQuadroSemanas}
-        valorCompacto={valorCompacto}
-      />
+        {/* Bloco 2 — Visão Contábil: Valor Total (Sem Frete), Valor Mercadoria e Custo Total */}
+        <QuadroValoresFaixa
+          faixaLabel={FAIXA_CONTABIL_LABEL}
+          semanasCount={semanas.length}
+          colunas={[
+            { titulo: TITULO_VALOR_TOTAL_SEM_FRETE, campo: 'valorTotalNfSemFrete' },
+            { titulo: TITULO_VALOR_MERCADORIA, campo: 'valorTotalMercadoria' },
+            { titulo: TITULO_CUSTO_TOTAL, campo: 'custoTotal' },
+          ]}
+          valoresPorSemana={valoresPorSemana}
+          totais={totaisQuadroSemanas}
+          valorCompacto={valorCompacto}
+        />
         {semanas.length === 0 && (
           <div className="px-4 py-3 text-[11px] text-slate-500">
             Nenhuma semana completa no período selecionado.

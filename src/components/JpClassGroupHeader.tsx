@@ -2,6 +2,7 @@ import React from 'react'
 import { ChevronDown, ChevronRight as ChevronRightIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatNumber } from '@/lib/formatters'
+import { TITULO_VALOR_MERCADORIA } from '@/lib/valor-titulos'
 
 export interface JpClassGroupHeaderProps {
   groupKey: string
@@ -96,12 +97,12 @@ function JpClassGroupHeaderComponent({
 
             <span className="text-[11px] text-slate-400 font-normal">•</span>
 
-            {/* Subtotal Total da Linha */}
-            <span className="text-xs text-slate-600 font-medium">Subtotal:</span>
+            {/* Subtotal Valor Mercadoria (Total da Linha) — legenda oficial */}
+            <span className="text-xs text-slate-600 font-medium">{TITULO_VALOR_MERCADORIA}:</span>
             <Badge
               variant="outline"
               className="text-xs bg-emerald-50 text-emerald-800 border-emerald-300 font-extrabold px-2.5 py-0.5"
-              title={`Subtotal (Total da Linha) do grupo ${title}: ${formatCurrency(subtotal)}`}
+              title={`Subtotal (${TITULO_VALOR_MERCADORIA}) do grupo ${title}: ${formatCurrency(subtotal)}`}
             >
               {formatCurrency(subtotal)}
             </Badge>
@@ -113,7 +114,7 @@ function JpClassGroupHeaderComponent({
                 className="text-[11px] bg-teal-50 text-teal-800 border-teal-200 font-semibold px-2 py-0.5"
                 title={`Valor Líquido do grupo: ${formatCurrency(subtotalLiquido)}`}
               >
-                Líq: {formatCurrency(subtotalLiquido)}
+                NET: {formatCurrency(subtotalLiquido)}
               </Badge>
             )}
           </div>

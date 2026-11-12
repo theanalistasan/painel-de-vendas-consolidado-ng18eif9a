@@ -1,14 +1,16 @@
 import React from 'react'
 import { Briefcase, Calculator } from 'lucide-react'
-import {
-  FAIXA_COMERCIAL_LABEL,
-  FAIXA_CONTABIL_LABEL,
-} from '@/lib/valor-titulos'
+import { FAIXA_COMERCIAL_LABEL, FAIXA_CONTABIL_LABEL } from '@/lib/valor-titulos'
 import type { SemanaValores } from '@/lib/semanas'
 
 export interface QuadroFaixaColuna {
   titulo: string
-  campo: 'valorTotalBruto' | 'valorLiquidoTotal' | 'valorTotalNfSemFrete' | 'valorTotalMercadoria' | 'custoTotal'
+  campo:
+    | 'valorTotalBruto'
+    | 'valorLiquidoTotal'
+    | 'valorTotalNfSemFrete'
+    | 'valorTotalMercadoria'
+    | 'custoTotal'
 }
 
 export interface QuadroValoresFaixaProps {
@@ -44,9 +46,7 @@ function QuadroValoresFaixaComponent({
   return (
     <div>
       {/* Cabeçalho da faixa */}
-      <div
-        className={`px-4 py-2 flex items-center gap-2 border-b border-slate-100 ${bgFaixa}`}
-      >
+      <div className={`px-4 py-2 flex items-center gap-2 border-b border-slate-100 ${bgFaixa}`}>
         <IconeFaixa className={`w-4 h-4 ${corFaixa}`} />
         <span
           className={`text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${badgeFaixa}`}
@@ -98,10 +98,7 @@ function QuadroValoresFaixaComponent({
             <tr className="bg-slate-50 font-bold">
               <td className="px-4 py-2.5 text-slate-800">Total do Mês</td>
               {colunas.map((col) => (
-                <td
-                  key={col.campo}
-                  className="px-4 py-2.5 text-right tabular-nums text-slate-900"
-                >
+                <td key={col.campo} className="px-4 py-2.5 text-right tabular-nums text-slate-900">
                   {valorCompacto(Number(totais[col.campo]) || 0)}
                 </td>
               ))}

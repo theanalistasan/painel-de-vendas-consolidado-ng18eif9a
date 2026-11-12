@@ -58,10 +58,7 @@ import {
   buildCanaisFiltrosEfetivos,
 } from '@/components/CanaisFiltrosLocaisBar'
 
-import {
-  TITULO_VALOR_TOTAL_BRUTO,
-  TITULO_VALOR_LIQUIDO_NET,
-} from '@/lib/valor-titulos'
+import { TITULO_VALOR_TOTAL_BRUTO, TITULO_VALOR_LIQUIDO_NET } from '@/lib/valor-titulos'
 import KpiCard from '@/components/KpiCard'
 import ChartCard from '@/components/ChartCard'
 import { MetasIndicador } from '@/components/MetasIndicador'
@@ -284,8 +281,8 @@ export default function DashboardCanais() {
     return (data?.porAno || [])
       .map((item) => ({
         ano: item.ano,
-        'Valor Total (Bruto)': Number(item.total_nf_novo) || 0,
-        'Valor Líquido (NET)': Number(item.valor_liquido_total) || 0,
+        [TITULO_VALOR_TOTAL_BRUTO]: Number(item.total_nf_novo) || 0,
+        [TITULO_VALOR_LIQUIDO_NET]: Number(item.valor_liquido_total) || 0,
       }))
       .sort((a, b) => Number(a.ano) - Number(b.ano))
   }, [data])
@@ -739,7 +736,7 @@ export default function DashboardCanais() {
           {multiAno && porAnoValuesData.length > 1 && (
             <ChartCard
               title="Valores por Ano"
-              description="Valor Total (Bruto) e Valor Líquido (NET) — comparados ano a ano no período filtrado"
+              description={`${TITULO_VALOR_TOTAL_BRUTO} e ${TITULO_VALOR_LIQUIDO_NET} — comparados ano a ano no período filtrado`}
               icon={BarChart2}
               iconColor="text-[#0B6E99]"
             >
@@ -782,13 +779,13 @@ export default function DashboardCanais() {
                     )}
                   />
                   <Bar
-                    dataKey="Valor Total (Bruto)"
+                    dataKey={TITULO_VALOR_TOTAL_BRUTO}
                     fill="#0B6E99"
                     radius={[4, 4, 0, 0]}
                     maxBarSize={32}
                   />
                   <Bar
-                    dataKey="Valor Líquido (NET)"
+                    dataKey={TITULO_VALOR_LIQUIDO_NET}
                     fill="#0D9488"
                     radius={[4, 4, 0, 0]}
                     maxBarSize={32}
@@ -1113,10 +1110,10 @@ export default function DashboardCanais() {
               </ResponsiveContainer>
             </ChartCard>
           </div>
-          {/* Gráfico: Valor Líquido x Faturamento por Mês */}
+          {/* Gráfico: Valor Líquido (NET) x Valor Total (Bruto) por Mês */}
           <div className="grid grid-cols-1 gap-6">
             <ChartCard
-              title="Valor Líquido x Faturamento por Mês"
+              title={`${TITULO_VALOR_LIQUIDO_NET} x ${TITULO_VALOR_TOTAL_BRUTO} por Mês`}
               description="Comparativo de margem financeira dos canais"
             >
               <ResponsiveContainer width="100%" height="100%">
@@ -1148,7 +1145,9 @@ export default function DashboardCanais() {
                     height={36}
                     formatter={(value) => (
                       <span className="text-xs font-bold text-slate-700 capitalize">
-                        {value === 'faturamento' ? 'Faturamento Total' : 'Valor Líquido'}
+                        {value === 'faturamento'
+                          ? TITULO_VALOR_TOTAL_BRUTO
+                          : TITULO_VALOR_LIQUIDO_NET}
                       </span>
                     )}
                   />

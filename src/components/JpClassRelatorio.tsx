@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatNumber } from '@/lib/formatters'
 import { getJpClass, getJpClassBadgeStyle } from '@/lib/jp-class'
 import type { SemanaMes } from '@/lib/semanas'
+import { TITULO_VALOR_MERCADORIA, TITULO_VALOR_LIQUIDO_NET } from '@/lib/valor-titulos'
 import type { VendaConsolidada } from '@/types/sales'
 
 export interface VendaComSemana extends VendaConsolidada {
@@ -523,9 +524,9 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
     if (isNumericSort) {
       const fieldName =
         sortField === 'total_linha'
-          ? 'Total de Vendas'
+          ? TITULO_VALOR_MERCADORIA
           : sortField === 'valor_liquido'
-            ? 'Valor Líquido'
+            ? TITULO_VALOR_LIQUIDO_NET
             : 'Quantidade'
       return `${fieldName} (${sortDir === 'desc' ? 'Maior → Menor' : 'Menor → Maior'})`
     }
@@ -671,14 +672,14 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
                 onClick={() => handleSort('total_linha')}
                 className="py-3 px-3 text-right cursor-pointer hover:bg-slate-100/80 transition-colors border-r border-slate-100 w-36 whitespace-nowrap"
               >
-                <span>Total Vendas</span>
+                <span>{TITULO_VALOR_MERCADORIA}</span>
                 {renderSortIndicator('total_linha')}
               </th>
               <th
                 onClick={() => handleSort('valor_liquido')}
                 className="py-3 px-3 text-right cursor-pointer hover:bg-slate-100/80 transition-colors w-36 whitespace-nowrap"
               >
-                <span>Valor Líquido</span>
+                <span>{TITULO_VALOR_LIQUIDO_NET}</span>
                 {renderSortIndicator('valor_liquido')}
               </th>
             </tr>

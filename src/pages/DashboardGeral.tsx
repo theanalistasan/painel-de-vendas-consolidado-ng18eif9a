@@ -28,10 +28,7 @@ import { fetchDashboardStats, type DashboardStatsResult } from '@/services/sales
 import { useRealtime } from '@/hooks/use-realtime'
 import type { FilterState } from '@/types/sales'
 import { formatCurrency, formatCompactCurrency, formatNumber, MESES_CURTOS } from '@/lib/formatters'
-import {
- TITULO_VALOR_TOTAL_BRUTO,
- TITULO_VALOR_LIQUIDO_NET,
-} from '@/lib/valor-titulos'
+import { TITULO_VALOR_TOTAL_BRUTO, TITULO_VALOR_LIQUIDO_NET } from '@/lib/valor-titulos'
 import {
   loadFiltersFromSession,
   saveFiltersToSession,
@@ -262,8 +259,8 @@ export default function DashboardGeral() {
     return (data?.porAno || [])
       .map((item) => ({
         ano: item.ano,
-        'Valor Total (Bruto)': Number(item.total_nf_novo) || 0,
-        'Valor Líquido (NET)': Number(item.valor_liquido_total) || 0,
+        [TITULO_VALOR_TOTAL_BRUTO]: Number(item.total_nf_novo) || 0,
+        [TITULO_VALOR_LIQUIDO_NET]: Number(item.valor_liquido_total) || 0,
       }))
       .sort((a, b) => Number(a.ano) - Number(b.ano))
   }, [data])
@@ -626,11 +623,17 @@ export default function DashboardGeral() {
                     formatter={(val: number | string | undefined, name: string) => {
                       const n = typeof val === 'number' ? val : Number(val)
                       if (name === 'faturamento')
-                        return [formatCurrency(n), `Faturamento (${anoAtualLabel})`]
+                        return [formatCurrency(n), `${TITULO_VALOR_TOTAL_BRUTO} (${anoAtualLabel})`]
                       if (name === 'faturamento_ano_anterior')
-                        return [formatCurrency(n), `Faturamento (${anoAnteriorLabel})`]
+                        return [
+                          formatCurrency(n),
+                          `${TITULO_VALOR_TOTAL_BRUTO} (${anoAnteriorLabel})`,
+                        ]
                       if (name === 'faturamento_ano_retrasado')
-                        return [formatCurrency(n), `Faturamento (${anoRetrasadoLabel})`]
+                        return [
+                          formatCurrency(n),
+                          `${TITULO_VALOR_TOTAL_BRUTO} (${anoRetrasadoLabel})`,
+                        ]
                       if (name === 'devolucoes') return [formatCurrency(n), 'Devoluções']
                       return [formatCurrency(n), name]
                     }}
@@ -641,9 +644,9 @@ export default function DashboardGeral() {
                     height={36}
                     formatter={(value) => {
                       const labels: Record<string, string> = {
-                        faturamento: `Faturamento (${anoAtualLabel})`,
-                        faturamento_ano_anterior: `Faturamento (${anoAnteriorLabel})`,
-                        faturamento_ano_retrasado: `Faturamento (${anoRetrasadoLabel})`,
+                        faturamento: `${TITULO_VALOR_TOTAL_BRUTO} (${anoAtualLabel})`,
+                        faturamento_ano_anterior: `${TITULO_VALOR_TOTAL_BRUTO} (${anoAnteriorLabel})`,
+                        faturamento_ano_retrasado: `${TITULO_VALOR_TOTAL_BRUTO} (${anoRetrasadoLabel})`,
                         devolucoes: 'Devoluções',
                       }
                       return (
@@ -703,7 +706,7 @@ export default function DashboardGeral() {
             {/* Indicador: Evolução de Vendas por Ano */}
             <ChartCard
               title="Evolução de Vendas por Ano"
-              description="Faturamento total por ano e variação percentual em relação ao ano anterior"
+              description={`${TITULO_VALOR_TOTAL_BRUTO} por ano e variação percentual em relação ao ano anterior`}
               icon={TrendingUp}
               iconColor="text-emerald-600"
             >
@@ -743,7 +746,7 @@ export default function DashboardGeral() {
                       if (name === 'devolucoes') {
                         return [formatCurrency(n), 'Devoluções']
                       }
-                      return [formatCurrency(n), 'Faturamento']
+                      return [formatCurrency(n), TITULO_VALOR_TOTAL_BRUTO]
                     }}
                     contentStyle={tooltipContentStyle}
                   />
@@ -752,7 +755,7 @@ export default function DashboardGeral() {
                     height={36}
                     formatter={(value) => {
                       const labels: Record<string, string> = {
-                        faturamento: 'Faturamento',
+                        faturamento: TITULO_VALOR_TOTAL_BRUTO,
                         devolucoes: 'Devoluções',
                         variacao: 'Variação %',
                       }

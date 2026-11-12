@@ -13,6 +13,13 @@ import {
 
 import { formatCurrency, formatCompactCurrency } from '@/lib/formatters'
 import {
+  TITULO_VALOR_TOTAL_BRUTO,
+  TITULO_VALOR_LIQUIDO_NET,
+  TITULO_VALOR_TOTAL_SEM_FRETE,
+  TITULO_VALOR_MERCADORIA,
+  TITULO_CUSTO_TOTAL,
+} from '@/lib/valor-titulos'
+import {
   ResponsiveContainer,
   BarChart,
   Bar,
@@ -205,40 +212,40 @@ export default function FiltrosGlobais() {
       .sort((a, b) => b.value - a.value)
   }, [optionsData])
 
-  // Fase 3: 4 valores de KPI das visões (Geral/Canais) em barras horizontais.
+  // Fase 3: 5 valores de KPI das visões (Geral/Canais) em barras horizontais.
   // Vêm do mesmo endpoint dashboard/stats que já alimenta a página — os valores
   // chegam já filtrados pelos Filtros Globais ativos e recalculam ao limpar
   // (loadOptions roda a cada mudança de `filters`).
   const kpiValuesData = useMemo(() => {
     const kpis = optionsData?.kpis
     if (!kpis) return []
-    // Títulos/métricas ALINHADOS com o quadro do JP-Class (/jp-class):
-    // Valor Total Mercadoria = total_linha; Valor Líquido Total = valor_liquido;
-    // Valor Total NF sem frete = total_nf_sem_frete (MAX por NF); Custo Total = custo_total.
+    // Legendas EXATAS e nesta ordem (pedido do Silvio, src/lib/valor-titulos.ts):
+    // Valor Total (Bruto) → Valor Líquido (NET) → Valor Total (Sem Frete)
+    // → Valor Mercadoria → Custo Total.
     return [
       {
-        name: 'Valor Total Mercadoria',
-        value: Number(kpis.faturamento) || 0,
+        name: TITULO_VALOR_TOTAL_BRUTO,
+        value: Number(kpis.totalNfNovo) || 0,
         fill: '#0B6E99',
       },
       {
-        name: 'Valor Líquido Total',
+        name: TITULO_VALOR_LIQUIDO_NET,
         value: Number(kpis.valorLiquido) || 0,
         fill: '#0D9488',
       },
       {
-        name: 'Valor Total NF sem frete',
+        name: TITULO_VALOR_TOTAL_SEM_FRETE,
         value: Number(kpis.totalNfSemFrete) || 0,
         fill: '#F59E0B',
       },
       {
-        name: 'Custo Total',
-        value: Number(kpis.custoTotal) || 0,
+        name: TITULO_VALOR_MERCADORIA,
+        value: Number(kpis.faturamento) || 0,
         fill: '#8B5CF6',
       },
       {
-        name: 'Valor Total da NF',
-        value: Number(kpis.totalNfNovo) || 0,
+        name: TITULO_CUSTO_TOTAL,
+        value: Number(kpis.custoTotal) || 0,
         fill: '#EC4899',
       },
     ]
@@ -265,11 +272,11 @@ export default function FiltrosGlobais() {
     return list
       .map((item) => ({
         ano: item.ano,
-        'Valor Total Mercadoria': Number(item.valor_total_mercadorias) || 0,
-        'Valor Líquido Total': Number(item.valor_liquido_total) || 0,
-        'Valor Total NF sem frete': Number(item.total_nf_sem_frete) || 0,
-        'Valor Total da NF': Number(item.total_nf_novo) || 0,
-        'Custo Total': Number(item.custo_total) || 0,
+        [TITULO_VALOR_MERCADORIA]: Number(item.valor_total_mercadorias) || 0,
+        [TITULO_VALOR_LIQUIDO_NET]: Number(item.valor_liquido_total) || 0,
+        [TITULO_VALOR_TOTAL_SEM_FRETE]: Number(item.total_nf_sem_frete) || 0,
+        [TITULO_VALOR_TOTAL_BRUTO]: Number(item.total_nf_novo) || 0,
+        [TITULO_CUSTO_TOTAL]: Number(item.custo_total) || 0,
       }))
       .sort((a, b) => Number(a.ano) - Number(b.ano))
   }, [optionsData])
@@ -491,7 +498,7 @@ export default function FiltrosGlobais() {
           comparáveis entre si no mesmo eixo), logo abaixo dos dashs existentes */}
       <ChartCard
         title="Valores Consolidados (KPIs das Visões)"
-        description="Valor Total Mercadoria, Valor Líquido Total, Valor Total NF sem frete, Custo Total e Valor Total da NF — no período/filtros ativos (mesmos títulos e valores do quadro do JP-Class)"
+        description={`${TITULO_VALOR_TOTAL_BRUTO}, ${TITULO_VALOR_LIQUIDO_NET}, ${TITULO_VALOR_TOTAL_SEM_FRETE}, ${TITULO_VALOR_MERCADORIA} e ${TITULO_CUSTO_TOTAL} — no período/filtros ativos (mesmos títulos e valores do quadro do JP-Class)`}
         icon={DollarSign}
         iconColor="text-[#0B6E99]"
       >
@@ -534,30 +541,35 @@ export default function FiltrosGlobais() {
               />
               <Legend wrapperStyle={{ fontSize: 11, fontWeight: 600 }} />
               <Bar
-                dataKey="Valor Total Mercadoria"
+                dataKey={TITULO_VALOR_TOTAL_BRUTO}
                 fill="#0B6E99"
                 radius={[4, 4, 0, 0]}
                 maxBarSize={32}
               />
               <Bar
-                dataKey="Valor Líquido Total"
+                dataKey={TITULO_VALOR_LIQUIDO_NET}
                 fill="#0D9488"
                 radius={[4, 4, 0, 0]}
                 maxBarSize={32}
               />
               <Bar
-                dataKey="Valor Total NF sem frete"
+                dataKey={TITULO_VALOR_TOTAL_SEM_FRETE}
                 fill="#F59E0B"
                 radius={[4, 4, 0, 0]}
                 maxBarSize={32}
               />
               <Bar
-                dataKey="Valor Total da NF"
+                dataKey={TITULO_VALOR_MERCADORIA}
+                fill="#8B5CF6"
+                radius={[4, 4, 0, 0]}
+                maxBarSize={32}
+              />
+              <Bar
+                dataKey={TITULO_CUSTO_TOTAL}
                 fill="#EC4899"
                 radius={[4, 4, 0, 0]}
                 maxBarSize={32}
               />
-              <Bar dataKey="Custo Total" fill="#8B5CF6" radius={[4, 4, 0, 0]} maxBarSize={32} />
             </BarChart>
           </ResponsiveContainer>
         ) : (
