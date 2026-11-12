@@ -6,7 +6,10 @@
 // - Roteamento pela janela dinâmica de 3 anos: dentro -> netsales (staging da
 //   consolidação); antes da janela -> vendas_historico. Modo 'historico' manda
 //   TUDO direto ao histórico.
-// - Deduplicação: chave_documento + serial + docdate + codigo_cliente + codigo_item.
+// - SEM deduplicação: TODA linha da planilha é gravada como NOVO registro.
+//   Linhas idênticas (mesma chave_documento + serial + docdate + codigo_cliente +
+//   codigo_item) existem na planilha real (ex.: doc 37550 com 3 linhas de MO-240)
+//   e precisam entrar para os totais baterem com a planilha do gerente comercial.
 // - origem = 'NetSales_v4'.
 routerAdd(
   'POST',
@@ -77,7 +80,6 @@ routerAdd(
       return e.json(400, {
         message: 'Nenhum registro enviado',
         importados: 0,
-        atualizados: 0,
         ignorados: 0,
         erros: ['Nenhum dado encontrado no payload'],
       })
@@ -119,11 +121,9 @@ routerAdd(
     }
 
     let importados = 0
-    let atualizados = 0
     let ignorados = 0
     let roteadosHistorico = 0
     let historicoImportados = 0
-    let historicoAtualizados = 0
     const erros = []
     const avisos = []
 
@@ -184,9 +184,6 @@ routerAdd(
       return s
     }
 
-    // Escapa aspas simples para uso em filtros PocketBase
-    const escFilter = (v) => (v || '').toString().split('\\').join('\\\\').split("'").join("\\'")
-
     for (let i = 0; i < rows.length; i++) {
       const lineNum = i + 1
       const m = buildRowMap(rows[i])
@@ -231,57 +228,11 @@ routerAdd(
       if (targetName === 'vendas_historico') roteadosHistorico++
 
       try {
-        let isUpdate = false
-        let record
-
-        // DEDUPLICAÇÃO: chave_documento + serial + docdate + codigo_cliente + codigo_item
-        // (na coleção netsales os campos são chave_documento/docdate; no
-        // vendas_historico são numero_documento_netsales/data_lancamento)
-        let filter
-        if (targetName === 'vendas_historico') {
-          filter =
-            "numero_documento_netsales = '" +
-            escFilter(chaveDocumento) +
-            "'" +
-            " && numero_nfe = '" +
-            escFilter(serial) +
-            "'" +
-            " && data_lancamento = '" +
-            escFilter(docDate) +
-            "'" +
-            " && codigo_item = '" +
-            escFilter(codigoItem) +
-            "'" +
-            " && codigo_cliente = '" +
-            escFilter(codigoCliente) +
-            "'"
-        } else {
-          filter =
-            "chave_documento = '" +
-            escFilter(chaveDocumento) +
-            "'" +
-            " && serial = '" +
-            escFilter(serial) +
-            "'" +
-            " && docdate = '" +
-            escFilter(docDate) +
-            "'" +
-            " && codigo_item = '" +
-            escFilter(codigoItem) +
-            "'" +
-            " && codigo_cliente = '" +
-            escFilter(codigoCliente) +
-            "'"
-        }
-
-        const found = $app.findRecordsByFilter(targetName, filter, '', 1, 0)
-
-        if (found.length > 0) {
-          record = found[0]
-          isUpdate = true
-        } else {
-          record = new Record(targetCol)
-        }
+        // SEM upsert/dedup: toda linha da planilha vira NOVO registro, mesmo
+        // que já exista linha idêntica (a planilha tem repetições reais e o
+        // relatório deve espelhá-la linha a linha). O índice único da chave
+        // composta foi removido pela migration 1742600008.
+        const record = new Record(targetCol)
 
         // Campos comuns às duas coleções (nomes distintos quando necessário)
         const texto = (v) => (v === undefined || v === null ? '' : v.toString().trim())
@@ -385,18 +336,11 @@ routerAdd(
         record.set('tipo_cliente', tcInfo ? tcInfo.tipo_cliente : '')
 
         $app.save(record)
-        if (isUpdate) {
-          if (targetName === 'vendas_historico') {
-            historicoAtualizados++
-          } else {
-            atualizados++
-          }
+        // Sem upsert: toda gravação é INSERT — contador só de importados
+        if (targetName === 'vendas_historico') {
+          historicoImportados++
         } else {
-          if (targetName === 'vendas_historico') {
-            historicoImportados++
-          } else {
-            importados++
-          }
+          importados++
         }
       } catch (err) {
         ignorados++
@@ -436,11 +380,9 @@ routerAdd(
       fonte: 'NetSales_v4',
       modo: modoHistorico ? 'historico' : 'atual',
       importados,
-      atualizados,
       ignorados,
       roteados_historico: roteadosHistorico,
       historico_importados: historicoImportados,
-      historico_atualizados: historicoAtualizados,
       janela: janela,
       erros,
       avisos,
