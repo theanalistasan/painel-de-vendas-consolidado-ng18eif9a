@@ -745,11 +745,28 @@ var __dashboardStatsHandler = (e) => {
     // só existem na base bruta `vendas` (a resumo_vendas_mensal não tem
     // numero_nfe/numero_documento_netsales), portanto entram APENAS em
     // sqlVendasParts e forçam o fallback hasSearchOrDay.
-    if (f.numeroNfe) {
-      sqlVendasParts.push("numero_nfe LIKE '%" + sqlEsc(f.numeroNfe) + "%'")
+    // Aceita lista separada por vírgula: cada termo vira um LIKE, unidos por OR
+    // (mesmo padrão dos demais filtros de texto).
+    const textTerms = (raw) =>
+      String(raw)
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+    const nfeTerms = f.numeroNfe ? textTerms(f.numeroNfe) : []
+    const pedidoTerms = f.numeroPedido ? textTerms(f.numeroPedido) : []
+    if (nfeTerms.length > 0) {
+      sqlVendasParts.push(
+        '(' + nfeTerms.map((t) => "numero_nfe LIKE '%" + sqlEsc(t) + "%'").join(' OR ') + ')',
+      )
     }
-    if (f.numeroPedido) {
-      sqlVendasParts.push("numero_documento_netsales LIKE '%" + sqlEsc(f.numeroPedido) + "%'")
+    if (pedidoTerms.length > 0) {
+      sqlVendasParts.push(
+        '(' +
+          pedidoTerms
+            .map((t) => "numero_documento_netsales LIKE '%" + sqlEsc(t) + "%'")
+            .join(' OR ') +
+          ')',
+      )
     }
 
     if (f.search) {
@@ -781,7 +798,11 @@ var __dashboardStatsHandler = (e) => {
 
     // Se o filtro incluir busca textual ('search'), 'dia' específico ou tipoCliente, precisamos consultar a tabela `vendas` bruta para a busca pontual
     const hasSearchOrDay =
-      !!f.search || diasFilter.length > 0 || hasTipoCliente || !!f.numeroNfe || !!f.numeroPedido
+      !!f.search ||
+      diasFilter.length > 0 ||
+      hasTipoCliente ||
+      nfeTerms.length > 0 ||
+      pedidoTerms.length > 0
 
     // Onde aplicar na tabela de resumo
     const sqlWhere = sqlParts.length > 0 ? sqlParts.join(' AND ') : '1=1'

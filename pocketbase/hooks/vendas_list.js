@@ -369,12 +369,28 @@ var __vendasListHandler = (e) => {
     if (f.tipoDevolucao) {
       sqlParts.push("tipo_documento = '" + sqlEsc(f.tipoDevolucao) + "'")
     }
-    // Filtros locais da Visão Canais: Nota Fiscal e Pedido (busca textual)
-    if (f.numeroNfe) {
-      sqlParts.push("numero_nfe LIKE '%" + sqlEsc(f.numeroNfe) + "%'")
+    // Filtros locais da Visão Canais: Nota Fiscal e Pedido (busca textual).
+    // Aceita lista separada por vírgula: cada termo vira um LIKE, unidos por OR.
+    const textTerms = (raw) =>
+      String(raw)
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+    const nfeTerms = f.numeroNfe ? textTerms(f.numeroNfe) : []
+    const pedidoTerms = f.numeroPedido ? textTerms(f.numeroPedido) : []
+    if (nfeTerms.length > 0) {
+      sqlParts.push(
+        '(' + nfeTerms.map((t) => "numero_nfe LIKE '%" + sqlEsc(t) + "%'").join(' OR ') + ')',
+      )
     }
-    if (f.numeroPedido) {
-      sqlParts.push("numero_documento_netsales LIKE '%" + sqlEsc(f.numeroPedido) + "%'")
+    if (pedidoTerms.length > 0) {
+      sqlParts.push(
+        '(' +
+          pedidoTerms
+            .map((t) => "numero_documento_netsales LIKE '%" + sqlEsc(t) + "%'")
+            .join(' OR ') +
+          ')',
+      )
     }
     if (f.search) {
       const q = sqlEsc(f.search)

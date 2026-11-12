@@ -48,7 +48,16 @@ import {
   loadFiltersFromSession,
   hasSavedFiltersInSession,
   buildDynamicInitialFilters,
+  type CanaisFiltroLocal,
+  EMPTY_CANAIS_FILTRO_LOCAL,
+  loadCanaisFiltrosFromSession,
+  saveCanaisFiltrosToSession,
+  clearCanaisFiltrosFromSession,
 } from '@/lib/filter-persistence'
+import {
+  CanaisFiltrosLocaisBar,
+  buildCanaisFiltrosEfetivos,
+} from '@/components/CanaisFiltrosLocaisBar'
 
 import KpiCard from '@/components/KpiCard'
 import ChartCard from '@/components/ChartCard'
@@ -100,11 +109,35 @@ export default function DashboardCanais() {
     saveFiltersToSession(filters)
   }, [filters])
 
+  // Filtros LOCAIS de período/documento da Visão Canais (Ano, Mês, Data, Nota
+  // Fiscal e Pedido) — prioridade sobre os Filtros Globais; vazio = segue o
+  // global. Persistidos em sessionStorage (helpers do commit 0.0.324) para o
+  // F5 preservar os valores.
+  const [filtrosLocais, setFiltrosLocais] = useState<CanaisFiltroLocal>(() =>
+    loadCanaisFiltrosFromSession(),
+  )
+  const [filtrosLocaisDebounced, setFiltrosLocaisDebounced] =
+    useState<CanaisFiltroLocal>(filtrosLocais)
+
+  useEffect(() => {
+    saveCanaisFiltrosToSession(filtrosLocais)
+    // Debounce: campos textuais (NF/Pedido) não devem disparar uma busca por
+    // tecla digitada
+    const t = setTimeout(() => setFiltrosLocaisDebounced(filtrosLocais), 500)
+    return () => clearTimeout(t)
+  }, [filtrosLocais])
+
+  // Filtros EFETIVOS desta visão: local preenchido sobrepõe o global
+  const filtrosEfetivos = useMemo(
+    () => buildCanaisFiltrosEfetivos(filters, filtrosLocaisDebounced),
+    [filters, filtrosLocaisDebounced],
+  )
+
   const requestSeqRef = useRef<number>(0)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   // Carrega comparativo Mês Atual x Mês Ano Anterior por canal
-  const loadComparativoData = async (activeFilters = filters) => {
+  const loadComparativoData = async (activeFilters = filtrosEfetivos) => {
     setLoadingComparativo(true)
     try {
       const res = await fetchCanaisComparativo({
@@ -121,7 +154,7 @@ export default function DashboardCanais() {
   }
 
   // Load aggregated dashboard stats from server
-  const loadData = async (activeFilters = filters) => {
+  const loadData = async (activeFilters = filtrosEfetivos) => {
     const seq = ++requestSeqRef.current
 
     if (abortControllerRef.current) {
@@ -173,18 +206,18 @@ export default function DashboardCanais() {
   }
 
   useEffect(() => {
-    loadData(filters)
-    loadComparativoData(filters)
+    loadData(filtrosEfetivos)
+    loadComparativoData(filtrosEfetivos)
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
     }
-  }, [filters])
+  }, [filtrosEfetivos])
 
   useRealtime('vendas', () => {
     loadData()
-    loadComparativoData(filters)
+    loadComparativoData()
   })
 
   // Filtros locais da Visão Canais: Canal, Clientes do Canal, Deploy e Inside.
@@ -231,16 +264,16 @@ export default function DashboardCanais() {
   // ⇒ os 5 KPIs de valor também são exibidos por ano em barras verticais, com o
   // mesmo critério do backend (MAX por NF para os 2 totais de NF).
   const multiAno = useMemo(() => {
-    const anosSel = (filters?.ano || []).length
+    const anosSel = (filtrosEfetivos?.ano || []).length
     if (anosSel > 1) return true
     if (anosSel > 0) return false
-    if (filters?.dataDe && filters?.dataAte) {
-      const yMin = Number(String(filters.dataDe).slice(0, 4))
-      const yMax = Number(String(filters.dataAte).slice(0, 4))
+    if (filtrosEfetivos?.dataDe && filtrosEfetivos?.dataAte) {
+      const yMin = Number(String(filtrosEfetivos.dataDe).slice(0, 4))
+      const yMax = Number(String(filtrosEfetivos.dataAte).slice(0, 4))
       if (!isNaN(yMin) && !isNaN(yMax)) return yMax > yMin
     }
     return false
-  }, [filters])
+  }, [filtrosEfetivos])
 
   const porAnoValuesData = useMemo(() => {
     return (data?.porAno || [])
@@ -348,7 +381,7 @@ export default function DashboardCanais() {
           sort: `${relatorioSortDir === 'desc' ? '-' : ''}${relatorioSortField}`,
           sortField: relatorioSortField,
           sortDirection: relatorioSortDir,
-          filters: filters as unknown as Record<string, unknown>,
+          filters: filtrosEfetivos as unknown as Record<string, unknown>,
           // Consolidação no backend: 1 linha por NF ou por Nº do Pedido
           groupByNfe: relatorioGroupByMode === 'nfe',
           groupByMode: relatorioGroupByMode === 'pedido' ? 'pedido' : undefined,
@@ -365,7 +398,7 @@ export default function DashboardCanais() {
           page: relatorioPage,
           perPage: relatorioLimit,
           sort: `${relatorioSortDir === 'desc' ? '-' : ''}${relatorioSortField}`,
-          filters: filters as unknown as Record<string, unknown>,
+          filters: filtrosEfetivos as unknown as Record<string, unknown>,
         })
 
         if (seq !== relatorioRequestSeqRef.current) return
@@ -390,7 +423,7 @@ export default function DashboardCanais() {
   useEffect(() => {
     loadRelatorioVendas()
   }, [
-    filters,
+    filtrosEfetivos,
     relatorioGroupByMode,
     relatorioPage,
     relatorioLimit,
@@ -401,7 +434,7 @@ export default function DashboardCanais() {
   // Resetar para a primeira página quando os filtros ou o modo de agrupamento mudam
   useEffect(() => {
     setRelatorioPage(1)
-  }, [filters, relatorioGroupByMode])
+  }, [filtrosEfetivos, relatorioGroupByMode])
 
   const handleRelatorioSort = (field: string) => {
     if (relatorioSortField === field) {
@@ -426,7 +459,7 @@ export default function DashboardCanais() {
     setRelatorioExporting(true)
     try {
       await fetchVendasExport({
-        filters: filters as unknown as Record<string, unknown>,
+        filters: filtrosEfetivos as unknown as Record<string, unknown>,
       })
     } catch (err) {
       console.error('[DashboardCanais:handleRelatorioExport] Erro ao exportar:', err)
@@ -449,7 +482,13 @@ export default function DashboardCanais() {
     (filters.deploy || []).length > 0 ||
     (filters.inside || []).length > 0
 
-  const handleClearFilters = clearCanaisFilters
+  // "Limpar Filtros" da página (estados de erro/sem dados): zera os filtros de
+  // canais E os locais de período/documento (que voltam a seguir os globais)
+  const handleClearFilters = () => {
+    clearCanaisFilters()
+    setFiltrosLocais({ ...EMPTY_CANAIS_FILTRO_LOCAL })
+    clearCanaisFiltrosFromSession()
+  }
 
   return (
     <div className="space-y-6 min-w-0 max-w-full">
@@ -570,6 +609,20 @@ export default function DashboardCanais() {
         </CardContent>
       </Card>
 
+      {/* Filtros LOCAIS de Período e Documento (Ano, Mês, Data, Nota Fiscal e
+          Pedido) — no mesmo molde dos filtros locais do JP-Class; preenchidos
+          sobrepõem os Filtros Globais, vazios seguem o global */}
+      <CanaisFiltrosLocaisBar
+        filtros={filtrosLocais}
+        onChange={setFiltrosLocais}
+        onClear={() => {
+          setFiltrosLocais({ ...EMPTY_CANAIS_FILTRO_LOCAL })
+          clearCanaisFiltrosFromSession()
+        }}
+        anosDisponiveis={data?.filterOptions?.anos}
+        disabled={loading}
+      />
+
       {/* Loading Skeleton */}
       {loading ? (
         <div className="space-y-6">
@@ -611,7 +664,7 @@ export default function DashboardCanais() {
               Limpar Filtros
             </Button>
             <Button
-              onClick={() => loadData(filters)}
+              onClick={() => loadData(filtrosEfetivos)}
               className="bg-[#0B6E99] hover:bg-[#084F6E] text-white font-bold"
             >
               <RefreshCw className="w-4 h-4 mr-2" />
@@ -979,8 +1032,8 @@ export default function DashboardCanais() {
           </Dialog>
           {/* Indicador de Metas Consolidadas (Canal, Deploy, Inside) */}
           <MetasIndicador
-            filterMes={filters.mes?.[0] || null}
-            filterAno={filters.ano?.[0] || null}
+            filterMes={filtrosEfetivos.mes?.[0] || null}
+            filterAno={filtrosEfetivos.ano?.[0] || null}
           />
           {/* Comparativo Mês Atual × Mês do Ano Anterior por Canal */}
           <ComparativoCanaisMesCard data={comparativoData} loading={loadingComparativo} />
