@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { Check, ChevronDown, X, Filter, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -119,6 +119,11 @@ export function MultiSelectDropdown({
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  const labelOf = useCallback(
+    (opt: string) => (getOptionLabel ? getOptionLabel(opt) : opt),
+    [getOptionLabel],
+  )
+
   const cleanOptions = useMemo(() => {
     const set = new Set<string>()
     for (const opt of options) {
@@ -133,8 +138,11 @@ export function MultiSelectDropdown({
       }
       set.add(trimmed)
     }
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
-  }, [options])
+    // Ordena pelo RÓTULO exibido (getOptionLabel quando houver), não pelo valor
+    // bruto — assim os meses ("1".."12" exibidos como Janeiro.."Dezembro")
+    // abrem em ordem alfabética em vez de 1, 10, 11, 12, 2, 3...
+    return Array.from(set).sort((a, b) => labelOf(a).localeCompare(labelOf(b), 'pt-BR'))
+  }, [options, labelOf])
 
   const filteredOptions = useMemo(() => {
     if (!search) return cleanOptions

@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { formatCurrency, MESES_PT_BR } from '@/lib/formatters'
+import { formatCurrency, MESES_PT_BR, MESES_PT_BR_ALFABETICA } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
 import { fetchCanaisMetas } from '@/services/canais'
@@ -394,9 +394,9 @@ export function MetasIndicador({ filterMes, filterAno, className }: MetasIndicad
                   <SelectValue placeholder="Mês" />
                 </SelectTrigger>
                 <SelectContent className="max-h-60 text-xs">
-                  {MESES_PT_BR.map((m, idx) => (
-                    <SelectItem key={m} value={String(idx + 1)}>
-                      {m}
+                  {MESES_PT_BR_ALFABETICA.map(({ mes, nome }) => (
+                    <SelectItem key={nome} value={String(mes)}>
+                      {nome}
                     </SelectItem>
                   ))}
                 </SelectContent>

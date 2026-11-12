@@ -119,6 +119,15 @@ export const MESES_PT_BR = [
   'Dezembro',
 ] as const
 
+/**
+ * Os 12 meses em ORDEM ALFABÉTICA (pt-BR) para exibição em selects, mantendo o
+ * value como o número do mês (1=janeiro ... 12=dezembro) — apenas a ordem de
+ * exibição muda, nunca a semântica do valor.
+ */
+export const MESES_PT_BR_ALFABETICA: Array<{ mes: number; nome: string }> = MESES_PT_BR.map(
+  (nome, i) => ({ mes: i + 1, nome }),
+).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+
 export const MESES_CURTOS = [
   'Jan',
   'Fev',
