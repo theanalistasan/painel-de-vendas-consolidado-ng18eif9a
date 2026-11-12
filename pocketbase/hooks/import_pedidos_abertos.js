@@ -47,7 +47,8 @@ routerAdd(
 
     // Derivação de Grupo do Item (mesma regra de src/lib/grupo-categoria.ts,
     // replicada aqui por rodar no Go/PocketBase):
-    // TINTAS→Tintas, ACESSÓRIOS→Acessórios, PEÇAS→Peças, EQUIPAMENTOS→Equipamentos, demais→Outros.
+    // Regra do usuário: Tintas representa tudo o que é INK* (grupo começa com INK) — ex. INK VERSAOBJECT UV VD.
+    // Demais palavras-chave: EQUIPAMENTOS→Equipamentos, PEÇAS→Peças, ACESSÓRIOS/ACCESSORIES→Acessórios, TINTA*→Tintas, demais→Outros.
     const deriveGrupoItemCategoria = (raw) => {
       const s = String(raw || '')
         .normalize('NFD')
@@ -55,10 +56,11 @@ routerAdd(
         .toUpperCase()
         .trim()
       if (!s) return 'Outros'
+      if (s.indexOf('INK') === 0) return 'Tintas'
       if (s.indexOf('TINTA') >= 0) return 'Tintas'
-      if (s.indexOf('ACESSOR') >= 0) return 'Acessórios'
+      if (s.indexOf('ACESSOR') >= 0 || s.indexOf('ACCESS') >= 0) return 'Acessórios'
       if (s.indexOf('PECA') >= 0) return 'Peças'
-      if (s.indexOf('EQUIP') >= 0) return 'Equipamentos'
+      if (s.indexOf('EQUIP') === 0 || s.indexOf('EQUIPAMENTO') >= 0) return 'Equipamentos'
       return 'Outros'
     }
 

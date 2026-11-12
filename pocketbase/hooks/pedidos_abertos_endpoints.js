@@ -269,10 +269,10 @@ routerAdd(
         "((COALESCE(grupo_item_derivado, '') != '' AND grupo_item_derivado IN (" +
           giSql +
           ")) OR (COALESCE(grupo_item_derivado, '') = '' AND CASE " +
-          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%TINTA%' THEN 'Tintas' " +
-          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%ACESSOR%' THEN 'Acessórios' " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE 'INK%' OR UPPER(COALESCE(grupo_item, '')) LIKE '%TINTA%' THEN 'Tintas' " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%ACESSOR%' OR UPPER(COALESCE(grupo_item, '')) LIKE '%ACCESS%' THEN 'Acessórios' " +
           "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%PECA%' OR UPPER(COALESCE(grupo_item, '')) LIKE '%PEÇA%' THEN 'Peças' " +
-          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%EQUIP%' THEN 'Equipamentos' " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE 'EQUIP%' OR UPPER(COALESCE(grupo_item, '')) LIKE '%EQUIPAMENTO%' THEN 'Equipamentos' " +
           "ELSE 'Outros' END IN (" +
           giSql +
           ')))',
@@ -868,10 +868,10 @@ routerAdd(
         "((COALESCE(grupo_item_derivado, '') != '' AND grupo_item_derivado IN (" +
           giSql +
           ")) OR (COALESCE(grupo_item_derivado, '') = '' AND CASE " +
-          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%TINTA%' THEN 'Tintas' " +
-          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%ACESSOR%' THEN 'Acessórios' " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE 'INK%' OR UPPER(COALESCE(grupo_item, '')) LIKE '%TINTA%' THEN 'Tintas' " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%ACESSOR%' OR UPPER(COALESCE(grupo_item, '')) LIKE '%ACCESS%' THEN 'Acessórios' " +
           "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%PECA%' OR UPPER(COALESCE(grupo_item, '')) LIKE '%PEÇA%' THEN 'Peças' " +
-          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE '%EQUIP%' THEN 'Equipamentos' " +
+          "WHEN UPPER(COALESCE(grupo_item, '')) LIKE 'EQUIP%' OR UPPER(COALESCE(grupo_item, '')) LIKE '%EQUIPAMENTO%' THEN 'Equipamentos' " +
           "ELSE 'Outros' END IN (" +
           giSql +
           ')))',

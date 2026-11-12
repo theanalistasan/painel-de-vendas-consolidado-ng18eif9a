@@ -4,6 +4,7 @@
  *
  * NÃO reutiliza os rótulos INKS/HARD/OTHERS de jp-class.ts — são categorias
  * diferentes, com opções próprias: Tintas, Acessórios, Peças, Equipamentos, Outros.
+ * Alinhado ao filtro Grupo do Item dos Filtros Globais (jp-class): Tintas = INK* (ex. "INK VERSAOBJECT UV VD") ou TINTA*.
  */
 
 export const GRUPO_ITEM_FILTER_OPTIONS = [
@@ -28,10 +29,11 @@ export function deriveGrupoItemCategoria(grupoItemRaw: unknown): GrupoItemFilter
     .replace(/[\u0300-\u036f]/g, '')
 
   if (!norm) return 'Outros'
+  if (norm.startsWith('INK')) return 'Tintas' // regra INK* do usuário: tudo que começa com INK é Tinta
   if (norm.includes('TINTA')) return 'Tintas' // cobre TINTA / TINTAS
-  if (norm.includes('ACESSOR')) return 'Acessórios' // acessorios / accessories
+  if (norm.includes('ACESSOR') || norm.includes('ACCESS')) return 'Acessórios' // acessorios / accessories
   if (norm.includes('PECA')) return 'Peças' // peça / peca / peças / pecas
-  if (norm.includes('EQUIP')) return 'Equipamentos' // equipamento / equipamentos / equip
+  if (norm.startsWith('EQUIP') || norm.includes('EQUIPAMENTO')) return 'Equipamentos' // equipamento / equipamentos
   return 'Outros'
 }
 
