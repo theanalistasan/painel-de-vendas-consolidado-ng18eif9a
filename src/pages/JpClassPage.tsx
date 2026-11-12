@@ -462,7 +462,7 @@ export default function JpClassPage() {
               className="h-8 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 shadow-2xs focus:border-[#0B6E99] focus:outline-none focus:ring-1 focus:ring-[#0B6E99]/30"
             >
               <option value="">Todos (global)</option>
-              {sortMesesPorNome(MESES_PT_BR.length).map((val) => {
+              {sortMesesPorNome(MESES_PT_BR.map((_, i) => i + 1)).map((val) => {
                 const n = Number(val)
                 return (
                   <option key={n} value={String(n)}>

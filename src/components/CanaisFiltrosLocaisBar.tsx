@@ -134,7 +134,7 @@ export function CanaisFiltrosLocaisBar({
               className={selectClass}
             >
               <option value="">Todos (global)</option>
-              {sortMesesPorNome(MESES_PT_BR.length).map((val) => {
+              {sortMesesPorNome(MESES_PT_BR.map((_, i) => i + 1)).map((val) => {
                 const n = Number(val)
                 return (
                   <option key={n} value={String(n)}>

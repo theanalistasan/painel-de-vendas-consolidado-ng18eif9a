@@ -718,7 +718,7 @@ export default function FilterBar({
             <Label className="text-[11px] font-bold text-slate-500 mb-1 block">Mês</Label>
             <MultiSelectDropdown
               label="Mês"
-              options={sortMesesPorNome(options.meses)}
+              options={sortMesesPorNome(options.meses).map(String)}
               selected={localFilters.mes}
               onChange={(values) => setLocalFilters((prev) => ({ ...prev, mes: values }))}
               placeholder="Todos"

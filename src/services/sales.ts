@@ -330,10 +330,9 @@ export async function reconstruirResumosApi(
     detalhe: 'Identificando períodos para agregação...',
   })
   const listRes = await reconstruirResumosStepApi({ step: 'list_anos' })
-  const anos =
-    listRes.anos && listRes.anos.length > 0
-      ? listRes.anos
-      : [2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]
+  // Sem fallback fixo de anos: com a base zerada a lista vem vazia e o loop
+  // simplesmente não executa — nunca processar anos que não existem na base.
+  const anos = listRes.anos ?? []
 
   // Passo 3: Limpar resumo_vendas_mensal
   onProgress?.({
