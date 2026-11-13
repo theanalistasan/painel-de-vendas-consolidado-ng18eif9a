@@ -27,12 +27,14 @@ migrate(
     }
     var countOf = function (appDb, sql) {
       const rows = arrayOf(new DynamicModel({ c: '' }))
-      appDb.newQuery(sql).all(rows)
+      // appDb pode ser o app OU o txApp de runInTransaction — em ambos o caminho
+      // correto é .db().newQuery() (newQuery não existe direto no app/txApp).
+      appDb.db().newQuery(sql).all(rows)
       return rows.length > 0 ? toInt(rows[0].c) : 0
     }
     // SUM mensal de total_nf_novo de 2025 em vendas (CAST TEXT p/ evitar
     // "Scan error float64" no Goja — padrão: inicializar como '' e converter em JS)
-    var mensal2025 = function (appDb) {
+    var mensal2025 = function () {
       const rows = arrayOf(new DynamicModel({ ym: '', tot: '' }))
       q(
         'SELECT substr(data_lancamento,1,7) AS ym, ' +
@@ -57,7 +59,7 @@ migrate(
       app,
       "SELECT COUNT(*) AS c FROM vendas WHERE substr(data_lancamento,1,4)='2025'",
     )
-    const mensalAntes = mensal2025(app)
+    const mensalAntes = mensal2025()
     console.log(
       TAG +
         ' ANTES: netsales total=' +
@@ -86,17 +88,15 @@ migrate(
       }
 
       // ---------- 1. DEDUPE da bruta ----------
+      // Mesmo mecanismo do endpoint admin_dedupe_netsales (ROW_NUMBER por chave;
+      // mantém a cópia de data_carga mais recente, tiebreak id maior).
       tq(
         'DELETE FROM netsales WHERE id IN (' +
-          'SELECT a.id FROM netsales a JOIN netsales b ON ' +
-          "COALESCE(a.chave_documento,'')=COALESCE(b.chave_documento,'') AND " +
-          "COALESCE(a.serial,'')=COALESCE(b.serial,'') AND " +
-          "COALESCE(a.docdate,'')=COALESCE(b.docdate,'') AND " +
-          "COALESCE(a.codigo_cliente,'')=COALESCE(b.codigo_cliente,'') AND " +
-          "COALESCE(a.codigo_item,'')=COALESCE(b.codigo_item,'') AND " +
-          "(COALESCE(a.data_carga,'') < COALESCE(b.data_carga,'') OR " +
-          "(COALESCE(a.data_carga,'') = COALESCE(b.data_carga,'') AND a.id < b.id))" +
-          ')',
+          'SELECT id FROM (' +
+          'SELECT id, ROW_NUMBER() OVER (' +
+          'PARTITION BY chave_documento, serial, docdate, codigo_cliente, codigo_item ' +
+          'ORDER BY data_carga DESC, id DESC) AS rn FROM netsales) ' +
+          'WHERE rn > 1)',
       ).execute()
 
       const depTotal = countOf(txApp, 'SELECT COUNT(*) AS c FROM netsales')
@@ -308,7 +308,7 @@ migrate(
     })
 
     // ---------- DEPOIS ----------
-    const mensalDepois = mensal2025(app)
+    const mensalDepois = mensal2025()
     console.log(
       TAG + ' DEPOIS vendas 2025 SUM(total_nf_novo) mensal: ' + JSON.stringify(mensalDepois),
     )

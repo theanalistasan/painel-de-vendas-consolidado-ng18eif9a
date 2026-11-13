@@ -525,7 +525,8 @@ var __vendasExportHandler = (e) => {
             'COALESCE(SUM(quantidade),0) AS quantidade, ' +
             'COALESCE(SUM(total_linha),0) AS total_linha, ' +
             'COALESCE(MAX(total_nf_sem_frete), SUM(total_linha), 0) AS total_nf_sem_frete, ' +
-            'COALESCE(MAX(total_nf_novo), MAX(total_linha), 0) AS total_nf_novo, ' +
+            // Regra do usuário: SEMPRE SUM, nunca MAX/MIN (consistente com o dashboard)
+            'COALESCE(SUM(total_nf_novo), SUM(total_linha), 0) AS total_nf_novo, ' +
             'COALESCE(SUM(valor_liquido),0) AS valor_liquido, ' +
             'COALESCE(SUM(custo_total),0) AS custo_total, ' +
             "COALESCE(MAX(utilizacao),'') AS utilizacao, " +
@@ -674,8 +675,9 @@ var __vendasExportHandler = (e) => {
             'COUNT(*) AS itens_qtd, ' +
             'COALESCE(SUM(quantidade),0) AS quantidade, ' +
             'COALESCE(SUM(total_linha),0) AS total_linha, ' +
-            'COALESCE(MAX(total_nf_sem_frete), SUM(total_linha), 0) AS nf_sem_frete, ' +
-            'COALESCE(MAX(total_nf_novo), SUM(total_linha), 0) AS nf_novo, ' +
+            // Regra do usuário: SEMPRE SUM, nunca MAX/MIN (consistente com o dashboard)
+            'COALESCE(SUM(total_nf_sem_frete), SUM(total_linha), 0) AS nf_sem_frete, ' +
+            'COALESCE(SUM(total_nf_novo), SUM(total_linha), 0) AS nf_novo, ' +
             'COALESCE(SUM(valor_liquido),0) AS valor_liquido, ' +
             'COALESCE(SUM(custo_total),0) AS custo_total, ' +
             "COALESCE(MAX(estado),'') AS estado, " +
