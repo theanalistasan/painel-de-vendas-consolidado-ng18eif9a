@@ -6,10 +6,12 @@
 // - Roteamento pela janela dinâmica de 3 anos: dentro -> netsales (staging da
 //   consolidação); antes da janela -> vendas_historico. Modo 'historico' manda
 //   TUDO direto ao histórico.
-// - SEM deduplicação: TODA linha da planilha é gravada como NOVO registro.
-//   Linhas idênticas (mesma chave_documento + serial + docdate + codigo_cliente +
-//   codigo_item) existem na planilha real (ex.: doc 37550 com 3 linhas de MO-240)
-//   e precisam entrar para os totais baterem com a planilha do gerente comercial.
+// - DEDUPLICAÇÃO POR CHAVE: chave = chave_documento + serial + docdate +
+//   codigo_cliente + codigo_item (em vendas_historico: numero_sap + numero_nfe +
+//   data_lancamento + codigo_cliente + codigo_item). Se a chave já existe na base,
+//   o registro é SUBSTITUÍDO (nunca acrescentado): recarregar o mesmo arquivo não
+//   duplica. Linhas repetidas DENTRO do próprio arquivo também colapsam, porque a
+//   anterior já foi gravada quando a seguinte é processada.
 // - origem = 'NetSales_v4'.
 routerAdd(
   'POST',
@@ -120,6 +122,43 @@ routerAdd(
       console.warn('netsales_v4: aviso ao carregar tipos_cliente:', tcErr)
     }
 
+    // Helper de dedupe: ids dos registros já gravados com a mesma chave (mais recente primeiro)
+    const buscarIdsPorChave = (tabela, k) => {
+      const hist = tabela === 'vendas_historico'
+      const colDoc = hist ? 'numero_sap' : 'chave_documento'
+      const colSer = hist ? 'numero_nfe' : 'serial'
+      const colDt = hist ? 'data_lancamento' : 'docdate'
+      const rows = arrayOf(new DynamicModel({ id: '' }))
+      $app
+        .db()
+        .newQuery(
+          `SELECT id FROM ${tabela} WHERE ${colDoc} = {:cd} AND ${colSer} = {:sr} AND ${colDt} = {:dt} AND codigo_cliente = {:cc} AND codigo_item = {:ci} ORDER BY data_carga DESC, id DESC`,
+        )
+        .bind({ cd: k.cd, sr: k.sr, dt: k.dt, cc: k.cc, ci: k.ci })
+        .all(rows)
+      const ids = []
+      for (let r = 0; r < rows.length; r++) ids.push(rows[r].id)
+      return ids
+    }
+    // Índices de dedupe (idempotentes)
+    try {
+      $app
+        .db()
+        .newQuery(
+          'CREATE INDEX IF NOT EXISTS idx_netsales_dedupe_key ON netsales (chave_documento, serial, docdate, codigo_cliente, codigo_item);',
+        )
+        .execute()
+    } catch (_) {}
+    try {
+      $app
+        .db()
+        .newQuery(
+          'CREATE INDEX IF NOT EXISTS idx_vh_dedupe_key ON vendas_historico (numero_sap, numero_nfe, data_lancamento, codigo_cliente, codigo_item);',
+        )
+        .execute()
+    } catch (_) {}
+
+    let substituidos = 0
     let importados = 0
     let ignorados = 0
     let roteadosHistorico = 0
@@ -228,11 +267,25 @@ routerAdd(
       if (targetName === 'vendas_historico') roteadosHistorico++
 
       try {
-        // SEM upsert/dedup: toda linha da planilha vira NOVO registro, mesmo
-        // que já exista linha idêntica (a planilha tem repetições reais e o
-        // relatório deve espelhá-la linha a linha). O índice único da chave
-        // composta foi removido pela migration 1742600008.
-        const record = new Record(targetCol)
+        // Dedupe: chave já existe na base -> SUBSTITUI o registro (e remove
+        // eventuais cópias extras da mesma chave). Senão, cria novo.
+        const idsExistentes = buscarIdsPorChave(targetName, {
+          cd: chaveDocumento,
+          sr: serial,
+          dt: docDate || '',
+          cc: codigoCliente,
+          ci: codigoItem,
+        })
+        let record
+        if (idsExistentes.length > 0) {
+          record = $app.findRecordById(targetName, idsExistentes[0])
+          for (let x = 1; x < idsExistentes.length; x++) {
+            $app.delete($app.findRecordById(targetName, idsExistentes[x]))
+          }
+          substituidos++
+        } else {
+          record = new Record(targetCol)
+        }
 
         // Campos comuns às duas coleções (nomes distintos quando necessário)
         const texto = (v) => (v === undefined || v === null ? '' : v.toString().trim())
@@ -382,6 +435,7 @@ routerAdd(
       importados,
       ignorados,
       roteados_historico: roteadosHistorico,
+      substituidos,
       historico_importados: historicoImportados,
       janela: janela,
       erros,
