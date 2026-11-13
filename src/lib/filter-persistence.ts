@@ -270,7 +270,13 @@ export function clearFiltersFromSession(): void {
 
 const JPCLASS_STORAGE_KEY = 'jpclass_periodo'
 
-/** Preferência local de período do JP-Class persistida em sessionStorage */
+/**
+ * DEPRECIADO — a página /jp-class usa agora seleção múltipla de Ano/Mês
+ * (mesmo padrão dos Filtros Globais), persistida sob a MESMA chave
+ * sessionStorage "jpclass_periodo" como { anos: string[], meses: string[] }.
+ * Mantido apenas para compatibilidade de tipos com códigos que ainda o
+ * importam; o formato antigo single-select não é mais lido pela página.
+ */
 export interface JpClassPeriodoLocal {
   /** Ano escolhido localmente (string '2026') ou '' = segue os Filtros Globais */
   ano: string

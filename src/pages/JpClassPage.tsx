@@ -6,6 +6,7 @@ import {
   TrendingUp,
   SlidersHorizontal,
   FileSpreadsheet,
+  Eraser,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -17,15 +18,15 @@ import {
   type SemanaMes,
 } from '@/lib/semanas'
 import { useNavigate } from 'react-router-dom'
-import { getJpClass, matchesVendedorClienteFilter } from '@/lib/jp-class'
+import { getJpClass, normalizeText } from '@/lib/jp-class'
 import { MESES_PT_BR, formatCurrency, formatCompactCurrency, exportToCSV } from '@/lib/formatters'
-import { MultiSelectDropdown } from '@/components/FilterBar'
+import { MultiSelectDropdown, buildDynamicAnoDefaults } from '@/components/FilterBar'
 import {
   loadFiltersFromSession,
   saveFiltersToSession,
   hasSavedFiltersInSession,
   hasValidPeriodFilters,
-  loadJpClassPeriodoFromSession,
+  EMPTY_JPCLASS_PERIODO,
   saveJpClassPeriodoToSession,
   type JpClassPeriodoLocal,
   FILTERS_CHANGED_EVENT,
@@ -53,13 +54,48 @@ import {
   enrichVendaTipoCliente,
 } from '@/services/tiposCliente'
 
+/**
+ * Preferência local de PERÍODO do JP-Class (padrão dos Filtros Globais):
+ * listas de selecionados — anos[] e meses[] (ordem calendário Jan→Dez).
+ * Persistida em sessionStorage sob a MESMA chave "jpclass_periodo" (campos
+ * antigos single-select são descartados ao carregar).
+ */
+interface JpClassPeriodoSelecoes {
+  anos: string[]
+  meses: string[]
+}
+
+const JPCLASS_PERIODO_KEY = 'jpclass_periodo'
+
+function loadPeriodoSelecoes(): JpClassPeriodoSelecoes {
+  try {
+    const raw = sessionStorage.getItem(JPCLASS_PERIODO_KEY)
+    if (!raw) return { anos: [], meses: [] }
+    const parsed = JSON.parse(raw) as Partial<JpClassPeriodoSelecoes> | null
+    return {
+      anos: Array.isArray(parsed?.anos) ? parsed.anos.filter((a) => typeof a === 'string') : [],
+      meses: Array.isArray(parsed?.meses) ? parsed.meses.filter((m) => typeof m === 'string') : [],
+    }
+  } catch {
+    return { anos: [], meses: [] }
+  }
+}
+
+function savePeriodoSelecoes(sel: JpClassPeriodoSelecoes): void {
+  try {
+    sessionStorage.setItem(JPCLASS_PERIODO_KEY, JSON.stringify(sel))
+  } catch {
+    // sessionStorage não disponível — ignora silenciosamente
+  }
+}
+
 export default function JpClassPage() {
   const navigate = useNavigate()
   const hoje = new Date()
 
   // Filtros GLOBAIS compartilhados (mesma sessão de Visão Geral / Visão Canais / Filtros Globais).
-  // O módulo JP-Class não possui mais filtros próprios: ele REFLETE os Filtros Globais
-  // e recalcula quando eles mudam (evento paineis_vendas_filters_changed, foco, storage).
+  // Servem de BASE para as opções dos seletores (anos, etc.) e para o padrão de
+  // recálculo quando eles mudam (evento paineis_vendas_filters_changed, foco, storage).
   const [filters, setFilters] = useState<FilterState>(() => {
     const loaded = loadFiltersFromSession()
     if (!hasSavedFiltersInSession()) {
@@ -78,42 +114,69 @@ export default function JpClassPage() {
 
   const [groupBy, setGroupBy] = useState<JpClassGroupBy>('hierarquia')
 
-  // Filtro LOCAL "Vendedor > Cliente" (vendedor_cliente = "Revenda > Nome do Cliente"):
-  // matching textual no campo inteiro, ignorando acentos/caixa — "DIAMANTE" encontra
-  // "Roland DG Brasil > DIAMANTE COMERCIO DE TINTAS LTDA".
+  // Filtros LOCAIS do JP-Class, no MESMO PADRÃO dos Filtros Globais:
+  // seleção múltipla ANO / MÊS (ordem calendário) / VENDEDOR > CLIENTE
+  // (vendedor_cliente = "Revenda > Nome do Cliente"), marcando opções uma a um,
+  // todas de uma vez, com busca textual.
   //
-  // Dois estados: PENDENTE (o que o usuário marca no dropdown; a página NÃO
-  // recalcula) e APLICADO (promovido pelo botão "Aplicar filtros"). Enquanto não
-  // clica, dashboard/quadro por semana/relatório continuam com os valores atuais.
+  // Dois níveis: PENDENTE (o que o usuário marca; a página NÃO recalcula) e
+  // APLICADO (promovido pelo botão "Aplicar filtros"). Enquanto não clica,
+  // dashboard/quadro por semana/relatório continuam com os valores atuais.
+  //
+  // Ano/Mês APLICADOS definem o calendário de semanas (fetch servidor); o filtro
+  // "Vendedor > Cliente" é aplicado NO CLIENTE sobre as linhas já carregadas
+  // (matching textual no campo inteiro — "DIAMANTE" encontra
+  // "Roland DG Brasil > DIAMANTE COMERCIO DE TINTAS LTDA"), com uma ÚNICA
+  // varredura: para cada venda testa TODOS os termos marcados de uma vez
+  // (normalizeText + includes), sem centenas de cláusulas ||.
+  const [anoSelecionados, setAnoSelecionados] = useState<string[]>([])
+  const [mesesSelecionados, setMesesSelecionados] = useState<string[]>([])
   const [vendedorClienteSelecionados, setVendedorClienteSelecionados] = useState<string[]>([])
-  const [vendedorClienteAplicados, setVendedorClienteAplicados] = useState<string[]>([])
+  const [aplicado, setAplicado] = useState<JpClassPeriodoSelecoes & { vendedorCliente: string[] }>(
+    () => ({
+      ...loadPeriodoSelecoes(),
+      vendedorCliente: [],
+    }),
+  )
+
+  // Ref de leitura síncrona do aplicado (carregarVendas lê sem entrar nas deps —
+  // o refetch é disparado pela mudança de semanas/dateRange).
+  const aplicadoRef = useRef(aplicado)
+  aplicadoRef.current = aplicado
 
   const aplicarFiltros = useCallback(() => {
-    setVendedorClienteAplicados([...vendedorClienteSelecionados])
-  }, [vendedorClienteSelecionados])
+    const proximo = {
+      anos: [...anoSelecionados],
+      meses: [...mesesSelecionados],
+      vendedorCliente: [...vendedorClienteSelecionados],
+    }
+    setAplicado(proximo)
+    savePeriodoSelecoes({ anos: proximo.anos, meses: proximo.meses })
+  }, [anoSelecionados, mesesSelecionados, vendedorClienteSelecionados])
+
+  // Limpar filtros (restaura a visão semanal PADRÃO imediatamente, sem "Aplicar"):
+  // ano = janela dinâmica do Padrão Geral (buildDynamicAnoDefaults), mês corrente,
+  // Vendedor > Cliente vazio.
+  const limparFiltros = useCallback(() => {
+    const anosPadrao = buildDynamicAnoDefaults(
+      filtersRef.current.ano.map((a) => parseInt(String(a), 10)).filter((a) => !isNaN(a)),
+    )
+    const mesCorrente = String(hoje.getMonth() + 1)
+    setAnoSelecionados(anosPadrao)
+    setMesesSelecionados([mesCorrente])
+    setVendedorClienteSelecionados([])
+    const proximo = { anos: anosPadrao, meses: [mesCorrente], vendedorCliente: [] }
+    setAplicado(proximo)
+    savePeriodoSelecoes({ anos: proximo.anos, meses: proximo.meses })
+  }, [hoje])
 
   // Indicador de filtros pendentes: seleção difere do que já está aplicado
   const filtrosPendentes =
-    vendedorClienteSelecionados.join('||') !== vendedorClienteAplicados.join('||')
-
-  // Filtro LOCAL de Ano/Mês do JP-Class (sessionStorage, chave "jpclass_periodo").
-  // PRIORIDADE sobre os Filtros Globais: campo preenchido sobrepõe o valor global;
-  // campo vazio ("") = segue o valor dos Filtros Globais.
-  const [periodoLocal, setPeriodoLocal] = useState<JpClassPeriodoLocal>(() =>
-    loadJpClassPeriodoFromSession(),
-  )
-
-  const handlePeriodoLocalChange = useCallback((campo: 'ano' | 'mes', valor: string) => {
-    setPeriodoLocal((prev) => {
-      const next: JpClassPeriodoLocal = { ...prev, [campo]: valor }
-      saveJpClassPeriodoToSession(next)
-      return next
-    })
-  }, [])
+    JSON.stringify([anoSelecionados, mesesSelecionados, vendedorClienteSelecionados]) !==
+    JSON.stringify([aplicado.anos, aplicado.meses, aplicado.vendedorCliente])
 
   // Anos disponíveis no filtro local: janela dinâmica da BASE ATIVA (Filtros
-  // Globais), sem fallback hardcoded — base zerada = lista vazia e o select
-  // fica só com "Global (do painel)".
+  // Globais), sem fallback hardcoded — base zerada = lista vazia.
   const anosDisponiveis = useMemo(() => {
     const anos = filters.ano
       .map((a) => parseInt(String(a), 10))
@@ -121,61 +184,25 @@ export default function JpClassPage() {
     return [...new Set(anos)].sort((a, b) => b - a)
   }, [filters.ano])
 
-  // Período de análise (ano/mês) EFETIVO:
-  // 1º) Ano/Mês local do JP-Class, quando preenchidos;
-  // 2º) Filtros Globais (ano/mes) quando o campo local correspondente está vazio;
-  // 3º) Padrão geral: mês corrente do sistema.
-  const periodo = useMemo(() => {
-    let globalAno: number | null = null
-    let globalMes: number | null = null
-    if (hasValidPeriodFilters(filters)) {
-      const y = parseInt(filters.ano[0], 10)
-      const m = parseInt(filters.mes[0], 10)
-      if (!isNaN(y) && y > 2000) globalAno = y
-      if (!isNaN(m) && m >= 1 && m <= 12) globalMes = m
-    }
+  // Opções de Ano/Mês/vendedor>cliente (com rótulos) para os MultiSelectDropdown:
+  // meses SEMPRE em ordem calendário (Janeiro→Dezembro) — nunca alfabético.
+  const opcoesAno = useMemo(
+    () => anosDisponiveis.map((a) => ({ valor: String(a), label: String(a) })),
+    [anosDisponiveis],
+  )
+  const opcoesMes = useMemo(
+    () => MESES_PT_BR.map((nome, i) => ({ valor: String(i + 1), label: nome })),
+    [],
+  )
 
-    const localAno = periodoLocal.ano ? parseInt(periodoLocal.ano, 10) : NaN
-    const localMes = periodoLocal.mes ? parseInt(periodoLocal.mes, 10) : NaN
-
-    const anoEfetivo =
-      !isNaN(localAno) && localAno > 2000 ? localAno : (globalAno ?? hoje.getFullYear())
-    const mesEfetivo =
-      !isNaN(localMes) && localMes >= 1 && localMes <= 12
-        ? localMes
-        : (globalMes ?? hoje.getMonth() + 1)
-
-    return { ano: anoEfetivo, mes: mesEfetivo }
-  }, [filters.ano, filters.mes, periodoLocal.ano, periodoLocal.mes, hoje])
-  const { ano, mes } = periodo
-
-  // Ref de leitura síncrona do período efetivo para o fetch (evita refetch
-  // desnecessário disparado por inclusão do objeto `periodo` nas dependências
-  // de carregarVendas — as semanas/dateRange já capturam a mudança de período).
-  const periodoRef = useRef(periodo)
-  periodoRef.current = periodo
-
-  // Na primeira carga sem preferência salva em sessão, aplica os padrões globais estáticos
-  // (Fase 2: tipoDocumento ['NF'], mês corrente). Os defaults dinâmicos já são gravados
-  // em sessão pelas telas Visão Geral / Visão Canais / Filtros Globais.
-
-  // Carrega mapa de tipos_cliente para enriquecer o tipo de cliente
-  // (código PN -> nome do tipo, mesmo padrão das outras páginas)
-  useEffect(() => {
-    let mounted = true
-    fetchTiposClienteMap()
-      .then((resMap) => {
-        if (mounted && resMap && typeof resMap === 'object') {
-          setTiposClienteMap(buildTiposClienteStringMap(resMap))
-        }
-      })
-      .catch((err) => {
-        console.warn('Erro ao carregar dados de tipos_cliente no JP-Class:', err)
-      })
-    return () => {
-      mounted = false
-    }
-  }, [])
+  const getAnoLabel = useCallback(
+    (valor: string) => opcoesAno.find((o) => o.valor === valor)?.label ?? valor,
+    [opcoesAno],
+  )
+  const getMesLabel = useCallback(
+    (valor: string) => opcoesMes.find((o) => o.valor === valor)?.label ?? valor,
+    [opcoesMes],
+  )
 
   // Sincroniza os filtros com o sessionStorage de forma reativa:
   // recarrega ao focar na janela, ao disparar evento de alteração/limpeza
@@ -234,12 +261,48 @@ export default function JpClassPage() {
 
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  // Semanas calculadas estritamente de acordo com a regra de negócio
-  // (seg–dom; Semana 1 = 1ª segunda-feira do mês; dias anteriores ficam fora;
-  // última semana incompleta é descartada).
+  // Período EFETIVO de cálculo do calendário de semanas:
+  // - Um ÚNICO ano APLICADO selecionado = esse ano; senão o 1º ano da janela dinâmica
+  //   (padrão geral); sem anos = ano corrente.
+  // - Meses APLICADOS selecionados: em MULTI-MÊS o quadro/dashboard/relatório são
+  //   alimentados pelo fetch por faixa de datas (a semana de cada linha é derivada da
+  //   data_lancamento — semanas seg–dom iniciando na 1ª segunda de CADA mês
+  //   selecionado); sem meses selecionados = mês corrente.
+  const periodoCalendario = useMemo(() => {
+    const anoUnico = aplicado.anos.length === 1 ? parseInt(aplicado.anos[0], 10) : NaN
+    const anoDefault = filters.ano.length > 0 ? parseInt(filters.ano[0], 10) : NaN
+    const ano =
+      !isNaN(anoUnico) && anoUnico > 2000
+        ? anoUnico
+        : !isNaN(anoDefault) && anoDefault > 2000
+          ? anoDefault
+          : hoje.getFullYear()
+    const meses = aplicado.meses
+      .map((m) => parseInt(m, 10))
+      .filter((m) => m >= 1 && m <= 12)
+      .sort((a, b) => a - b)
+    const mes = meses.length === 1 ? meses[0] : hoje.getMonth() + 1
+    return { ano, meses, mes }
+  }, [aplicado.anos, aplicado.meses, filters.ano, hoje])
+
+  const { ano, mes, meses: mesesSelecionadosAplicados } = periodoCalendario
+
+  // Semanas do(s) mês(es) aplicado(s) — para MULTI-MÊS, a união das semanas de cada
+  // mês (semanas seg–dom, iniciando na 1ª segunda, última incompleta descartada).
   const semanas = useMemo<SemanaMes[]>(() => {
-    return getSemanasDoMes(ano, mes)
-  }, [ano, mes])
+    const lista = mesesSelecionadosAplicados.length > 0 ? mesesSelecionadosAplicados : [mes]
+    const out: SemanaMes[] = []
+    const vistos = new Set<string>()
+    for (const m of lista) {
+      for (const s of getSemanasDoMes(ano, m)) {
+        if (vistos.has(s.inicioStr)) continue
+        vistos.add(s.inicioStr)
+        out.push(s)
+      }
+    }
+    // Manter em ordem de data (união dos meses em ordem calendário já vem ordenada)
+    return out
+  }, [ano, mes, mesesSelecionadosAplicados])
 
   // Limite de datas para buscar vendas (da primeira semana até a última semana completa)
   const dateRange = useMemo(() => {
@@ -265,22 +328,32 @@ export default function JpClassPage() {
     abortControllerRef.current = controller
 
     const activeFilters = filtersRef.current
-    const periodoAtual = periodoRef.current
+    const periodosAplicados = aplicadoRef.current
+    const mesesAplicados = periodosAplicados.meses
+      .map((m) => parseInt(m, 10))
+      .filter((m) => m >= 1 && m <= 12)
+
+    // Payload servidor: PRIORIDADE dos filtros locais de período (multi-select)
+    // sobre os globais — sem interseção global+local.
+    const periodoPayload: Record<string, unknown> = {}
+    if (periodosAplicados.anos.length > 0) {
+      periodoPayload.ano = [...periodosAplicados.anos]
+    }
+    if (mesesAplicados.length > 0) {
+      // Backend (vendas_export.js) casa por LIKE '%-MM-%' na data_lancamento —
+      // múltiplos meses já são suportados como string[] (OR).
+      periodoPayload.mes = mesesAplicados.map(String)
+    }
 
     setLoading(true)
     setError(null)
 
     try {
       // Reutiliza o endpoint oficial de vendas com os Filtros Globais + recorte de semanas.
-      // PRIORIDADE DO FILTRO LOCAL: o ano/mês EFETIVO (local sobrepõe o global)
-      // substitui os valores globais no payload — sem isso, o backend aplicaria
-      // os dois períodos (global E local) em interseção, e um mês/ano local
-      // diferente do global devolveria vazio.
       const res = await fetchVendasExport({
         filters: {
           ...(activeFilters as unknown as Record<string, unknown>),
-          ano: [String(periodoAtual.ano)],
-          mes: [String(periodoAtual.mes)],
+          ...periodoPayload,
           dataDe: dateRange.dataDe,
           dataAte: dateRange.dataAte,
         },
@@ -325,7 +398,7 @@ export default function JpClassPage() {
     } finally {
       setLoading(false)
     }
-  }, [dateRange, semanas, tiposClienteMap, periodoLocal.ano, periodoLocal.mes])
+  }, [dateRange, semanas, tiposClienteMap])
 
   useEffect(() => {
     carregarVendas()
@@ -338,10 +411,21 @@ export default function JpClassPage() {
 
   // Vendas exibidas: base + filtro LOCAL APLICADO "Vendedor > Cliente" (vendedor_cliente).
   // Usa o estado APLICADO (promovido pelo botão "Aplicar filtros") — nunca o pendente.
+  // UMA varredura: para cada venda testa TODOS os termos marcados de uma vez
+  // (normalizeText + includes), retornando cedo no 1º termo que casa — sem
+  // centenas de cláusulas ||, e sem bloquear a consulta Ano 2026 + jan–out +
+  // todas as opções DIAMANTE.
   const vendasExibidas = useMemo(() => {
-    if (vendedorClienteAplicados.length === 0) return rawVendas
-    return rawVendas.filter((v) => matchesVendedorClienteFilter(v, vendedorClienteAplicados))
-  }, [rawVendas, vendedorClienteAplicados])
+    if (aplicado.vendedorCliente.length === 0) return rawVendas
+    return rawVendas.filter((v) => {
+      const valor = normalizeText(String(v.vendedor_cliente ?? '').trim())
+      if (!valor) return false
+      return aplicado.vendedorCliente.some((termo) => {
+        const alvo = normalizeText(termo.trim())
+        return alvo && valor.includes(alvo)
+      })
+    })
+  }, [rawVendas, aplicado.vendedorCliente])
 
   // Opções do filtro Vendedor > Cliente derivadas das vendas carregadas
   const opcoesVendedorCliente = useMemo(() => {
@@ -412,8 +496,7 @@ export default function JpClassPage() {
 
   const mesNome = MESES_PT_BR[mes - 1]
   // Indicador visual de prioridade: quando o local está ativo, destaca no cabeçalho
-  const usandoAnoLocal = !!periodoLocal.ano
-  const usandoMesLocal = !!periodoLocal.mes
+  const usandoPeriodoLocal = aplicado.anos.length > 0 || aplicado.meses.length > 0
 
   return (
     <div className="space-y-6">
@@ -423,54 +506,45 @@ export default function JpClassPage() {
         <div className="flex items-center gap-x-3 gap-y-1 flex-wrap min-w-0">
           <SlidersHorizontal className="w-4 h-4 text-[#0B6E99] shrink-0" />
           <span className="text-sm font-bold text-slate-900 whitespace-nowrap">
-            Período de Análise: {mesNome} de {ano}
+            Período de Análise:{' '}
+            {mesesSelecionadosAplicados.length > 1
+              ? `${mesesSelecionadosAplicados.length} meses de ${ano}`
+              : `${mesNome} de ${ano}`}
           </span>
-          {(usandoAnoLocal || usandoMesLocal) && (
+          {usandoPeriodoLocal && (
             <Badge className="bg-[#0B6E99] text-white text-[10px] font-bold px-2 py-0.5 whitespace-nowrap">
               filtro local
             </Badge>
           )}
           <span className="text-xs text-slate-500">
             Semanas calculadas de segunda a domingo, iniciando na 1ª segunda-feira
-            {(usandoAnoLocal || usandoMesLocal) &&
+            {usandoPeriodoLocal &&
               ' — período definido pelo filtro LOCAL deste módulo (sobrepõe os Filtros Globais)'}
           </span>
         </div>
 
-        {/* Linha 1 dos filtros — Ano, Mês e Vendedor > Cliente */}
+        {/* Linha 1 dos filtros — Ano, Mês e Vendedor > Cliente (multi-seleção, padrão Filtros Globais) */}
         <div className="flex items-center gap-2 flex-wrap">
-          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
-            <span>Ano</span>
-            <select
-              value={periodoLocal.ano}
-              onChange={(e) => handlePeriodoLocalChange('ano', e.target.value)}
-              disabled={loading}
-              className="h-8 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 shadow-2xs focus:border-[#0B6E99] focus:outline-none focus:ring-1 focus:ring-[#0B6E99]/30"
-            >
-              <option value="">Global (do painel)</option>
-              {anosDisponiveis.map((a) => (
-                <option key={a} value={String(a)}>
-                  {a}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600">
-            <span>Mês</span>
-            <select
-              value={periodoLocal.mes}
-              onChange={(e) => handlePeriodoLocalChange('mes', e.target.value)}
-              disabled={loading}
-              className="h-8 rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 shadow-2xs focus:border-[#0B6E99] focus:outline-none focus:ring-1 focus:ring-[#0B6E99]/30"
-            >
-              <option value="">Todos (global)</option>
-              {MESES_PT_BR.map((nome, i) => (
-                <option key={i + 1} value={String(i + 1)}>
-                  {nome}
-                </option>
-              ))}
-            </select>
-          </label>
+          <MultiSelectDropdown
+            label="Ano"
+            options={opcoesAno.map((o) => o.valor)}
+            selected={anoSelecionados}
+            onChange={setAnoSelecionados}
+            getOptionLabel={getAnoLabel}
+            placeholder="Todos (janela dinâmica)"
+            emptyMessage="Nenhum ano disponível na base ativa"
+            triggerClassName="w-[190px]"
+          />
+          <MultiSelectDropdown
+            label="Mês"
+            options={opcoesMes.map((o) => o.valor)}
+            selected={mesesSelecionados}
+            onChange={setMesesSelecionados}
+            getOptionLabel={getMesLabel}
+            placeholder="Todos (global)"
+            emptyMessage="Nenhum mês"
+            triggerClassName="w-[200px]"
+          />
           <MultiSelectDropdown
             label="Vendedor > Cliente"
             options={opcoesVendedorCliente}
@@ -492,6 +566,17 @@ export default function JpClassPage() {
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
             <span>Aplicar filtros</span>
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={limparFiltros}
+            disabled={loading}
+            className="text-xs font-semibold gap-1.5 h-8 bg-white"
+          >
+            <Eraser className="w-3.5 h-3.5 text-rose-600" />
+            <span>Limpar filtros</span>
           </Button>
 
           <Button
@@ -568,7 +653,7 @@ export default function JpClassPage() {
             <div className="flex flex-wrap gap-2 text-[11px] text-slate-700">
               {semanas.map((s) => (
                 <span
-                  key={s.numero}
+                  key={s.inicioStr}
                   className="px-2 py-0.5 rounded-md bg-white border border-sky-200 shadow-2xs font-medium"
                 >
                   <strong className="text-slate-900">{s.nome}:</strong> {s.inicioFormatado} a{' '}
@@ -641,7 +726,7 @@ export default function JpClassPage() {
       <div>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-            <FileSpreadsheet className="w-4 h-4 text-[#0B6E99]" />
+            <FileSpreadsheet className="w-3.5 h-3.5 text-[#0B6E99]" />
             Relatório de Vendas por Semanas ({vendasExibidas.length} registros)
           </h3>
         </div>
