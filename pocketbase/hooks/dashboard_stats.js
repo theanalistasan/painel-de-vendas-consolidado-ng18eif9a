@@ -316,9 +316,11 @@ var __dashboardStatsHandler = (e) => {
       if (t === 'boolean') return 'b:' + String(value)
       return 'x:' + String(value)
     }
-    // Sufixo -v3: invalida números velhos calculados com MAX por NF (KPIs agora
-    // somam total_nf_* linha a linha, decisão Silvio — bater com o Excel do gerente).
-    const cacheKey = 'v3:' + stableCacheKey(f || {})
+    // Sufixo -v4: invalida números velhos calculados com MAX por NF (decisão
+    // Silvio 0.0.357) e entradas vazias gravadas antes do BUG 0.0.360 (ORDER BY
+    // antes de UNION ALL / ano_mes na base bruta — grupo/vendedor/cliente/mensal
+    // por grupo voltavam [] e a resposta vazia ficou 5 min no cache).
+    const cacheKey = 'v4:' + stableCacheKey(f || {})
     const now = Date.now()
     let cachedEntry = null
     try {
