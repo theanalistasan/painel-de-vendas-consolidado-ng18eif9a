@@ -524,7 +524,7 @@ var __vendasExportHandler = (e) => {
             'COUNT(*) AS itens_qtd, ' +
             'COALESCE(SUM(quantidade),0) AS quantidade, ' +
             'COALESCE(SUM(total_linha),0) AS total_linha, ' +
-            'COALESCE(MAX(total_nf_sem_frete), SUM(total_linha), 0) AS total_nf_sem_frete, ' +
+            'COALESCE(SUM(total_nf_sem_frete), SUM(total_linha), 0) AS total_nf_sem_frete, ' +
             // Regra do usuário: SEMPRE SUM, nunca MAX/MIN (consistente com o dashboard)
             'COALESCE(SUM(total_nf_novo), SUM(total_linha), 0) AS total_nf_novo, ' +
             'COALESCE(SUM(valor_liquido),0) AS valor_liquido, ' +
