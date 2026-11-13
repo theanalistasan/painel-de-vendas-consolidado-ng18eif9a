@@ -339,32 +339,12 @@ var __vendasListHandler = (e) => {
       const sqlArr = f.tipoDocumento.map((v) => "'" + sqlEsc(v) + "'").join(',')
       sqlParts.push('tipo_documento IN (' + sqlArr + ')')
     }
-    const tipoClienteFilter = Array.isArray(f.tipoCliente)
-      ? f.tipoCliente
-      : f.tipoCliente
-        ? [f.tipoCliente]
-        : []
-    if (tipoClienteFilter.length > 0 && !tipoClienteFilter.includes('TODOS')) {
-      const tcConds = []
-      const tcValues = []
-      for (let tcIdx = 0; tcIdx < tipoClienteFilter.length; tcIdx++) {
-        const val = String(tipoClienteFilter[tcIdx]).trim()
-        if (
-          val.toUpperCase() === 'SEM INFORMACAO' ||
-          val.toUpperCase() === 'VAZIO' ||
-          val.toUpperCase() === 'SEM TIPO'
-        ) {
-          tcConds.push("(tipo_cliente IS NULL OR tipo_cliente = '')")
-        } else if (val) {
-          tcValues.push("'" + sqlEsc(val) + "'")
-        }
-      }
-      if (tcValues.length > 0) {
-        tcConds.push('tipo_cliente IN (' + tcValues.join(',') + ')')
-      }
-      if (tcConds.length > 0) {
-        sqlParts.push('(' + tcConds.join(' OR ') + ')')
-      }
+    // Filtro por Tipo de Cliente — resolvido via tipos_cliente (subconsulta por
+    // codigo_pn normalizado); o campo local tipo_cliente de vendas não é populado
+    // (fonte da verdade = Característica da planilha SAP em tipos_cliente).
+    const tcClauseVL = globalThis.__tipoClienteFiltro.buildClause($app, f.tipoCliente)
+    if (tcClauseVL) {
+      sqlParts.push(tcClauseVL)
     }
     if (f.tipoDevolucao) {
       sqlParts.push("tipo_documento = '" + sqlEsc(f.tipoDevolucao) + "'")

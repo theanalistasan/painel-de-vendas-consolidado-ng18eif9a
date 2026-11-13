@@ -717,25 +717,10 @@ var __dashboardStatsHandler = (e) => {
     let hasTipoCliente = false
     if (tipoClienteFilter.length > 0 && !tipoClienteFilter.includes('TODOS')) {
       hasTipoCliente = true
-      const tcConds = []
-      const tcValues = []
-      for (let tcIdx = 0; tcIdx < tipoClienteFilter.length; tcIdx++) {
-        const val = String(tipoClienteFilter[tcIdx]).trim()
-        if (
-          val.toUpperCase() === 'SEM INFORMACAO' ||
-          val.toUpperCase() === 'VAZIO' ||
-          val.toUpperCase() === 'SEM TIPO'
-        ) {
-          tcConds.push("(tipo_cliente IS NULL OR tipo_cliente = '')")
-        } else if (val) {
-          tcValues.push("'" + sqlEsc(val) + "'")
-        }
-      }
-      if (tcValues.length > 0) {
-        tcConds.push('tipo_cliente IN (' + tcValues.join(',') + ')')
-      }
-      if (tcConds.length > 0) {
-        const tcClause = '(' + tcConds.join(' OR ') + ')'
+      // Resolvido via tipos_cliente (subconsulta por codigo_pn normalizado);
+      // o campo local tipo_cliente de vendas/resumo não é populado.
+      const tcClause = globalThis.__tipoClienteFiltro.buildClause($app, f.tipoCliente)
+      if (tcClause) {
         sqlVendasParts.push(tcClause)
         sqlGlobalRestrictedParts.push(tcClause)
         sqlGlobalRestrictedVendasParts.push(tcClause)

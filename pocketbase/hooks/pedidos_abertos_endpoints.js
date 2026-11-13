@@ -2,6 +2,9 @@
 // 1. POST /backend/v1/pedidos-abertos/list - Listagem paginada com filtros, busca e ordenação
 // 2. POST /backend/v1/pedidos-abertos/stats - KPIs e Ranking de clientes com ritmo de compra vs vendas realizadas
 // 3. GET  /backend/v1/pedidos-abertos/por-cliente - Agregado por cliente (GROUP BY) para a Visão Canais
+//
+// O filtro "Tipo de Cliente" é resolvido pelo helper global __tipoClienteFiltro
+// (carregado antes deste arquivo), via subconsulta em tipos_cliente.
 
 routerAdd(
   'POST',
@@ -279,33 +282,11 @@ routerAdd(
       )
     }
 
-    // Filtro por Tipo de Cliente
-    const tipoClienteFilter = Array.isArray(f.tipoCliente)
-      ? f.tipoCliente
-      : f.tipoCliente
-        ? [f.tipoCliente]
-        : []
-    if (tipoClienteFilter.length > 0 && !tipoClienteFilter.includes('TODOS')) {
-      const tcConds = []
-      const tcValues = []
-      for (let tcIdx = 0; tcIdx < tipoClienteFilter.length; tcIdx++) {
-        const val = String(tipoClienteFilter[tcIdx]).trim()
-        if (
-          val.toUpperCase() === 'SEM INFORMACAO' ||
-          val.toUpperCase() === 'VAZIO' ||
-          val.toUpperCase() === 'SEM TIPO'
-        ) {
-          tcConds.push("(tipo_cliente IS NULL OR tipo_cliente = '')")
-        } else if (val) {
-          tcValues.push("'" + sqlEsc(val) + "'")
-        }
-      }
-      if (tcValues.length > 0) {
-        tcConds.push('tipo_cliente IN (' + tcValues.join(',') + ')')
-      }
-      if (tcConds.length > 0) {
-        whereClauses.push('(' + tcConds.join(' OR ') + ')')
-      }
+    // Filtro por Tipo de Cliente — resolvido via tipos_cliente (subconsulta por
+    // codigo_pn normalizado); o campo local tipo_cliente não é populado.
+    const tcListClause = globalThis.__tipoClienteFiltro.buildClause($app, f.tipoCliente)
+    if (tcListClause) {
+      whereClauses.push(tcListClause)
     }
 
     // Filtro por Status do Cadastro (ex: Ativo)
@@ -878,33 +859,11 @@ routerAdd(
       )
     }
 
-    // Filtro por Tipo de Cliente
-    const tipoClienteFilter = Array.isArray(f.tipoCliente)
-      ? f.tipoCliente
-      : f.tipoCliente
-        ? [f.tipoCliente]
-        : []
-    if (tipoClienteFilter.length > 0 && !tipoClienteFilter.includes('TODOS')) {
-      const tcConds = []
-      const tcValues = []
-      for (let tcIdx = 0; tcIdx < tipoClienteFilter.length; tcIdx++) {
-        const val = String(tipoClienteFilter[tcIdx]).trim()
-        if (
-          val.toUpperCase() === 'SEM INFORMACAO' ||
-          val.toUpperCase() === 'VAZIO' ||
-          val.toUpperCase() === 'SEM TIPO'
-        ) {
-          tcConds.push("(tipo_cliente IS NULL OR tipo_cliente = '')")
-        } else if (val) {
-          tcValues.push("'" + sqlEsc(val) + "'")
-        }
-      }
-      if (tcValues.length > 0) {
-        tcConds.push('tipo_cliente IN (' + tcValues.join(',') + ')')
-      }
-      if (tcConds.length > 0) {
-        paWhereClauses.push('(' + tcConds.join(' OR ') + ')')
-      }
+    // Filtro por Tipo de Cliente — resolvido via tipos_cliente (subconsulta por
+    // codigo_pn normalizado); o campo local tipo_cliente não é populado.
+    const tcStatsClause = globalThis.__tipoClienteFiltro.buildClause($app, f.tipoCliente)
+    if (tcStatsClause) {
+      paWhereClauses.push(tcStatsClause)
     }
 
     // Filtro por Status do Cadastro (ex: Ativo)
