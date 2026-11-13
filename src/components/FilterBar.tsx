@@ -329,13 +329,15 @@ export default function FilterBar({
     // - Tipo de documento = ['NF'] (Tipo de Devolução fica sem seleção)
     // - Utilização = apenas as opções que começam com "VENDA" (e não vazio!)
     // - Cliente / Vendedor / Busca / Estado / Tipo de Cliente = vazio
-    // - Janela de anos dinâmica (ano atual + 2 anteriores, ex. 2024–2026)
+    // - Ano = ano atual; Mês = mês atual (parâmetros padrões do "Limpar filtros")
     // - Canais: LIMPOS por padrão; preservados SOMENTE quando a tela oculta o
     //   bloco de canais (hideCanais), pois lá o usuário não consegue vê-los/editá-los
     //   (a gestão de canais fica na Visão Canais).
+    const agora = new Date()
     const emptyState: FilterState = {
       ...DEFAULT_FILTERS,
-      ano: buildDynamicAnoDefaults(options.anos),
+      ano: [String(agora.getFullYear())],
+      mes: [String(agora.getMonth() + 1)],
       utilizacao: (options.utilizacao || []).filter((u) =>
         u.toUpperCase().trim().startsWith('VENDA'),
       ),

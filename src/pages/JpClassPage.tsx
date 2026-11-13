@@ -20,7 +20,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { getJpClass } from '@/lib/jp-class'
 import { MESES_PT_BR, formatCurrency, formatCompactCurrency, exportToCSV } from '@/lib/formatters'
-import { MultiSelectDropdown, buildDynamicAnoDefaults } from '@/components/FilterBar'
+import { MultiSelectDropdown } from '@/components/FilterBar'
 import {
   loadFiltersFromSession,
   saveFiltersToSession,
@@ -140,19 +140,18 @@ export default function JpClassPage() {
     savePeriodoSelecoes({ anos: proximo.anos, meses: proximo.meses })
   }, [anoSelecionados, mesesSelecionados])
 
-  // Limpar filtros (restaura a visão semanal PADRÃO imediatamente, sem "Aplicar"):
-  // ano = janela dinâmica do Padrão Geral (buildDynamicAnoDefaults), mês corrente.
+  // Limpar filtros: restaura os parâmetros padrões (ano atual e mês atual) e
+  // APLICA na hora, atualizando quadro por semana, dashboard e relatório.
   const limparFiltros = useCallback(() => {
-    const anosPadrao = buildDynamicAnoDefaults(
-      filtersRef.current.ano.map((a) => parseInt(String(a), 10)).filter((a) => !isNaN(a)),
-    )
-    const mesCorrente = String(hoje.getMonth() + 1)
-    setAnoSelecionados(anosPadrao)
-    setMesesSelecionados([mesCorrente])
-    const proximo = { anos: anosPadrao, meses: [mesCorrente] }
+    const agora = new Date()
+    const anoAtual = String(agora.getFullYear())
+    const mesAtual = String(agora.getMonth() + 1)
+    setAnoSelecionados([anoAtual])
+    setMesesSelecionados([mesAtual])
+    const proximo = { anos: [anoAtual], meses: [mesAtual] }
     setAplicado(proximo)
     savePeriodoSelecoes({ anos: proximo.anos, meses: proximo.meses })
-  }, [hoje])
+  }, [])
 
   // Indicador de filtros pendentes: seleção difere do que já está aplicado
   const filtrosPendentes =
