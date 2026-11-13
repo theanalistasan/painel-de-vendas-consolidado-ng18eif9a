@@ -388,7 +388,8 @@ export default function DashboardCanais() {
       relatorioGroupByMode === 'comissao' ||
       relatorioGroupByMode === 'jp_class' ||
       relatorioGroupByMode === 'nfe' ||
-      relatorioGroupByMode === 'pedido'
+      relatorioGroupByMode === 'pedido' ||
+      relatorioGroupByMode === 'codigo_item'
 
     try {
       if (isGroupedMode) {

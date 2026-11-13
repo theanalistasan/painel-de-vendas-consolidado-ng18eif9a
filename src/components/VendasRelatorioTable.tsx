@@ -677,6 +677,8 @@ export function VendasRelatorioTable({
 
   // Modos consolidados no backend ('nfe' | 'pedido'): o hook já devolve 1 linha por NF/Pedido,
   // portanto a renderização é flat (sem reagrupamento local por NFe)
+  // Item 5 do plano: 'codigo_item' também vem consolidado do backend (1 linha por
+  // código de item), portanto renderiza flat como os modos nfe/pedido.
   const isBackendGrouped =
     groupByMode === 'nfe' || groupByMode === 'pedido' || groupByMode === 'codigo_item'
 
