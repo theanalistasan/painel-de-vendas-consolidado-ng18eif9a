@@ -642,8 +642,8 @@ export default function DashboardCanais() {
           </div>
 
           <p className="text-[11px] text-slate-500 font-medium">
-            Filtros locais da Visão Canais. Os demais filtros globais são definidos em Dashboard
-            &gt; Filtros Globais.
+            Filtros locais da Visão Geral por Canais. Os demais filtros globais são definidos em
+            Dashboard &gt; Filtros Globais (Setup).
           </p>
         </CardContent>
       </Card>
@@ -945,8 +945,8 @@ export default function DashboardCanais() {
                   <div className="flex flex-wrap items-center gap-2">
                     <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-[#0B6E99]" />
-                      Vendas por Estado (UF) &amp; Região — Visão Canais ({TITULO_VALOR_TOTAL_BRUTO}
-                      )
+                      Vendas por Estado (UF) &amp; Região — Visão Geral por Canais (
+                      {TITULO_VALOR_TOTAL_BRUTO})
                     </CardTitle>
                     {filters.estado.length > 0 && (
                       <Badge

@@ -181,9 +181,9 @@ export default function Layout() {
     switch (location.pathname) {
       case '/':
       case '/dashboard/geral':
-        return 'Dashboard — Visão Geral'
+        return 'Dashboard — Visão Geral por Clientes'
       case '/dashboard/canais':
-        return 'Dashboard — Visão Canais'
+        return 'Dashboard — Visão Geral por Canais'
       case '/jp-class':
         return 'JP-Class — Vendas por Semanas'
       case '/vendas':
@@ -277,13 +277,13 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-5 space-y-1.5 overflow-y-auto">
-          {/* Item Dashboard com Submenu (Visão Geral & Visão Canais) */}
+          {/* Item Dashboard com Submenu (Visão Geral por Clientes & Visão Geral por Canais) */}
           <div className="space-y-1">
             {sidebarCollapsed ? (
               // No modo colapsado, link direto para Visão Geral com tooltip
               <NavLink
                 to="/dashboard/geral"
-                title="Dashboard (Visão Geral & Visão Canais)"
+                title="Dashboard (Visão Geral por Clientes & Visão Geral por Canais)"
                 className={cn(
                   'flex items-center justify-center w-10 h-10 mx-auto rounded-full text-sm font-medium transition-all duration-200',
                   isDashboardActive
@@ -337,10 +337,10 @@ export default function Layout() {
                       )}
                     >
                       <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Filtros Globais</span>
+                      <span className="truncate">Filtros Globais (Setup)</span>
                     </NavLink>
 
-                    {/* Visão Canais (posicionado antes de Visão Geral) */}
+                    {/* Visão Geral por Canais (posicionado antes da Visão Geral por Clientes) */}
                     <NavLink
                       to="/dashboard/canais"
                       className={cn(
@@ -351,10 +351,10 @@ export default function Layout() {
                       )}
                     >
                       <Network className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Visão Canais</span>
+                      <span className="truncate">Visão Geral por Canais</span>
                     </NavLink>
 
-                    {/* Visão Geral */}
+                    {/* Visão Geral por Clientes */}
                     <NavLink
                       to="/dashboard/geral"
                       className={cn(
@@ -365,7 +365,7 @@ export default function Layout() {
                       )}
                     >
                       <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Visão Geral</span>
+                      <span className="truncate">Visão Geral por Clientes</span>
                     </NavLink>
 
                     {/* Manutenção de Canais (ex-item "Canais" do extinto grupo Canais) */}
@@ -645,10 +645,10 @@ export default function Layout() {
                       )}
                     >
                       <SlidersHorizontal className="w-3.5 h-3.5 shrink-0" />
-                      <span>Filtros Globais</span>
+                      <span>Filtros Globais (Setup)</span>
                     </NavLink>
 
-                    {/* Visão Canais (posicionado antes de Visão Geral) */}
+                    {/* Visão Geral por Canais (posicionado antes da Visão Geral por Clientes) */}
                     <NavLink
                       to="/dashboard/canais"
                       onClick={() => setMobileMenuOpen(false)}
@@ -660,10 +660,10 @@ export default function Layout() {
                       )}
                     >
                       <Network className="w-3.5 h-3.5 shrink-0" />
-                      <span>Visão Canais</span>
+                      <span>Visão Geral por Canais</span>
                     </NavLink>
 
-                    {/* Visão Geral */}
+                    {/* Visão Geral por Clientes */}
                     <NavLink
                       to="/dashboard/geral"
                       onClick={() => setMobileMenuOpen(false)}
@@ -675,7 +675,7 @@ export default function Layout() {
                       )}
                     >
                       <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
-                      <span>Visão Geral</span>
+                      <span>Visão Geral por Clientes</span>
                     </NavLink>
 
                     {/* Manutenção de Canais (ex-item "Canais" do extinto grupo Canais) */}

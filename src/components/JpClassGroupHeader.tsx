@@ -2,7 +2,7 @@ import React from 'react'
 import { ChevronDown, ChevronRight as ChevronRightIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatNumber } from '@/lib/formatters'
-import { TITULO_VALOR_MERCADORIA } from '@/lib/valor-titulos'
+import { TITULO_VALOR_TOTAL_BRUTO, TITULO_VALOR_LIQUIDO_NET } from '@/lib/valor-titulos'
 
 export interface JpClassGroupHeaderProps {
   groupKey: string
@@ -97,26 +97,29 @@ function JpClassGroupHeaderComponent({
 
             <span className="text-[11px] text-slate-400 font-normal">•</span>
 
-            {/* Subtotal Valor Mercadoria (Total da Linha) — legenda oficial */}
-            <span className="text-xs text-slate-600 font-medium">{TITULO_VALOR_MERCADORIA}:</span>
+            {/* Subtotal Valor Total (Bruto) — SUM(total_nf_novo) linha a linha (regra Silvio) */}
+            <span className="text-xs text-slate-600 font-semibold">
+              {TITULO_VALOR_TOTAL_BRUTO}:
+            </span>
             <Badge
               variant="outline"
-              className="text-xs bg-emerald-50 text-emerald-800 border-emerald-300 font-extrabold px-2.5 py-0.5"
-              title={`Subtotal (${TITULO_VALOR_MERCADORIA}) do grupo ${title}: ${formatCurrency(subtotal)}`}
+              className="text-xs bg-emerald-50 text-emerald-800 border-emerald-300 font-black px-2.5 py-0.5"
+              title={`Subtotal (${TITULO_VALOR_TOTAL_BRUTO}) do grupo ${title}: ${formatCurrency(subtotal)}`}
             >
               {formatCurrency(subtotal)}
             </Badge>
 
-            {/* Subtotal Líquido se houver */}
-            {subtotalLiquido > 0 && subtotalLiquido !== subtotal && (
-              <Badge
-                variant="outline"
-                className="text-[11px] bg-teal-50 text-teal-800 border-teal-200 font-semibold px-2 py-0.5"
-                title={`Valor Líquido do grupo: ${formatCurrency(subtotalLiquido)}`}
-              >
-                NET: {formatCurrency(subtotalLiquido)}
-              </Badge>
-            )}
+            {/* Subtotal Valor Líquido (NET) — SUM(valor_liquido) linha a linha, sempre visível */}
+            <span className="text-xs text-slate-600 font-semibold">
+              {TITULO_VALOR_LIQUIDO_NET}:
+            </span>
+            <Badge
+              variant="outline"
+              className="text-xs bg-teal-50 text-teal-800 border-teal-300 font-black px-2.5 py-0.5"
+              title={`Subtotal (${TITULO_VALOR_LIQUIDO_NET}) do grupo ${title}: ${formatCurrency(subtotalLiquido)}`}
+            >
+              {formatCurrency(subtotalLiquido)}
+            </Badge>
           </div>
 
           <div className="flex items-center gap-2">

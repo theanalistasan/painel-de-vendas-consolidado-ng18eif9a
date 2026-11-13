@@ -587,7 +587,7 @@ export default function FilterBar({
             <Filter className="w-4 h-4" />
           </div>
           <div>
-            <span className="text-sm font-bold text-slate-900">Filtros Globais</span>
+            <span className="text-sm font-bold text-slate-900">Filtros Globais (Setup)</span>
             {activeFiltersCount > 0 && (
               <Badge
                 variant="secondary"

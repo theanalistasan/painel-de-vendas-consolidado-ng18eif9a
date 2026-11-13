@@ -401,7 +401,7 @@ export default function DashboardGeral() {
           <SlidersHorizontal className="w-4 h-4 text-[#0B6E99] shrink-0" />
           <span className="text-xs text-slate-600 font-medium truncate">
             Filtros globais gerenciados no submenu{' '}
-            <span className="font-bold text-slate-800">Dashboard → Filtros Globais</span>
+            <span className="font-bold text-slate-800">Dashboard → Filtros Globais (Setup)</span>
             {' — '}aplicados automaticamente a esta visão.
           </span>
         </div>
@@ -416,11 +416,11 @@ export default function DashboardGeral() {
         </Button>
       </div>
 
-      {/* Título da Visão Geral */}
+      {/* Título da Visão Geral por Clientes */}
       <Card className="rounded-xl border border-gray-200 bg-white p-4 shadow-xs">
         <div>
           <CardTitle className="text-base font-extrabold text-slate-900">
-            Visão Geral — Indicadores Consolidados
+            Visão Geral por Clientes — Indicadores Consolidados
           </CardTitle>
           <CardDescription className="text-xs text-slate-500 font-medium mt-0.5">
             Tendências de mercado, evolução temporal e comparativos de clientes ativos

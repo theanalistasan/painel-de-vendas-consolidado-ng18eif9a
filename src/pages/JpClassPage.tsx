@@ -543,7 +543,7 @@ export default function JpClassPage() {
             className="text-xs font-semibold gap-1.5 h-8 bg-white"
           >
             <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-            <span>Filtros Globais</span>
+            <span>Filtros Globais (Setup)</span>
           </Button>
 
           <Button
@@ -590,11 +590,11 @@ export default function JpClassPage() {
         <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs">
           <p className="font-bold">
             Nenhuma venda registrada nas semanas de {mesNome} de {ano} com os Filtros Globais
-            atuais.
+            (Setup) atuais.
           </p>
           <p className="text-amber-700 text-[11px]">
             A base consolidada não possui vendas para o intervalo/recorte selecionado ou o mês ainda
-            não foi faturado. Ajuste os Filtros Globais em Dashboard → Filtros Globais.
+            não foi faturado. Ajuste os Filtros Globais em Dashboard → Filtros Globais (Setup).
           </p>
         </div>
       )}

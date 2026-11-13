@@ -301,12 +301,12 @@ export default function FiltrosGlobais() {
             </div>
             <div>
               <CardTitle className="text-base font-extrabold text-slate-900">
-                Filtros Globais
+                Filtros Globais (Setup)
               </CardTitle>
               <CardDescription className="text-xs text-slate-500 font-medium mt-0.5">
-                Os filtros definidos aqui valem para o painel inteiro: aplicam-se à Visão Geral, à
-                Visão Canais e ao Relatório JP-Class. Os filtros de Canais (Canal, Clientes, Deploy
-                e Inside) ficam na Visão Canais.
+                Os filtros definidos aqui valem para o painel inteiro: aplicam-se à Visão Geral por
+                Clientes, à Visão Geral por Canais e ao Relatório JP-Class. Os filtros de Canais
+                (Canal, Clientes, Deploy e Inside) ficam na Visão Geral por Canais.
               </CardDescription>
             </div>
           </div>
@@ -318,7 +318,7 @@ export default function FiltrosGlobais() {
             size="sm"
             onClick={handleResetToDefault}
             className="h-8 px-2.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border-slate-200 gap-1 shrink-0"
-            title="Restaurar critério padrão de filtragem (Visão Geral / Visão Canais)"
+            title="Restaurar critério padrão de filtragem (Visão Geral por Clientes / Visão Geral por Canais)"
           >
             <RotateCcw className="w-3.5 h-3.5 text-[#0B6E99]" />
             <span>Padrão Geral</span>
