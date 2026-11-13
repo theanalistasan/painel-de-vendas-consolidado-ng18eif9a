@@ -550,7 +550,7 @@ export function VendasRelatorioTable({
         let subtotalLucroBruto = 0
         let totalQuantidade = 0
         for (const it of gItems) {
-          subtotal += Number(it.total_linha) || 0
+          subtotal += Number(it.total_nf_novo) || 0
           subtotalLiquido += Number(it.valor_liquido) || 0
           subtotalCusto += Number(it.custo_total) || 0
           subtotalLucroBruto += Number(it.lucro_bruto) || 0
@@ -619,7 +619,7 @@ export function VendasRelatorioTable({
       const vendedoresSet = new Set<string>()
 
       for (const it of gItems) {
-        subtotal += Number(it.total_linha) || 0
+        subtotal += Number(it.total_nf_novo) || 0
         subtotalLiquido += Number(it.valor_liquido) || 0
         totalQuantidade += Number(it.quantidade) || 0
         const vend = (it.vendedor_cliente || it.nome_vendedor || '').trim()

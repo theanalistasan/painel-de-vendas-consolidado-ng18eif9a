@@ -2,7 +2,7 @@ import React from 'react'
 import { ChevronDown, ChevronRight as ChevronRightIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatNumber } from '@/lib/formatters'
-import { TITULO_VALOR_MERCADORIA, TITULO_VALOR_LIQUIDO_NET } from '@/lib/valor-titulos'
+import { TITULO_VALOR_TOTAL_BRUTO, TITULO_VALOR_LIQUIDO_NET } from '@/lib/valor-titulos'
 
 export interface ComissaoGroupHeaderProps {
   groupKey: 'comissionados' | 'nao_comissionados'
@@ -107,12 +107,14 @@ function ComissaoGroupHeaderComponent({
 
             <span className="text-[11px] text-slate-400 font-normal">•</span>
 
-            {/* Somatório de Total da Linha — legenda oficial "Valor Mercadoria" */}
-            <span className="text-xs text-slate-600 font-semibold">{TITULO_VALOR_MERCADORIA}:</span>
+            {/* Somatório de Valor Total (Bruto) — SUM de total_nf_novo (regra Silvio) */}
+            <span className="text-xs text-slate-600 font-semibold">
+              {TITULO_VALOR_TOTAL_BRUTO}:
+            </span>
             <Badge
               variant="outline"
               className="text-xs bg-emerald-50 text-emerald-800 border-emerald-300 font-black px-2.5 py-0.5"
-              title={`Subtotal (${TITULO_VALOR_MERCADORIA}) do grupo ${title}: ${formatCurrency(subtotal)}`}
+              title={`Subtotal (${TITULO_VALOR_TOTAL_BRUTO}) do grupo ${title}: ${formatCurrency(subtotal)}`}
             >
               {formatCurrency(subtotal)}
             </Badge>
