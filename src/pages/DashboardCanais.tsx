@@ -1212,8 +1212,8 @@ export default function DashboardCanais() {
           {/* Gráfico: Valor Líquido (NET) x Valor Total (Bruto) por Mês */}
           <div className="grid grid-cols-1 gap-6">
             <ChartCard
-              title={`${TITULO_VALOR_LIQUIDO_NET} x ${TITULO_VALOR_TOTAL_BRUTO} por Mês`}
-              description="Comparativo de margem financeira dos canais"
+              title={`${TITULO_VALOR_TOTAL_BRUTO} por Mês — Semanas 1 a 5`}
+              description={`${TITULO_VALOR_TOTAL_BRUTO} empilhado pelas semanas do mês (semana 5 quando existir); a soma das semanas é o total do mês`}
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
@@ -1253,9 +1253,7 @@ export default function DashboardCanais() {
                                     style={{ backgroundColor: p.color || p.stroke }}
                                     aria-hidden="true"
                                   />
-                                  {p.dataKey === 'bruto'
-                                    ? TITULO_VALOR_TOTAL_BRUTO
-                                    : TITULO_VALOR_LIQUIDO_NET}
+                                  {String(p.name || p.dataKey)}
                                 </span>
                                 <span className="font-bold text-white">
                                   {formatCurrency(Number(p.value) || 0)}
@@ -1272,7 +1270,7 @@ export default function DashboardCanais() {
                     height={36}
                     formatter={(value) => (
                       <span className="text-xs font-bold text-slate-700 capitalize">
-                        {value === 'bruto' ? TITULO_VALOR_TOTAL_BRUTO : TITULO_VALOR_LIQUIDO_NET}
+                        {String(value)}
                       </span>
                     )}
                   />

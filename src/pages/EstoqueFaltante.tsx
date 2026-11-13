@@ -1191,8 +1191,11 @@ export default function EstoqueFaltante() {
                         return [n, name]
                       }}
                       labelFormatter={(label: any, payload: any) => {
+                        // Item 12 do plano: mostra a quantidade de Pedidos em Aberto
+                        // de cada item também no Top 20 (o backend já a calcula).
                         const row = payload?.[0]?.payload
-                        return `${label} - ${row?.descricao_item || ''} (${row?.tem_transito ? 'Com Trânsito' : 'Sem Trânsito'})`
+                        const pa = row?.pedidos_abertos_qtd ?? 0
+                        return `${label} - ${row?.descricao_item || ''} (${row?.tem_transito ? 'Com Trânsito' : 'Sem Trânsito'}) · Pedidos em Aberto: ${formatNumber(pa)}`
                       }}
                       contentStyle={{
                         backgroundColor: '#0F172A',

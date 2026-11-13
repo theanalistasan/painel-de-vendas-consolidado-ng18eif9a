@@ -89,7 +89,9 @@ export function ComparativoCanaisMesCard({ data, loading }: ComparativoCanaisMes
 
   // Prepara dados para o gráfico de barras agrupadas
   // Exibimos todos os canais que têm faturamento no mês atual ou anterior
-  const canaisVisiveis = useMemo(() => {
+  // Cálculo simples (sem hook): a expressão fica depois dos early returns de
+  // loading/vazio, onde chamar useMemo violaria as regras dos hooks.
+  const canaisVisiveis = (() => {
     const base =
       canaisSelecionados.length === 0
         ? canais
@@ -120,7 +122,7 @@ export function ComparativoCanaisMesCard({ data, loading }: ComparativoCanaisMes
       return sortDir === 'asc' ? Number(va) - Number(vb) : Number(vb) - Number(va)
     })
     return ordenado
-  }, [canais, canaisSelecionados, sortField, sortDir])
+  })()
 
   const alternarOrdenacao = (campo: typeof sortField) => {
     if (sortField === campo) {

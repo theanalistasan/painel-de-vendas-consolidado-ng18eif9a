@@ -819,7 +819,7 @@ export default function DashboardGeral() {
             {/* Indicador: Tendência de Vendas — Equipamentos */}
             <ChartCard
               title="Tendência de Vendas — Equipamentos"
-              description="Evolução histórica contínua de vendas de Equipamentos"
+              description={`Evolução histórica do ${TITULO_VALOR_TOTAL_BRUTO} em Equipamentos`}
               icon={TrendingUp}
               iconColor="text-[#0B6E99]"
             >
@@ -856,7 +856,7 @@ export default function DashboardGeral() {
                       formatter={(val: number | string | undefined, name: string) => {
                         const n = typeof val === 'number' ? val : Number(val)
                         if (name === 'Equipamentos') {
-                          return [formatCurrency(n), 'Vendas Equipamentos']
+                          return [formatCurrency(n), `${TITULO_VALOR_TOTAL_BRUTO} — Equipamentos`]
                         }
                         if (name === 'Média (mês)') {
                           return [formatCurrency(n), 'Média Mensal']
@@ -898,7 +898,7 @@ export default function DashboardGeral() {
             {/* Indicador: Acumulado de Vendas — Insumos */}
             <ChartCard
               title="Acumulado de Vendas — Insumos"
-              description="Evolução histórica contínua de Peças, Tintas e Acessórios"
+              description={`Evolução histórica do ${TITULO_VALOR_TOTAL_BRUTO} em Peças, Tintas e Acessórios`}
               icon={TrendingUp}
               iconColor="text-[#1895A8]"
             >
@@ -935,7 +935,7 @@ export default function DashboardGeral() {
                       formatter={(val: number | string | undefined, name: string) => {
                         const n = typeof val === 'number' ? val : Number(val)
                         if (name === 'Insumos') {
-                          return [formatCurrency(n), 'Vendas Insumos']
+                          return [formatCurrency(n), `${TITULO_VALOR_TOTAL_BRUTO} — Insumos`]
                         }
                         if (name === 'Média (mês)') {
                           return [formatCurrency(n), 'Média Mensal']
