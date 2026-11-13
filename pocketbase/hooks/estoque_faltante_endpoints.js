@@ -98,6 +98,64 @@ routerAdd(
       whereClauses.push(tcListClause)
     }
 
+    // Item 2 do plano: filtro "Grupo do Item" — mesma categoria DERIVADA de
+    // grupo_item usada no Setup e em Pedidos em Aberto (Tintas, Acessórios,
+    // Peças, Equipamentos, Outros). Regra espelhada de src/lib/grupo-categoria.ts.
+    const eiEsc = (s) => String(s).replace(/'/g, "''")
+    const giFilter = (
+      Array.isArray(f.grupoItem) ? f.grupoItem : f.grupoItem ? String(f.grupoItem).split(',') : []
+    )
+      .map((g) => String(g == null ? '' : g).trim())
+      .filter((g) => g !== '')
+    if (giFilter.length > 0) {
+      const giSql = giFilter.map((g) => "'" + eiEsc(g) + "'").join(',')
+      whereClauses.push(
+        '(CASE ' +
+          "WHEN UPPER(COALESCE(grupo_item,'')) LIKE 'INK%' OR UPPER(COALESCE(grupo_item,'')) LIKE '%TINTA%' THEN 'Tintas' " +
+          "WHEN UPPER(COALESCE(grupo_item,'')) LIKE '%ACESSOR%' OR UPPER(COALESCE(grupo_item,'')) LIKE '%ACCESS%' THEN 'Acessórios' " +
+          "WHEN UPPER(COALESCE(grupo_item,'')) LIKE '%PECA%' OR UPPER(COALESCE(grupo_item,'')) LIKE '%PEÇA%' THEN 'Peças' " +
+          "WHEN UPPER(COALESCE(grupo_item,'')) LIKE 'EQUIP%' OR UPPER(COALESCE(grupo_item,'')) LIKE '%EQUIPAMENTO%' THEN 'Equipamentos' " +
+          "ELSE 'Outros' END) IN (" +
+          giSql +
+          ')',
+      )
+    }
+
+    // Item 10 do plano: "Status do Cadastro" e "Tipo de PN" filtram pela base SAP
+    // (tipos_cliente), via codigo_pn normalizado — mesmo padrão do Tipo de Cliente.
+    const scFilter = (
+      Array.isArray(f.statusCadastro)
+        ? f.statusCadastro
+        : f.statusCadastro
+          ? [f.statusCadastro]
+          : []
+    )
+      .map((v) => String(v == null ? '' : v).trim())
+      .filter((v) => v && v.toUpperCase() !== 'TODOS')
+    if (scFilter.length > 0) {
+      const scSql = scFilter.map((v) => "'" + eiEsc(v).toUpperCase() + "'").join(',')
+      whereClauses.push(
+        'UPPER(TRIM(codigo_cliente)) IN (' +
+          "SELECT UPPER(TRIM(COALESCE(codigo_pn,''))) FROM tipos_cliente WHERE " +
+          "COALESCE(codigo_pn,'') != '' AND UPPER(TRIM(COALESCE(status_cadastro,''))) IN (" +
+          scSql +
+          '))',
+      )
+    }
+    const tpnFilter = (Array.isArray(f.tipoPn) ? f.tipoPn : f.tipoPn ? [f.tipoPn] : [])
+      .map((v) => String(v == null ? '' : v).trim())
+      .filter((v) => v && v.toUpperCase() !== 'TODOS')
+    if (tpnFilter.length > 0) {
+      const tpnSql = tpnFilter.map((v) => "'" + eiEsc(v).toUpperCase() + "'").join(',')
+      whereClauses.push(
+        'UPPER(TRIM(codigo_cliente)) IN (' +
+          "SELECT UPPER(TRIM(COALESCE(codigo_pn,''))) FROM tipos_cliente WHERE " +
+          "COALESCE(codigo_pn,'') != '' AND UPPER(TRIM(COALESCE(tipo_pn,''))) IN (" +
+          tpnSql +
+          '))',
+      )
+    }
+
     // Filtros de Canais (Canal, Clientes do Canal, Deploy, Inside, É Canal)
     const canaisFilter = Array.isArray(f.canal) ? f.canal : f.canal ? [f.canal] : []
     const canalClientesFilter = Array.isArray(f.canalClientes)
@@ -570,7 +628,65 @@ routerAdd(
       whereClauses.push(tcListClause)
     }
 
-    // Filtros de Canais
+    // Item 2 do plano: filtro "Grupo do Item" — mesma categoria DERIVADA de
+    // grupo_item usada no Setup e em Pedidos em Aberto (Tintas, Acessórios,
+    // Peças, Equipamentos, Outros). Regra espelhada de src/lib/grupo-categoria.ts.
+    const eiEsc = (s3) => String(s3).replace(/'/g, "''")
+    const giFilter = (
+      Array.isArray(f.grupoItem) ? f.grupoItem : f.grupoItem ? String(f.grupoItem).split(',') : []
+    )
+      .map((g) => String(g == null ? '' : g).trim())
+      .filter((g) => g !== '')
+    if (giFilter.length > 0) {
+      const giSql = giFilter.map((g) => "'" + eiEsc(g) + "'").join(',')
+      whereClauses.push(
+        '(CASE ' +
+          "WHEN UPPER(COALESCE(grupo_item,'')) LIKE 'INK%' OR UPPER(COALESCE(grupo_item,'')) LIKE '%TINTA%' THEN 'Tintas' " +
+          "WHEN UPPER(COALESCE(grupo_item,'')) LIKE '%ACESSOR%' OR UPPER(COALESCE(grupo_item,'')) LIKE '%ACCESS%' THEN 'Acessórios' " +
+          "WHEN UPPER(COALESCE(grupo_item,'')) LIKE '%PECA%' OR UPPER(COALESCE(grupo_item,'')) LIKE '%PEÇA%' THEN 'Peças' " +
+          "WHEN UPPER(COALESCE(grupo_item,'')) LIKE 'EQUIP%' OR UPPER(COALESCE(grupo_item,'')) LIKE '%EQUIPAMENTO%' THEN 'Equipamentos' " +
+          "ELSE 'Outros' END) IN (" +
+          giSql +
+          ')',
+      )
+    }
+
+    // Item 10 do plano: "Status do Cadastro" e "Tipo de PN" filtram pela base SAP
+    // (tipos_cliente), via codigo_pn normalizado — mesmo padrão do Tipo de Cliente.
+    const scFilter = (
+      Array.isArray(f.statusCadastro)
+        ? f.statusCadastro
+        : f.statusCadastro
+          ? [f.statusCadastro]
+          : []
+    )
+      .map((v) => String(v == null ? '' : v).trim())
+      .filter((v) => v && v.toUpperCase() !== 'TODOS')
+    if (scFilter.length > 0) {
+      const scSql = scFilter.map((v) => "'" + eiEsc(v).toUpperCase() + "'").join(',')
+      whereClauses.push(
+        'UPPER(TRIM(codigo_cliente)) IN (' +
+          "SELECT UPPER(TRIM(COALESCE(codigo_pn,''))) FROM tipos_cliente WHERE " +
+          "COALESCE(codigo_pn,'') != '' AND UPPER(TRIM(COALESCE(status_cadastro,''))) IN (" +
+          scSql +
+          '))',
+      )
+    }
+    const tpnFilter = (Array.isArray(f.tipoPn) ? f.tipoPn : f.tipoPn ? [f.tipoPn] : [])
+      .map((v) => String(v == null ? '' : v).trim())
+      .filter((v) => v && v.toUpperCase() !== 'TODOS')
+    if (tpnFilter.length > 0) {
+      const tpnSql = tpnFilter.map((v) => "'" + eiEsc(v).toUpperCase() + "'").join(',')
+      whereClauses.push(
+        'UPPER(TRIM(codigo_cliente)) IN (' +
+          "SELECT UPPER(TRIM(COALESCE(codigo_pn,''))) FROM tipos_cliente WHERE " +
+          "COALESCE(codigo_pn,'') != '' AND UPPER(TRIM(COALESCE(tipo_pn,''))) IN (" +
+          tpnSql +
+          '))',
+      )
+    }
+
+    // Filtros de Canais (Canal, Clientes do Canal, Deploy, Inside, É Canal)
     const canaisFilter = Array.isArray(f.canal) ? f.canal : f.canal ? [f.canal] : []
     const canalClientesFilter = Array.isArray(f.canalClientes)
       ? f.canalClientes
@@ -624,7 +740,7 @@ routerAdd(
           whereClauses.push("(nome_canal IS NOT NULL AND TRIM(nome_canal) != '')")
         }
       } catch (ecErr) {
-        console.warn('estoque_faltante stats: filtro ehCanal sim warning:', ecErr)
+        console.warn('estoque_faltante list: filtro ehCanal sim warning:', ecErr)
       }
     } else if (
       ehCanalFilter === 'nao' ||
@@ -1041,6 +1157,62 @@ routerAdd(
     })(f.tipoCliente)
     if (tcListClause) {
       extraWhere.push(tcListClause)
+    }
+
+    // Item 2 do plano: filtro "Grupo do Item" (mesma categoria derivada do Setup).
+    const eiEsc = (s) => String(s).replace(/'/g, "''")
+    const giFilter = (
+      Array.isArray(f.grupoItem) ? f.grupoItem : f.grupoItem ? String(f.grupoItem).split(',') : []
+    )
+      .map((g) => String(g == null ? '' : g).trim())
+      .filter((g) => g !== '')
+    if (giFilter.length > 0) {
+      const giSql = giFilter.map((g) => "'" + eiEsc(g) + "'").join(',')
+      extraWhere.push(
+        '(CASE ' +
+          "WHEN UPPER(COALESCE(grupo_item,'')) LIKE 'INK%' OR UPPER(COALESCE(grupo_item,'')) LIKE '%TINTA%' THEN 'Tintas' " +
+          "WHEN UPPER(COALESCE(grupo_item,'')) LIKE '%ACESSOR%' OR UPPER(COALESCE(grupo_item,'')) LIKE '%ACCESS%' THEN 'Acessórios' " +
+          "WHEN UPPER(COALESCE(grupo_item,'')) LIKE '%PECA%' OR UPPER(COALESCE(grupo_item,'')) LIKE '%PEÇA%' THEN 'Peças' " +
+          "WHEN UPPER(COALESCE(grupo_item,'')) LIKE 'EQUIP%' OR UPPER(COALESCE(grupo_item,'')) LIKE '%EQUIPAMENTO%' THEN 'Equipamentos' " +
+          "ELSE 'Outros' END) IN (" +
+          giSql +
+          ')',
+      )
+    }
+
+    // Item 10 do plano: Status do Cadastro e Tipo de PN via base SAP
+    // (tipos_cliente), por codigo_pn normalizado.
+    const scFilter = (
+      Array.isArray(f.statusCadastro)
+        ? f.statusCadastro
+        : f.statusCadastro
+          ? [f.statusCadastro]
+          : []
+    )
+      .map((v) => String(v == null ? '' : v).trim())
+      .filter((v) => v && v.toUpperCase() !== 'TODOS')
+    if (scFilter.length > 0) {
+      const scSql = scFilter.map((v) => "'" + eiEsc(v).toUpperCase() + "'").join(',')
+      extraWhere.push(
+        'UPPER(TRIM(codigo_cliente)) IN (' +
+          "SELECT UPPER(TRIM(COALESCE(codigo_pn,''))) FROM tipos_cliente WHERE " +
+          "COALESCE(codigo_pn,'') != '' AND UPPER(TRIM(COALESCE(status_cadastro,''))) IN (" +
+          scSql +
+          '))',
+      )
+    }
+    const tpnFilter = (Array.isArray(f.tipoPn) ? f.tipoPn : f.tipoPn ? [f.tipoPn] : [])
+      .map((v) => String(v == null ? '' : v).trim())
+      .filter((v) => v && v.toUpperCase() !== 'TODOS')
+    if (tpnFilter.length > 0) {
+      const tpnSql = tpnFilter.map((v) => "'" + eiEsc(v).toUpperCase() + "'").join(',')
+      extraWhere.push(
+        'UPPER(TRIM(codigo_cliente)) IN (' +
+          "SELECT UPPER(TRIM(COALESCE(codigo_pn,''))) FROM tipos_cliente WHERE " +
+          "COALESCE(codigo_pn,'') != '' AND UPPER(TRIM(COALESCE(tipo_pn,''))) IN (" +
+          tpnSql +
+          '))',
+      )
     }
 
     const extraWhereSql = extraWhere.length > 0 ? ' AND ' + extraWhere.join(' AND ') : ''
