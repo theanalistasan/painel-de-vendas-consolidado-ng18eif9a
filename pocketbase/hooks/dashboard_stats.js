@@ -313,7 +313,9 @@ var __dashboardStatsHandler = (e) => {
       if (t === 'boolean') return 'b:' + String(value)
       return 'x:' + String(value)
     }
-    const cacheKey = stableCacheKey(f || {})
+    // Sufixo -v2: invalida números velhos calculados com MAX por NF (KPIs agora
+    // somam total_nf_* linha a linha, decisão Silvio — bater com o Excel do gerente).
+    const cacheKey = 'v2:' + stableCacheKey(f || {})
     const now = Date.now()
     let cachedEntry = null
     try {
@@ -903,10 +905,10 @@ var __dashboardStatsHandler = (e) => {
     try {
       const nfSql =
         'SELECT COALESCE(SUM(t.f),0) AS f, COALESCE(SUM(t.g),0) AS g FROM (' +
-        'SELECT MAX(COALESCE(total_nf_sem_frete,0)) AS f, MAX(COALESCE(total_nf_novo,0)) AS g ' +
+        'SELECT SUM(COALESCE(total_nf_sem_frete,0)) AS f, SUM(COALESCE(total_nf_novo,0)) AS g ' +
         'FROM vendas WHERE ' +
         sqlWhereVendas +
-        ' GROUP BY numero_nfe) AS t'
+        ') AS t'
       // DynamicModel próprio: o runAgg só tem campos a–f e a coluna "g"
       // (totalNfNovo) não scanneia nele.
       const nfRows = arrayOf(new DynamicModel({ f: '', g: '' }))
@@ -1048,10 +1050,10 @@ var __dashboardStatsHandler = (e) => {
           .db()
           .newQuery(
             'SELECT COALESCE(SUM(t.f),0) AS f, COALESCE(SUM(t.g),0) AS g FROM (' +
-              'SELECT MAX(COALESCE(total_nf_sem_frete,0)) AS f, MAX(COALESCE(total_nf_novo,0)) AS g ' +
+              'SELECT SUM(COALESCE(total_nf_sem_frete,0)) AS f, SUM(COALESCE(total_nf_novo,0)) AS g ' +
               'FROM vendas WHERE ' +
               whereAno +
-              ' GROUP BY numero_nfe) AS t',
+              ') AS t',
           )
           .all(nfRowsAno)
 
@@ -1227,10 +1229,10 @@ var __dashboardStatsHandler = (e) => {
         "SELECT 'estado' AS dim, COALESCE(NULLIF(estado,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
         dimBase +
         ' UNION ALL ' +
-        "SELECT 'tipo_documento' AS dim, COALESCE(NULLIF(tipo_documento,''),'Sem classificação') AS k, MAX(COALESCE(SUM(total_linha),0), COALESCE(SUM(valor_liquido),0)) AS v " +
+        "SELECT 'tipo_documento' AS dim, COALESCE(NULLIF(tipo_documento,''),'Sem classificação') AS k, CASE WHEN COALESCE(SUM(total_linha),0) >= COALESCE(SUM(valor_liquido),0) THEN COALESCE(SUM(total_linha),0) ELSE COALESCE(SUM(valor_liquido),0) END AS v " +
         dimBase +
         ' UNION ALL ' +
-        "SELECT 'utilizacao' AS dim, COALESCE(NULLIF(utilizacao,''),'Sem classificação') AS k, MAX(COALESCE(SUM(total_linha),0), COALESCE(SUM(valor_liquido),0)) AS v " +
+        "SELECT 'utilizacao' AS dim, COALESCE(NULLIF(utilizacao,''),'Sem classificação') AS k, CASE WHEN COALESCE(SUM(total_linha),0) >= COALESCE(SUM(valor_liquido),0) THEN COALESCE(SUM(total_linha),0) ELSE COALESCE(SUM(valor_liquido),0) END AS v " +
         dimBase +
         ' ORDER BY v DESC'
       $app.db().newQuery(multiDimSql).all(multiDimRows)
