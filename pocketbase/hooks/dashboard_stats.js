@@ -1271,8 +1271,7 @@ var __dashboardStatsHandler = (e) => {
         dimBase +
         ' UNION ALL ' +
         "SELECT 'utilizacao' AS dim, COALESCE(NULLIF(utilizacao,''),'Sem classificação') AS k, CASE WHEN COALESCE(SUM(total_linha),0) >= COALESCE(SUM(valor_liquido),0) THEN COALESCE(SUM(total_linha),0) ELSE COALESCE(SUM(valor_liquido),0) END AS v " +
-        dimBase +
-        ' ORDER BY v DESC'
+        dimBase
       const multiDimSqlVendas =
         "SELECT 'grupo' AS dim, COALESCE(NULLIF(grupo_item,''),'Sem informação') AS k, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v " +
         vendasDimBase +
@@ -1281,9 +1280,12 @@ var __dashboardStatsHandler = (e) => {
         vendasDimBase +
         ' UNION ALL ' +
         "SELECT 'cliente' AS dim, COALESCE(NULLIF(nome_cliente,''),'Sem informação') AS k, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v " +
-        vendasDimBase +
-        ' ORDER BY v DESC'
-      const multiDimSql = multiDimSqlResumo + ' UNION ALL ' + multiDimSqlVendas
+        vendasDimBase
+      // BUG 0.0.360: ORDER BY dentro de cada braço quebra o UNION ALL do SQLite
+      // ("ORDER BY clause should come after UNION ALL not before") — a agregação
+      // falhava por inteiro e grupo/vendedor/cliente voltavam VAZIOS. O ORDER BY
+      // v DESC deve vir UMA vez, no FIM do compound SELECT.
+      const multiDimSql = multiDimSqlResumo + ' UNION ALL ' + multiDimSqlVendas + ' ORDER BY v DESC'
       $app.db().newQuery(multiDimSql).all(multiDimRows)
     } catch (err) {
       console.error('dashboard_stats: agregacao multi-dimensao falhou:', err)
@@ -1437,6 +1439,19 @@ var __dashboardStatsHandler = (e) => {
       const mesesAlvoGrupo = ultimos6MesesAlvo
       const minMesTarget = mesesAlvoGrupo[0]
       const maxMesTarget = mesesAlvoGrupo[mesesAlvoGrupo.length - 1]
+      // BUG 0.0.360: a query usava `ano_mes >= ... AND ano_mes <= ...` sobre a
+      // base bruta `vendas` — coluna que SÓ existe no resumo; a SQL falhava
+      // ("no such column: ano_mes"), o runAgg engolia o erro e o gráfico
+      // "Venda Mensal por Grupo do Item" voltava vazio. Na base bruta o recorte
+      // de período é FAIXA DE DATA (1º dia do 1º mês-alvo inclusivo → 1º dia do
+      // mês seguinte ao último exclusivo), preservando o índice de data.
+      let gyMax = parseInt(maxMesTarget.split('-')[0], 10)
+      let gmNext = parseInt(maxMesTarget.split('-')[1], 10) + 1
+      if (gmNext > 12) {
+        gmNext = 1
+        gyMax += 1
+      }
+      const mesSeguinteExclusive = gyMax + '-' + pad2(gmNext)
       // REGRA Silvio (0.0.357): valor do gráfico = SUM(total_nf_novo) linha a
       // linha na base bruta `vendas` (a resumo não tem a coluna).
       const gmSql =
@@ -1445,11 +1460,11 @@ var __dashboardStatsHandler = (e) => {
         'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS c ' +
         'FROM vendas WHERE ' +
         sqlWhereVendasSemPeriodo +
-        " AND ano_mes >= '" +
+        " AND data_lancamento >= '" +
         minMesTarget +
-        "' AND ano_mes <= '" +
-        maxMesTarget +
-        "' " +
+        "-01 00:00:00.000Z' AND data_lancamento < '" +
+        mesSeguinteExclusive +
+        "-01 00:00:00.000Z' " +
         "GROUP BY substr(data_lancamento, 1, 7), COALESCE(NULLIF(grupo_item,''),'Sem informação') " +
         'ORDER BY 1 ASC'
       const gmRows = runAgg(gmSql)
