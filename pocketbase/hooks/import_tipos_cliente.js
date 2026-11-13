@@ -97,6 +97,8 @@ routerAdd(
       'tipo de cliente',
       'tipo cliente',
       'tipo do cliente',
+      'tipo de cliente sap',
+      'tipo cliente sap',
       'categoria cliente',
       'classificacao cliente',
     ]
@@ -304,6 +306,27 @@ routerAdd(
         }
       }
 
+      // A carga SAP pode vir sem a coluna "Tipo de Cliente" preenchida (gravado
+      // vazio), mas com "Tipo de PN" preenchido. Nesse caso o filtro lista os
+      // tipos de PN importados em vez de acusar base vazia.
+      if (options.length === 0) {
+        const pRows = arrayOf(new DynamicModel({ tipo_pn: '' }))
+        try {
+          $app
+            .db()
+            .newQuery(
+              "SELECT DISTINCT tipo_pn FROM tipos_cliente WHERE tipo_pn IS NOT NULL AND TRIM(tipo_pn) != '' ORDER BY tipo_pn ASC",
+            )
+            .all(pRows)
+          for (let i = 0; i < pRows.length; i++) {
+            const val = (pRows[i].tipo_pn || '').trim()
+            if (val && options.indexOf(val) === -1) {
+              options.push(val)
+            }
+          }
+        } catch (_) {}
+      }
+
       // Se a coleção tipos_cliente estiver vazia mas já existirem tipos preenchidos em vendas ou pedidos_abertos
       if (options.length === 0) {
         const vRows = arrayOf(new DynamicModel({ tipo_cliente: '' }))
@@ -359,7 +382,7 @@ routerAdd(
         const cod = (rows[i].codigo_pn || '').trim().toUpperCase()
         if (cod) {
           map[cod] = {
-            tipo_cliente: (rows[i].tipo_cliente || '').trim(),
+            tipo_cliente: (rows[i].tipo_cliente || '').trim() || (rows[i].tipo_pn || '').trim(),
             status_cadastro: (rows[i].status_cadastro || '').trim(),
             tipo_pn: (rows[i].tipo_pn || '').trim(),
           }

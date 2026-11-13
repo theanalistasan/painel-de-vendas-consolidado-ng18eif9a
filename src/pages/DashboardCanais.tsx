@@ -766,11 +766,16 @@ export default function DashboardCanais() {
                   />
                   <Tooltip
                     cursor={{ fill: 'rgba(148, 163, 184, 0.15)' }}
-                    formatter={(val: number | string | undefined) => [
-                      formatCurrency(Number(val) || 0),
-                      '',
-                    ]}
-                    contentStyle={tooltipContentStyle}
+                    content={({ active, payload }) => {
+                      if (!active || !payload || payload.length === 0) return null
+                      const val = Number(payload[0]?.value) || 0
+                      return (
+                        <div className="rounded-lg border border-slate-700 bg-[#0F172A] px-3 py-2 text-xs shadow-lg">
+                          <div className="font-semibold text-white">{payload[0]?.payload?.ano}</div>
+                          <div className="mt-1 pl-4 text-slate-200">{formatCurrency(val)}</div>
+                        </div>
+                      )
+                    }}
                   />
                   <Legend
                     verticalAlign="top"
@@ -858,9 +863,38 @@ export default function DashboardCanais() {
                       tick={{ fill: '#64748B', fontSize: 11 }}
                       tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
                     />
+                    {/* Tooltip customizado: texto sempre claro sobre fundo escuro —
+                        o tooltip padrão herda a cor da barra (Cell fill) no texto e
+                        fica ilegível (ex. grupo TINTAS azul-escuro) */}
                     <Tooltip
-                      formatter={currencyFormatter(TITULO_VALOR_TOTAL_BRUTO)}
-                      contentStyle={tooltipContentStyle}
+                      content={({ active, payload }) => {
+                        if (!active || !payload || payload.length === 0) return null
+                        const entry = payload[0]?.payload
+                        if (!entry) return null
+                        return (
+                          <div className="rounded-lg border border-slate-700 bg-[#0F172A] px-3 py-2 text-xs shadow-lg">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className="inline-block h-2 w-2 shrink-0 rounded-full"
+                                style={{
+                                  backgroundColor:
+                                    GRUPO_COLORS[entry.name] ||
+                                    FALLBACK_PALETTE[
+                                      chartGrupoItem.findIndex((g) => g.name === entry.name) %
+                                        FALLBACK_PALETTE.length
+                                    ] ||
+                                    '#0B6E99',
+                                }}
+                                aria-hidden="true"
+                              />
+                              <span className="font-semibold text-white">{entry.name}</span>
+                            </div>
+                            <div className="mt-1 pl-4 text-slate-200">
+                              {TITULO_VALOR_TOTAL_BRUTO}: {formatCurrency(Number(entry.value) || 0)}
+                            </div>
+                          </div>
+                        )
+                      }}
                     />
                     <Bar dataKey="value" name={TITULO_VALOR_TOTAL_BRUTO} radius={[4, 4, 0, 0]}>
                       {chartGrupoItem.map((entry, index) => {
@@ -1068,9 +1102,24 @@ export default function DashboardCanais() {
                     tick={{ fill: '#334155', fontSize: 11 }}
                     width={130}
                   />
+                  {/* Tooltip customizado: valor claro sobre fundo escuro — itemStyle
+                      do tooltip padrão herda a cor da barra (Cell fill) */}
                   <Tooltip
-                    formatter={currencyFormatter('Total')}
-                    contentStyle={tooltipContentStyle}
+                    cursor={{ fill: 'rgba(148, 163, 184, 0.15)' }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload || payload.length === 0) return null
+                      const val = Number(payload[0]?.value) || 0
+                      return (
+                        <div className="rounded-lg border border-slate-700 bg-[#0F172A] px-3 py-2 text-xs shadow-lg">
+                          <div className="font-semibold text-white">
+                            {payload[0]?.payload?.name}
+                          </div>
+                          <div className="mt-1 pl-4 text-slate-200">
+                            Total: {formatCurrency(val)}
+                          </div>
+                        </div>
+                      )
+                    }}
                   />
                   <Bar dataKey="total" fill={COLOR_BLUE} radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -1104,8 +1153,21 @@ export default function DashboardCanais() {
                     width={130}
                   />
                   <Tooltip
-                    formatter={currencyFormatter('Total')}
-                    contentStyle={tooltipContentStyle}
+                    cursor={{ fill: 'rgba(148, 163, 184, 0.15)' }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload || payload.length === 0) return null
+                      const val = Number(payload[0]?.value) || 0
+                      return (
+                        <div className="rounded-lg border border-slate-700 bg-[#0F172A] px-3 py-2 text-xs shadow-lg">
+                          <div className="font-semibold text-white">
+                            {payload[0]?.payload?.name}
+                          </div>
+                          <div className="mt-1 pl-4 text-slate-200">
+                            Total: {formatCurrency(val)}
+                          </div>
+                        </div>
+                      )
+                    }}
                   />
                   <Bar dataKey="total" fill="#0D9488" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -1137,10 +1199,38 @@ export default function DashboardCanais() {
                     tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
                   />
                   <Tooltip
-                    formatter={(val: number | string | undefined) => [
-                      formatCurrency(typeof val === 'number' ? val : Number(val)),
-                    ]}
-                    contentStyle={tooltipContentStyle}
+                    cursor={{ fill: 'rgba(148, 163, 184, 0.15)' }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload || payload.length === 0) return null
+                      const mes = payload[0]?.payload?.mes
+                      return (
+                        <div className="rounded-lg border border-slate-700 bg-[#0F172A] px-3 py-2 text-xs shadow-lg">
+                          <div className="font-semibold text-white capitalize">{mes}</div>
+                          <div className="mt-1 space-y-0.5">
+                            {payload.map((p) => (
+                              <div
+                                key={String(p.dataKey)}
+                                className="flex items-center justify-between gap-4"
+                              >
+                                <span className="flex items-center gap-1.5 text-slate-200">
+                                  <span
+                                    className="inline-block h-2 w-2 shrink-0 rounded-sm"
+                                    style={{ backgroundColor: p.color || p.stroke }}
+                                    aria-hidden="true"
+                                  />
+                                  {p.dataKey === 'bruto'
+                                    ? TITULO_VALOR_TOTAL_BRUTO
+                                    : TITULO_VALOR_LIQUIDO_NET}
+                                </span>
+                                <span className="font-bold text-white">
+                                  {formatCurrency(Number(p.value) || 0)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )
+                    }}
                   />
                   <Legend
                     verticalAlign="top"

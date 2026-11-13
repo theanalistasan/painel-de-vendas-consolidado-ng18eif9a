@@ -291,15 +291,7 @@ export function ComparativoCanaisMesCard({ data, loading }: ComparativoCanaisMes
                             )}
                           </div>
                           <div className="space-y-1.5">
-                            <div className="flex items-center justify-between">
-                              <span className="flex items-center gap-1.5 text-slate-600 font-medium">
-                                <span className="w-2.5 h-2.5 rounded-sm bg-[#0B6E99]" />
-                                {mesLabelAtual}:
-                              </span>
-                              <span className="font-bold text-slate-900">
-                                {formatCurrency(d.atual)}
-                              </span>
-                            </div>
+                            {/* Mesma ordem das barras: Mês Anterior à esquerda, Mês Atual à direita */}
                             <div className="flex items-center justify-between">
                               <span className="flex items-center gap-1.5 text-slate-600 font-medium">
                                 <span className="w-2.5 h-2.5 rounded-sm bg-slate-400" />
@@ -307,6 +299,15 @@ export function ComparativoCanaisMesCard({ data, loading }: ComparativoCanaisMes
                               </span>
                               <span className="font-bold text-slate-700">
                                 {formatCurrency(d.anterior)}
+                              </span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="flex items-center gap-1.5 text-slate-600 font-medium">
+                                <span className="w-2.5 h-2.5 rounded-sm bg-[#0B6E99]" />
+                                {mesLabelAtual}:
+                              </span>
+                              <span className="font-bold text-slate-900">
+                                {formatCurrency(d.atual)}
                               </span>
                             </div>
                             <div className="border-t border-slate-100 pt-1.5 mt-1 flex items-center justify-between font-bold">
@@ -336,17 +337,18 @@ export function ComparativoCanaisMesCard({ data, loading }: ComparativoCanaisMes
                       )
                     }}
                   />
-                  <Bar
-                    dataKey="atual"
-                    name="atual"
-                    fill="#0B6E99"
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={40}
-                  />
+                  {/* Mês Anterior à esquerda (cinza), Mês Atual à direita (azul) — coerente com a legenda */}
                   <Bar
                     dataKey="anterior"
                     name="anterior"
                     fill="#94A3B8"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={40}
+                  />
+                  <Bar
+                    dataKey="atual"
+                    name="atual"
+                    fill="#0B6E99"
                     radius={[4, 4, 0, 0]}
                     maxBarSize={40}
                   />
