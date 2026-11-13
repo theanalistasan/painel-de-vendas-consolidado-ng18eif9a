@@ -1226,9 +1226,10 @@ var __dashboardStatsHandler = (e) => {
         "SELECT 'cliente' AS dim, COALESCE(NULLIF(nome_cliente,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
         dimBase +
         ' UNION ALL ' +
-        "SELECT 'estado' AS dim, COALESCE(NULLIF(estado,''),'Sem informação') AS k, COALESCE(SUM(total_nf_novo),0) AS v " +
-        dimBase +
-        ' UNION ALL ' +
+        // 'estado' movido para a base bruta `vendas` (abaixo): a resumo_vendas_mensal
+        // NÃO tem as colunas total_nf_novo/total_nf_sem_frete — o SUM(total_nf_novo)
+        // aqui quebrava com "no such column" e a série de UF voltava vazia
+        // (log 09:15:52 "agregacao multi-dimensao falhou").
         "SELECT 'tipo_documento' AS dim, COALESCE(NULLIF(tipo_documento,''),'Sem classificação') AS k, CASE WHEN COALESCE(SUM(total_linha),0) >= COALESCE(SUM(valor_liquido),0) THEN COALESCE(SUM(total_linha),0) ELSE COALESCE(SUM(valor_liquido),0) END AS v " +
         dimBase +
         ' UNION ALL ' +
@@ -1253,6 +1254,27 @@ var __dashboardStatsHandler = (e) => {
       const key = multiDimRows[i].k || 'Sem classificação'
       const val = toNum(multiDimRows[i].v)
       if (dimLists[dim]) dimLists[dim].push({ k: key, v: val })
+    }
+
+    // Vendas por UF: SUM(total_nf_novo) por estado na base bruta `vendas` — a
+    // resumo_vendas_mensal não tem essa coluna (ver comentário no multiDimSql).
+    // Mesma convenção dos KPIs Bruto/Sem Frete: SUM linha a linha (Silvio).
+    try {
+      const estadoRows = arrayOf(new DynamicModel({ k: '', v: '' }))
+      const estadoSql =
+        "SELECT COALESCE(NULLIF(estado,''),'Sem informação') AS k, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v " +
+        'FROM vendas WHERE ' +
+        sqlWhereVendas +
+        ' GROUP BY 1 ORDER BY 2 DESC'
+      $app.db().newQuery(estadoSql).all(estadoRows)
+      for (let i = 0; i < estadoRows.length; i++) {
+        dimLists.estado.push({ k: estadoRows[i].k || 'Sem informação', v: toNum(estadoRows[i].v) })
+      }
+    } catch (estadoErr) {
+      console.error(
+        'dashboard_stats: agregacao vendas por UF (SUM total_nf_novo) falhou:',
+        estadoErr,
+      )
     }
 
     const grupoItem = dimLists.grupo.map((r) => ({ name: r.k, value: r.v }))
@@ -2352,6 +2374,18 @@ var __dashboardStatsHandler = (e) => {
       console.warn('dashboard_stats: cache write warning:', cacheWriteErr)
     }
 
+    // Modo lite (opcional, GET ?lite=1): devolve SÓ kpis + charts.estado,
+    // sem recentSales nem filterOptions (que têm milhares de entradas).
+    // Não altera a resposta padrão usada pelo painel.
+    let liteQuery = null
+    try {
+      liteQuery = e.requestInfo().query || null
+    } catch (_) {
+      liteQuery = null
+    }
+    if (liteQuery && liteQuery.lite === '1') {
+      return e.json(200, { kpis: kpis, estado: estado })
+    }
     return e.json(200, responsePayload)
   } catch (err) {
     if (err && String(err.message).indexOf('TIMEOUT_EXCEEDED') >= 0) {
