@@ -91,7 +91,11 @@ function savePeriodoSelecoes(sel: JpClassPeriodoSelecoes): void {
 
 export default function JpClassPage() {
   const navigate = useNavigate()
-  const hoje = new Date()
+  // Data de referência ESTÁVEL: criada uma única vez na montagem da página.
+  // Se fosse `new Date()` a cada render, entraria nas deps de periodoCalendario
+  // (novo objeto a cada render), recriando semanas/dateRange/carregarVendas e
+  // disparando o useEffect de fetch em loop infinito (bug do botão "Atualizar").
+  const hoje = useMemo(() => new Date(), [])
 
   // Filtros GLOBAIS compartilhados (mesma sessão de Visão Geral / Visão Canais / Filtros Globais).
   // Servem de BASE para as opções dos seletores (anos, etc.) e para o padrão de
@@ -367,6 +371,11 @@ export default function JpClassPage() {
       // Enriquecer tipo_cliente usando tiposClienteMap como fallback se vier vazio do backend
       const comTiposCliente = comSemanas.map((v) => enrichVendaTipoCliente(v, tiposClienteMap))
 
+      // Não aplica resultado de uma requisição que já foi abortada/superada
+      if (controller.signal.aborted || abortControllerRef.current !== controller) {
+        return
+      }
+
       setRawVendas(comTiposCliente)
     } catch (err: unknown) {
       if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
@@ -379,7 +388,11 @@ export default function JpClassPage() {
           : 'Falha ao carregar as vendas do período. Tente novamente.',
       )
     } finally {
-      setLoading(false)
+      // O loading só é desligado pelo fetch VIGENTE — um fetch antigo abortado
+      // (substituído por um novo) não desliga o loading do novo no meio do caminho.
+      if (abortControllerRef.current === controller) {
+        setLoading(false)
+      }
     }
   }, [dateRange, semanas, tiposClienteMap])
 
