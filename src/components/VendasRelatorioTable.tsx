@@ -154,7 +154,13 @@ export const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
 
 const MIN_COLUMN_WIDTH = 60
 
-export type RelatorioGroupByMode = 'none' | 'jp_class' | 'comissao' | 'nfe' | 'pedido'
+export type RelatorioGroupByMode =
+  | 'none'
+  | 'jp_class'
+  | 'comissao'
+  | 'nfe'
+  | 'pedido'
+  | 'codigo_item'
 
 export {
   PREFIXO_NAO_COMISSIONADO,
@@ -341,7 +347,8 @@ export function VendasRelatorioTable({
           saved === 'jp_class' ||
           saved === 'comissao' ||
           saved === 'nfe' ||
-          saved === 'pedido') &&
+          saved === 'pedido' ||
+          saved === 'codigo_item') &&
         allowedGroupByModes.includes(saved as RelatorioGroupByMode)
       ) {
         return saved as RelatorioGroupByMode
@@ -670,7 +677,8 @@ export function VendasRelatorioTable({
 
   // Modos consolidados no backend ('nfe' | 'pedido'): o hook já devolve 1 linha por NF/Pedido,
   // portanto a renderização é flat (sem reagrupamento local por NFe)
-  const isBackendGrouped = groupByMode === 'nfe' || groupByMode === 'pedido'
+  const isBackendGrouped =
+    groupByMode === 'nfe' || groupByMode === 'pedido' || groupByMode === 'codigo_item'
 
   // Renderizador de linha de item de venda (reutilizado tanto no modo flat quanto no modo agrupado por JP-Class)
   const renderItemRow = React.useCallback(
@@ -764,6 +772,21 @@ export function VendasRelatorioTable({
                     {jpClassGroups.length}
                   </span>
                 )}
+              </button>
+            )}
+            {/* Item 5 do plano: consolidar o relatório por Código de Item */}
+            {allowedGroupByModes.includes('codigo_item') && (
+              <button
+                type="button"
+                onClick={() => setGroupByMode('codigo_item')}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-md transition-colors ${
+                  groupByMode === 'codigo_item'
+                    ? 'bg-[#0B6E99] text-white shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+                title="Consolidar em 1 linha por Código de Item (Valor Total Bruto e Valor Líquido NET)"
+              >
+                Código do Item
               </button>
             )}
           </div>

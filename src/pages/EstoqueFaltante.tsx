@@ -38,6 +38,7 @@ import {
   fetchEstoqueFaltanteStats,
   fetchMrpData,
   type EstoqueFaltanteItem,
+  type EstoqueFaltanteGrupo,
   type EstoqueFaltanteListResult,
   type EstoqueFaltanteStatsResult,
   type MrpItem,
@@ -141,6 +142,11 @@ export default function EstoqueFaltante() {
   // Dados da Visão 1: Itens Faltantes
   const [items, setItems] = useState<EstoqueFaltanteItem[]>([])
   const [totalItems, setTotalItems] = useState(0)
+
+  // Item 6 do plano: modo de agrupamento do Relatório de Itens Faltantes.
+  // '' = por canal + item (padrão); 'item' = por Código de Item; 'cliente' = por Cliente.
+  const [grupoPor, setGrupoPor] = useState<'' | 'item' | 'cliente'>('')
+  const [gruposLista, setGruposLista] = useState<EstoqueFaltanteGrupo[]>([])
   const [totalPages, setTotalPages] = useState(1)
   const [totalValor, setTotalValor] = useState(0)
   const [totalQtd, setTotalQtd] = useState(0)
@@ -249,6 +255,7 @@ export default function EstoqueFaltante() {
           sortDirection,
           statusTransito: statusTransitoFilter,
           search: appliedSearch,
+          grupoPor,
           filters: {
             canal: filters.canal,
             canalClientes: filters.canalClientes,
@@ -318,6 +325,19 @@ export default function EstoqueFaltante() {
         })
       }
 
+      // Item 6 do plano: quando o modo é agrupado, o backend devolve `grupos`
+      // (1 linha por código de item ou por cliente) e `items` vem vazio.
+      if (res.grupos && res.grupos.length > 0) {
+        setGruposLista(res.grupos)
+        setItems([])
+        setTotalItems(res.totalItems || res.grupos.length)
+        setTotalPages(1)
+        setTotalValor(res.totalValor || 0)
+        setTotalQtd(res.totalQtd || 0)
+        return
+      }
+      setGruposLista([])
+
       const isTipoClienteActive = Boolean(filters.tipoCliente && filters.tipoCliente.length > 0)
       const computedTotalItems =
         usedMemoryFallback || isTipoClienteActive ? items.length : res.totalItems || items.length
@@ -354,6 +374,7 @@ export default function EstoqueFaltante() {
     statusTransitoFilter,
     appliedSearch,
     filters,
+    grupoPor,
     tiposClienteMap,
     toast,
   ])
@@ -1238,6 +1259,74 @@ export default function EstoqueFaltante() {
             </div>
           </div>
 
+          {/* Item 6 do plano: resumo agrupado por Código de Item ou por Cliente */}
+          {grupoPor !== '' && gruposLista.length > 0 && (
+            <Card className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs">
+              <CardHeader className="p-4 border-b border-slate-100 bg-slate-50/50">
+                <CardTitle className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-[#0B6E99]" />
+                  <span>
+                    {grupoPor === 'item'
+                      ? 'Itens Faltantes agrupados por Código de Item'
+                      : 'Itens Faltantes agrupados por Cliente'}
+                  </span>
+                  <Badge
+                    variant="secondary"
+                    className="font-semibold text-xs bg-cyan-100 text-[#0B6E99]"
+                  >
+                    {formatNumber(gruposLista.length)} linha(s)
+                  </Badge>
+                </CardTitle>
+                <CardDescription className="text-xs text-slate-500 mt-0.5">
+                  Soma de Valor em Aberto: {formatCurrency(totalValor)} • {formatNumber(totalQtd)}{' '}
+                  un. pendentes
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="max-h-[520px] overflow-auto">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-100 sticky top-0">
+                      <tr className="text-slate-600">
+                        <th className="p-2.5 text-left">
+                          {grupoPor === 'item' ? 'Código do Item' : 'Cliente'}
+                        </th>
+                        <th className="p-2.5 text-left">
+                          {grupoPor === 'item' ? 'Descrição' : 'Nome'}
+                        </th>
+                        <th className="p-2.5 text-right">Valor em Aberto</th>
+                        <th className="p-2.5 text-right">Qtd Aberta</th>
+                        <th className="p-2.5 text-right">Pedidos</th>
+                        <th className="p-2.5 text-right">
+                          {grupoPor === 'item' ? 'Clientes' : 'Itens'}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {gruposLista.map((g) => (
+                        <tr key={g.id} className="hover:bg-slate-50/80">
+                          <td className="p-2.5 font-bold text-slate-800">{g.chave}</td>
+                          <td className="p-2.5 text-slate-600 truncate max-w-[18rem]">
+                            {g.descricao}
+                          </td>
+                          <td className="p-2.5 text-right font-bold text-slate-900">
+                            {formatCurrency(g.valor_em_aberto)}
+                          </td>
+                          <td className="p-2.5 text-right text-slate-700">
+                            {formatNumber(g.qtd_aberto)}
+                          </td>
+                          <td className="p-2.5 text-right text-slate-700">{g.pedidos_qtd}</td>
+                          <td className="p-2.5 text-right text-slate-700">
+                            {grupoPor === 'item' ? g.clientes_qtd : g.itens_qtd}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Tabela de Relatório: Itens Faltantes */}
           <Card className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-xs">
             <CardHeader className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50">
@@ -1260,6 +1349,33 @@ export default function EstoqueFaltante() {
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  {/* Item 6 do plano: agrupar por Código de Item ou por Cliente */}
+                  <div className="inline-flex rounded-lg bg-slate-200/70 p-0.5 gap-0.5 text-xs">
+                    {(
+                      [
+                        ['', 'Canal + Item'],
+                        ['item', 'Por Item'],
+                        ['cliente', 'Por Cliente'],
+                      ] as const
+                    ).map(([valor, rotulo]) => (
+                      <button
+                        key={`grp-${valor || 'canal'}`}
+                        type="button"
+                        onClick={() => {
+                          setGrupoPor(valor)
+                          setPage(1)
+                        }}
+                        className={cn(
+                          'px-2.5 py-1 text-[11px] font-bold rounded-md transition-all cursor-pointer',
+                          grupoPor === valor
+                            ? 'bg-white text-slate-900 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900',
+                        )}
+                      >
+                        {rotulo}
+                      </button>
+                    ))}
+                  </div>
                   {/* Filtro rápido por Trânsito */}
                   <div className="inline-flex rounded-lg bg-slate-200/70 p-0.5 gap-0.5 text-xs">
                     <button

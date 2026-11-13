@@ -398,9 +398,14 @@ export default function DashboardCanais() {
           sortField: relatorioSortField,
           sortDirection: relatorioSortDir,
           filters: filtrosEfetivos as unknown as Record<string, unknown>,
-          // Consolidação no backend: 1 linha por NF ou por Nº do Pedido
+          // Consolidação no backend: 1 linha por NF, Nº do Pedido ou Código de Item
           groupByNfe: relatorioGroupByMode === 'nfe',
-          groupByMode: relatorioGroupByMode === 'pedido' ? 'pedido' : undefined,
+          groupByMode:
+            relatorioGroupByMode === 'pedido'
+              ? 'pedido'
+              : relatorioGroupByMode === 'codigo_item'
+                ? 'codigo_item'
+                : undefined,
         })
 
         if (seq !== relatorioRequestSeqRef.current) return
@@ -1350,7 +1355,14 @@ export default function DashboardCanais() {
                   groupByMode={relatorioGroupByMode}
                   onGroupByModeChange={setRelatorioGroupByMode}
                   defaultGroupByMode="none"
-                  allowedGroupByModes={['none', 'jp_class', 'comissao', 'nfe', 'pedido']}
+                  allowedGroupByModes={[
+                    'none',
+                    'jp_class',
+                    'comissao',
+                    'nfe',
+                    'pedido',
+                    'codigo_item',
+                  ]}
                 />
               )}
             </CardContent>

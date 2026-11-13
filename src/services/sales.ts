@@ -828,8 +828,8 @@ export async function fetchVendasList(params?: {
   sortDirection?: 'asc' | 'desc'
   filters?: Record<string, unknown>
   groupByNfe?: boolean
-  /** Modo de consolidação no backend: 'nfe' | 'pedido' (1 linha por NF/Pedido) */
-  groupByMode?: 'nfe' | 'pedido'
+  /** Modo de consolidação no backend: 'nfe' | 'pedido' | 'codigo_item' */
+  groupByMode?: 'nfe' | 'pedido' | 'codigo_item'
   collapsed?: boolean
   signal?: AbortSignal
 }): Promise<VendasListResult> {

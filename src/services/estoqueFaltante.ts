@@ -39,8 +39,26 @@ export interface EstoqueFaltanteItem {
   qtd_vendida_6m: number
 }
 
+/** Linha dos agrupamentos "Por Código de Item" e "Por Cliente" (item 6 do plano). */
+export interface EstoqueFaltanteGrupo {
+  id: string
+  chave: string
+  codigo_item: string
+  descricao: string
+  grupo_item: string
+  valor_em_aberto: number
+  qtd_aberto: number
+  pedidos_qtd: number
+  clientes_qtd: number
+  itens_qtd: number
+  em_transito: number
+}
+
 export interface EstoqueFaltanteListResult {
   items: EstoqueFaltanteItem[]
+  grupos?: EstoqueFaltanteGrupo[]
+  isGrouped?: boolean
+  groupedBy?: 'item' | 'cliente'
   page: number
   perPage: number
   totalItems: number
@@ -173,6 +191,8 @@ export async function fetchEstoqueFaltanteList(params?: {
   filters?: Record<string, unknown>
   statusTransito?: '' | 'com_transito' | 'sem_transito'
   search?: string
+  /** Agrupamento: '' (canal+item), 'item' (por código) ou 'cliente' (por cliente) */
+  grupoPor?: '' | 'item' | 'cliente'
   signal?: AbortSignal
 }): Promise<EstoqueFaltanteListResult> {
   const run = () =>

@@ -542,6 +542,7 @@ var __vendasExportHandler = (e) => {
       for (let i = 0; i < itemRows.length; i++) {
         const r = itemRows[i]
         itens.push({
+          id: 'item::' + r.codigo_item,
           codigo_item: r.codigo_item,
           descricao_item: r.descricao_item,
           grupo_item: r.grupo_item,
