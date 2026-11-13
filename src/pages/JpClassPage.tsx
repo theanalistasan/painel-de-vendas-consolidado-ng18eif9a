@@ -18,7 +18,7 @@ import {
   type SemanaMes,
 } from '@/lib/semanas'
 import { useNavigate } from 'react-router-dom'
-import { getJpClass, normalizeText } from '@/lib/jp-class'
+import { getJpClass } from '@/lib/jp-class'
 import { MESES_PT_BR, formatCurrency, formatCompactCurrency, exportToCSV } from '@/lib/formatters'
 import { MultiSelectDropdown, buildDynamicAnoDefaults } from '@/components/FilterBar'
 import {
@@ -115,29 +115,16 @@ export default function JpClassPage() {
   const [groupBy, setGroupBy] = useState<JpClassGroupBy>('hierarquia')
 
   // Filtros LOCAIS do JP-Class, no MESMO PADRÃO dos Filtros Globais:
-  // seleção múltipla ANO / MÊS (ordem calendário) / VENDEDOR > CLIENTE
-  // (vendedor_cliente = "Revenda > Nome do Cliente"), marcando opções uma a um,
+  // seleção múltipla ANO / MÊS (ordem calendário), marcando opções uma a um,
   // todas de uma vez, com busca textual.
   //
   // Dois níveis: PENDENTE (o que o usuário marca; a página NÃO recalcula) e
   // APLICADO (promovido pelo botão "Aplicar filtros"). Enquanto não clica,
   // dashboard/quadro por semana/relatório continuam com os valores atuais.
-  //
-  // Ano/Mês APLICADOS definem o calendário de semanas (fetch servidor); o filtro
-  // "Vendedor > Cliente" é aplicado NO CLIENTE sobre as linhas já carregadas
-  // (matching textual no campo inteiro — "DIAMANTE" encontra
-  // "Roland DG Brasil > DIAMANTE COMERCIO DE TINTAS LTDA"), com uma ÚNICA
-  // varredura: para cada venda testa TODOS os termos marcados de uma vez
-  // (normalizeText + includes), sem centenas de cláusulas ||.
+  // Ano/Mês APLICADOS definem o calendário de semanas (fetch servidor).
   const [anoSelecionados, setAnoSelecionados] = useState<string[]>([])
   const [mesesSelecionados, setMesesSelecionados] = useState<string[]>([])
-  const [vendedorClienteSelecionados, setVendedorClienteSelecionados] = useState<string[]>([])
-  const [aplicado, setAplicado] = useState<JpClassPeriodoSelecoes & { vendedorCliente: string[] }>(
-    () => ({
-      ...loadPeriodoSelecoes(),
-      vendedorCliente: [],
-    }),
-  )
+  const [aplicado, setAplicado] = useState<JpClassPeriodoSelecoes>(() => loadPeriodoSelecoes())
 
   // Ref de leitura síncrona do aplicado (carregarVendas lê sem entrar nas deps —
   // o refetch é disparado pela mudança de semanas/dateRange).
@@ -148,15 +135,13 @@ export default function JpClassPage() {
     const proximo = {
       anos: [...anoSelecionados],
       meses: [...mesesSelecionados],
-      vendedorCliente: [...vendedorClienteSelecionados],
     }
     setAplicado(proximo)
     savePeriodoSelecoes({ anos: proximo.anos, meses: proximo.meses })
-  }, [anoSelecionados, mesesSelecionados, vendedorClienteSelecionados])
+  }, [anoSelecionados, mesesSelecionados])
 
   // Limpar filtros (restaura a visão semanal PADRÃO imediatamente, sem "Aplicar"):
-  // ano = janela dinâmica do Padrão Geral (buildDynamicAnoDefaults), mês corrente,
-  // Vendedor > Cliente vazio.
+  // ano = janela dinâmica do Padrão Geral (buildDynamicAnoDefaults), mês corrente.
   const limparFiltros = useCallback(() => {
     const anosPadrao = buildDynamicAnoDefaults(
       filtersRef.current.ano.map((a) => parseInt(String(a), 10)).filter((a) => !isNaN(a)),
@@ -164,16 +149,15 @@ export default function JpClassPage() {
     const mesCorrente = String(hoje.getMonth() + 1)
     setAnoSelecionados(anosPadrao)
     setMesesSelecionados([mesCorrente])
-    setVendedorClienteSelecionados([])
-    const proximo = { anos: anosPadrao, meses: [mesCorrente], vendedorCliente: [] }
+    const proximo = { anos: anosPadrao, meses: [mesCorrente] }
     setAplicado(proximo)
     savePeriodoSelecoes({ anos: proximo.anos, meses: proximo.meses })
   }, [hoje])
 
   // Indicador de filtros pendentes: seleção difere do que já está aplicado
   const filtrosPendentes =
-    JSON.stringify([anoSelecionados, mesesSelecionados, vendedorClienteSelecionados]) !==
-    JSON.stringify([aplicado.anos, aplicado.meses, aplicado.vendedorCliente])
+    JSON.stringify([anoSelecionados, mesesSelecionados]) !==
+    JSON.stringify([aplicado.anos, aplicado.meses])
 
   // Anos disponíveis no filtro local: janela dinâmica da BASE ATIVA (Filtros
   // Globais), sem fallback hardcoded — base zerada = lista vazia.
@@ -409,42 +393,12 @@ export default function JpClassPage() {
     }
   }, [carregarVendas])
 
-  // Vendas exibidas: base + filtro LOCAL APLICADO "Vendedor > Cliente" (vendedor_cliente).
-  // Usa o estado APLICADO (promovido pelo botão "Aplicar filtros") — nunca o pendente.
-  // UMA varredura: para cada venda testa TODOS os termos marcados de uma vez
-  // (normalizeText + includes), retornando cedo no 1º termo que casa — sem
-  // centenas de cláusulas ||, e sem bloquear a consulta Ano 2026 + jan–out +
-  // todas as opções DIAMANTE.
-  const vendasExibidas = useMemo(() => {
-    if (aplicado.vendedorCliente.length === 0) return rawVendas
-    return rawVendas.filter((v) => {
-      const valor = normalizeText(String(v.vendedor_cliente ?? '').trim())
-      if (!valor) return false
-      return aplicado.vendedorCliente.some((termo) => {
-        const alvo = normalizeText(termo.trim())
-        return alvo && valor.includes(alvo)
-      })
-    })
-  }, [rawVendas, aplicado.vendedorCliente])
-
-  // Opções do filtro Vendedor > Cliente derivadas das vendas carregadas
-  const opcoesVendedorCliente = useMemo(() => {
-    const set = new Set<string>()
-    for (const v of rawVendas) {
-      const val = String(v.vendedor_cliente || '').trim()
-      if (val) set.add(val)
-    }
-    return Array.from(set)
-  }, [rawVendas])
-
   // Quadro de valores por semana (Fase 5): os 5 indicadores (Bruto, NET, Sem Frete,
-  // Mercadoria, Custo Total) — agregados a partir das MESMAS linhas EXIBIDAS
-  // (vendasExibidas = rawVendas + filtro "Vendedor > Cliente" aplicado), para que
-  // o quadro reaja ao filtro junto com o dashboard e o relatório (bug reportado:
-  // mudar o filtro não atualizava os valores por semana).
+  // Mercadoria, Custo Total) — agregados a partir das linhas carregadas
+  // (rawVendas: todas as linhas do período aplicado, sem recorte adicional).
   const valoresPorSemana = useMemo(() => {
-    return agregarValoresPorSemana(vendasExibidas, semanas)
-  }, [vendasExibidas, semanas])
+    return agregarValoresPorSemana(rawVendas, semanas)
+  }, [rawVendas, semanas])
 
   // Totais do quadro (soma das semanas = mês consolidado, pois dias fora do calendário não entram)
   const totaisQuadroSemanas = useMemo(() => {
@@ -491,7 +445,7 @@ export default function JpClassPage() {
       { key: 'total_nf_sem_frete', label: `${TITULO_VALOR_TOTAL_SEM_FRETE} (R$)` },
       { key: 'custo_total', label: `${TITULO_CUSTO_TOTAL} (R$)` },
     ]
-    exportToCSV(`vendas_jp_class_${ano}_${String(mes).padStart(2, '0')}`, vendasExibidas, columns)
+    exportToCSV(`vendas_jp_class_${ano}_${String(mes).padStart(2, '0')}`, rawVendas, columns)
   }
 
   const mesNome = MESES_PT_BR[mes - 1]
@@ -523,7 +477,7 @@ export default function JpClassPage() {
           </span>
         </div>
 
-        {/* Linha 1 dos filtros — Ano, Mês e Vendedor > Cliente (multi-seleção, padrão Filtros Globais) */}
+        {/* Linha 1 dos filtros — Ano e Mês (multi-seleção, padrão Filtros Globais) */}
         <div className="flex items-center gap-2 flex-wrap">
           <MultiSelectDropdown
             label="Ano"
@@ -544,15 +498,6 @@ export default function JpClassPage() {
             placeholder="Todos (global)"
             emptyMessage="Nenhum mês"
             triggerClassName="w-[200px]"
-          />
-          <MultiSelectDropdown
-            label="Vendedor > Cliente"
-            options={opcoesVendedorCliente}
-            selected={vendedorClienteSelecionados}
-            onChange={setVendedorClienteSelecionados}
-            placeholder="Cliente (Revenda > Nome)"
-            emptyMessage="Nenhum cliente nas vendas carregadas"
-            triggerClassName="w-[230px]"
           />
         </div>
 
@@ -604,7 +549,7 @@ export default function JpClassPage() {
             variant="outline"
             size="sm"
             onClick={handleExportCsv}
-            disabled={loading || vendasExibidas.length === 0}
+            disabled={loading || rawVendas.length === 0}
             className="text-xs font-semibold gap-1.5 h-8 bg-white"
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
@@ -719,7 +664,7 @@ export default function JpClassPage() {
             Dashboard — Recortes por JP-Class, Tipo de Cliente, Grupo e Item
           </h3>
         </div>
-        <JpClassDashboard items={vendasExibidas} />
+        <JpClassDashboard items={rawVendas} />
       </div>
 
       {/* Relatório de Vendas por Semanas com Ordenação e Agrupamentos Colapsáveis */}
@@ -727,12 +672,12 @@ export default function JpClassPage() {
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
             <FileSpreadsheet className="w-3.5 h-3.5 text-[#0B6E99]" />
-            Relatório de Vendas por Semanas ({vendasExibidas.length} registros)
+            Relatório de Vendas por Semanas ({rawVendas.length} registros)
           </h3>
         </div>
 
         <JpClassRelatorio
-          items={vendasExibidas}
+          items={rawVendas}
           loading={loading}
           groupBy={groupBy}
           onGroupByChange={setGroupBy}
