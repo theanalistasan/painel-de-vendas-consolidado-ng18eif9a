@@ -658,6 +658,7 @@ export default function PedidosAbertos() {
   // Carrega opções de canais e KPIs de pedidos abertos
   const loadStats = async (activeFilters = filters) => {
     try {
+      setLoadingTipoClienteOptions(true)
       setStatsLoading(true)
       let statsPedidos: Awaited<ReturnType<typeof fetchPedidosAbertosStats>>
       try {
@@ -772,6 +773,7 @@ export default function PedidosAbertos() {
       })
     } finally {
       setStatsLoading(false)
+      setLoadingTipoClienteOptions(false)
     }
   }
 
@@ -1800,6 +1802,10 @@ export default function PedidosAbertos() {
           onOpenTipoCliente: () => {
             if (tipoClienteOptions.length === 0) {
               loadTiposClienteData()
+            } else {
+              fetchTiposClienteOptions().then((opts) => {
+                if (Array.isArray(opts) && opts.length > 0) setTipoClienteOptions(opts)
+              })
             }
           },
           statusCadastro:

@@ -101,6 +101,15 @@ routerAdd(
       'tipo cliente sap',
       'categoria cliente',
       'classificacao cliente',
+      // Variantes que a planilha SAP pode usar para a mesma coluna
+      'tipocliente',
+      'tipo cliente sap substituicao total',
+      'tipo de cliente sap substituicao total',
+      'grupo cliente',
+      'grupo do cliente',
+      'cliente tipo',
+      'tipo de cliente (sap)',
+      'tipo cliente (sap)',
     ]
 
     const getRowVal = (normalizedRow, candidateKeys) => {

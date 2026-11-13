@@ -10,6 +10,10 @@ type TipoClienteInfoLike = { tipo_cliente: string }
 // em paralelo com as listagens). Deduplica chamadas simultâneas (Promise em
 // voo) e serve de TTL curto para evitar refetchs idênticos em remounts.
 const TC_READ_TTL_MS = 60000
+// Resultado VAZIO de options expira quase imediatamente: pode ser a base ainda
+// não importada OU um endpoint desatualizado. Assim, reabrir o dropdown revalida
+// sem esperar o TTL cheio (e sem spam de requisições).
+const TC_OPTIONS_EMPTY_TTL_MS = 2000
 let tcOptionsCache: { data: string[]; expiresAt: number } | null = null
 let tcMapCache: { data: Record<string, TipoClienteInfoLike>; expiresAt: number } | null = null
 let tcOptionsInFlight: Promise<string[]> | null = null
@@ -106,7 +110,10 @@ export async function fetchTiposClienteOptions(options?: {
     if (tcOptionsInFlight) return tcOptionsInFlight
     tcOptionsInFlight = run().then((res) => {
       const opts = Array.isArray(res?.options) ? res.options : []
-      tcOptionsCache = { data: opts, expiresAt: Date.now() + TC_READ_TTL_MS }
+      // Resultado vazio NÃO fica preso no TTL cheio: expira quase imediatamente
+      // para que reabrir o dropdown revalide sem esperar 60s.
+      const ttl = opts.length === 0 ? TC_OPTIONS_EMPTY_TTL_MS : TC_READ_TTL_MS
+      tcOptionsCache = { data: opts, expiresAt: Date.now() + ttl }
       return opts
     })
     const result = await tcOptionsInFlight
