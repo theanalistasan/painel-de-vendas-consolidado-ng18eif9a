@@ -332,7 +332,48 @@ var __vendasExportHandler = (e) => {
     }
     // Filtro por Tipo de Cliente — resolvido via tipos_cliente (subconsulta por
     // codigo_pn normalizado); o campo local tipo_cliente de vendas não é populado.
-    const tcClauseVE = globalThis.__tipoClienteFiltro.buildClause($app, f.tipoCliente)
+    const tcClauseVE = (function (filtro) {
+      try {
+        const escTc = (s) => String(s).replace(/'/g, "''")
+        const lista = Array.isArray(filtro) ? filtro : filtro ? [filtro] : []
+        const vals = lista
+          .map((v) =>
+            String(v == null ? '' : v)
+              .trim()
+              .toUpperCase(),
+          )
+          .filter((v) => v && v !== 'TODOS')
+        const isSem = (v) =>
+          v === 'SEM INFORMACAO' || v === 'SEM INFORMAÇÃO' || v === 'VAZIO' || v === 'SEM TIPO'
+        const semInfo = vals.some(isSem)
+        const tipos = vals.filter((v) => !isSem(v)).filter((v, i, a) => a.indexOf(v) === i)
+        if (tipos.length === 0 && !semInfo) return ''
+        const sub = (extra) =>
+          "SELECT UPPER(TRIM(COALESCE(codigo_pn,''))) FROM tipos_cliente " +
+          "WHERE COALESCE(tipo_cliente,'') != '' AND COALESCE(codigo_pn,'') != ''" +
+          extra
+        const conds = []
+        if (tipos.length > 0) {
+          const inList = tipos.map((t) => "'" + escTc(t) + "'").join(',')
+          conds.push(
+            'UPPER(TRIM(codigo_cliente)) IN (' +
+              sub(" AND UPPER(TRIM(COALESCE(tipo_cliente,''))) IN (" + inList + ')') +
+              ')',
+          )
+        }
+        if (semInfo) {
+          conds.push(
+            "(codigo_cliente IS NULL OR codigo_cliente = '' OR UPPER(TRIM(codigo_cliente)) NOT IN (" +
+              sub('') +
+              '))',
+          )
+        }
+        return conds.length > 0 ? '(' + conds.join(' OR ') + ')' : '1 = 0'
+      } catch (tcfErr) {
+        console.warn('tipo_cliente filtro: falha ao montar cláusula:', tcfErr)
+        return ''
+      }
+    })(f.tipoCliente)
     if (tcClauseVE) {
       sqlParts.push(tcClauseVE)
     }

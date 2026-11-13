@@ -52,9 +52,48 @@ routerAdd(
       whereClauses.push('(em_transito = 0 OR em_transito IS NULL OR em_transito <= 0)')
     }
 
-    // Filtro Tipo de Cliente — resolvido via tipos_cliente (subconsulta por
-    // codigo_pn normalizado); o campo local tipo_cliente não é populado.
-    const tcListClause = globalThis.__tipoClienteFiltro.buildClause($app, f.tipoCliente)
+    // Tipo de Cliente: builder INLINE (callbacks de rota rodam em VM separado e
+    // não enxergam helpers de outros arquivos — bug 0.0.373).
+    const tcListClause = (function (filtro) {
+      try {
+        const esc = (s) => String(s).replace(/'/g, "''")
+        const v = (Array.isArray(filtro) ? filtro : filtro ? [filtro] : [])
+          .map((x) =>
+            String(x == null ? '' : x)
+              .trim()
+              .toUpperCase(),
+          )
+          .filter((x) => x && x !== 'TODOS')
+        const isSem = (x) =>
+          ['SEM INFORMACAO', 'SEM INFORMAÇÃO', 'VAZIO', 'SEM TIPO'].indexOf(x) >= 0
+        const semInfo = v.some(isSem)
+        const tipos = v.filter((x) => !isSem(x)).filter((x, i, a) => a.indexOf(x) === i)
+        if (tipos.length === 0 && !semInfo) return ''
+        const sub = (w) =>
+          "SELECT UPPER(TRIM(COALESCE(codigo_pn,''))) FROM tipos_cliente WHERE COALESCE(tipo_cliente,'') != '' AND COALESCE(codigo_pn,'') != ''" +
+          w
+        const c = []
+        if (tipos.length > 0) {
+          const inList = tipos.map((t) => "'" + esc(t) + "'").join(',')
+          c.push(
+            'UPPER(TRIM(codigo_cliente)) IN (' +
+              sub(" AND UPPER(TRIM(COALESCE(tipo_cliente,''))) IN (" + inList + ')') +
+              ')',
+          )
+        }
+        if (semInfo) {
+          c.push(
+            "(codigo_cliente IS NULL OR codigo_cliente = '' OR UPPER(TRIM(codigo_cliente)) NOT IN (" +
+              sub('') +
+              '))',
+          )
+        }
+        return c.length > 0 ? '(' + c.join(' OR ') + ')' : '1 = 0'
+      } catch (e) {
+        console.warn('tipo_cliente filtro:', e)
+        return ''
+      }
+    })(f.tipoCliente)
     if (tcListClause) {
       whereClauses.push(tcListClause)
     }
@@ -486,9 +525,47 @@ routerAdd(
       "(UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')",
     ]
 
-    // Filtro Tipo de Cliente — resolvido via tipos_cliente (subconsulta por
-    // codigo_pn normalizado); o campo local tipo_cliente não é populado.
-    const tcListClause = globalThis.__tipoClienteFiltro.buildClause($app, f.tipoCliente)
+    // Tipo de Cliente: builder INLINE (bug 0.0.373 — VM separado por callback).
+    const tcListClause = (function (filtro) {
+      try {
+        const esc = (s) => String(s).replace(/'/g, "''")
+        const v = (Array.isArray(filtro) ? filtro : filtro ? [filtro] : [])
+          .map((x) =>
+            String(x == null ? '' : x)
+              .trim()
+              .toUpperCase(),
+          )
+          .filter((x) => x && x !== 'TODOS')
+        const isSem = (x) =>
+          ['SEM INFORMACAO', 'SEM INFORMAÇÃO', 'VAZIO', 'SEM TIPO'].indexOf(x) >= 0
+        const semInfo = v.some(isSem)
+        const tipos = v.filter((x) => !isSem(x)).filter((x, i, a) => a.indexOf(x) === i)
+        if (tipos.length === 0 && !semInfo) return ''
+        const sub = (w) =>
+          "SELECT UPPER(TRIM(COALESCE(codigo_pn,''))) FROM tipos_cliente WHERE COALESCE(tipo_cliente,'') != '' AND COALESCE(codigo_pn,'') != ''" +
+          w
+        const c = []
+        if (tipos.length > 0) {
+          const inList = tipos.map((t) => "'" + esc(t) + "'").join(',')
+          c.push(
+            'UPPER(TRIM(codigo_cliente)) IN (' +
+              sub(" AND UPPER(TRIM(COALESCE(tipo_cliente,''))) IN (" + inList + ')') +
+              ')',
+          )
+        }
+        if (semInfo) {
+          c.push(
+            "(codigo_cliente IS NULL OR codigo_cliente = '' OR UPPER(TRIM(codigo_cliente)) NOT IN (" +
+              sub('') +
+              '))',
+          )
+        }
+        return c.length > 0 ? '(' + c.join(' OR ') + ')' : '1 = 0'
+      } catch (e) {
+        console.warn('tipo_cliente filtro:', e)
+        return ''
+      }
+    })(f.tipoCliente)
     if (tcListClause) {
       whereClauses.push(tcListClause)
     }
@@ -921,7 +998,47 @@ routerAdd(
 
     // Cláusulas adicionais de filtro vindas da tela de Estoque Faltante (ex: tipoCliente)
     const extraWhere = []
-    const tcListClause = globalThis.__tipoClienteFiltro.buildClause($app, f.tipoCliente)
+    // Tipo de Cliente: builder INLINE (bug 0.0.373 — VM separado por callback).
+    const tcListClause = (function (filtro) {
+      try {
+        const esc = (s) => String(s).replace(/'/g, "''")
+        const v = (Array.isArray(filtro) ? filtro : filtro ? [filtro] : [])
+          .map((x) =>
+            String(x == null ? '' : x)
+              .trim()
+              .toUpperCase(),
+          )
+          .filter((x) => x && x !== 'TODOS')
+        const isSem = (x) =>
+          ['SEM INFORMACAO', 'SEM INFORMAÇÃO', 'VAZIO', 'SEM TIPO'].indexOf(x) >= 0
+        const semInfo = v.some(isSem)
+        const tipos = v.filter((x) => !isSem(x)).filter((x, i, a) => a.indexOf(x) === i)
+        if (tipos.length === 0 && !semInfo) return ''
+        const sub = (w) =>
+          "SELECT UPPER(TRIM(COALESCE(codigo_pn,''))) FROM tipos_cliente WHERE COALESCE(tipo_cliente,'') != '' AND COALESCE(codigo_pn,'') != ''" +
+          w
+        const c = []
+        if (tipos.length > 0) {
+          const inList = tipos.map((t) => "'" + esc(t) + "'").join(',')
+          c.push(
+            'UPPER(TRIM(codigo_cliente)) IN (' +
+              sub(" AND UPPER(TRIM(COALESCE(tipo_cliente,''))) IN (" + inList + ')') +
+              ')',
+          )
+        }
+        if (semInfo) {
+          c.push(
+            "(codigo_cliente IS NULL OR codigo_cliente = '' OR UPPER(TRIM(codigo_cliente)) NOT IN (" +
+              sub('') +
+              '))',
+          )
+        }
+        return c.length > 0 ? '(' + c.join(' OR ') + ')' : '1 = 0'
+      } catch (e) {
+        console.warn('tipo_cliente filtro:', e)
+        return ''
+      }
+    })(f.tipoCliente)
     if (tcListClause) {
       extraWhere.push(tcListClause)
     }

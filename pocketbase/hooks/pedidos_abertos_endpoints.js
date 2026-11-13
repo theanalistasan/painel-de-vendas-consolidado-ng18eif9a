@@ -3,8 +3,10 @@
 // 2. POST /backend/v1/pedidos-abertos/stats - KPIs e Ranking de clientes com ritmo de compra vs vendas realizadas
 // 3. GET  /backend/v1/pedidos-abertos/por-cliente - Agregado por cliente (GROUP BY) para a Visão Canais
 //
-// O filtro "Tipo de Cliente" é resolvido pelo helper global __tipoClienteFiltro
-// (carregado antes deste arquivo), via subconsulta em tipos_cliente.
+// O filtro "Tipo de Cliente" é resolvido por um builder INLINE em cada handler,
+// via subconsulta em tipos_cliente. Não referenciar helper de outro arquivo: os
+// callbacks de rota rodam em VM separado e não enxergam declarações externas
+// (bug 0.0.373 — "Cannot read property 'buildClause' of undefined or null").
 
 routerAdd(
   'POST',
@@ -284,7 +286,48 @@ routerAdd(
 
     // Filtro por Tipo de Cliente — resolvido via tipos_cliente (subconsulta por
     // codigo_pn normalizado); o campo local tipo_cliente não é populado.
-    const tcListClause = globalThis.__tipoClienteFiltro.buildClause($app, f.tipoCliente)
+    const tcListClause = (function (filtro) {
+      try {
+        const escTc = (s) => String(s).replace(/'/g, "''")
+        const lista = Array.isArray(filtro) ? filtro : filtro ? [filtro] : []
+        const vals = lista
+          .map((v) =>
+            String(v == null ? '' : v)
+              .trim()
+              .toUpperCase(),
+          )
+          .filter((v) => v && v !== 'TODOS')
+        const isSem = (v) =>
+          v === 'SEM INFORMACAO' || v === 'SEM INFORMAÇÃO' || v === 'VAZIO' || v === 'SEM TIPO'
+        const semInfo = vals.some(isSem)
+        const tipos = vals.filter((v) => !isSem(v)).filter((v, i, a) => a.indexOf(v) === i)
+        if (tipos.length === 0 && !semInfo) return ''
+        const sub = (extra) =>
+          "SELECT UPPER(TRIM(COALESCE(codigo_pn,''))) FROM tipos_cliente " +
+          "WHERE COALESCE(tipo_cliente,'') != '' AND COALESCE(codigo_pn,'') != ''" +
+          extra
+        const conds = []
+        if (tipos.length > 0) {
+          const inList = tipos.map((t) => "'" + escTc(t) + "'").join(',')
+          conds.push(
+            'UPPER(TRIM(codigo_cliente)) IN (' +
+              sub(" AND UPPER(TRIM(COALESCE(tipo_cliente,''))) IN (" + inList + ')') +
+              ')',
+          )
+        }
+        if (semInfo) {
+          conds.push(
+            "(codigo_cliente IS NULL OR codigo_cliente = '' OR UPPER(TRIM(codigo_cliente)) NOT IN (" +
+              sub('') +
+              '))',
+          )
+        }
+        return conds.length > 0 ? '(' + conds.join(' OR ') + ')' : '1 = 0'
+      } catch (tcfErr) {
+        console.warn('tipo_cliente filtro: falha ao montar cláusula:', tcfErr)
+        return ''
+      }
+    })(f.tipoCliente)
     if (tcListClause) {
       whereClauses.push(tcListClause)
     }
@@ -861,7 +904,48 @@ routerAdd(
 
     // Filtro por Tipo de Cliente — resolvido via tipos_cliente (subconsulta por
     // codigo_pn normalizado); o campo local tipo_cliente não é populado.
-    const tcStatsClause = globalThis.__tipoClienteFiltro.buildClause($app, f.tipoCliente)
+    const tcStatsClause = (function (filtro) {
+      try {
+        const escTc = (s) => String(s).replace(/'/g, "''")
+        const lista = Array.isArray(filtro) ? filtro : filtro ? [filtro] : []
+        const vals = lista
+          .map((v) =>
+            String(v == null ? '' : v)
+              .trim()
+              .toUpperCase(),
+          )
+          .filter((v) => v && v !== 'TODOS')
+        const isSem = (v) =>
+          v === 'SEM INFORMACAO' || v === 'SEM INFORMAÇÃO' || v === 'VAZIO' || v === 'SEM TIPO'
+        const semInfo = vals.some(isSem)
+        const tipos = vals.filter((v) => !isSem(v)).filter((v, i, a) => a.indexOf(v) === i)
+        if (tipos.length === 0 && !semInfo) return ''
+        const sub = (extra) =>
+          "SELECT UPPER(TRIM(COALESCE(codigo_pn,''))) FROM tipos_cliente " +
+          "WHERE COALESCE(tipo_cliente,'') != '' AND COALESCE(codigo_pn,'') != ''" +
+          extra
+        const conds = []
+        if (tipos.length > 0) {
+          const inList = tipos.map((t) => "'" + escTc(t) + "'").join(',')
+          conds.push(
+            'UPPER(TRIM(codigo_cliente)) IN (' +
+              sub(" AND UPPER(TRIM(COALESCE(tipo_cliente,''))) IN (" + inList + ')') +
+              ')',
+          )
+        }
+        if (semInfo) {
+          conds.push(
+            "(codigo_cliente IS NULL OR codigo_cliente = '' OR UPPER(TRIM(codigo_cliente)) NOT IN (" +
+              sub('') +
+              '))',
+          )
+        }
+        return conds.length > 0 ? '(' + conds.join(' OR ') + ')' : '1 = 0'
+      } catch (tcfErr) {
+        console.warn('tipo_cliente filtro: falha ao montar cláusula:', tcfErr)
+        return ''
+      }
+    })(f.tipoCliente)
     if (tcStatsClause) {
       paWhereClauses.push(tcStatsClause)
     }
