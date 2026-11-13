@@ -84,7 +84,7 @@ const tooltipContentStyle = {
 }
 
 const currencyFormatter =
-  (label = 'Total') =>
+  (label = 'Valor Total (Bruto)') =>
   (val: number | string | undefined) =>
     [formatCurrency(typeof val === 'number' ? val : Number(val)), label] as [string, string]
 
@@ -945,7 +945,8 @@ export default function DashboardCanais() {
                   <div className="flex flex-wrap items-center gap-2">
                     <CardTitle className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                       <MapPin className="w-4 h-4 text-[#0B6E99]" />
-                      Vendas por Estado (UF) &amp; Região — Visão Canais
+                      Vendas por Estado (UF) &amp; Região — Visão Canais ({TITULO_VALOR_TOTAL_BRUTO}
+                      )
                     </CardTitle>
                     {filters.estado.length > 0 && (
                       <Badge
@@ -998,7 +999,7 @@ export default function DashboardCanais() {
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <CardTitle className="text-lg font-extrabold text-slate-900 tracking-tight">
-                        Vendas por Estado (UF) &amp; Região
+                        Vendas por Estado (UF) &amp; Região ({TITULO_VALOR_TOTAL_BRUTO})
                       </CardTitle>
                       {filters.estado.length > 0 && (
                         <Badge

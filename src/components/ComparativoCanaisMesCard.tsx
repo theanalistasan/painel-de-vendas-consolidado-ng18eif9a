@@ -12,6 +12,7 @@ import {
   Legend,
 } from 'recharts'
 import { formatCurrency, formatCompactCurrency } from '@/lib/formatters'
+import { TITULO_VALOR_TOTAL_BRUTO } from '@/lib/valor-titulos'
 import { CanalComparativoItem, CanaisComparativoResult } from '@/services/sales'
 import {
   GitCompare,
@@ -110,8 +111,8 @@ export function ComparativoCanaisMesCard({ data, loading }: ComparativoCanaisMes
               </Badge>
             </div>
             <CardDescription className="text-xs text-slate-500 font-medium mt-1">
-              Faturamento consolidado canal a canal confrontando o mês atual ({mesLabelAtual}) com o
-              mesmo mês do ano anterior ({mesLabelAnterior}).
+              {TITULO_VALOR_TOTAL_BRUTO} consolidado canal a canal confrontando o mês atual (
+              {mesLabelAtual}) com o mesmo mês do ano anterior ({mesLabelAnterior}).
             </CardDescription>
           </div>
 
@@ -361,8 +362,12 @@ export function ComparativoCanaisMesCard({ data, loading }: ComparativoCanaisMes
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
                     <th className="py-2.5 px-3">Canal</th>
-                    <th className="py-2.5 px-3 text-right">Faturamento {mesLabelAtual}</th>
-                    <th className="py-2.5 px-3 text-right">Faturamento {mesLabelAnterior}</th>
+                    <th className="py-2.5 px-3 text-right">
+                      {TITULO_VALOR_TOTAL_BRUTO} {mesLabelAtual}
+                    </th>
+                    <th className="py-2.5 px-3 text-right">
+                      {TITULO_VALOR_TOTAL_BRUTO} {mesLabelAnterior}
+                    </th>
                     <th className="py-2.5 px-3 text-right">Diferença (R$)</th>
                     <th className="py-2.5 px-3 text-right">Variação (%)</th>
                   </tr>
@@ -413,7 +418,7 @@ export function ComparativoCanaisMesCard({ data, loading }: ComparativoCanaisMes
                 <tfoot>
                   <tr className="bg-slate-100/70 border-t-2 border-slate-200 font-extrabold text-slate-900">
                     <td className="py-2.5 px-3 uppercase tracking-wider text-xs">
-                      Total Consolidado
+                      {TITULO_VALOR_TOTAL_BRUTO} Consolidado
                     </td>
                     <td className="py-2.5 px-3 text-right">{formatCurrency(totalAtual)}</td>
                     <td className="py-2.5 px-3 text-right text-slate-700">
