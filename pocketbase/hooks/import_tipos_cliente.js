@@ -6,8 +6,10 @@
 // - Status do cadastro (ex.: Ativo)
 // - Tipo de PN (ex.: Cliente)
 // - Tipo de Cliente (ex.: Prospect, Revenda, Ata, etc.)
+// - Característica (fonte real do tipo de cliente: Atas, Revendas etc.)
 // Chave única: Código do PN.
 // Aceita tanto formato colunar padrão quanto pares campo/valor exportados do SAP.
+// Modo upsert: reenvio atualiza registros existentes por codigo_pn (sem zerar/duplicar).
 
 routerAdd(
   'POST',
@@ -16,15 +18,9 @@ routerAdd(
     const body = e.requestInfo().body || {}
     const rawRows = Array.isArray(body.rows) ? body.rows : Array.isArray(body) ? body : []
 
-    // Substituição Total: o primeiro lote (ou sem flag de lote subsequente) sempre limpa a coleção
+    // Upsert por codigo_pn: reenvio da mesma planilha ATUALIZA os registros
+    // existentes em vez de zerar ou duplicar a base (pedido Silvio).
     const isSubsequentBatch = body.isSubsequentBatch === true || body.batchIndex > 0
-    if (!isSubsequentBatch) {
-      try {
-        $app.db().newQuery('DELETE FROM tipos_cliente').execute()
-      } catch (delErr) {
-        console.warn('Erro ao limpar tipos_cliente:', delErr)
-      }
-    }
 
     if (rawRows.length === 0) {
       return e.json(400, {
@@ -111,6 +107,21 @@ routerAdd(
       'tipo de cliente (sap)',
       'tipo cliente (sap)',
     ]
+    // Coluna "Característica" da planilha SAP — fonte REAL do tipo de cliente
+    // (Atas, Revendas etc.). Variants de normalização via normalizeKey
+    // (sem acento, minúsculas, espaços colapsados).
+    const CARACTERISTICA_KEYS = [
+      'caracteristica',
+      'caracteristica do cliente',
+      'caracteristica cliente',
+      'caracteristica do pn',
+      'caracteristica pn',
+      'caracteristica cadastro',
+      'caracteristica do cadastro',
+    ]
+    // Ordem de prioridade: coluna "Tipo de Cliente" explícita primeiro;
+    // "Característica" preenche quando aquela vier vazia (caso atual da carga).
+    const TIPO_CLIENTE_ALL_KEYS = TIPO_CLIENTE_KEYS.concat(CARACTERISTICA_KEYS)
 
     const getRowVal = (normalizedRow, candidateKeys) => {
       for (let i = 0; i < candidateKeys.length; i++) {
@@ -158,7 +169,7 @@ routerAdd(
           currentItem.status_cadastro = valor
         } else if (TIPO_PN_KEYS.indexOf(campo) >= 0) {
           currentItem.tipo_pn = valor
-        } else if (TIPO_CLIENTE_KEYS.indexOf(campo) >= 0) {
+        } else if (TIPO_CLIENTE_ALL_KEYS.indexOf(campo) >= 0) {
           currentItem.tipo_cliente = valor
         }
       }
@@ -168,9 +179,9 @@ routerAdd(
       rowsToProcess = reconstructed
     }
 
-    // Carrega registros existentes no banco caso seja lote subsequente
+    // Carrega registros existentes no banco (em TODOS os lotes) para upsert por codigo_pn
     const existingDbMap = {}
-    if (isSubsequentBatch) {
+    {
       try {
         const dbRows = arrayOf(
           new DynamicModel({
@@ -206,7 +217,7 @@ routerAdd(
       const statusCad =
         getRowVal(normRow, STATUS_CADASTRO_KEYS) || normalizeStrict(raw.status_cadastro)
       const tipoPn = getRowVal(normRow, TIPO_PN_KEYS) || normalizeStrict(raw.tipo_pn)
-      const tipoCli = getRowVal(normRow, TIPO_CLIENTE_KEYS) || normalizeStrict(raw.tipo_cliente)
+      const tipoCli = getRowVal(normRow, TIPO_CLIENTE_ALL_KEYS) || normalizeStrict(raw.tipo_cliente)
 
       if (!codPn && !nomePn && !tipoCli) {
         ignorados++
