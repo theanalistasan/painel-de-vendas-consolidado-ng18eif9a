@@ -14,7 +14,7 @@ import {
 } from 'recharts'
 import ChartCard from '@/components/ChartCard'
 import { formatCurrency, formatCompactCurrency, formatNumber } from '@/lib/formatters'
-import { TITULO_VALOR_MERCADORIA } from '@/lib/valor-titulos'
+import { TITULO_VALOR_TOTAL_BRUTO } from '@/lib/valor-titulos'
 import { getJpClass } from '@/lib/jp-class'
 import type { VendaComSemana } from '@/components/JpClassRelatorio'
 import { Users, PieChart as PieChartIcon, BarChart3, Package, Layers } from 'lucide-react'
@@ -58,7 +58,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
       // Derivar SEMPRE ao vivo a partir do Grupo do item, eliminando qualquer legado
       const cls = getJpClass(it.grupo_item || it.itms_grp_nam)
       const cur = map.get(cls) || { faturamento: 0, quantidade: 0 }
-      cur.faturamento += Number(it.total_linha) || 0
+      cur.faturamento += Number(it.total_nf_novo) || 0
       cur.quantidade += Number(it.quantidade) || 0
       map.set(cls, cur)
     }
@@ -120,7 +120,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
         totalQuantidade: 0,
       }
 
-      const fat = Number(it.total_linha) || 0
+      const fat = Number(it.total_nf_novo) || 0
       const qtd = Number(it.quantidade) || 0
 
       if (cls === 'DGS') {
@@ -196,7 +196,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
     for (const it of items) {
       const grp = (it.grupo_item || it.itms_grp_nam || '(Sem Grupo)').trim()
       const cur = map.get(grp) || { faturamento: 0, quantidade: 0 }
-      cur.faturamento += Number(it.total_linha) || 0
+      cur.faturamento += Number(it.total_nf_novo) || 0
       cur.quantidade += Number(it.quantidade) || 0
       map.set(grp, cur)
     }
@@ -222,7 +222,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
         quantidade: 0,
         codigo: it.codigo_item || '',
       }
-      cur.faturamento += Number(it.total_linha) || 0
+      cur.faturamento += Number(it.total_nf_novo) || 0
       cur.quantidade += Number(it.quantidade) || 0
       map.set(nome, cur)
     }
@@ -245,7 +245,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
         {/* 1. Vendas por JP-Class (Donut responsivo em largura total do container) */}
         <ChartCard
           title="Vendas por JP-Class"
-          description={`Distribuição do ${TITULO_VALOR_MERCADORIA} por classe padronizada`}
+          description={`Distribuição do ${TITULO_VALOR_TOTAL_BRUTO} por classe padronizada`}
           icon={PieChartIcon}
           iconColor="text-[#0B6E99]"
         >
@@ -272,7 +272,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value: number) => [formatCurrency(value), TITULO_VALOR_MERCADORIA]}
+                    formatter={(value: number) => [formatCurrency(value), TITULO_VALOR_TOTAL_BRUTO]}
                     contentStyle={{
                       backgroundColor: '#0F172A',
                       borderRadius: '8px',
@@ -300,7 +300,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
         {/* 2. NOVO PAINEL: Vendas por Tipo de Cliente com Subtotais por HARD, INKS e OTHERS */}
         <ChartCard
           title="Vendas por Tipo de Cliente (Subtotais JP-Class)"
-          description={`${TITULO_VALOR_MERCADORIA} e quantidade segmentados por Tipo de Cliente com decomposição HARD, INKS e OTHERS`}
+          description={`${TITULO_VALOR_TOTAL_BRUTO} e quantidade segmentados por Tipo de Cliente com decomposição HARD, INKS e OTHERS`}
           icon={Users}
           iconColor="text-[#0B6E99]"
           action={
@@ -315,7 +315,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
                 }`}
                 title="Visualizar em Valor Monetário (R$)"
               >
-                R$ {TITULO_VALOR_MERCADORIA}
+                R$ {TITULO_VALOR_TOTAL_BRUTO}
               </button>
               <button
                 type="button"
@@ -583,7 +583,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
                     tickFormatter={(val) => formatCompactCurrency(val)}
                   />
                   <Tooltip
-                    formatter={(val: number) => [formatCurrency(val), TITULO_VALOR_MERCADORIA]}
+                    formatter={(val: number) => [formatCurrency(val), TITULO_VALOR_TOTAL_BRUTO]}
                     contentStyle={{
                       backgroundColor: '#0F172A',
                       borderRadius: '8px',
@@ -608,7 +608,7 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
         {/* 4. Vendas por Item (Top 10 Barras Horizontais) */}
         <ChartCard
           title="Top 10 Itens Vendidos"
-          description={`Itens com maior ${TITULO_VALOR_MERCADORIA} no período`}
+          description={`Itens com maior ${TITULO_VALOR_TOTAL_BRUTO} no período`}
           icon={Package}
           iconColor="text-[#0B6E99]"
         >

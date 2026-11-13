@@ -1226,7 +1226,7 @@ var __dashboardStatsHandler = (e) => {
         "SELECT 'cliente' AS dim, COALESCE(NULLIF(nome_cliente,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
         dimBase +
         ' UNION ALL ' +
-        "SELECT 'estado' AS dim, COALESCE(NULLIF(estado,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
+        "SELECT 'estado' AS dim, COALESCE(NULLIF(estado,''),'Sem informação') AS k, COALESCE(SUM(total_nf_novo),0) AS v " +
         dimBase +
         ' UNION ALL ' +
         "SELECT 'tipo_documento' AS dim, COALESCE(NULLIF(tipo_documento,''),'Sem classificação') AS k, CASE WHEN COALESCE(SUM(total_linha),0) >= COALESCE(SUM(valor_liquido),0) THEN COALESCE(SUM(total_linha),0) ELSE COALESCE(SUM(valor_liquido),0) END AS v " +

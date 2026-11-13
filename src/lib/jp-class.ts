@@ -317,3 +317,23 @@ export function getJpClassBadgeStyle(jpClass: string | null | undefined): {
     className: 'bg-slate-100 text-slate-500 border-slate-200 italic',
   }
 }
+
+/**
+ * Filtro "Vendedor > Cliente" (vendedor_cliente = "Revenda > Nome do Cliente").
+ * Matching textual no CAMPO INTEIRO, ignorando acentos e caixa: "DIAMANTE"
+ * encontra "Roland DG Brasil > DIAMANTE COMERCIO DE TINTAS LTDA".
+ * Seleção vazia = sem filtro (passa tudo).
+ */
+export function matchesVendedorClienteFilter(
+  venda: { vendedor_cliente?: string | null },
+  selecionados: string[],
+): boolean {
+  if (!selecionados || selecionados.length === 0) return true
+  const valor = normalizeText(String(venda?.vendedor_cliente ?? '').trim())
+  if (!valor) return false
+  return selecionados.some((sel) => {
+    const alvo = normalizeText(String(sel ?? '').trim())
+    if (!alvo) return false
+    return valor.includes(alvo)
+  })
+}

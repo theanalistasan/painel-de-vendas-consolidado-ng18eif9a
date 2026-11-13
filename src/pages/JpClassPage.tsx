@@ -15,17 +15,11 @@ import {
   encontrarSemanaDaData,
   agregarValoresPorSemana,
   type SemanaMes,
-  type SemanaValores,
 } from '@/lib/semanas'
 import { useNavigate } from 'react-router-dom'
-import { getJpClass } from '@/lib/jp-class'
-import {
-  MESES_PT_BR,
-  formatCurrency,
-  formatCompactCurrency,
-  formatNumber,
-  exportToCSV,
-} from '@/lib/formatters'
+import { getJpClass, matchesVendedorClienteFilter } from '@/lib/jp-class'
+import { MESES_PT_BR, formatCurrency, formatCompactCurrency, exportToCSV } from '@/lib/formatters'
+import { MultiSelectDropdown } from '@/components/FilterBar'
 import {
   loadFiltersFromSession,
   saveFiltersToSession,
@@ -83,7 +77,11 @@ export default function JpClassPage() {
   const [tiposClienteMap, setTiposClienteMap] = useState<Record<string, string>>({})
 
   const [groupBy, setGroupBy] = useState<JpClassGroupBy>('hierarquia')
-  const [filtroSemana, setFiltroSemana] = useState<number | 'todas'>('todas')
+
+  // Filtro LOCAL "Vendedor > Cliente" (vendedor_cliente = "Revenda > Nome do Cliente"):
+  // matching textual no campo inteiro, ignorando acentos/caixa — "DIAMANTE" encontra
+  // "Roland DG Brasil > DIAMANTE COMERCIO DE TINTAS LTDA".
+  const [vendedorClienteSelecionados, setVendedorClienteSelecionados] = useState<string[]>([])
 
   // Filtro LOCAL de Ano/Mês do JP-Class (sessionStorage, chave "jpclass_periodo").
   // PRIORIDADE sobre os Filtros Globais: campo preenchido sobrepõe o valor global;
@@ -325,34 +323,20 @@ export default function JpClassPage() {
     }
   }, [carregarVendas])
 
-  // Vendas filtradas por semana (se o usuário selecionar uma semana específica nos KPIs)
+  // Vendas exibidas: base + filtro LOCAL "Vendedor > Cliente" (vendedor_cliente)
   const vendasExibidas = useMemo(() => {
-    if (filtroSemana === 'todas') return rawVendas
-    return rawVendas.filter((v) => v.semanaNumero === filtroSemana)
-  }, [rawVendas, filtroSemana])
+    if (vendedorClienteSelecionados.length === 0) return rawVendas
+    return rawVendas.filter((v) => matchesVendedorClienteFilter(v, vendedorClienteSelecionados))
+  }, [rawVendas, vendedorClienteSelecionados])
 
-  // KPIs consolidados por semana (refletem os Filtros Globais aplicados no servidor)
-  const kpisPorSemana = useMemo(() => {
-    return semanas.map((sem) => {
-      const vendasSemana = rawVendas.filter((v) => v.semanaNumero === sem.numero)
-      const quantidade = vendasSemana.reduce((acc, v) => acc + (Number(v.quantidade) || 0), 0)
-      const linhas = vendasSemana.length
-
-      return {
-        semana: sem,
-        quantidade,
-        linhas,
-      }
-    })
-  }, [semanas, rawVendas])
-
-  // Totalizador geral do mês (reflete os Filtros Globais aplicados no servidor)
-  const totalGeral = useMemo(() => {
-    const quantidade = rawVendas.reduce((acc, v) => acc + (Number(v.quantidade) || 0), 0)
-    return {
-      quantidade,
-      linhas: rawVendas.length,
+  // Opções do filtro Vendedor > Cliente derivadas das vendas carregadas
+  const opcoesVendedorCliente = useMemo(() => {
+    const set = new Set<string>()
+    for (const v of rawVendas) {
+      const val = String(v.vendedor_cliente || '').trim()
+      if (val) set.add(val)
     }
+    return Array.from(set)
   }, [rawVendas])
 
   // Quadro de valores por semana (Fase 5): os 5 indicadores (Bruto, NET, Sem Frete,
@@ -386,19 +370,6 @@ export default function JpClassPage() {
 
   const valorCompacto = (v: number) =>
     Math.abs(v) >= 100000 ? formatCompactCurrency(v) : formatCurrency(v)
-
-  // KPIs dos cards por Semana: os 5 indicadores na ordem oficial (Bruto, NET,
-  // Sem Frete, Mercadoria, Custo), a partir do MESMO agregado do quadro.
-  const colunasKpiSemana: { titulo: string; campo: keyof SemanaValores }[] = [
-    { titulo: TITULO_VALOR_TOTAL_BRUTO, campo: 'valorTotalBruto' },
-    { titulo: TITULO_VALOR_LIQUIDO_NET, campo: 'valorLiquidoTotal' },
-    { titulo: TITULO_VALOR_TOTAL_SEM_FRETE, campo: 'valorTotalNfSemFrete' },
-    { titulo: TITULO_VALOR_MERCADORIA, campo: 'valorTotalMercadoria' },
-    { titulo: TITULO_CUSTO_TOTAL, campo: 'custoTotal' },
-  ]
-
-  const valoresDaSemana = (numero: number): SemanaValores | undefined =>
-    valoresPorSemana.find((s) => s.semana.numero === numero)
 
   // Exportação rápida para CSV
   const handleExportCsv = () => {
@@ -489,6 +460,15 @@ export default function JpClassPage() {
               ))}
             </select>
           </label>
+          <MultiSelectDropdown
+            label="Vendedor > Cliente"
+            options={opcoesVendedorCliente}
+            selected={vendedorClienteSelecionados}
+            onChange={setVendedorClienteSelecionados}
+            placeholder="Cliente (Revenda > Nome)"
+            emptyMessage="Nenhum cliente nas vendas carregadas"
+            triggerClassName="w-[230px]"
+          />
         </div>
 
         {/* Ações */}
@@ -583,139 +563,6 @@ export default function JpClassPage() {
         </div>
       )}
 
-      {/* KPIs / Totalizadores por Semana */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-            <TrendingUp className="w-4 h-4 text-[#0B6E99]" />
-            KPIs & Totalizadores por Semana
-          </h3>
-          {filtroSemana !== 'todas' && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setFiltroSemana('todas')}
-              className="text-xs text-[#0B6E99] hover:underline h-7 px-2"
-            >
-              Limpar filtro de semana (ver todas)
-            </Button>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-          {/* Card Totalizador Geral */}
-          <div
-            onClick={() => setFiltroSemana('todas')}
-            className={`cursor-pointer transition-all rounded-xl border p-4 bg-white shadow-2xs hover:shadow-xs ${
-              filtroSemana === 'todas'
-                ? 'border-[#0B6E99] ring-2 ring-[#0B6E99]/20'
-                : 'border-slate-200'
-            }`}
-          >
-            <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-              <span className="font-bold text-slate-700">Mês Consolidado</span>
-              <Badge variant="outline" className="text-[10px] bg-slate-100 font-bold">
-                {semanas.length} semanas
-              </Badge>
-            </div>
-            {/* Visão Comercial */}
-            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mb-1.5">
-              {colunasKpiSemana.slice(0, 2).map((col) => (
-                <div key={col.campo}>
-                  <div className="text-[9px] font-semibold text-slate-400 uppercase leading-tight">
-                    {col.titulo}
-                  </div>
-                  <div className="text-[11px] font-bold text-slate-900 tabular-nums">
-                    {formatCurrency(totaisQuadroSemanas[col.campo])}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {/* Visão Contábil */}
-            <div className="grid grid-cols-3 gap-x-2 gap-y-0.5">
-              {colunasKpiSemana.slice(2).map((col) => (
-                <div key={col.campo}>
-                  <div className="text-[9px] font-semibold text-slate-400 uppercase leading-tight">
-                    {col.titulo}
-                  </div>
-                  <div className="text-[11px] font-bold text-slate-900 tabular-nums">
-                    {formatCurrency(totaisQuadroSemanas[col.campo])}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-              <span>Qtde: {formatNumber(totalGeral.quantidade)} un.</span>
-              <span>{totalGeral.linhas} linhas</span>
-            </div>
-          </div>
-
-          {/* Cards por Semana */}
-          {kpisPorSemana.map((kpi) => {
-            const isSelected = filtroSemana === kpi.semana.numero
-            return (
-              <div
-                key={kpi.semana.numero}
-                onClick={() =>
-                  setFiltroSemana((prev) =>
-                    prev === kpi.semana.numero ? 'todas' : kpi.semana.numero,
-                  )
-                }
-                className={`cursor-pointer transition-all rounded-xl border p-4 bg-white shadow-2xs hover:shadow-xs ${
-                  isSelected
-                    ? 'border-[#0B6E99] ring-2 ring-[#0B6E99]/20 bg-sky-50/20'
-                    : 'border-slate-200'
-                }`}
-              >
-                <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                  <span className="font-bold text-slate-800">{kpi.semana.nome}</span>
-                  <span className="text-[10px] text-slate-400">
-                    {kpi.semana.inicioFormatado} a {kpi.semana.fimFormatado}
-                  </span>
-                </div>
-                {(() => {
-                  const valores = valoresDaSemana(kpi.semana.numero)
-                  return (
-                    <>
-                      {/* Visão Comercial */}
-                      <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mb-1.5">
-                        {colunasKpiSemana.slice(0, 2).map((col) => (
-                          <div key={col.campo}>
-                            <div className="text-[9px] font-semibold text-slate-400 uppercase leading-tight">
-                              {col.titulo}
-                            </div>
-                            <div className="text-[11px] font-bold text-slate-900 tabular-nums">
-                              {formatCurrency(Number(valores?.[col.campo]) || 0)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      {/* Visão Contábil */}
-                      <div className="grid grid-cols-3 gap-x-2 gap-y-0.5">
-                        {colunasKpiSemana.slice(2).map((col) => (
-                          <div key={col.campo}>
-                            <div className="text-[9px] font-semibold text-slate-400 uppercase leading-tight">
-                              {col.titulo}
-                            </div>
-                            <div className="text-[11px] font-bold text-slate-900 tabular-nums">
-                              {formatCurrency(Number(valores?.[col.campo]) || 0)}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )
-                })()}
-                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-                  <span>Qtde: {formatNumber(kpi.quantidade)}</span>
-                  <span>{kpi.linhas} linhas</span>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
-
       {/* Quadro de Valores por Semana (Fase 5) — dividido em Visão Comercial e Visão Contábil */}
       <div className="bg-white rounded-xl border border-slate-200/80 shadow-2xs overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-100 flex items-center gap-2">
@@ -776,11 +623,6 @@ export default function JpClassPage() {
             <FileSpreadsheet className="w-4 h-4 text-[#0B6E99]" />
             Relatório de Vendas por Semanas ({vendasExibidas.length} registros)
           </h3>
-          {filtroSemana !== 'todas' && (
-            <Badge className="bg-[#0B6E99] text-white text-xs">
-              Filtrado por: Semana {filtroSemana}
-            </Badge>
-          )}
         </div>
 
         <JpClassRelatorio
