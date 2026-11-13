@@ -146,14 +146,15 @@ routerAdd('POST', '/backend/v1/trigger/reconciliar-resumos', (e) => {
   })
 })
 
-cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
-  try {
-    const startTime = Date.now()
+// PAUSADO a pedido do usuário (Silvio) — para religar, remova o comentário abaixo e faça deploy_backend.
+// cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
+try {
+  const startTime = Date.now()
 
-    // 1. Garante que as tabelas SQLite existem (se não existirem, cria com índices)
-    $app
-      .db()
-      .newQuery(`
+  // 1. Garante que as tabelas SQLite existem (se não existirem, cria com índices)
+  $app
+    .db()
+    .newQuery(`
       CREATE TABLE IF NOT EXISTS resumo_vendas_mensal (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ano_mes TEXT NOT NULL,
@@ -178,56 +179,54 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
         updated TEXT
       );
     `)
-      .execute()
+    .execute()
 
-    $app
-      .db()
-      .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_anomes ON resumo_vendas_mensal (ano_mes);')
-      .execute()
-    $app
-      .db()
-      .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_ano ON resumo_vendas_mensal (ano);')
-      .execute()
-    $app
-      .db()
-      .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_grupo ON resumo_vendas_mensal (grupo_item);')
-      .execute()
-    $app
-      .db()
-      .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_estado ON resumo_vendas_mensal (estado);')
-      .execute()
-    $app
-      .db()
-      .newQuery(
-        'CREATE INDEX IF NOT EXISTS idx_rvm_netsales ON resumo_vendas_mensal (tem_netsales);',
-      )
-      .execute()
-    $app
-      .db()
-      .newQuery(
-        'CREATE INDEX IF NOT EXISTS idx_rvm_vendedor ON resumo_vendas_mensal (nome_vendedor);',
-      )
-      .execute()
-    $app
-      .db()
-      .newQuery(
-        'CREATE INDEX IF NOT EXISTS idx_rvm_vend_cli ON resumo_vendas_mensal (vendedor_cliente);',
-      )
-      .execute()
-    $app
-      .db()
-      .newQuery(
-        'CREATE INDEX IF NOT EXISTS idx_rvm_tipo_doc ON resumo_vendas_mensal (tipo_documento);',
-      )
-      .execute()
-    $app
-      .db()
-      .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_util ON resumo_vendas_mensal (utilizacao);')
-      .execute()
+  $app
+    .db()
+    .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_anomes ON resumo_vendas_mensal (ano_mes);')
+    .execute()
+  $app
+    .db()
+    .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_ano ON resumo_vendas_mensal (ano);')
+    .execute()
+  $app
+    .db()
+    .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_grupo ON resumo_vendas_mensal (grupo_item);')
+    .execute()
+  $app
+    .db()
+    .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_estado ON resumo_vendas_mensal (estado);')
+    .execute()
+  $app
+    .db()
+    .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_netsales ON resumo_vendas_mensal (tem_netsales);')
+    .execute()
+  $app
+    .db()
+    .newQuery(
+      'CREATE INDEX IF NOT EXISTS idx_rvm_vendedor ON resumo_vendas_mensal (nome_vendedor);',
+    )
+    .execute()
+  $app
+    .db()
+    .newQuery(
+      'CREATE INDEX IF NOT EXISTS idx_rvm_vend_cli ON resumo_vendas_mensal (vendedor_cliente);',
+    )
+    .execute()
+  $app
+    .db()
+    .newQuery(
+      'CREATE INDEX IF NOT EXISTS idx_rvm_tipo_doc ON resumo_vendas_mensal (tipo_documento);',
+    )
+    .execute()
+  $app
+    .db()
+    .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_util ON resumo_vendas_mensal (utilizacao);')
+    .execute()
 
-    $app
-      .db()
-      .newQuery(`
+  $app
+    .db()
+    .newQuery(`
       CREATE TABLE IF NOT EXISTS resumo_clientes_ativos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ano_mes TEXT NOT NULL,
@@ -240,36 +239,36 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
         updated TEXT
       );
     `)
-      .execute()
+    .execute()
 
-    $app
-      .db()
-      .newQuery(
-        'CREATE INDEX IF NOT EXISTS idx_rca_anomes_grp ON resumo_clientes_ativos (ano_mes, grupo_categoria);',
-      )
-      .execute()
-    $app
-      .db()
-      .newQuery(
-        'CREATE INDEX IF NOT EXISTS idx_rca_ano_grp ON resumo_clientes_ativos (ano, grupo_categoria);',
-      )
-      .execute()
-    $app
-      .db()
-      .newQuery(
-        'CREATE INDEX IF NOT EXISTS idx_rca_cliente ON resumo_clientes_ativos (codigo_cliente);',
-      )
-      .execute()
-    $app
-      .db()
-      .newQuery(
-        'CREATE INDEX IF NOT EXISTS idx_rca_netsales ON resumo_clientes_ativos (tem_netsales);',
-      )
-      .execute()
+  $app
+    .db()
+    .newQuery(
+      'CREATE INDEX IF NOT EXISTS idx_rca_anomes_grp ON resumo_clientes_ativos (ano_mes, grupo_categoria);',
+    )
+    .execute()
+  $app
+    .db()
+    .newQuery(
+      'CREATE INDEX IF NOT EXISTS idx_rca_ano_grp ON resumo_clientes_ativos (ano, grupo_categoria);',
+    )
+    .execute()
+  $app
+    .db()
+    .newQuery(
+      'CREATE INDEX IF NOT EXISTS idx_rca_cliente ON resumo_clientes_ativos (codigo_cliente);',
+    )
+    .execute()
+  $app
+    .db()
+    .newQuery(
+      'CREATE INDEX IF NOT EXISTS idx_rca_netsales ON resumo_clientes_ativos (tem_netsales);',
+    )
+    .execute()
 
-    $app
-      .db()
-      .newQuery(`
+  $app
+    .db()
+    .newQuery(`
       CREATE TABLE IF NOT EXISTS resumo_vendas_uf_regiao (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ano INTEGER NOT NULL,
@@ -285,36 +284,36 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
         updated TEXT
       );
     `)
-      .execute()
+    .execute()
 
-    $app
-      .db()
-      .newQuery('CREATE INDEX IF NOT EXISTS idx_rvu_anomes ON resumo_vendas_uf_regiao (ano_mes);')
-      .execute()
-    $app
-      .db()
-      .newQuery('CREATE INDEX IF NOT EXISTS idx_rvu_uf ON resumo_vendas_uf_regiao (uf);')
-      .execute()
-    $app
-      .db()
-      .newQuery('CREATE INDEX IF NOT EXISTS idx_rvu_regiao ON resumo_vendas_uf_regiao (regiao);')
-      .execute()
-    $app
-      .db()
-      .newQuery(
-        'CREATE INDEX IF NOT EXISTS idx_rvu_netsales ON resumo_vendas_uf_regiao (tem_netsales);',
-      )
-      .execute()
+  $app
+    .db()
+    .newQuery('CREATE INDEX IF NOT EXISTS idx_rvu_anomes ON resumo_vendas_uf_regiao (ano_mes);')
+    .execute()
+  $app
+    .db()
+    .newQuery('CREATE INDEX IF NOT EXISTS idx_rvu_uf ON resumo_vendas_uf_regiao (uf);')
+    .execute()
+  $app
+    .db()
+    .newQuery('CREATE INDEX IF NOT EXISTS idx_rvu_regiao ON resumo_vendas_uf_regiao (regiao);')
+    .execute()
+  $app
+    .db()
+    .newQuery(
+      'CREATE INDEX IF NOT EXISTS idx_rvu_netsales ON resumo_vendas_uf_regiao (tem_netsales);',
+    )
+    .execute()
 
-    // 2. Reconciliação atômica
-    const nowIso = new Date().toISOString()
+  // 2. Reconciliação atômica
+  const nowIso = new Date().toISOString()
 
-    $app.runInTransaction((txApp) => {
-      // 2.1 Reconcilia resumo_vendas_mensal
-      txApp.db().newQuery('DELETE FROM resumo_vendas_mensal').execute()
-      txApp
-        .db()
-        .newQuery(`
+  $app.runInTransaction((txApp) => {
+    // 2.1 Reconcilia resumo_vendas_mensal
+    txApp.db().newQuery('DELETE FROM resumo_vendas_mensal').execute()
+    txApp
+      .db()
+      .newQuery(`
         INSERT INTO resumo_vendas_mensal (
           ano_mes, ano, mes, tem_netsales, grupo_item, estado,
           nome_vendedor, vendedor_cliente, codigo_cliente, nome_cliente,
@@ -360,14 +359,14 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
           COALESCE(NULLIF(tipo_documento, ''), 'Sem informação'),
           COALESCE(NULLIF(utilizacao, ''), 'Sem informação')
       `)
-        .bind({ now: nowIso })
-        .execute()
+      .bind({ now: nowIso })
+      .execute()
 
-      // 2.2 Reconcilia resumo_clientes_ativos
-      txApp.db().newQuery('DELETE FROM resumo_clientes_ativos').execute()
-      txApp
-        .db()
-        .newQuery(`
+    // 2.2 Reconcilia resumo_clientes_ativos
+    txApp.db().newQuery('DELETE FROM resumo_clientes_ativos').execute()
+    txApp
+      .db()
+      .newQuery(`
         INSERT INTO resumo_clientes_ativos (
           ano_mes, ano, mes, tem_netsales, grupo_categoria, codigo_cliente, created, updated
         )
@@ -401,14 +400,14 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
           END),
           codigo_cliente
       `)
-        .bind({ now: nowIso })
-        .execute()
+      .bind({ now: nowIso })
+      .execute()
 
-      // 2.3 Reconcilia resumo_vendas_uf_regiao
-      txApp.db().newQuery('DELETE FROM resumo_vendas_uf_regiao').execute()
-      txApp
-        .db()
-        .newQuery(`
+    // 2.3 Reconcilia resumo_vendas_uf_regiao
+    txApp.db().newQuery('DELETE FROM resumo_vendas_uf_regiao').execute()
+    txApp
+      .db()
+      .newQuery(`
         INSERT INTO resumo_vendas_uf_regiao (
           ano, mes, ano_mes, uf, regiao, tem_netsales, total_linha, qtd_documentos, qtd_itens, created, updated
         )
@@ -441,14 +440,14 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
           COALESCE(NULLIF(estado, ''), 'Sem informação'),
           (CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END)
       `)
-        .bind({ now: nowIso })
-        .execute()
-    })
+      .bind({ now: nowIso })
+      .execute()
+  })
 
-    console.log(
-      'cron_reconcile_summaries concluído com sucesso em ' + (Date.now() - startTime) + 'ms',
-    )
-  } catch (err) {
-    console.error('cron_reconcile_summaries falhou:', err)
-  }
-})
+  console.log(
+    'cron_reconcile_summaries concluído com sucesso em ' + (Date.now() - startTime) + 'ms',
+  )
+} catch (err) {
+  console.error('cron_reconcile_summaries falhou:', err)
+}
+// })
