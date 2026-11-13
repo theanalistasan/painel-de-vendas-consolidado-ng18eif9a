@@ -130,7 +130,7 @@ export function encontrarSemanaDaData(
 
 export interface SemanaValores {
   semana: SemanaMes
-  /** "Valor Total (Bruto)" — total_nf_novo é POR NF (MAX por numero_nfe) */
+  /** "Valor Total (Bruto)" — SUM de total_nf_novo linha a linha (regra do usuário: SEMPRE SUM) */
   valorTotalBruto: number
   valorTotalMercadoria: number
   valorLiquidoTotal: number
@@ -141,23 +141,17 @@ export interface SemanaValores {
 
 /**
  * Agrega os valores monetários de vendas por semana do calendário do mês.
- * Soma (a) Valor Total (Bruto) (total_nf_novo, MAX por NF), (b) Valor Mercadoria
+ * Soma (a) Valor Total (Bruto) (total_nf_novo), (b) Valor Mercadoria
  * (campo Valor Mercadoria, gravado como total_linha), (c) Valor Líquido Total
  * (valor_liquido), (d) Valor Total NF sem frete (total_nf_sem_frete) e
  * (e) Custo Total (custo_total), classificando cada
  * registro na semana pela data de lançamento (regra seg–dom já implementada).
  * Registros fora do calendário (ex.: anteriores à Semana 1) são ignorados.
  *
- * IMPORTANTE: total_nf_sem_frete é um valor POR NF, repetido em cada linha de
- * item da base `vendas`. Somar linha a linha multiplica o valor pelo nº de
- * itens da NF (mesma causa do bug do card "Valores Consolidados", corrigido no
- * dashboard_stats.js). Aqui o valor é agregado UMA VEZ POR NF: MAX por
- * numero_nfe dentro da semana e soma dos máximos no fim — idêntico à lógica do
- * card (SUM sobre MAX agrupado por numero_nfe). NF sem número cai num único
- * grupo "vazio" por semana, como no backend. Os demais campos (total_linha,
- * valor_liquido, custo_total) são por item e continuam somando por linha.
- * total_nf_novo segue a MESMA regra de NF (MAX por numero_nfe) que
- * total_nf_sem_frete: é um valor da NF inteira, repetido por item.
+ * REGRA DO USUÁRIO: TODOS os valores são SUM linha a linha — nunca MAX/MIN.
+ * Na base real total_nf_novo e total_nf_sem_frete VARIA linha a linha dentro
+ * da mesma NF (ex. NF 87821: 1363,06 / 706,13 / 1582,83), então agregar via
+ * MAX por numero_nfe subestimava o Bruto, invertendo-o contra o NET.
  */
 export function agregarValoresPorSemana<T extends Record<string, unknown>>(
   vendas: T[],
@@ -177,57 +171,17 @@ export function agregarValoresPorSemana<T extends Record<string, unknown>>(
     })
   }
 
-  // MAX de total_nf_sem_frete por numero_nfe, dentro de cada semana
-  const maxNfSemFretePorSemana = new Map<number, Map<string, number>>()
-  // MAX de total_nf_novo por numero_nfe, dentro de cada semana (valor POR NF)
-  const maxNfNovoPorSemana = new Map<number, Map<string, number>>()
-
   for (const venda of vendas) {
     const sem = encontrarSemanaDaData(venda[campoData] as string | null | undefined, semanas)
     if (!sem) continue
     const acc = porSemana.get(sem.numero)
     if (!acc) continue
+    acc.valorTotalBruto += Number(venda.total_nf_novo) || 0
     acc.valorTotalMercadoria += Number(venda.total_linha) || 0
     acc.valorLiquidoTotal += Number(venda.valor_liquido) || 0
+    acc.valorTotalNfSemFrete += Number(venda.total_nf_sem_frete) || 0
     acc.custoTotal += Number(venda.custo_total) || 0
     acc.linhas += 1
-
-    const nfKey = String(venda.numero_nfe ?? '').trim()
-
-    // total_nf_novo é valor POR NF (repetido por item): MAX por NF
-    let maxNovoPorNf = maxNfNovoPorSemana.get(sem.numero)
-    if (!maxNovoPorNf) {
-      maxNovoPorNf = new Map<string, number>()
-      maxNfNovoPorSemana.set(sem.numero, maxNovoPorNf)
-    }
-    const valorNfNovo = Number(venda.total_nf_novo) || 0
-    maxNovoPorNf.set(nfKey, Math.max(maxNovoPorNf.get(nfKey) ?? 0, valorNfNovo))
-
-    let maxPorNf = maxNfSemFretePorSemana.get(sem.numero)
-    if (!maxPorNf) {
-      maxPorNf = new Map<string, number>()
-      maxNfSemFretePorSemana.set(sem.numero, maxPorNf)
-    }
-    const valorNf = Number(venda.total_nf_sem_frete) || 0
-    maxPorNf.set(nfKey, Math.max(maxPorNf.get(nfKey) ?? 0, valorNf))
-  }
-
-  // Valor Total NF sem frete da semana = soma dos MAX por NF
-  for (const [numero, maxPorNf] of maxNfSemFretePorSemana) {
-    const acc = porSemana.get(numero)
-    if (!acc) continue
-    let total = 0
-    for (const valor of maxPorNf.values()) total += valor
-    acc.valorTotalNfSemFrete = total
-  }
-
-  // Valor Total (Bruto) da semana = soma dos MAX de total_nf_novo por NF
-  for (const [numero, maxPorNf] of maxNfNovoPorSemana) {
-    const acc = porSemana.get(numero)
-    if (!acc) continue
-    let total = 0
-    for (const valor of maxPorNf.values()) total += valor
-    acc.valorTotalBruto = total
   }
 
   return semanas.map((semana) => porSemana.get(semana.numero) as SemanaValores)

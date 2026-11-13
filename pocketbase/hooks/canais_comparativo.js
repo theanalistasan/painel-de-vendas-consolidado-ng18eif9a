@@ -347,13 +347,20 @@ var __canaisComparativoHandler = function (e) {
     }
 
     // 4. Executa agregação por ano_mes, codigo_cliente, nome_cliente
+    // REGRA Silvio (0.0.357): valor do gráfico = SUM(total_nf_novo) LINHA A LINHA
+    // na base bruta `vendas` (Valor Total Bruto; nunca MAX/MIN por NF nem
+    // total_linha). A resumo não tem a coluna — sai da base bruta.
     var whereClause = sqlParts.join(' AND ')
+    var whereClauseVendas = whereClause.replace(
+      /ano_mes IN \('[^']+', '[^']+'\)/,
+      "(substr(data_lancamento, 1, 7) IN ('" + ymAtual + "', '" + ymAnterior + "'))",
+    )
     var sqlQuery =
-      "SELECT ano_mes AS ym, COALESCE(codigo_cliente,'') AS cc, COALESCE(nome_cliente,'') AS nc, " +
-      'COALESCE(SUM(total_linha), 0) AS total ' +
-      'FROM resumo_vendas_mensal WHERE ' +
-      whereClause +
-      ' GROUP BY ano_mes, codigo_cliente, nome_cliente'
+      "SELECT substr(data_lancamento, 1, 7) AS ym, COALESCE(codigo_cliente,'') AS cc, COALESCE(nome_cliente,'') AS nc, " +
+      'COALESCE(SUM(COALESCE(total_nf_novo,0)), 0) AS total ' +
+      'FROM vendas WHERE ' +
+      whereClauseVendas +
+      ' GROUP BY substr(data_lancamento, 1, 7), codigo_cliente, nome_cliente'
 
     var salesRows = arrayOf(
       new DynamicModel({

@@ -829,7 +829,7 @@ export default function DashboardCanais() {
             {/* Vendas por Grupo do Item */}
             <ChartCard
               title="Vendas por Grupo do Item"
-              description="Distribuição do faturamento por grupo consolidado"
+              description={`Distribuição do ${TITULO_VALOR_TOTAL_BRUTO} por grupo consolidado`}
             >
               {chartGrupoItem.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
@@ -859,10 +859,10 @@ export default function DashboardCanais() {
                       tickFormatter={(val) => `R$ ${(val / 1000).toFixed(0)}k`}
                     />
                     <Tooltip
-                      formatter={currencyFormatter('Faturamento')}
+                      formatter={currencyFormatter(TITULO_VALOR_TOTAL_BRUTO)}
                       contentStyle={tooltipContentStyle}
                     />
-                    <Bar dataKey="value" name="Faturamento" radius={[4, 4, 0, 0]}>
+                    <Bar dataKey="value" name={TITULO_VALOR_TOTAL_BRUTO} radius={[4, 4, 0, 0]}>
                       {chartGrupoItem.map((entry, index) => {
                         const color =
                           GRUPO_COLORS[entry.name] ||
@@ -878,7 +878,7 @@ export default function DashboardCanais() {
             {/* Venda Mensal por Grupo do Item */}
             <ChartCard
               title="Venda Mensal por Grupo do Item"
-              description="Evolução mensal do faturamento por grupo de item (últimos 6 meses)"
+              description={`Evolução mensal do ${TITULO_VALOR_TOTAL_BRUTO} por grupo de item (últimos 6 meses)`}
             >
               {monthlyGroupData.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
@@ -1042,7 +1042,7 @@ export default function DashboardCanais() {
           {/* Charts Grid: Top Vendedores & Top Clientes */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ChartCard
-              title="Top Vendedores (Faturamento)"
+              title={`Top Vendedores (${TITULO_VALOR_TOTAL_BRUTO})`}
               description="Ranking dos vendedores com maior volume financeiro"
             >
               <ResponsiveContainer width="100%" height="100%">
@@ -1077,7 +1077,7 @@ export default function DashboardCanais() {
             </ChartCard>
 
             <ChartCard
-              title="Top Clientes (Faturamento)"
+              title={`Top Clientes (${TITULO_VALOR_TOTAL_BRUTO})`}
               description="Principais compradores consolidados"
             >
               <ResponsiveContainer width="100%" height="100%">
@@ -1146,18 +1146,11 @@ export default function DashboardCanais() {
                     height={36}
                     formatter={(value) => (
                       <span className="text-xs font-bold text-slate-700 capitalize">
-                        {value === 'faturamento'
-                          ? TITULO_VALOR_TOTAL_BRUTO
-                          : TITULO_VALOR_LIQUIDO_NET}
+                        {value === 'bruto' ? TITULO_VALOR_TOTAL_BRUTO : TITULO_VALOR_LIQUIDO_NET}
                       </span>
                     )}
                   />
-                  <Bar
-                    dataKey="faturamento"
-                    name="faturamento"
-                    fill={COLOR_BLUE}
-                    radius={[4, 4, 0, 0]}
-                  />
+                  <Bar dataKey="bruto" name="bruto" fill={COLOR_BLUE} radius={[4, 4, 0, 0]} />
                   <Bar dataKey="liquido" name="liquido" fill="#0D9488" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

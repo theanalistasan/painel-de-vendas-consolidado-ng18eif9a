@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge'
 import { formatCurrency, formatNumber } from '@/lib/formatters'
 import { getJpClass, getJpClassBadgeStyle } from '@/lib/jp-class'
 import type { SemanaMes } from '@/lib/semanas'
-import { TITULO_VALOR_MERCADORIA, TITULO_VALOR_LIQUIDO_NET } from '@/lib/valor-titulos'
+import { TITULO_VALOR_TOTAL_BRUTO, TITULO_VALOR_LIQUIDO_NET } from '@/lib/valor-titulos'
 import type { VendaConsolidada } from '@/types/sales'
 
 export interface VendaComSemana extends VendaConsolidada {
@@ -44,7 +44,7 @@ export type SortField =
   | 'nome_cliente'
   | 'tipo_cliente'
   | 'quantidade'
-  | 'total_linha'
+  | 'total_nf_novo'
   | 'valor_liquido'
 
 export type SortDir = 'asc' | 'desc'
@@ -139,7 +139,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
     nameB: string | number,
   ): number => {
     let diff = 0
-    if (sortField === 'total_linha') {
+    if (sortField === 'total_nf_novo') {
       diff = a.totalValor - b.totalValor
     } else if (sortField === 'valor_liquido') {
       diff = a.totalLiquido - b.totalLiquido
@@ -200,10 +200,10 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
           valA = a.data_lancamento || ''
           valB = b.data_lancamento || ''
           break
-        case 'total_linha':
+        case 'total_nf_novo':
         default:
-          valA = Number(a.total_linha) || 0
-          valB = Number(b.total_linha) || 0
+          valA = Number(a.total_nf_novo) || 0
+          valB = Number(b.total_nf_novo) || 0
           break
       }
 
@@ -291,7 +291,8 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
 
             for (const v of vList) {
               const q = Number(v.quantidade) || 0
-              const val = Number(v.total_linha) || 0
+              // Valor Total (Bruto) = total_nf_novo, SUM linha a linha (regra do usuário: SEMPRE SUM)
+              const val = Number(v.total_nf_novo) || 0
               const liq = Number(v.valor_liquido) || 0
               l4Qtd += q
               l4Valor += val
@@ -319,7 +320,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
           // Ordenar L4 (Itens): ordem alfabética crescente (A→Z) por padrão ou por métrica se clicado
           l4Nodes.sort((a, b) => {
             if (
-              sortField === 'total_linha' ||
+              sortField === 'total_nf_novo' ||
               sortField === 'valor_liquido' ||
               sortField === 'quantidade'
             ) {
@@ -359,7 +360,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
         // Ordenar L3 (Grupos): ordem alfabética crescente (A→Z) por padrão ou por métrica se clicado
         l3Nodes.sort((a, b) => {
           if (
-            sortField === 'total_linha' ||
+            sortField === 'total_nf_novo' ||
             sortField === 'valor_liquido' ||
             sortField === 'quantidade'
           ) {
@@ -393,7 +394,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
       // Ordenar L2 (Semanas): ordem alfabética natural crescente (A→Z: "Semana 1", "Semana 2", ...) por padrão ou por métrica se clicado
       l2Nodes.sort((a, b) => {
         if (
-          sortField === 'total_linha' ||
+          sortField === 'total_nf_novo' ||
           sortField === 'valor_liquido' ||
           sortField === 'quantidade'
         ) {
@@ -421,7 +422,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
     // Ordenar L1 (JP-Class): ordem alfabética crescente (A→Z: DGS, HARD, INKS, OTHERS, Sem classe) por padrão ou por métrica se clicado
     l1Nodes.sort((a, b) => {
       if (
-        sortField === 'total_linha' ||
+        sortField === 'total_nf_novo' ||
         sortField === 'valor_liquido' ||
         sortField === 'quantidade'
       ) {
@@ -444,7 +445,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
     } else {
       setSortField(field)
       setSortDir(
-        field === 'total_linha' || field === 'valor_liquido' || field === 'quantidade'
+        field === 'total_nf_novo' || field === 'valor_liquido' || field === 'quantidade'
           ? 'desc'
           : 'asc',
       )
@@ -515,16 +516,16 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
     }
   }, [hierarchy, loading, initialCollapseApplied])
 
-  // Retorna true se a ordenação atual é por valores numéricos (total_linha, valor_liquido, quantidade)
+  // Retorna true se a ordenação atual é por valores numéricos (total_nf_novo, valor_liquido, quantidade)
   const isNumericSort =
-    sortField === 'total_linha' || sortField === 'valor_liquido' || sortField === 'quantidade'
+    sortField === 'total_nf_novo' || sortField === 'valor_liquido' || sortField === 'quantidade'
 
   // Retorna o rótulo de indicação da ordenação atual
   const getSortDescription = () => {
     if (isNumericSort) {
       const fieldName =
-        sortField === 'total_linha'
-          ? TITULO_VALOR_MERCADORIA
+        sortField === 'total_nf_novo'
+          ? TITULO_VALOR_TOTAL_BRUTO
           : sortField === 'valor_liquido'
             ? TITULO_VALOR_LIQUIDO_NET
             : 'Quantidade'
@@ -540,7 +541,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
     let liquido = 0
     for (const it of filteredItems) {
       qtd += Number(it.quantidade) || 0
-      valor += Number(it.total_linha) || 0
+      valor += Number(it.total_nf_novo) || 0
       liquido += Number(it.valor_liquido) || 0
     }
     return {
@@ -669,11 +670,11 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
                 {renderSortIndicator('quantidade')}
               </th>
               <th
-                onClick={() => handleSort('total_linha')}
+                onClick={() => handleSort('total_nf_novo')}
                 className="py-3 px-3 text-right cursor-pointer hover:bg-slate-100/80 transition-colors border-r border-slate-100 w-36 whitespace-nowrap"
               >
-                <span>{TITULO_VALOR_MERCADORIA}</span>
-                {renderSortIndicator('total_linha')}
+                <span>{TITULO_VALOR_TOTAL_BRUTO}</span>
+                {renderSortIndicator('total_nf_novo')}
               </th>
               <th
                 onClick={() => handleSort('valor_liquido')}
@@ -688,7 +689,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
           <tbody className="divide-y divide-slate-100 text-slate-700">
             {loading ? (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-slate-500">
+                <td colSpan={6} className="py-12 text-center text-slate-500">
                   <div className="inline-flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-[#0B6E99] border-t-transparent rounded-full animate-spin" />
                     <span>Carregando dados de vendas do período...</span>
@@ -697,7 +698,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
               </tr>
             ) : hierarchy.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-16 text-center text-slate-500">
+                <td colSpan={6} className="py-16 text-center text-slate-500">
                   <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                   <p className="font-semibold text-slate-700">
                     Nenhuma venda encontrada nas semanas deste mês
@@ -1081,9 +1082,9 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
                                                     {formatNumber(venda.quantidade)}
                                                   </td>
 
-                                                  {/* Coluna 6: Total Vendas */}
+                                                  {/* Coluna 6: Valor Total (Bruto) */}
                                                   <td className="py-1.5 px-3 text-right border-r border-slate-100 text-slate-800 tabular-nums text-[11px] font-medium">
-                                                    {formatCurrency(venda.total_linha)}
+                                                    {formatCurrency(venda.total_nf_novo)}
                                                   </td>
 
                                                   {/* Coluna 7: Valor Líquido */}
@@ -1127,7 +1128,7 @@ export function JpClassRelatorio({ items, loading = false }: JpClassRelatorioPro
             <strong className="text-slate-900 font-bold">{formatNumber(totalGeral.qtd)} un.</strong>
           </div>
           <div>
-            {TITULO_VALOR_MERCADORIA} total:{' '}
+            {TITULO_VALOR_TOTAL_BRUTO} total:{' '}
             <strong className="text-emerald-700 font-bold">
               {formatCurrency(totalGeral.valor)}
             </strong>

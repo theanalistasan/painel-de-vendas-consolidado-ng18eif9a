@@ -404,18 +404,6 @@ function VendasRelatorioRowComponent({
                 </div>
               </td>
             )
-          case 'preco_item':
-            return (
-              <td
-                key={col.key}
-                style={cellStyle}
-                className="py-2 px-3 text-right font-medium text-slate-700 tabular-nums border-r border-slate-100"
-              >
-                <div className={isExpanded ? '' : 'truncate'}>
-                  {formatCurrency(item.preco_item)}
-                </div>
-              </td>
-            )
           case 'preco_unitario':
             return (
               <td

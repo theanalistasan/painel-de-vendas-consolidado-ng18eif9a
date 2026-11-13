@@ -97,11 +97,12 @@ describe('Cálculo de Semanas do Mês (JP-Class)', () => {
   })
 })
 
-describe('agregarValoresPorSemana — dedupe de total_nf_sem_frete por NF', () => {
+describe('agregarValoresPorSemana — todos os valores SUM linha a linha (regra do usuário)', () => {
   const semanas = getSemanasDoMes(2026, 10)
 
-  // Mesma NF repetida em 3 itens: total_nf_sem_frete é valor POR NF e deve
-  // entrar UMA VEZ na semana (MAX por numero_nfe), não 3x.
+  // REGRA DO USUÁRIO: "Valor Total (Bruto) é a soma da coluna Valor Total Novo e
+  // Valor Líquido (NET) é a soma de Valor Líquido" — SEMPRE SUM, nunca MAX/MIN.
+  // Na base real total_nf_novo/total_nf_sem_frete VARIA linha a linha na mesma NF.
   const venda = (
     numeroNfe: string,
     dataLancamento: string,
@@ -117,86 +118,96 @@ describe('agregarValoresPorSemana — dedupe de total_nf_sem_frete por NF', () =
     ...overrides,
   })
 
-  it('soma total_nf_sem_frete uma única vez por NF (MAX por numero_nfe)', () => {
+  it('soma total_nf_novo e total_nf_sem_frete linha a linha, mesmo na mesma NF', () => {
     const res = agregarValoresPorSemana(
       [
-        venda('NF-1', '2026-10-05', { total_nf_sem_frete: 500 }),
-        venda('NF-1', '2026-10-06', { total_nf_sem_frete: 500 }),
-        venda('NF-1', '2026-10-07', { total_nf_sem_frete: 500 }),
-        venda('NF-2', '2026-10-06', { total_nf_sem_frete: 300 }),
+        venda('NF-1', '2026-10-05', { total_nf_novo: 600, total_nf_sem_frete: 500 }),
+        venda('NF-1', '2026-10-06', { total_nf_novo: 600, total_nf_sem_frete: 500 }),
+        venda('NF-1', '2026-10-07', { total_nf_novo: 600, total_nf_sem_frete: 500 }),
+        venda('NF-2', '2026-10-06', { total_nf_novo: 400, total_nf_sem_frete: 300 }),
       ],
       semanas,
     )
 
-    // Semana 1: MAX(NF-1) = 500 + MAX(NF-2) = 300 => 800 (e não 500*3 + 300 = 1800)
-    expect(res[0].valorTotalNfSemFrete).toBe(800)
+    // Semana 1: (600+600+600) + 400 = 2200 (SUM, e não MAX por NF = 1000)
+    expect(res[0].valorTotalBruto).toBe(2200)
+    // Sem frete: (500+500+500) + 300 = 1800 (SUM, e não MAX por NF = 800)
+    expect(res[0].valorTotalNfSemFrete).toBe(1800)
     // Campos por item continuam somando por linha
     expect(res[0].valorTotalMercadoria).toBe(400)
     expect(res[0].valorLiquidoTotal).toBe(360)
     expect(res[0].custoTotal).toBe(160)
   })
 
-  it('soma total_nf_sem_frete linha a linha quando numero_nfe vem vazio em todas (fallback compatível com base antiga)', () => {
+  it('caso real do bug: total_nf_novo VARIA linha a linha na mesma NF e o MAX subestimava o Bruto', () => {
+    // NF 87821 (base real): 1363,06 / 706,13 / 1582,83 — MAX pegaria só 1582,83
     const res = agregarValoresPorSemana(
       [
-        venda('', '2026-10-05', { total_nf_sem_frete: 500 }),
-        venda('', '2026-10-06', { total_nf_sem_frete: 500 }),
+        venda('87821', '2026-10-05', { total_nf_novo: 1363.06, valor_liquido: 500 }),
+        venda('87821', '2026-10-06', { total_nf_novo: 706.13, valor_liquido: 400 }),
+        venda('87821', '2026-10-07', { total_nf_novo: 1582.83, valor_liquido: 300 }),
       ],
       semanas,
     )
-    // Sem numero_nfe, todas caem num único grupo "vazio": MAX = 500 (uma vez por NF "vazia")
-    expect(res[0].valorTotalNfSemFrete).toBe(500)
+    // SUM linha a linha = 3652,02
+    expect(res[0].valorTotalBruto).toBeCloseTo(3652.02, 2)
+    expect(res[0].valorLiquidoTotal).toBeCloseTo(1200, 2)
+    // Regra do usuário: Bruto ≥ NET
+    expect(res[0].valorTotalBruto).toBeGreaterThanOrEqual(res[0].valorLiquidoTotal)
   })
 
-  it('usa o valor máximo quando a mesma NF tem total_nf_sem_frete divergente entre linhas', () => {
+  it('Bruto ≥ NET consistentemente em semanas com várias NFs', () => {
     const res = agregarValoresPorSemana(
       [
-        venda('NF-9', '2026-10-12', { total_nf_sem_frete: 250 }),
-        venda('NF-9', '2026-10-13', { total_nf_sem_frete: 300 }),
-        venda('NF-9', '2026-10-14', { total_nf_sem_frete: 300 }),
+        venda('NF-A', '2026-10-05', { total_nf_novo: 1000, valor_liquido: 900 }),
+        venda('NF-A', '2026-10-06', { total_nf_novo: 1200, valor_liquido: 950 }),
+        venda('NF-B', '2026-10-08', { total_nf_novo: 2000, valor_liquido: 1800 }),
       ],
       semanas,
     )
-    expect(res[1].valorTotalNfSemFrete).toBe(300)
+    expect(res[0].valorTotalBruto).toBe(4200)
+    expect(res[0].valorLiquidoTotal).toBe(3650)
+    expect(res[0].valorTotalBruto).toBeGreaterThanOrEqual(res[0].valorLiquidoTotal)
   })
 
   it('mantém o valor total do mês igual à soma das semanas e semanas sem vendas em R$ 0,00', () => {
     const res = agregarValoresPorSemana(
       [
-        venda('NF-1', '2026-10-05', { total_nf_sem_frete: 500 }),
-        venda('NF-2', '2026-10-19', { total_nf_sem_frete: 700 }),
+        venda('NF-1', '2026-10-05', { total_nf_novo: 500 }),
+        venda('NF-2', '2026-10-19', { total_nf_novo: 700 }),
       ],
       semanas,
     )
-    expect(res[0].valorTotalNfSemFrete).toBe(500)
-    expect(res[1].valorTotalNfSemFrete).toBe(700)
-    expect(res[2].valorTotalNfSemFrete).toBe(0)
-    expect(res[3].valorTotalNfSemFrete).toBe(0)
-    const totalMes = res.reduce((acc, s) => acc + s.valorTotalNfSemFrete, 0)
+    expect(res[0].valorTotalBruto).toBe(500)
+    expect(res[1].valorTotalBruto).toBe(700)
+    expect(res[2].valorTotalBruto).toBe(0)
+    expect(res[3].valorTotalBruto).toBe(0)
+    const totalMes = res.reduce((acc, s) => acc + s.valorTotalBruto, 0)
     expect(totalMes).toBe(1200)
   })
 
-  it('mesma NF em semanas diferentes conta uma vez em cada semana', () => {
-    // Semana 4 de out/2026 transborda para 01/11: NF com 2 linhas na mesma semana
+  it('mesma NF em semanas diferentes soma em cada semana', () => {
+    // Semana 4 de out/2026 transborda para 01/11
     const res = agregarValoresPorSemana(
       [
-        venda('NF-4', '2026-10-26', { total_nf_sem_frete: 900 }),
-        venda('NF-4', '2026-10-27', { total_nf_sem_frete: 900 }),
-        venda('NF-4', '2026-11-01', { total_nf_sem_frete: 900 }),
+        venda('NF-4', '2026-10-26', { total_nf_novo: 900, total_nf_sem_frete: 900 }),
+        venda('NF-4', '2026-10-27', { total_nf_novo: 900, total_nf_sem_frete: 900 }),
+        venda('NF-4', '2026-11-01', { total_nf_novo: 900, total_nf_sem_frete: 900 }),
       ],
       semanas,
     )
-    // As 3 linhas caem na Semana 4 => MAX único = 900
-    expect(res[3].valorTotalNfSemFrete).toBe(900)
-    // NF "dividida" entre semanas conta em cada uma (valor por NF em cada recorte)
+    // As 3 linhas caem na Semana 4 => SUM = 2700
+    expect(res[3].valorTotalBruto).toBe(2700)
+    expect(res[3].valorTotalNfSemFrete).toBe(2700)
+    // NF "dividida" entre semanas soma em cada uma
     const res2 = agregarValoresPorSemana(
       [
-        venda('NF-5', '2026-10-11', { total_nf_sem_frete: 400 }),
-        venda('NF-5', '2026-10-12', { total_nf_sem_frete: 400 }),
+        venda('NF-5', '2026-10-11', { total_nf_novo: 400 }),
+        venda('NF-5', '2026-10-12', { total_nf_novo: 400 }),
       ],
       semanas,
     )
-    expect(res2[0].valorTotalNfSemFrete).toBe(400)
-    expect(res2[1].valorTotalNfSemFrete).toBe(400)
+    expect(res2[0].valorTotalBruto).toBe(400)
+    expect(res2[1].valorTotalBruto).toBe(400)
   })
 })

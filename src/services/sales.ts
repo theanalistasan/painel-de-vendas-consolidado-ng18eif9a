@@ -551,6 +551,8 @@ export interface DashboardStatsResult {
       mes: string
       faturamento: number
       liquido: number
+      /** Valor Total (Bruto) = SUM(total_nf_novo) linha a linha (regra Visão Canais) */
+      bruto?: number
       devolucoes: number
       faturamento_ano_anterior: number
       faturamento_ano_retrasado?: number

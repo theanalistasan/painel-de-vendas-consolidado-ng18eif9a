@@ -11,6 +11,9 @@
 // (iv) Filtros de período/tipo/grupo/utilização funcionam sobre os resumos.
 // (v) Mapa do Brasil com ranking por região e pinos de revendas com faturamento continuam funcionando.
 // (vi) Filtros iniciais preservados.
+// (vii) REGRA Silvio (0.0.357): em TODAS as séries/gráficos da Visão Canais o
+//     valor é o Valor Total (Bruto) = SUM(total_nf_novo) LINHA A LINHA — nunca
+//     MAX/MIN por NF nem total_linha.
 var __dashboardStatsHandler = (e) => {
   const startTime = Date.now()
   const MAX_EXEC_TIME_MS = 25000 // Teto reduzido para 25s
@@ -313,9 +316,9 @@ var __dashboardStatsHandler = (e) => {
       if (t === 'boolean') return 'b:' + String(value)
       return 'x:' + String(value)
     }
-    // Sufixo -v2: invalida números velhos calculados com MAX por NF (KPIs agora
+    // Sufixo -v3: invalida números velhos calculados com MAX por NF (KPIs agora
     // somam total_nf_* linha a linha, decisão Silvio — bater com o Excel do gerente).
-    const cacheKey = 'v2:' + stableCacheKey(f || {})
+    const cacheKey = 'v3:' + stableCacheKey(f || {})
     const now = Date.now()
     let cachedEntry = null
     try {
@@ -810,6 +813,19 @@ var __dashboardStatsHandler = (e) => {
         .concat(sqlParts.slice(sqlPartsPeriodoEnd))
         .join(' AND ') || '1=1'
     const sqlWhereBase = sqlDimParts.length > 0 ? sqlDimParts.join(' AND ') : '1=1'
+    // Mesma construção para a base bruta `vendas`: cláusulas SEM o recorte de
+    // período (alimenta o gráfico mensal por Grupo do Item, sempre últimos 6
+    // meses). As cláusulas de janela de data (faixas/OR de faixas e dias) são
+    // as mesmas reconhecidas por isDataWindowPart (seção 1.1).
+    const isDataWindowPartVendas = (p) =>
+      p.indexOf('data_lancamento >=') === 0 ||
+      p.indexOf('data_lancamento <') === 0 ||
+      (p.indexOf('(data_lancamento >=') === 0 && p.indexOf(' OR ') >= 0) ||
+      p.indexOf('substr(data_lancamento, 9, 2)') === 0
+    const vendasDimSemPeriodo = sqlVendasParts.filter((p) => !isDataWindowPartVendas(p))
+    const sqlWhereVendasSemPeriodo =
+      (vendasDimSemPeriodo.length > 0 ? vendasDimSemPeriodo.join(' AND ') : '1=1') +
+      " AND (UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS')"
     const sqlWhereHistorical = sqlHistParts.length > 0 ? sqlHistParts.join(' AND ') : '1=1'
     const sqlWhereGlobalRestricted =
       sqlGlobalRestrictedParts.length > 0 ? sqlGlobalRestrictedParts.join(' AND ') : '1=1'
@@ -817,6 +833,7 @@ var __dashboardStatsHandler = (e) => {
       sqlGlobalRestrictedVendasParts.length > 0
         ? sqlGlobalRestrictedVendasParts.join(' AND ')
         : '1=1'
+    const sqlWhereGlobalRestrictedVendasSemPeriodo = sqlWhereGlobalRestrictedVendas
     // Guard: sem partes de filtro, usa 1=1 para não gerar "WHERE " inválido
     const sqlWhereVendas = sqlVendasParts.length > 0 ? sqlVendasParts.join(' AND ') : '1=1'
 
@@ -850,6 +867,7 @@ var __dashboardStatsHandler = (e) => {
     // bruta `vendas` agregados POR NF (MAX por numero_nfe — o valor é constante
     // por NF e repete em cada item; SUM por linha multiplicaria pelo nº de itens;
     // mesma convenção de vendas_export.js), respeitando TODOS os filtros ativos
+    // [REGRA 0.0.357 abaixo trocou esse MAX por SUM linha a linha]
     // (sqlWhereVendas: período + dimensões + exclusão de SERVICOS).
     let kpis = {
       faturamento: 0,
@@ -900,8 +918,10 @@ var __dashboardStatsHandler = (e) => {
       }
     }
 
-    // Valor Total NF sem frete e Valor Total da NF: valores por NF na base bruta
-    // (MAX por numero_nfe; uma NF sem número cai num único grupo "vazio").
+    // Valor Total NF sem frete e Valor Total da NF: SUM LINHA A LINHA na base
+    // bruta (regra Silvio: SEMPRE SUM, nunca MAX/MIN — total_nf_novo VARIA entre
+    // linhas da MESMA NF, ex. NF 87821: 1363,06/706,13/1582,83; MAX subestimava
+    // e invertia Bruto < NET no quadro Valores por Semana).
     try {
       const nfSql =
         'SELECT COALESCE(SUM(t.f),0) AS f, COALESCE(SUM(t.g),0) AS g FROM (' +
@@ -950,8 +970,9 @@ var __dashboardStatsHandler = (e) => {
     // 1.1) porAno — breakdown por ano dos 5 KPIs de valor
     // (Valor Total de Mercadorias, Valor Líquido Total, Valor Total NF sem
     // frete, Valor Total da NF e Custo Total), calculado na MESMA base bruta
-    // `vendas` e com o MESMO critério dos KPIs acima (MAX por numero_nfe para
-    // os 2 valores de NF; SUM por linha para mercadorias/líquido/custo).
+    // `vendas` e com o MESMO critério dos KPIs acima (SUM LINHA A LINHA para os
+    // 2 valores de NF — regra Silvio 0.0.357; SUM por linha para mercadorias/
+    // líquido/custo).
     // Alimenta o gráfico de barras por ano quando o período tem 2+ anos.
     // ============================================================
     const porAno = []
@@ -1044,7 +1065,7 @@ var __dashboardStatsHandler = (e) => {
           )
           .all(linhaRowsAno)
 
-        // Valores por NF (MAX por numero_nfe — valor é por NF, repete por item)
+        // Valores por NF (SUM LINHA A LINHA — regra Silvio: nunca MAX/MIN)
         const nfRowsAno = arrayOf(new DynamicModel({ f: '', g: '' }))
         $app
           .db()
@@ -1109,6 +1130,8 @@ var __dashboardStatsHandler = (e) => {
 
     // Ciclo C: vendasPorMes respeita EXCLUSIVAMENTE os 5 filtros globais (sqlWhereGlobalRestricted),
     // ignorando vendedor/cliente, canal, base, período selecionado etc.
+    // REGRA Silvio (0.0.357): a Visão Canais usa esta série no gráfico NET x Bruto —
+    // `bruto` = SUM(total_nf_novo) LINHA A LINHA na base bruta `vendas` (nunca MAX/MIN).
     const mesSql =
       "SELECT COALESCE(ano_mes,'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b, COALESCE(SUM(valor_liquido),0) AS c, " +
       'COALESCE(SUM(total_devolucao),0) AS d ' +
@@ -1119,6 +1142,21 @@ var __dashboardStatsHandler = (e) => {
       ') ' +
       "GROUP BY COALESCE(ano_mes,'Sem informação') ORDER BY 1 ASC"
     const mesRows = runAgg(mesSql)
+
+    const brutoRowsMes = arrayOf(new DynamicModel({ a: '', b: '' }))
+    try {
+      const brutoSqlMes =
+        'SELECT substr(data_lancamento, 1, 7) AS a, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
+        'FROM vendas WHERE ' +
+        sqlWhereGlobalRestrictedVendasSemPeriodo +
+        ' AND substr(data_lancamento, 1, 7) IN (' +
+        janelaInClause +
+        ') ' +
+        'GROUP BY substr(data_lancamento, 1, 7) ORDER BY 1 ASC'
+      $app.db().newQuery(brutoSqlMes).all(brutoRowsMes)
+    } catch (brutoErrMes) {
+      console.error('dashboard_stats: bruto mensal (vendas) falhou:', brutoErrMes)
+    }
 
     const monthNames = [
       'Jan',
@@ -1134,6 +1172,11 @@ var __dashboardStatsHandler = (e) => {
       'Nov',
       'Dez',
     ]
+
+    const brutoMapMes = {}
+    for (let bi = 0; bi < brutoRowsMes.length; bi++) {
+      brutoMapMes[brutoRowsMes[bi].a] = toNum(brutoRowsMes[bi].b)
+    }
 
     const mesMapAtual = {}
     const prevYearMap = {}
@@ -1170,6 +1213,7 @@ var __dashboardStatsHandler = (e) => {
         mes: monthNames[mo - 1] + '/' + y.slice(2),
         faturamento: atual.faturamento,
         liquido: atual.liquido,
+        bruto: brutoMapMes[ym] || 0,
         devolucoes: atual.devolucoes,
         faturamento_ano_anterior: prevYearMap[prevKey] || 0,
         faturamento_ano_retrasado: prevYear2Map[prev2Key] || 0,
@@ -1212,30 +1256,34 @@ var __dashboardStatsHandler = (e) => {
     const multiDimRows = arrayOf(new DynamicModel({ dim: '', k: '', v: '' }))
     try {
       const dimBase = 'FROM resumo_vendas_mensal WHERE ' + sqlWhere + ' GROUP BY 2'
+      // Base bruta para as séries que precisam de total_nf_novo (Ver regra 0.0.357)
+      const vendasDimBase = 'FROM vendas WHERE ' + sqlWhereVendas + ' GROUP BY 2'
       // tipo_documento/utilizacao: linhas NFCOMDEV têm total_linha = 0 (valor em
       // valor_liquido/total_nf_novo) e DEVNF é negativa (estorno). Para os gráficos
       // mostrarem TODOS os tipos/utilizações selecionados nos filtros, usa o maior
       // entre SUM(total_linha) e SUM(valor_liquido) por chave.
-      const multiDimSql =
-        "SELECT 'grupo' AS dim, COALESCE(NULLIF(grupo_item,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
-        dimBase +
-        ' UNION ALL ' +
-        "SELECT 'vendedor' AS dim, COALESCE(NULLIF(nome_vendedor,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
-        dimBase +
-        ' UNION ALL ' +
-        "SELECT 'cliente' AS dim, COALESCE(NULLIF(nome_cliente,''),'Sem informação') AS k, COALESCE(SUM(total_linha),0) AS v " +
-        dimBase +
-        ' UNION ALL ' +
-        // 'estado' movido para a base bruta `vendas` (abaixo): a resumo_vendas_mensal
-        // NÃO tem as colunas total_nf_novo/total_nf_sem_frete — o SUM(total_nf_novo)
-        // aqui quebrava com "no such column" e a série de UF voltava vazia
-        // (log 09:15:52 "agregacao multi-dimensao falhou").
+      // REGRA Silvio (0.0.357): grupo/vendedor/cliente alimentam a Visão Canais e
+      // passam a somar total_nf_novo (Valor Total Bruto) — a resumo não tem a
+      // coluna, então essas 3 séries migram para a base bruta `vendas` (UNION ALL
+      // com rótulo dim, base resumo para as demais).
+      const multiDimSqlResumo =
         "SELECT 'tipo_documento' AS dim, COALESCE(NULLIF(tipo_documento,''),'Sem classificação') AS k, CASE WHEN COALESCE(SUM(total_linha),0) >= COALESCE(SUM(valor_liquido),0) THEN COALESCE(SUM(total_linha),0) ELSE COALESCE(SUM(valor_liquido),0) END AS v " +
         dimBase +
         ' UNION ALL ' +
         "SELECT 'utilizacao' AS dim, COALESCE(NULLIF(utilizacao,''),'Sem classificação') AS k, CASE WHEN COALESCE(SUM(total_linha),0) >= COALESCE(SUM(valor_liquido),0) THEN COALESCE(SUM(total_linha),0) ELSE COALESCE(SUM(valor_liquido),0) END AS v " +
         dimBase +
         ' ORDER BY v DESC'
+      const multiDimSqlVendas =
+        "SELECT 'grupo' AS dim, COALESCE(NULLIF(grupo_item,''),'Sem informação') AS k, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v " +
+        vendasDimBase +
+        ' UNION ALL ' +
+        "SELECT 'vendedor' AS dim, COALESCE(NULLIF(nome_vendedor,''),'Sem informação') AS k, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v " +
+        vendasDimBase +
+        ' UNION ALL ' +
+        "SELECT 'cliente' AS dim, COALESCE(NULLIF(nome_cliente,''),'Sem informação') AS k, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v " +
+        vendasDimBase +
+        ' ORDER BY v DESC'
+      const multiDimSql = multiDimSqlResumo + ' UNION ALL ' + multiDimSqlVendas
       $app.db().newQuery(multiDimSql).all(multiDimRows)
     } catch (err) {
       console.error('dashboard_stats: agregacao multi-dimensao falhou:', err)
@@ -1338,11 +1386,13 @@ var __dashboardStatsHandler = (e) => {
       }
       const revMatchClause = '(' + revPatternClauses.join(' OR ') + ')'
 
+      // REGRA Silvio (0.0.357): faturamento das revendas = SUM(total_nf_novo)
+      // LINHA A LINHA na base bruta `vendas` (a resumo não tem a coluna).
       const revSql =
-        "SELECT COALESCE(nome_cliente,'') AS a, COALESCE(SUM(total_linha),0) AS b, " +
-        'COALESCE(SUM(qtd_documentos),0) AS c, COALESCE(SUM(qtd_itens),0) AS d ' +
-        'FROM resumo_vendas_mensal WHERE ' +
-        sqlWhere +
+        "SELECT COALESCE(nome_cliente,'') AS a, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b, " +
+        'COUNT(DISTINCT numero_nfe) AS c, COUNT(*) AS d ' +
+        'FROM vendas WHERE ' +
+        sqlWhereVendas +
         " AND nome_cliente IS NOT NULL AND nome_cliente != '' AND " +
         revMatchClause +
         ' GROUP BY nome_cliente'
@@ -1387,18 +1437,20 @@ var __dashboardStatsHandler = (e) => {
       const mesesAlvoGrupo = ultimos6MesesAlvo
       const minMesTarget = mesesAlvoGrupo[0]
       const maxMesTarget = mesesAlvoGrupo[mesesAlvoGrupo.length - 1]
+      // REGRA Silvio (0.0.357): valor do gráfico = SUM(total_nf_novo) linha a
+      // linha na base bruta `vendas` (a resumo não tem a coluna).
       const gmSql =
-        "SELECT COALESCE(ano_mes,'Sem informação') AS a, " +
+        'SELECT substr(data_lancamento, 1, 7) AS a, ' +
         "COALESCE(NULLIF(grupo_item,''),'Sem informação') AS b, " +
-        'COALESCE(SUM(total_linha),0) AS c ' +
-        'FROM resumo_vendas_mensal WHERE ' +
-        sqlWhereSemPeriodo +
+        'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS c ' +
+        'FROM vendas WHERE ' +
+        sqlWhereVendasSemPeriodo +
         " AND ano_mes >= '" +
         minMesTarget +
         "' AND ano_mes <= '" +
         maxMesTarget +
         "' " +
-        "GROUP BY ano_mes, COALESCE(NULLIF(grupo_item,''),'Sem informação') " +
+        "GROUP BY substr(data_lancamento, 1, 7), COALESCE(NULLIF(grupo_item,''),'Sem informação') " +
         'ORDER BY 1 ASC'
       const gmRows = runAgg(gmSql)
 

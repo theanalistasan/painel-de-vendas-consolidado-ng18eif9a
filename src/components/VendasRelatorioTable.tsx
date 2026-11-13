@@ -52,11 +52,12 @@ export interface ColumnDef {
 // 4. Cliente (nome_cliente)
 // 5. Vendedor (vendedor_cliente/nome_vendedor)
 // 6. Item (descricao_item)
-// 7. Qtde (quantidade)
+// 7. Preço Unit. (preco_unitario) + Qtde (quantidade)
 // 8. Grupo (grupo_item)
 // 9. Utilização (utilizacao)
-// Seguidas pelas complementares de detalhamento e pelos 5 totais na ordem
+// Seguidas pelas complementares de detalhamento e pelos 4 totais na ordem
 // oficial do mapeamento NetSales v4 (Faixa Comercial e Faixa Contábil)
+// (Valor Mercadoria removido a pedido do usuário — 0.0.357)
 export const RELATORIO_COLUMNS: ColumnDef[] = [
   { key: 'data_lancamento', label: 'Data', type: 'date', sortKey: 'data_lancamento' },
   { key: 'numero_nfe', label: 'Nr. NF', type: 'text', sortKey: 'numero_nfe' },
@@ -72,7 +73,6 @@ export const RELATORIO_COLUMNS: ColumnDef[] = [
   { key: 'vendedor_cliente', label: 'Vendedor', type: 'text', sortKey: 'vendedor_cliente' },
   { key: 'descricao_item', label: 'Descrição', type: 'text', sortKey: 'descricao_item' },
   { key: 'jp_class', label: 'JP-Class', type: 'badge', sortKey: 'jp_class' },
-  { key: 'quantidade', label: 'Qtde', type: 'number', sortKey: 'quantidade', align: 'center' },
   { key: 'grupo_item', label: 'Grupo', type: 'badge', sortKey: 'grupo_item' },
   { key: 'utilizacao', label: 'Utilização', type: 'text', sortKey: 'utilizacao' },
   // Colunas complementares de enriquecimento
@@ -83,19 +83,13 @@ export const RELATORIO_COLUMNS: ColumnDef[] = [
   { key: 'nome_vendedor', label: 'Nome Vendedor', type: 'text', sortKey: 'nome_vendedor' },
   { key: 'codigo_item', label: 'Cód. Item', type: 'text', sortKey: 'codigo_item' },
   {
-    key: 'preco_item',
-    label: 'Preço Item',
-    type: 'currency',
-    sortKey: 'preco_item',
-    align: 'right',
-  },
-  {
     key: 'preco_unitario',
     label: 'Preço Unit.',
     type: 'currency',
     sortKey: 'preco_unitario',
     align: 'right',
   },
+  { key: 'quantidade', label: 'Qtde', type: 'number', sortKey: 'quantidade', align: 'center' },
   {
     key: 'total_nf_novo',
     label: 'Valor Total (Bruto)',
@@ -115,13 +109,6 @@ export const RELATORIO_COLUMNS: ColumnDef[] = [
     label: 'Valor Total (Sem Frete)',
     type: 'currency',
     sortKey: 'total_nf_sem_frete',
-    align: 'right',
-  },
-  {
-    key: 'total_linha',
-    label: 'Valor Mercadoria',
-    type: 'currency',
-    sortKey: 'total_linha',
     align: 'right',
   },
   {
@@ -158,8 +145,6 @@ export const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   jp_class: 120,
   quantidade: 90,
   grupo_item: 140,
-  total_linha: 140,
-  total_mercadoria: 170,
   numero_documento_netsales: 130,
   total_nf_novo: 150,
   total_nf_sem_frete: 160,
