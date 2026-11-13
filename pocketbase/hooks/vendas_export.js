@@ -491,6 +491,79 @@ var __vendasExportHandler = (e) => {
     const isGroupByNfe = !!(body.groupByNfe || body.collapsed)
     // Modo agrupado por Pedido (numero_documento_netsales): agrega por NF primeiro
     const isGroupByPedido = !!(body.groupByPedido || body.groupByMode === 'pedido')
+    // Item 5 do plano: modo agrupado por CÓDIGO DO ITEM — consolida o relatório de
+    // vendas em 1 linha por codigo_item, com Valor Total (Bruto) = SUM(total_nf_novo)
+    // e Valor Líquido (NET) = SUM(valor_liquido) somados linha a linha.
+    const isGroupByCodigoItem = body.groupByMode === 'codigo_item'
+
+    if (isGroupByCodigoItem) {
+      const itemRows = arrayOf(
+        new DynamicModel({
+          codigo_item: '',
+          descricao_item: '',
+          grupo_item: '',
+          itens_qtd: '',
+          nfs_qtd: '',
+          clientes_qtd: '',
+          quantidade: '',
+          total_linha: '',
+          total_nf_sem_frete: '',
+          total_nf_novo: '',
+          valor_liquido: '',
+          custo_total: '',
+        }),
+      )
+
+      $app
+        .db()
+        .newQuery(
+          'SELECT ' +
+            "COALESCE(NULLIF(TRIM(codigo_item),''),'(Sem código)') AS codigo_item, " +
+            "COALESCE(MAX(descricao_item),'') AS descricao_item, " +
+            "COALESCE(MAX(grupo_item),'') AS grupo_item, " +
+            'COUNT(*) AS itens_qtd, ' +
+            'COUNT(DISTINCT numero_nfe) AS nfs_qtd, ' +
+            'COUNT(DISTINCT codigo_cliente) AS clientes_qtd, ' +
+            'COALESCE(SUM(quantidade),0) AS quantidade, ' +
+            'COALESCE(SUM(total_linha),0) AS total_linha, ' +
+            'COALESCE(SUM(total_nf_sem_frete),0) AS total_nf_sem_frete, ' +
+            'COALESCE(SUM(total_nf_novo),0) AS total_nf_novo, ' +
+            'COALESCE(SUM(valor_liquido),0) AS valor_liquido, ' +
+            'COALESCE(SUM(custo_total),0) AS custo_total ' +
+            'FROM vendas WHERE ' +
+            sqlWhere +
+            " GROUP BY COALESCE(NULLIF(TRIM(codigo_item),''),'(Sem código)') " +
+            ' ORDER BY COALESCE(SUM(total_nf_novo),0) DESC ' +
+            ' LIMIT 100000',
+        )
+        .all(itemRows)
+
+      const itens = []
+      for (let i = 0; i < itemRows.length; i++) {
+        const r = itemRows[i]
+        itens.push({
+          codigo_item: r.codigo_item,
+          descricao_item: r.descricao_item,
+          grupo_item: r.grupo_item,
+          itens_qtd: toInt(r.itens_qtd),
+          nfs_qtd: toInt(r.nfs_qtd),
+          clientes_qtd: toInt(r.clientes_qtd),
+          quantidade: toNum(r.quantidade),
+          total_linha: toNum(r.total_linha),
+          total_nf_sem_frete: toNum(r.total_nf_sem_frete),
+          total_nf_novo: toNum(r.total_nf_novo),
+          valor_liquido: toNum(r.valor_liquido),
+          custo_total: toNum(r.custo_total),
+        })
+      }
+
+      return e.json(200, {
+        items: itens,
+        totalItems: itens.length,
+        isGrouped: true,
+        groupedBy: 'codigo_item',
+      })
+    }
 
     if (isGroupByNfe && !isGroupByPedido) {
       // Query agrupada por Nota Fiscal (numero_nfe) para consolidar em 1 linha por NF

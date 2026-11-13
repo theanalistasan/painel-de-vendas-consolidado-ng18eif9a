@@ -352,6 +352,102 @@ routerAdd(
 
     const whereSql = ' WHERE ' + whereClauses.join(' AND ')
 
+    // Item 6 do plano: agrupamentos do Relatório de Itens Faltantes.
+    // - grupoPorItem:  1 linha por CÓDIGO DE ITEM (todas as filiais/canais somados),
+    //                  com Valor Total (Bruto) em Aberto = SUM(valor_em_aberto).
+    // - grupoPorCliente: 1 linha por CLIENTE, com a soma do Valor em Aberto.
+    const grupoPor = String(body.grupoPor || body.viewMode || '').trim()
+
+    if (grupoPor === 'item' || grupoPor === 'cliente') {
+      const porItem = grupoPor === 'item'
+      const gRows = arrayOf(
+        new DynamicModel({
+          chave: '',
+          descricao: '',
+          grupo_item: '',
+          valor_aberto: '',
+          qtd_aberto: '',
+          pedidos_qtd: '',
+          clientes_qtd: '',
+          itens_qtd: '',
+          em_transito: '',
+        }),
+      )
+      const gSql = porItem
+        ? 'SELECT TRIM(codigo_item) AS chave, ' +
+          "COALESCE(MAX(descricao_item),'') AS descricao, " +
+          "COALESCE(MAX(grupo_item),'') AS grupo_item, " +
+          'CAST(COALESCE(SUM(valor_em_aberto),0.0) AS REAL) AS valor_aberto, ' +
+          'CAST(COALESCE(SUM(qtd_aberto),0.0) AS REAL) AS qtd_aberto, ' +
+          'COUNT(DISTINCT numero_pedido) AS pedidos_qtd, ' +
+          'COUNT(DISTINCT UPPER(TRIM(codigo_cliente))) AS clientes_qtd, ' +
+          'COUNT(DISTINCT TRIM(codigo_item)) AS itens_qtd, ' +
+          'CAST(COALESCE(MAX(em_transito),0.0) AS REAL) AS em_transito ' +
+          'FROM pedidos_abertos' +
+          whereSql +
+          " AND COALESCE(TRIM(codigo_item),'') != '' " +
+          'GROUP BY TRIM(codigo_item) ORDER BY valor_aberto DESC'
+        : "SELECT COALESCE(NULLIF(TRIM(codigo_cliente),''),'(Sem cliente)') AS chave, " +
+          "COALESCE(MAX(nome_cliente),'') AS descricao, " +
+          "'' AS grupo_item, " +
+          'CAST(COALESCE(SUM(valor_em_aberto),0.0) AS REAL) AS valor_aberto, ' +
+          'CAST(COALESCE(SUM(qtd_aberto),0.0) AS REAL) AS qtd_aberto, ' +
+          'COUNT(DISTINCT numero_pedido) AS pedidos_qtd, ' +
+          'COUNT(DISTINCT UPPER(TRIM(codigo_cliente))) AS clientes_qtd, ' +
+          'COUNT(DISTINCT TRIM(codigo_item)) AS itens_qtd, ' +
+          'CAST(COALESCE(MAX(em_transito),0.0) AS REAL) AS em_transito ' +
+          'FROM pedidos_abertos' +
+          whereSql +
+          " GROUP BY COALESCE(NULLIF(TRIM(codigo_cliente),''),'(Sem cliente)') " +
+          'ORDER BY valor_aberto DESC'
+
+      const gList = []
+      try {
+        $app.db().newQuery(gSql).all(gRows)
+        for (let i = 0; i < gRows.length; i++) {
+          const r = gRows[i]
+          gList.push({
+            id: (porItem ? 'item::' : 'cliente::') + r.chave,
+            chave: r.chave || '',
+            codigo_item: porItem ? r.chave || '' : '',
+            descricao: r.descricao || '',
+            grupo_item: r.grupo_item || '',
+            valor_em_aberto: toNum(r.valor_aberto),
+            qtd_aberto: toNum(r.qtd_aberto),
+            pedidos_qtd: toInt(r.pedidos_qtd),
+            clientes_qtd: toInt(r.clientes_qtd),
+            itens_qtd: toInt(r.itens_qtd),
+            em_transito: toNum(r.em_transito),
+          })
+        }
+      } catch (gErr) {
+        console.error('estoque_faltante list: agrupamento falhou:', gErr)
+        return e.json(500, {
+          error: 'Erro ao agrupar estoque faltante: ' + String(gErr),
+        })
+      }
+
+      let somaValor = 0
+      let somaQtd = 0
+      for (let i = 0; i < gList.length; i++) {
+        somaValor += gList[i].valor_em_aberto
+        somaQtd += gList[i].qtd_aberto
+      }
+
+      return e.json(200, {
+        items: [],
+        grupos: gList,
+        isGrouped: true,
+        groupedBy: grupoPor,
+        page: 1,
+        perPage: gList.length,
+        totalItems: gList.length,
+        totalPages: 1,
+        totalValor: somaValor,
+        totalQtd: somaQtd,
+      })
+    }
+
     // Consulta agregada por canal + item:
     // "relatório das linhas com Em Estoque = 0 (item, descrição, grupo, canal, clientes, qtd aberta, valor em aberto, nº de pedidos)"
     // Agrupamento por COALESCE(nome_canal, 'Sem Canal') e codigo_item
