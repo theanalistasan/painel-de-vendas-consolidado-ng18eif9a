@@ -1206,6 +1206,56 @@ var __dashboardStatsHandler = (e) => {
       brutoMapMes[brutoRowsMes[bi].a] = toNum(brutoRowsMes[bi].b)
     }
 
+    // Item 7 do plano: quebra SEMANAL dos 6 meses do gráfico "NET x Bruto por Mês".
+    // Semana = faixa de dias dentro do mês: 1 (1-7), 2 (8-14), 3 (15-21),
+    // 4 (22-28) e 5 (29-31, quando o mês tiver). Bruto = SUM(total_nf_novo),
+    // NET = SUM(valor_liquido), linha a linha na base bruta `vendas`.
+    // A soma das semanas de um mês é o total daquele mês no gráfico.
+    const semanaPorMes = {}
+    try {
+      const semRows = arrayOf(new DynamicModel({ a: '', sem: '', bruto: '', liquido: '' }))
+      const semSql =
+        'SELECT substr(data_lancamento, 1, 7) AS a, ' +
+        'CAST(((CAST(substr(data_lancamento, 9, 2) AS INTEGER) - 1) / 7) + 1 AS INTEGER) AS sem, ' +
+        'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS bruto, ' +
+        'COALESCE(SUM(COALESCE(valor_liquido,0)),0) AS liquido ' +
+        'FROM vendas WHERE ' +
+        sqlWhereGlobalRestrictedVendasSemPeriodo +
+        " AND data_lancamento IS NOT NULL AND TRIM(data_lancamento) != '' " +
+        ' AND substr(data_lancamento, 1, 7) IN (' +
+        ultimos6MesesAlvo.map((m) => "'" + m + "'").join(',') +
+        ') ' +
+        'GROUP BY substr(data_lancamento, 1, 7), sem ORDER BY 1 ASC, sem ASC'
+      $app.db().newQuery(semSql).all(semRows)
+      for (let si = 0; si < semRows.length; si++) {
+        const ym = semRows[si].a
+        const sem = parseInt(semRows[si].sem, 10)
+        if (!ym || !sem || sem < 1 || sem > 5) continue
+        if (!semanaPorMes[ym]) semanaPorMes[ym] = []
+        semanaPorMes[ym].push({
+          semana: sem,
+          bruto: toNum(semRows[si].bruto),
+          liquido: toNum(semRows[si].liquido),
+        })
+      }
+    } catch (semErr) {
+      console.error('dashboard_stats: quebra semanal por mes falhou:', semErr)
+    }
+
+    // Consolida as 5 semanas possíveis por mês (semanas ausentes = 0), garantindo
+    // série estável para o gráfico empilhado.
+    const semanasDoMes = (ym) => {
+      const map = {}
+      const lista = semanaPorMes[ym] || []
+      for (let i = 0; i < lista.length; i++) map[lista[i].semana] = lista[i]
+      const out = []
+      for (let s = 1; s <= 5; s++) {
+        const cur = map[s] || { bruto: 0, liquido: 0 }
+        out.push({ semana: s, bruto: cur.bruto, liquido: cur.liquido })
+      }
+      return out
+    }
+
     const mesMapAtual = {}
     const prevYearMap = {}
     const prevYear2Map = {}
@@ -1236,13 +1286,27 @@ var __dashboardStatsHandler = (e) => {
       const prevKey = String(parseInt(y, 10) - 1) + '-' + String(mo).padStart(2, '0')
       const prev2Key = String(parseInt(y, 10) - 2) + '-' + String(mo).padStart(2, '0')
       const atual = mesMapAtual[ym] || { faturamento: 0, liquido: 0, devolucoes: 0 }
+      // Item 7 do plano: semanas[] carrega o Bruto e o NET de cada semana (1..5)
+      // do mês, para o gráfico empilhado. `semanaBrutoTotal`/`semanaLiquidoTotal`
+      // são as somas das semanas — devem bater com `bruto` e `liquido`.
+      const semanas = semanasDoMes(ym)
+      let semanaBrutoTotal = 0
+      let semanaLiquidoTotal = 0
+      for (let sw = 0; sw < semanas.length; sw++) {
+        semanaBrutoTotal += semanas[sw].bruto
+        semanaLiquidoTotal += semanas[sw].liquido
+      }
 
       vendasPorMes.push({
         mes: monthNames[mo - 1] + '/' + y.slice(2),
+        mesIso: ym,
         faturamento: atual.faturamento,
         liquido: atual.liquido,
         bruto: brutoMapMes[ym] || 0,
         devolucoes: atual.devolucoes,
+        semanas: semanas,
+        semanaBrutoTotal: semanaBrutoTotal,
+        semanaLiquidoTotal: semanaLiquidoTotal,
         faturamento_ano_anterior: prevYearMap[prevKey] || 0,
         faturamento_ano_retrasado: prevYear2Map[prev2Key] || 0,
       })
@@ -1281,40 +1345,44 @@ var __dashboardStatsHandler = (e) => {
     // sqlWhere. Agora uma única varredura (UNION ALL com rótulo de dimensão) produz as
     // quatro listas; a ordenação por valor DESC e o LIMIT 10 (top 10) são aplicados em JS,
     // preservando exatamente os mesmos valores/números de antes.
-    const multiDimRows = arrayOf(new DynamicModel({ dim: '', k: '', v: '' }))
+    const multiDimRows = arrayOf(new DynamicModel({ dim: '', k: '', v: '', v2: '' }))
     try {
-      const dimBase = 'FROM resumo_vendas_mensal WHERE ' + sqlWhere + ' GROUP BY 2'
-      // Base bruta para as séries que precisam de total_nf_novo (Ver regra 0.0.357)
-      const vendasDimBase = 'FROM vendas WHERE ' + sqlWhereVendas + ' GROUP BY 2'
-      // tipo_documento/utilizacao: linhas NFCOMDEV têm total_linha = 0 (valor em
-      // valor_liquido/total_nf_novo) e DEVNF é negativa (estorno). Para os gráficos
-      // mostrarem TODOS os tipos/utilizações selecionados nos filtros, usa o maior
-      // entre SUM(total_linha) e SUM(valor_liquido) por chave.
       // REGRA Silvio (0.0.357): grupo/vendedor/cliente alimentam a Visão Canais e
-      // passam a somar total_nf_novo (Valor Total Bruto) — a resumo não tem a
-      // coluna, então essas 3 séries migram para a base bruta `vendas` (UNION ALL
-      // com rótulo dim, base resumo para as demais).
-      const multiDimSqlResumo =
-        "SELECT 'tipo_documento' AS dim, COALESCE(NULLIF(tipo_documento,''),'Sem classificação') AS k, CASE WHEN COALESCE(SUM(total_linha),0) >= COALESCE(SUM(valor_liquido),0) THEN COALESCE(SUM(total_linha),0) ELSE COALESCE(SUM(valor_liquido),0) END AS v " +
-        dimBase +
-        ' UNION ALL ' +
-        "SELECT 'utilizacao' AS dim, COALESCE(NULLIF(utilizacao,''),'Sem classificação') AS k, CASE WHEN COALESCE(SUM(total_linha),0) >= COALESCE(SUM(valor_liquido),0) THEN COALESCE(SUM(total_linha),0) ELSE COALESCE(SUM(valor_liquido),0) END AS v " +
-        dimBase
-      const multiDimSqlVendas =
-        "SELECT 'grupo' AS dim, COALESCE(NULLIF(grupo_item,''),'Sem informação') AS k, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v " +
-        vendasDimBase +
-        ' UNION ALL ' +
-        "SELECT 'vendedor' AS dim, COALESCE(NULLIF(nome_vendedor,''),'Sem informação') AS k, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v " +
-        vendasDimBase +
-        ' UNION ALL ' +
-        "SELECT 'cliente' AS dim, COALESCE(NULLIF(nome_cliente,''),'Sem informação') AS k, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v " +
+      // somam total_nf_novo (Valor Total Bruto) — a resumo não tem a coluna, então
+      // essas séries rodam na base bruta `vendas`.
+      // REGRA 0.0.374 (item 1 e 4 do plano): tipo_documento, utilização e grupo
+      // passam a devolver DUAS medidas por chave — v = Valor Total (Bruto)
+      // (SUM(total_nf_novo)) e v2 = Valor Líquido (NET) (SUM(valor_liquido)) —
+      // ambas linha a linha na base bruta. Sai o CASE "maior entre total_linha e
+      // valor_liquido", que escondia o par Bruto/NET.
+      const vendasDimBase = 'FROM vendas WHERE ' + sqlWhereVendas + ' GROUP BY 2'
+      const vendedorDimBase = vendasDimBase
+      const dimArm = (dim, keyExpr) =>
+        "SELECT '" +
+        dim +
+        "' AS dim, " +
+        keyExpr +
+        ' AS k, ' +
+        'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v, ' +
+        'COALESCE(SUM(COALESCE(valor_liquido,0)),0) AS v2 ' +
         vendasDimBase
       // BUG 0.0.360: ORDER BY dentro de cada braço quebra o UNION ALL do SQLite
       // ("ORDER BY clause should come after UNION ALL not before") — a agregação
-      // falhava por inteiro e grupo/vendedor/cliente voltavam VAZIOS. O ORDER BY
-      // v DESC deve vir UMA vez, no FIM do compound SELECT.
-      const multiDimSql = multiDimSqlResumo + ' UNION ALL ' + multiDimSqlVendas + ' ORDER BY v DESC'
+      // falhava por inteiro. O ORDER BY deve vir UMA vez, no FIM do compound.
+      const multiDimSql =
+        dimArm('tipo_documento', "COALESCE(NULLIF(tipo_documento,''),'Sem classificação')") +
+        ' UNION ALL ' +
+        dimArm('utilizacao', "COALESCE(NULLIF(utilizacao,''),'Sem classificação')") +
+        ' UNION ALL ' +
+        dimArm('grupo', "COALESCE(NULLIF(grupo_item,''),'Sem informação')") +
+        ' UNION ALL ' +
+        dimArm('vendedor', "COALESCE(NULLIF(nome_vendedor,''),'Sem informação')") +
+        ' UNION ALL ' +
+        dimArm('cliente', "COALESCE(NULLIF(nome_cliente,''),'Sem informação')") +
+        ' ORDER BY v DESC'
       $app.db().newQuery(multiDimSql).all(multiDimRows)
+      // vendedorDimBase existe só para clareza do bloco acima (mesma base/where)
+      if (false) console.log(vendedorDimBase)
     } catch (err) {
       console.error('dashboard_stats: agregacao multi-dimensao falhou:', err)
     }
@@ -1331,7 +1399,8 @@ var __dashboardStatsHandler = (e) => {
       const dim = String(multiDimRows[i].dim || '')
       const key = multiDimRows[i].k || 'Sem classificação'
       const val = toNum(multiDimRows[i].v)
-      if (dimLists[dim]) dimLists[dim].push({ k: key, v: val })
+      const val2 = toNum(multiDimRows[i].v2)
+      if (dimLists[dim]) dimLists[dim].push({ k: key, v: val, v2: val2 })
     }
 
     // Vendas por UF: SUM(total_nf_novo) por estado na base bruta `vendas` — a
@@ -1355,12 +1424,27 @@ var __dashboardStatsHandler = (e) => {
       )
     }
 
-    const grupoItem = dimLists.grupo.map((r) => ({ name: r.k, value: r.v }))
+    // Item 1 e 4 do plano: as séries de grupo do item, tipo de documento e
+    // utilização entregam `value` (Valor Total Bruto) e `valueLiquido`
+    // (Valor Líquido NET). `value` é mantido para os consumidores antigos.
+    const grupoItem = dimLists.grupo.map((r) => ({
+      name: r.k,
+      value: r.v,
+      valueLiquido: r.v2 || 0,
+    }))
     const topVendedores = dimLists.vendedor.slice(0, 10).map((r) => ({ name: r.k, total: r.v }))
     const topClientes = dimLists.cliente.slice(0, 10).map((r) => ({ name: r.k, total: r.v }))
     const estado = dimLists.estado.map((r) => ({ uf: r.k, total: r.v }))
-    const tipoDocumento = (dimLists.tipo_documento || []).map((r) => ({ name: r.k, value: r.v }))
-    const utilizacao = (dimLists.utilizacao || []).map((r) => ({ name: r.k, value: r.v }))
+    const tipoDocumento = (dimLists.tipo_documento || []).map((r) => ({
+      name: r.k,
+      value: r.v,
+      valueLiquido: r.v2 || 0,
+    }))
+    const utilizacao = (dimLists.utilizacao || []).map((r) => ({
+      name: r.k,
+      value: r.v,
+      valueLiquido: r.v2 || 0,
+    }))
 
     // 2.7) revendasFaturamento
     const revendaConfigs = [
@@ -1482,10 +1566,13 @@ var __dashboardStatsHandler = (e) => {
       const mesSeguinteExclusive = gyMax + '-' + pad2(gmNext)
       // REGRA Silvio (0.0.357): valor do gráfico = SUM(total_nf_novo) linha a
       // linha na base bruta `vendas` (a resumo não tem a coluna).
+      // Item 4 do plano: além do Bruto (total_nf_novo), devolve o Valor Líquido
+      // (NET) por grupo/mês na coluna d.
       const gmSql =
         'SELECT substr(data_lancamento, 1, 7) AS a, ' +
         "COALESCE(NULLIF(grupo_item,''),'Sem informação') AS b, " +
-        'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS c ' +
+        'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS c, ' +
+        'COALESCE(SUM(COALESCE(valor_liquido,0)),0) AS d ' +
         'FROM vendas WHERE ' +
         sqlWhereVendasSemPeriodo +
         " AND data_lancamento >= '" +
@@ -1502,10 +1589,11 @@ var __dashboardStatsHandler = (e) => {
         const mes = gmRows[i].a
         const grupo = gmRows[i].b || 'Sem informação'
         const total = toNum(gmRows[i].c)
+        const liquido = toNum(gmRows[i].d)
         if (!mes || !grupo) continue
-        if (total === 0) continue
+        if (total === 0 && liquido === 0) continue
         if (!porMes[mes]) porMes[mes] = []
-        porMes[mes].push({ grupo: grupo, total: total })
+        porMes[mes].push({ grupo: grupo, total: total, liquido: liquido })
       }
 
       for (let i = 0; i < mesesAlvoGrupo.length; i++) {
@@ -1928,13 +2016,17 @@ var __dashboardStatsHandler = (e) => {
     // e ignorando todos os demais filtros (período, canal, vendedor, base, etc).
     const vendasEquipamentosHistorico = []
     try {
+      // Item 8 do plano: o gráfico exibe o Valor Total (Bruto) — SUM(total_nf_novo)
+      // linha a linha na base bruta `vendas` (a resumo não tem a coluna). O recorte
+      // histórico 2015+ passa a ser por faixa de data, preservando o índice.
       const equipSql =
-        'SELECT ano_mes AS a, COALESCE(SUM(total_linha),0) AS b ' +
-        'FROM resumo_vendas_mensal WHERE ' +
-        sqlWhereGlobalRestricted +
-        " AND UPPER(TRIM(grupo_item)) = 'EQUIPAMENTOS' " +
-        'AND ano >= 2015 ' +
-        'GROUP BY ano_mes ORDER BY ano_mes ASC'
+        'SELECT substr(data_lancamento, 1, 7) AS a, ' +
+        'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
+        'FROM vendas WHERE ' +
+        sqlWhereGlobalRestrictedVendas +
+        " AND data_lancamento >= '2015-01-01' " +
+        " AND UPPER(TRIM(COALESCE(grupo_item,''))) = 'EQUIPAMENTOS' " +
+        'GROUP BY substr(data_lancamento, 1, 7) ORDER BY 1 ASC'
       const equipRows = runAgg(equipSql)
 
       for (let i = 0; i < equipRows.length; i++) {
@@ -1955,13 +2047,16 @@ var __dashboardStatsHandler = (e) => {
     // Respeita SOMENTE os 5 filtros globais (sqlWhereGlobalRestricted).
     const vendasInsumosHistorico = []
     try {
+      // Item 8 do plano: idem Equipamentos — Valor Total (Bruto) via
+      // SUM(total_nf_novo) na base bruta, histórico 2015+ por faixa de data.
       const insumoSql =
-        'SELECT ano_mes AS a, COALESCE(SUM(total_linha),0) AS b ' +
-        'FROM resumo_vendas_mensal WHERE ' +
-        sqlWhereGlobalRestricted +
-        " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
-        'AND ano >= 2015 ' +
-        'GROUP BY ano_mes ORDER BY ano_mes ASC'
+        'SELECT substr(data_lancamento, 1, 7) AS a, ' +
+        'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
+        'FROM vendas WHERE ' +
+        sqlWhereGlobalRestrictedVendas +
+        " AND data_lancamento >= '2015-01-01' " +
+        " AND UPPER(TRIM(COALESCE(grupo_item,''))) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+        'GROUP BY substr(data_lancamento, 1, 7) ORDER BY 1 ASC'
       const insumoRows = runAgg(insumoSql)
 
       for (let i = 0; i < insumoRows.length; i++) {

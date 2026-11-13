@@ -190,14 +190,19 @@ export default function FiltrosGlobais() {
   // NFCOMDEV traz o valor em valor_liquido/total_nf_novo (total_linha = 0) e DEVNF é
   // negativo (estorno), por isso o backend devolve o maior entre SUM(total_linha) e
   // SUM(valor_liquido) por tipo — exibimos essa série.
+  // Item 1 do plano: as duas séries trazem `value` = Valor Total (Bruto) e
+  // `valueLiquido` = Valor Líquido (NET), ambos somados linha a linha na base
+  // bruta pelo backend. Antes havia uma única série (o maior entre
+  // total_linha e valor_liquido), que escondia o par Bruto/NET.
   const chartTipoDocumentoData = useMemo(() => {
     const list = optionsData?.charts?.tipoDocumento || []
     return list
       .map((item) => ({
         name: (item.name || '').trim() || 'Sem classificação',
         value: Number(item.value) || 0,
+        valueLiquido: Number((item as { valueLiquido?: number }).valueLiquido) || 0,
       }))
-      .filter((item) => item.value > 0)
+      .filter((item) => item.value !== 0 || item.valueLiquido !== 0)
       .sort((a, b) => b.value - a.value)
   }, [optionsData])
 
@@ -207,8 +212,9 @@ export default function FiltrosGlobais() {
       .map((item) => ({
         name: (item.name || '').trim() || 'Sem classificação',
         value: Number(item.value) || 0,
+        valueLiquido: Number((item as { valueLiquido?: number }).valueLiquido) || 0,
       }))
-      .filter((item) => item.value > 0)
+      .filter((item) => item.value !== 0 || item.valueLiquido !== 0)
       .sort((a, b) => b.value - a.value)
   }, [optionsData])
 
@@ -413,18 +419,32 @@ export default function FiltrosGlobais() {
                   width={130}
                 />
                 <Tooltip
-                  formatter={(val: number | string | undefined) => [
+                  formatter={(val: number | string | undefined, name: string) => [
                     formatCurrency(Number(val) || 0),
-                    'Valor Total',
+                    name,
                   ]}
                   contentStyle={tooltipContentStyle}
                 />
+                <Legend
+                  verticalAlign="top"
+                  height={28}
+                  formatter={(value) => (
+                    <span className="text-[11px] font-bold text-slate-700">{value}</span>
+                  )}
+                />
                 <Bar
                   dataKey="value"
-                  name="Valor Total"
+                  name={TITULO_VALOR_TOTAL_BRUTO}
                   fill="#0B6E99"
                   radius={[0, 4, 4, 0]}
-                  maxBarSize={28}
+                  maxBarSize={20}
+                />
+                <Bar
+                  dataKey="valueLiquido"
+                  name={TITULO_VALOR_LIQUIDO_NET}
+                  fill="#0D9488"
+                  radius={[0, 4, 4, 0]}
+                  maxBarSize={20}
                 />
               </BarChart>
             </ResponsiveContainer>
@@ -475,18 +495,32 @@ export default function FiltrosGlobais() {
                   width={130}
                 />
                 <Tooltip
-                  formatter={(val: number | string | undefined) => [
+                  formatter={(val: number | string | undefined, name: string) => [
                     formatCurrency(Number(val) || 0),
-                    'Valor Total',
+                    name,
                   ]}
                   contentStyle={tooltipContentStyle}
                 />
+                <Legend
+                  verticalAlign="top"
+                  height={28}
+                  formatter={(value) => (
+                    <span className="text-[11px] font-bold text-slate-700">{value}</span>
+                  )}
+                />
                 <Bar
                   dataKey="value"
-                  name="Valor Total"
+                  name={TITULO_VALOR_TOTAL_BRUTO}
+                  fill="#0B6E99"
+                  radius={[0, 4, 4, 0]}
+                  maxBarSize={20}
+                />
+                <Bar
+                  dataKey="valueLiquido"
+                  name={TITULO_VALOR_LIQUIDO_NET}
                   fill="#0D9488"
                   radius={[0, 4, 4, 0]}
-                  maxBarSize={28}
+                  maxBarSize={20}
                 />
               </BarChart>
             </ResponsiveContainer>

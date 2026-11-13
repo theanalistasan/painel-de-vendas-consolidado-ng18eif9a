@@ -212,28 +212,42 @@ export function JpClassDashboard({ items }: JpClassDashboardProps) {
   }, [items])
 
   // 4. Recorte por Item (Top 10 Itens mais vendidos)
+  // Item 9 do plano: a chave de agrupamento é o CÓDIGO do item (não a descrição).
+  // Agrupar por descrição fazia o gráfico recair em nome de grupo/código quando a
+  // descrição vinha vazia — o que aparecia como "Grupo de Produto".
   const dataTopItens = useMemo(() => {
-    const map = new Map<string, { faturamento: number; quantidade: number; codigo: string }>()
+    const map = new Map<
+      string,
+      { faturamento: number; liquido: number; quantidade: number; descricao: string }
+    >()
 
     for (const it of items) {
-      const nome = (it.descricao_item || it.codigo_item || '(Item sem nome)').trim()
-      const cur = map.get(nome) || {
+      const codigo = (it.codigo_item || '').trim()
+      if (!codigo) continue
+      const cur = map.get(codigo) || {
         faturamento: 0,
+        liquido: 0,
         quantidade: 0,
-        codigo: it.codigo_item || '',
+        descricao: '',
       }
       cur.faturamento += Number(it.total_nf_novo) || 0
+      cur.liquido += Number(it.valor_liquido) || 0
       cur.quantidade += Number(it.quantidade) || 0
-      map.set(nome, cur)
+      if (!cur.descricao) cur.descricao = (it.descricao_item || '').trim()
+      map.set(codigo, cur)
     }
 
-    const list = Array.from(map.entries()).map(([name, data]) => ({
-      name: name.length > 30 ? `${name.slice(0, 30)}...` : name,
-      fullName: name,
-      codigo: data.codigo,
-      faturamento: data.faturamento,
-      quantidade: data.quantidade,
-    }))
+    const list = Array.from(map.entries()).map(([codigo, data]) => {
+      const rotulo = data.descricao ? `${codigo} · ${data.descricao}` : codigo
+      return {
+        name: rotulo.length > 34 ? `${rotulo.slice(0, 34)}...` : rotulo,
+        fullName: data.descricao || codigo,
+        codigo,
+        faturamento: data.faturamento,
+        liquido: data.liquido,
+        quantidade: data.quantidade,
+      }
+    })
 
     return list.sort((a, b) => b.faturamento - a.faturamento).slice(0, 10)
   }, [items])

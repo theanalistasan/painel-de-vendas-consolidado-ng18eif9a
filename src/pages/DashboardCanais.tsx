@@ -288,6 +288,20 @@ export default function DashboardCanais() {
   }, [data])
 
   const chartVendasPorMes = data?.charts?.vendasPorMes || []
+  // Item 7 do plano: achata a série semanal em uma linha por mês, com uma chave
+  // por semana (sem1..sem5) para o empilhamento. O total do mês fica em `total`.
+  const chartSemanasMes = useMemo(() => {
+    return chartVendasPorMes.map((item) => {
+      const row: Record<string, unknown> = { mes: item.mes, total: item.bruto }
+      const semanas = (item as { semanas?: Array<{ semana: number; bruto: number }> }).semanas || []
+      for (let s = 1; s <= 5; s++) {
+        const achado = semanas.find((w) => w.semana === s)
+        row[`sem${s}`] = achado ? achado.bruto : 0
+      }
+      return row
+    })
+  }, [chartVendasPorMes])
+
   const chartTopVendedores = data?.charts?.topVendedores || []
   const chartTopClientes = data?.charts?.topClientes || []
   const chartEstado = data?.charts?.estado || []
@@ -330,12 +344,15 @@ export default function DashboardCanais() {
         })(),
       }
       let mesTotal = 0
+      let mesTotalLiquido = 0
       for (const g of item.grupos) {
         gruposSet.add(g.grupo)
         row[g.grupo] = g.total
         mesTotal += g.total
+        mesTotalLiquido += Number((g as { liquido?: number }).liquido) || 0
       }
       row._total = mesTotal
+      row._totalLiquido = mesTotalLiquido
       return row
     })
     return {
@@ -834,7 +851,7 @@ export default function DashboardCanais() {
             {/* Vendas por Grupo do Item */}
             <ChartCard
               title="Vendas por Grupo do Item"
-              description={`Distribuição do ${TITULO_VALOR_TOTAL_BRUTO} por grupo consolidado`}
+              description={`Distribuição do ${TITULO_VALOR_TOTAL_BRUTO} e do ${TITULO_VALOR_LIQUIDO_NET} por grupo consolidado`}
             >
               {chartGrupoItem.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
@@ -892,9 +909,20 @@ export default function DashboardCanais() {
                             <div className="mt-1 pl-4 text-slate-200">
                               {TITULO_VALOR_TOTAL_BRUTO}: {formatCurrency(Number(entry.value) || 0)}
                             </div>
+                            <div className="pl-4 text-slate-200">
+                              {TITULO_VALOR_LIQUIDO_NET}:{' '}
+                              {formatCurrency(Number(entry.valueLiquido) || 0)}
+                            </div>
                           </div>
                         )
                       }}
+                    />
+                    <Bar
+                      dataKey="valueLiquido"
+                      name={TITULO_VALOR_LIQUIDO_NET}
+                      fill="#0D9488"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={26}
                     />
                     <Bar dataKey="value" name={TITULO_VALOR_TOTAL_BRUTO} radius={[4, 4, 0, 0]}>
                       {chartGrupoItem.map((entry, index) => {
@@ -912,7 +940,7 @@ export default function DashboardCanais() {
             {/* Venda Mensal por Grupo do Item */}
             <ChartCard
               title="Venda Mensal por Grupo do Item"
-              description={`Evolução mensal do ${TITULO_VALOR_TOTAL_BRUTO} por grupo de item (últimos 6 meses)`}
+              description={`Evolução mensal do ${TITULO_VALOR_TOTAL_BRUTO} por grupo do item, com o ${TITULO_VALOR_LIQUIDO_NET} do mês (últimos 6 meses)`}
             >
               {monthlyGroupData.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-xs text-slate-400">
@@ -950,6 +978,13 @@ export default function DashboardCanais() {
                       formatter={(value) => (
                         <span className="text-xs font-bold text-slate-700">{value}</span>
                       )}
+                    />
+                    <Bar
+                      dataKey="_totalLiquido"
+                      name={TITULO_VALOR_LIQUIDO_NET}
+                      fill="#0F766E"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={26}
                     />
                     {uniqueGrupos.map((grupo, gIdx) => {
                       const color =
@@ -1182,7 +1217,7 @@ export default function DashboardCanais() {
             >
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={chartVendasPorMes}
+                  data={chartSemanasMes}
                   margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" vertical={false} />
@@ -1241,8 +1276,18 @@ export default function DashboardCanais() {
                       </span>
                     )}
                   />
-                  <Bar dataKey="bruto" name="bruto" fill={COLOR_BLUE} radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="liquido" name="liquido" fill="#0D9488" radius={[4, 4, 0, 0]} />
+                  {/* Item 7 do plano: Bruto empilhado por SEMANA do mês (semana 1 a 5) */}
+                  <Bar dataKey="sem1" name="Semana 1" stackId="s" fill="#0B6E99" />
+                  <Bar dataKey="sem2" name="Semana 2" stackId="s" fill="#1895A8" />
+                  <Bar dataKey="sem3" name="Semana 3" stackId="s" fill="#0D9488" />
+                  <Bar dataKey="sem4" name="Semana 4" stackId="s" fill="#14B8A6" />
+                  <Bar
+                    dataKey="sem5"
+                    name="Semana 5"
+                    stackId="s"
+                    fill="#5EEAD4"
+                    radius={[4, 4, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>

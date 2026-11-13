@@ -154,11 +154,15 @@ export default function EstoqueFaltante() {
     tipoCliente?: string[]
     isLoadingTipoCliente?: boolean
     onOpenTipoCliente?: () => void
+    statusCadastro?: string[]
+    tipoPn?: string[]
   }>({
     canais: [],
     canaisClientes: [],
     inside: [],
     tipoCliente: [],
+    statusCadastro: [],
+    tipoPn: [],
   })
 
   // Carrega opções e mapa de Tipos de Cliente (mesmo padrão de PedidosAbertos.tsx)
@@ -171,6 +175,28 @@ export default function EstoqueFaltante() {
       }
       if (map && Object.keys(map).length > 0) {
         setTiposClienteMap(map)
+
+        // Item 10 do plano: "Status do Cadastro" e "Tipo de PN" também vêm da
+        // base SAP (tipos_cliente). A tela já carregava o mapa, mas nunca
+        // derivava essas duas listas — por isso os dropdowns exibiam "Importe a
+        // base de Tipos de Cliente (SAP)" mesmo com a base carregada.
+        const statusSet = new Set<string>()
+        const tipoPnSet = new Set<string>()
+        for (const info of Object.values(map)) {
+          const sc = (info?.status_cadastro || '').trim()
+          const tpn = (info?.tipo_pn || '').trim()
+          if (sc) statusSet.add(sc)
+          if (tpn) tipoPnSet.add(tpn)
+        }
+        const statusCadastro = Array.from(statusSet).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+        const tipoPn = Array.from(tipoPnSet).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+        if (statusCadastro.length > 0 || tipoPn.length > 0) {
+          setFilterOptions((prev) => ({
+            ...prev,
+            statusCadastro: statusCadastro.length > 0 ? statusCadastro : prev.statusCadastro,
+            tipoPn: tipoPn.length > 0 ? tipoPn : prev.tipoPn,
+          }))
+        }
       }
     } catch (err) {
       console.warn('Erro ao carregar tipos de cliente em Estoque Faltante:', err)
@@ -230,6 +256,9 @@ export default function EstoqueFaltante() {
             inside: filters.inside,
             ehCanal: filters.ehCanal,
             tipoCliente: filters.tipoCliente,
+            grupoItem: filters.grupoItem,
+            statusCadastro: filters.statusCadastro,
+            tipoPn: filters.tipoPn,
           },
           signal: controller.signal,
         })
@@ -350,6 +379,9 @@ export default function EstoqueFaltante() {
                 inside: filters.inside,
                 ehCanal: filters.ehCanal,
                 tipoCliente: filters.tipoCliente,
+                grupoItem: filters.grupoItem,
+                statusCadastro: filters.statusCadastro,
+                tipoPn: filters.tipoPn,
                 search: appliedSearch,
               },
               { signal: controller.signal },
@@ -818,6 +850,9 @@ export default function EstoqueFaltante() {
             inside: filters.inside,
             ehCanal: filters.ehCanal,
             tipoCliente: filters.tipoCliente,
+            grupoItem: filters.grupoItem,
+            statusCadastro: filters.statusCadastro,
+            tipoPn: filters.tipoPn,
           },
         })
 

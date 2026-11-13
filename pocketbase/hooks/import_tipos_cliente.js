@@ -290,6 +290,23 @@ routerAdd(
       }
     }
 
+    // Item 11 do plano: a carga da base SAP precisa derrubar o cache de opções
+    // de filtro do dashboard_stats (TTL 30 min). Sem isso o filtro "Tipo de
+    // Cliente" do Setup continua exibindo "Importe a base de Tipos de Cliente
+    // (SAP)" mesmo com a base já carregada. Mesmo padrão usado em
+    // import_netsales_v4/consolidar_vendas.
+    try {
+      if (typeof globalThis !== 'undefined' && globalThis) {
+        if (globalThis.__skipFilterOptionsCache && globalThis.__skipFilterOptionsCache.clear) {
+          globalThis.__skipFilterOptionsCache.clear()
+        }
+        if (globalThis.__skipDashboardCache && globalThis.__skipDashboardCache.clear) {
+          globalThis.__skipDashboardCache.clear()
+        }
+      }
+      console.log('import_tipos_cliente: __skipFilterOptionsCache invalidado (carga concluída)')
+    } catch (_) {}
+
     return e.json(200, {
       success: true,
       importados,

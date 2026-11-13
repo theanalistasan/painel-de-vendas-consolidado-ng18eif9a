@@ -314,7 +314,9 @@ export default function JpClassPage() {
     const controller = new AbortController()
     abortControllerRef.current = controller
 
-    const activeFilters = filtersRef.current
+    // Item 3 do plano: o JP-Class é INDEPENDENTE dos Filtros Globais (Setup).
+    // Nenhum campo de activeFilters é enviado ao backend — só o período local
+    // (Ano/Mês aplicados) e a faixa de datas do calendário de semanas.
     const periodosAplicados = aplicadoRef.current
     const mesesAplicados = periodosAplicados.meses
       .map((m) => parseInt(m, 10))
@@ -339,7 +341,6 @@ export default function JpClassPage() {
       // Reutiliza o endpoint oficial de vendas com os Filtros Globais + recorte de semanas.
       const res = await fetchVendasExport({
         filters: {
-          ...(activeFilters as unknown as Record<string, unknown>),
           ...periodoPayload,
           dataDe: dateRange.dataDe,
           dataAte: dateRange.dataAte,

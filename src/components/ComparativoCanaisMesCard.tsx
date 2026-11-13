@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -33,6 +33,15 @@ interface ComparativoCanaisMesCardProps {
 
 export function ComparativoCanaisMesCard({ data, loading }: ComparativoCanaisMesCardProps) {
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart')
+
+  // Item 13 do plano: a tabela "Detalhamento dos Canais" passa a ordenar por
+  // qualquer coluna e a filtrar por canal (um, vários ou todos).
+  const [sortField, setSortField] = useState<'canal' | 'atual' | 'anterior' | 'diff' | 'variacao'>(
+    'atual',
+  )
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [canaisSelecionados, setCanaisSelecionados] = useState<string[]>([])
+  const [filtroAberto, setFiltroAberto] = useState(false)
 
   if (loading) {
     return (
@@ -80,6 +89,51 @@ export function ComparativoCanaisMesCard({ data, loading }: ComparativoCanaisMes
 
   // Prepara dados para o gráfico de barras agrupadas
   // Exibimos todos os canais que têm faturamento no mês atual ou anterior
+  const canaisVisiveis = useMemo(() => {
+    const base =
+      canaisSelecionados.length === 0
+        ? canais
+        : canais.filter((c) => canaisSelecionados.includes(c.canal))
+    const val = (c: CanalComparativoItem) => {
+      switch (sortField) {
+        case 'canal':
+          return c.canal
+        case 'anterior':
+          return c.faturamentoAnterior
+        case 'diff':
+          return c.diff
+        case 'variacao':
+          return c.variacaoPercentual ?? 0
+        case 'atual':
+        default:
+          return c.faturamentoAtual
+      }
+    }
+    const ordenado = [...base].sort((a, b) => {
+      const va = val(a)
+      const vb = val(b)
+      if (typeof va === 'string' || typeof vb === 'string') {
+        return sortDir === 'asc'
+          ? String(va).localeCompare(String(vb), 'pt-BR')
+          : String(vb).localeCompare(String(va), 'pt-BR')
+      }
+      return sortDir === 'asc' ? Number(va) - Number(vb) : Number(vb) - Number(va)
+    })
+    return ordenado
+  }, [canais, canaisSelecionados, sortField, sortDir])
+
+  const alternarOrdenacao = (campo: typeof sortField) => {
+    if (sortField === campo) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(campo)
+      setSortDir(campo === 'canal' ? 'asc' : 'desc')
+    }
+  }
+
+  const seta = (campo: typeof sortField) =>
+    sortField === campo ? (sortDir === 'asc' ? ' ↑' : ' ↓') : ''
+
   const chartData = canais.map((c) => ({
     name: c.canal,
     atual: c.faturamentoAtual,
@@ -359,23 +413,99 @@ export function ComparativoCanaisMesCard({ data, loading }: ComparativoCanaisMes
         ) : (
           /* Visualização: Tabela Detalhada com ordenação e variações */
           <div className="border border-slate-200 rounded-xl overflow-hidden">
+            {/* Item 13 do plano: filtro por canal (um, vários ou todos) */}
+            <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-slate-50/70 border-b border-slate-200">
+              <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">
+                Filtrar canais
+              </span>
+              <button
+                type="button"
+                onClick={() => setFiltroAberto((v) => !v)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-lg border border-cyan-200 bg-white text-[#0B6E99] hover:bg-cyan-50"
+              >
+                <Layers className="w-3 h-3" />
+                {canaisSelecionados.length === 0
+                  ? 'Todos os canais'
+                  : `${canaisSelecionados.length} canal(is)`}
+              </button>
+              {canaisSelecionados.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCanaisSelecionados([])}
+                  className="text-[11px] font-bold text-rose-600 hover:underline"
+                >
+                  limpar
+                </button>
+              )}
+              <span className="text-[11px] text-slate-500 ml-auto">
+                {canaisVisiveis.length} de {canais.length} canais
+              </span>
+              {filtroAberto && (
+                <div className="w-full max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1">
+                  {canais.map((c) => {
+                    const marcado = canaisSelecionados.includes(c.canal)
+                    return (
+                      <label
+                        key={`ch-canal-${c.canal}`}
+                        className="flex items-center gap-2 px-2 py-1 rounded-md text-[11px] text-slate-700 hover:bg-slate-50 cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={marcado}
+                          onChange={() =>
+                            setCanaisSelecionados((prev) =>
+                              marcado ? prev.filter((x) => x !== c.canal) : [...prev, c.canal],
+                            )
+                          }
+                          className="accent-[#0B6E99]"
+                        />
+                        <span className="truncate">{c.canal}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-slate-50 border-b border-slate-200 text-slate-700 font-bold">
-                    <th className="py-2.5 px-3">Canal</th>
-                    <th className="py-2.5 px-3 text-right">
+                    <th
+                      className="py-2.5 px-3 cursor-pointer select-none hover:text-[#0B6E99]"
+                      onClick={() => alternarOrdenacao('canal')}
+                    >
+                      Canal{seta('canal')}
+                    </th>
+                    <th
+                      className="py-2.5 px-3 text-right cursor-pointer select-none hover:text-[#0B6E99]"
+                      onClick={() => alternarOrdenacao('atual')}
+                    >
                       {TITULO_VALOR_TOTAL_BRUTO} {mesLabelAtual}
+                      {seta('atual')}
                     </th>
-                    <th className="py-2.5 px-3 text-right">
+                    <th
+                      className="py-2.5 px-3 text-right cursor-pointer select-none hover:text-[#0B6E99]"
+                      onClick={() => alternarOrdenacao('anterior')}
+                    >
                       {TITULO_VALOR_TOTAL_BRUTO} {mesLabelAnterior}
+                      {seta('anterior')}
                     </th>
-                    <th className="py-2.5 px-3 text-right">Diferença (R$)</th>
-                    <th className="py-2.5 px-3 text-right">Variação (%)</th>
+                    <th
+                      className="py-2.5 px-3 text-right cursor-pointer select-none hover:text-[#0B6E99]"
+                      onClick={() => alternarOrdenacao('diff')}
+                    >
+                      Diferença (R$){seta('diff')}
+                    </th>
+                    <th
+                      className="py-2.5 px-3 text-right cursor-pointer select-none hover:text-[#0B6E99]"
+                      onClick={() => alternarOrdenacao('variacao')}
+                    >
+                      Variação (%){seta('variacao')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {canais.map((c, idx) => {
+                  {canaisVisiveis.map((c, idx) => {
                     const isCanalPos = c.diff >= 0
                     return (
                       <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
