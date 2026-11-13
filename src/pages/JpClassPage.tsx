@@ -81,7 +81,20 @@ export default function JpClassPage() {
   // Filtro LOCAL "Vendedor > Cliente" (vendedor_cliente = "Revenda > Nome do Cliente"):
   // matching textual no campo inteiro, ignorando acentos/caixa — "DIAMANTE" encontra
   // "Roland DG Brasil > DIAMANTE COMERCIO DE TINTAS LTDA".
+  //
+  // Dois estados: PENDENTE (o que o usuário marca no dropdown; a página NÃO
+  // recalcula) e APLICADO (promovido pelo botão "Aplicar filtros"). Enquanto não
+  // clica, dashboard/quadro por semana/relatório continuam com os valores atuais.
   const [vendedorClienteSelecionados, setVendedorClienteSelecionados] = useState<string[]>([])
+  const [vendedorClienteAplicados, setVendedorClienteAplicados] = useState<string[]>([])
+
+  const aplicarFiltros = useCallback(() => {
+    setVendedorClienteAplicados([...vendedorClienteSelecionados])
+  }, [vendedorClienteSelecionados])
+
+  // Indicador de filtros pendentes: seleção difere do que já está aplicado
+  const filtrosPendentes =
+    vendedorClienteSelecionados.join('||') !== vendedorClienteAplicados.join('||')
 
   // Filtro LOCAL de Ano/Mês do JP-Class (sessionStorage, chave "jpclass_periodo").
   // PRIORIDADE sobre os Filtros Globais: campo preenchido sobrepõe o valor global;
@@ -323,11 +336,12 @@ export default function JpClassPage() {
     }
   }, [carregarVendas])
 
-  // Vendas exibidas: base + filtro LOCAL "Vendedor > Cliente" (vendedor_cliente)
+  // Vendas exibidas: base + filtro LOCAL APLICADO "Vendedor > Cliente" (vendedor_cliente).
+  // Usa o estado APLICADO (promovido pelo botão "Aplicar filtros") — nunca o pendente.
   const vendasExibidas = useMemo(() => {
-    if (vendedorClienteSelecionados.length === 0) return rawVendas
-    return rawVendas.filter((v) => matchesVendedorClienteFilter(v, vendedorClienteSelecionados))
-  }, [rawVendas, vendedorClienteSelecionados])
+    if (vendedorClienteAplicados.length === 0) return rawVendas
+    return rawVendas.filter((v) => matchesVendedorClienteFilter(v, vendedorClienteAplicados))
+  }, [rawVendas, vendedorClienteAplicados])
 
   // Opções do filtro Vendedor > Cliente derivadas das vendas carregadas
   const opcoesVendedorCliente = useMemo(() => {
@@ -340,11 +354,13 @@ export default function JpClassPage() {
   }, [rawVendas])
 
   // Quadro de valores por semana (Fase 5): os 5 indicadores (Bruto, NET, Sem Frete,
-  // Mercadoria, Custo Total) — agregados a partir das MESMAS linhas já
-  // carregadas (rawVendas), respeitando os Filtros Globais e recalculando ao limpar.
+  // Mercadoria, Custo Total) — agregados a partir das MESMAS linhas EXIBIDAS
+  // (vendasExibidas = rawVendas + filtro "Vendedor > Cliente" aplicado), para que
+  // o quadro reaja ao filtro junto com o dashboard e o relatório (bug reportado:
+  // mudar o filtro não atualizava os valores por semana).
   const valoresPorSemana = useMemo(() => {
-    return agregarValoresPorSemana(rawVendas, semanas)
-  }, [rawVendas, semanas])
+    return agregarValoresPorSemana(vendasExibidas, semanas)
+  }, [vendasExibidas, semanas])
 
   // Totais do quadro (soma das semanas = mês consolidado, pois dias fora do calendário não entram)
   const totaisQuadroSemanas = useMemo(() => {
@@ -469,6 +485,15 @@ export default function JpClassPage() {
             emptyMessage="Nenhum cliente nas vendas carregadas"
             triggerClassName="w-[230px]"
           />
+          <Button
+            size="sm"
+            onClick={aplicarFiltros}
+            disabled={loading || !filtrosPendentes}
+            className="text-xs font-semibold gap-1.5 h-8 bg-[#0B6E99] hover:bg-[#095a7d] text-white"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            <span>Aplicar filtros</span>
+          </Button>
         </div>
 
         {/* Ações */}
