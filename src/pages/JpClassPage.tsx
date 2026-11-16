@@ -19,7 +19,7 @@ import {
 } from '@/lib/semanas'
 import { useNavigate } from 'react-router-dom'
 import { getJpClass } from '@/lib/jp-class'
-import { MESES_PT_BR, formatCurrency, formatCompactCurrency, exportToCSV } from '@/lib/formatters'
+import { MESES_PT_BR, formatCurrency, exportToCSV } from '@/lib/formatters'
 import { isAbortLikeError } from '@/lib/abort'
 import { MultiSelectDropdown } from '@/components/FilterBar'
 import {
@@ -436,8 +436,11 @@ export default function JpClassPage() {
     )
   }, [valoresPorSemana])
 
-  const valorCompacto = (v: number) =>
-    Math.abs(v) >= 100000 ? formatCompactCurrency(v) : formatCurrency(v)
+  // Quadro "Valores por Semana": SEMPRE valor completo, com os centavos.
+  // Antes, qualquer valor >= R$ 100.000 era abreviado por formatCompactCurrency
+  // ("R$ 1,2 mi"), o que impedia o CEO de reportar à matriz os valores e
+  // centavos exatos. Aqui a precisão é requisito, não estética.
+  const valorCompacto = (v: number) => formatCurrency(v)
 
   // Exportação rápida para CSV
   const handleExportCsv = () => {
