@@ -1173,10 +1173,15 @@ var __dashboardStatsHandler = (e) => {
 
     const brutoRowsMes = arrayOf(new DynamicModel({ a: '', b: '' }))
     try {
+      // O `bruto` do mês é a série usada pelos gráficos da Visão Canais
+      // (inclusive as barras empilhadas por semana). Ele tem de usar a MESMA
+      // base de filtros da quebra semanal (sqlWhereVendasSemPeriodo) — com
+      // sqlWhereGlobalRestrictedVendasSemPeriodo o total do mês ignorava
+      // vendedor/cliente/canal/UF e a soma das semanas não fechava com o mês.
       const brutoSqlMes =
         'SELECT substr(data_lancamento, 1, 7) AS a, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
         'FROM vendas WHERE ' +
-        sqlWhereGlobalRestrictedVendasSemPeriodo +
+        sqlWhereVendasSemPeriodo +
         ' AND substr(data_lancamento, 1, 7) IN (' +
         janelaInClause +
         ') ' +
