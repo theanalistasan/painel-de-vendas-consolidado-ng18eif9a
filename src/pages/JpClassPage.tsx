@@ -20,6 +20,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { getJpClass } from '@/lib/jp-class'
 import { MESES_PT_BR, formatCurrency, formatCompactCurrency, exportToCSV } from '@/lib/formatters'
+import { isAbortLikeError } from '@/lib/abort'
 import { MultiSelectDropdown } from '@/components/FilterBar'
 import {
   loadFiltersFromSession,
@@ -379,7 +380,7 @@ export default function JpClassPage() {
 
       setRawVendas(comTiposCliente)
     } catch (err: unknown) {
-      if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
+      if (isAbortLikeError(err)) {
         return
       }
       console.error('Erro ao carregar vendas para JP-Class:', err)

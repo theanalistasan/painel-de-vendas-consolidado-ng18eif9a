@@ -28,6 +28,7 @@ import { fetchDashboardStats, type DashboardStatsResult } from '@/services/sales
 import { useRealtime } from '@/hooks/use-realtime'
 import type { FilterState } from '@/types/sales'
 import { formatCurrency, formatCompactCurrency, formatNumber, MESES_CURTOS } from '@/lib/formatters'
+import { isAbortLikeError } from '@/lib/abort'
 import { TITULO_VALOR_TOTAL_BRUTO, TITULO_VALOR_LIQUIDO_NET } from '@/lib/valor-titulos'
 import {
   loadFiltersFromSession,
@@ -106,7 +107,7 @@ export default function DashboardGeral() {
       setData(res)
       setLoading(false)
     } catch (err: unknown) {
-      if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
+      if (isAbortLikeError(err)) {
         return
       }
 

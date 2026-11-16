@@ -54,6 +54,7 @@ import {
   type TipoClienteInfo,
 } from '@/services/tiposCliente'
 import { formatCurrency, formatNumber, formatDate, formatDateTime } from '@/lib/formatters'
+import { isAbortLikeError } from '@/lib/abort'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -356,7 +357,8 @@ export default function EstoqueFaltante() {
       setTotalValor(computedTotalValor)
       setTotalQtd(computedTotalQtd)
     } catch (err: unknown) {
-      if ((err as Error)?.name === 'AbortError') return
+      // Requisição cancelada (navegação entre telas / novo carregamento) não é falha.
+      if (isAbortLikeError(err, controller.signal)) return
       console.error('Erro ao carregar lista de itens faltantes:', err)
       toast({
         variant: 'destructive',
@@ -444,7 +446,7 @@ export default function EstoqueFaltante() {
 
       if (res.status === 'fulfilled') {
         setStatsData(res.value)
-      } else if ((res.reason as Error)?.name !== 'AbortError') {
+      } else if (!isAbortLikeError(res.reason as never, controller.signal)) {
         console.warn('Erro ao carregar estatísticas de estoque faltante:', res.reason)
       }
 
@@ -488,7 +490,7 @@ export default function EstoqueFaltante() {
       setMrpData(res)
       setMrpLoadedOnce(true)
     } catch (err: unknown) {
-      if ((err as Error)?.name === 'AbortError') return
+      if (isAbortLikeError(err, controller.signal)) return
       console.error('Erro ao carregar MRP:', err)
       toast({
         variant: 'destructive',

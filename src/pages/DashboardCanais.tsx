@@ -42,6 +42,7 @@ import {
 import { useRealtime } from '@/hooks/use-realtime'
 import type { FilterState, VendaConsolidada } from '@/types/sales'
 import { formatCurrency, formatNumber, MESES_CURTOS } from '@/lib/formatters'
+import { isAbortLikeError } from '@/lib/abort'
 import {
   saveFiltersToSession,
   loadFiltersFromSession,
@@ -194,7 +195,7 @@ export default function DashboardCanais() {
       setData(res)
       setLoading(false)
     } catch (err: unknown) {
-      if ((err as Error)?.name === 'AbortError' || String(err).includes('aborted')) {
+      if (isAbortLikeError(err)) {
         return
       }
 

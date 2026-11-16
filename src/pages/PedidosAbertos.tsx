@@ -36,6 +36,7 @@ import type {
   PedidosAbertosKpis,
 } from '@/types/sales'
 import { formatCurrency, formatNumber, formatDate, exportToCSV } from '@/lib/formatters'
+import { isAbortLikeError } from '@/lib/abort'
 import PedidosAbertosFilterBar, {
   PedidosAbertosFilters,
   EMPTY_PEDIDOS_ABERTOS_FILTERS,
@@ -748,6 +749,8 @@ export default function PedidosAbertos() {
         }
       }
     } catch (err: unknown) {
+      // Requisição cancelada (navegação entre telas) não é falha: não alarma o usuário.
+      if (isAbortLikeError(err)) return
       console.error('Erro ao carregar estatísticas de pedidos abertos:', err)
       const msg =
         err instanceof Error
@@ -944,6 +947,8 @@ export default function PedidosAbertos() {
       }
       return true
     } catch (err: unknown) {
+      // Requisição cancelada (navegação entre telas) não é falha.
+      if (isAbortLikeError(err)) return false
       console.error('Erro ao listar pedidos em aberto:', err)
       const msg =
         err instanceof Error ? err.message : 'Não foi possível carregar os pedidos em aberto.'
