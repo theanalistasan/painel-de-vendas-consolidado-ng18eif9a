@@ -181,7 +181,7 @@ export default function Layout() {
     switch (location.pathname) {
       case '/':
       case '/dashboard/geral':
-        return 'Dashboard — Visão Geral por Clientes'
+        return 'Dashboard — Visão Geral Roland'
       case '/dashboard/canais':
         return 'Dashboard — Visão Geral por Canais'
       case '/jp-class':
@@ -277,13 +277,13 @@ export default function Layout() {
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-5 space-y-1.5 overflow-y-auto">
-          {/* Item Dashboard com Submenu (Visão Geral por Clientes & Visão Geral por Canais) */}
+          {/* Item Dashboard com Submenu (Visão Geral Roland & Visão Geral por Canais) */}
           <div className="space-y-1">
             {sidebarCollapsed ? (
               // No modo colapsado, link direto para Visão Geral com tooltip
               <NavLink
                 to="/dashboard/geral"
-                title="Dashboard (Visão Geral por Clientes & Visão Geral por Canais)"
+                title="Dashboard (Visão Geral Roland & Visão Geral por Canais)"
                 className={cn(
                   'flex items-center justify-center w-10 h-10 mx-auto rounded-full text-sm font-medium transition-all duration-200',
                   isDashboardActive
@@ -340,7 +340,7 @@ export default function Layout() {
                       <span className="truncate">Filtros Globais (Setup)</span>
                     </NavLink>
 
-                    {/* Visão Geral por Canais (posicionado antes da Visão Geral por Clientes) */}
+                    {/* Visão Geral por Canais (posicionado antes da Visão Geral Roland) */}
                     <NavLink
                       to="/dashboard/canais"
                       className={cn(
@@ -354,7 +354,7 @@ export default function Layout() {
                       <span className="truncate">Visão Geral por Canais</span>
                     </NavLink>
 
-                    {/* Visão Geral por Clientes */}
+                    {/* Visão Geral Roland */}
                     <NavLink
                       to="/dashboard/geral"
                       className={cn(
@@ -365,7 +365,7 @@ export default function Layout() {
                       )}
                     >
                       <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Visão Geral por Clientes</span>
+                      <span className="truncate">Visão Geral Roland</span>
                     </NavLink>
 
                     {/* Manutenção de Canais (ex-item "Canais" do extinto grupo Canais) */}
@@ -648,7 +648,7 @@ export default function Layout() {
                       <span>Filtros Globais (Setup)</span>
                     </NavLink>
 
-                    {/* Visão Geral por Canais (posicionado antes da Visão Geral por Clientes) */}
+                    {/* Visão Geral por Canais (posicionado antes da Visão Geral Roland) */}
                     <NavLink
                       to="/dashboard/canais"
                       onClick={() => setMobileMenuOpen(false)}
@@ -663,7 +663,7 @@ export default function Layout() {
                       <span>Visão Geral por Canais</span>
                     </NavLink>
 
-                    {/* Visão Geral por Clientes */}
+                    {/* Visão Geral Roland */}
                     <NavLink
                       to="/dashboard/geral"
                       onClick={() => setMobileMenuOpen(false)}
@@ -675,7 +675,7 @@ export default function Layout() {
                       )}
                     >
                       <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
-                      <span>Visão Geral por Clientes</span>
+                      <span>Visão Geral Roland</span>
                     </NavLink>
 
                     {/* Manutenção de Canais (ex-item "Canais" do extinto grupo Canais) */}

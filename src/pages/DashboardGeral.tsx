@@ -417,11 +417,11 @@ export default function DashboardGeral() {
         </Button>
       </div>
 
-      {/* Título da Visão Geral por Clientes */}
+      {/* Título da Visão Geral Roland */}
       <Card className="rounded-xl border border-gray-200 bg-white p-4 shadow-xs">
         <div>
           <CardTitle className="text-base font-extrabold text-slate-900">
-            Visão Geral por Clientes — Indicadores Consolidados
+            Visão Geral Roland — Indicadores Consolidados
           </CardTitle>
           <CardDescription className="text-xs text-slate-500 font-medium mt-0.5">
             Tendências de mercado, evolução temporal e comparativos de clientes ativos
