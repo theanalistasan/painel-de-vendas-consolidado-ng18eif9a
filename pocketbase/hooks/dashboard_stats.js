@@ -1171,6 +1171,19 @@ var __dashboardStatsHandler = (e) => {
       "GROUP BY COALESCE(ano_mes,'Sem informação') ORDER BY 1 ASC"
     const mesRows = runAgg(mesSql)
 
+    // Janela contígua dos 6 meses-alvo como FAIXA DE DATAS (sargável, usa índice).
+    const janelaInicioIso = ultimos6MesesAlvo[0] + '-01 00:00:00.000Z'
+    const janelaFimIso = (() => {
+      const p = ultimos6MesesAlvo[ultimos6MesesAlvo.length - 1].split('-')
+      let y = parseInt(p[0], 10)
+      let m = parseInt(p[1], 10) + 1
+      if (m > 12) {
+        m = 1
+        y += 1
+      }
+      return String(y) + '-' + pad2(m) + '-01 00:00:00.000Z'
+    })()
+
     const brutoRowsMes = arrayOf(new DynamicModel({ a: '', b: '' }))
     try {
       // O `bruto` do mês é a série usada pelos gráficos da Visão Canais
@@ -1178,13 +1191,22 @@ var __dashboardStatsHandler = (e) => {
       // base de filtros da quebra semanal (sqlWhereVendasSemPeriodo) — com
       // sqlWhereGlobalRestrictedVendasSemPeriodo o total do mês ignorava
       // vendedor/cliente/canal/UF e a soma das semanas não fechava com o mês.
+      // PERFORMANCE: a janela dos 6 meses é CONTÍGUA e o filtro era
+      // `substr(data_lancamento,1,7) IN (...)` — função na coluna impede o uso do
+      // índice e obriga varredura completa de `vendas` (61 mil linhas; com a carga
+      // de 2024 o custo subiu ~57% e a chamada de cache frio passou a estourar o
+      // teto de 25s, devolvendo 504). Faixa de datas usa idx_vnd_data_lancamento.
+      // `janelaInicioIso`/`janelaFimIso` são declarados ANTES do try (escopo do
+      // handler) porque a quebra semanal logo abaixo também os usa.
       const brutoSqlMes =
         'SELECT substr(data_lancamento, 1, 7) AS a, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
         'FROM vendas WHERE ' +
         sqlWhereVendasSemPeriodo +
-        ' AND substr(data_lancamento, 1, 7) IN (' +
-        janelaInClause +
-        ') ' +
+        " AND data_lancamento >= '" +
+        janelaInicioIso +
+        "' AND data_lancamento < '" +
+        janelaFimIso +
+        "' " +
         'GROUP BY substr(data_lancamento, 1, 7) ORDER BY 1 ASC'
       $app.db().newQuery(brutoSqlMes).all(brutoRowsMes)
     } catch (brutoErrMes) {
@@ -1236,10 +1258,11 @@ var __dashboardStatsHandler = (e) => {
         'COALESCE(SUM(COALESCE(valor_liquido,0)),0) AS liquido ' +
         'FROM vendas WHERE ' +
         sqlWhereVendasSemPeriodo +
-        " AND data_lancamento IS NOT NULL AND TRIM(data_lancamento) != '' " +
-        ' AND substr(data_lancamento, 1, 7) IN (' +
-        ultimos6MesesAlvo.map((m) => "'" + m + "'").join(',') +
-        ') ' +
+        " AND data_lancamento >= '" +
+        janelaInicioIso +
+        "' AND data_lancamento < '" +
+        janelaFimIso +
+        "' " +
         'GROUP BY substr(data_lancamento, 1, 7), sem ORDER BY 1 ASC, sem ASC'
       $app.db().newQuery(semSql).all(semRows)
       for (let si = 0; si < semRows.length; si++) {
