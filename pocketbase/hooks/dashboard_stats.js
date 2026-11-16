@@ -1206,11 +1206,21 @@ var __dashboardStatsHandler = (e) => {
       brutoMapMes[brutoRowsMes[bi].a] = toNum(brutoRowsMes[bi].b)
     }
 
-    // Item 7 do plano: quebra SEMANAL dos 6 meses do gráfico "NET x Bruto por Mês".
+    // Item 7 do plano: quebra SEMANAL dos 6 meses do gráfico
+    // "Valor Total (Bruto) por Mês — Semanas 1 a 5" (Visão Canais).
     // Semana = faixa de dias dentro do mês: 1 (1-7), 2 (8-14), 3 (15-21),
     // 4 (22-28) e 5 (29-31, quando o mês tiver). Bruto = SUM(total_nf_novo),
     // NET = SUM(valor_liquido), linha a linha na base bruta `vendas`.
-    // A soma das semanas de um mês é o total daquele mês no gráfico.
+    //
+    // BUG (corrigido 0.0.381, reportado pelo Silvio): a série usava
+    // sqlWhereGlobalRestrictedVendasSemPeriodo, que só carrega os 5 filtros
+    // globais (Grupo do Item, Utilização, Tipo de Documento, Tipo de Cliente) —
+    // NÃO carrega as dimensões de Canais. Consequência: escolher
+    // "Vendedor > Cliente" (ou Vendedor, Cliente, Canal, Clientes do Canal,
+    // Deploy, Inside, UF) não mudava nada neste gráfico, enquanto os demais
+    // respeitavam. Agora usa sqlWhereVendasSemPeriodo, a MESMA base de filtros
+    // dos outros gráficos da Visão Canais (período removido, 6 meses fixos),
+    // então as semanas batem com o total do mês e com o restante da tela.
     const semanaPorMes = {}
     try {
       const semRows = arrayOf(new DynamicModel({ a: '', sem: '', bruto: '', liquido: '' }))
@@ -1220,7 +1230,7 @@ var __dashboardStatsHandler = (e) => {
         'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS bruto, ' +
         'COALESCE(SUM(COALESCE(valor_liquido,0)),0) AS liquido ' +
         'FROM vendas WHERE ' +
-        sqlWhereGlobalRestrictedVendasSemPeriodo +
+        sqlWhereVendasSemPeriodo +
         " AND data_lancamento IS NOT NULL AND TRIM(data_lancamento) != '' " +
         ' AND substr(data_lancamento, 1, 7) IN (' +
         ultimos6MesesAlvo.map((m) => "'" + m + "'").join(',') +
