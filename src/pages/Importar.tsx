@@ -2224,10 +2224,10 @@ export default function Importar() {
                   <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
                   <span className="font-semibold text-slate-700">Gerenciador de Consultas</span>
                   <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
-                  <span className="font-semibold text-slate-700">Financeiro</span>
+                  <span className="font-semibold text-slate-700">Comercial</span>
                   <span className="text-slate-400 font-mono text-[9px]">&gt;</span>
                   <span className="font-medium text-slate-700">
-                    Consultas Net Sales_v4 - Revenda
+                    Consulta Net Sales_v4 - Revenda
                   </span>
                 </li>
                 <li className="flex items-center gap-1">
@@ -2245,8 +2245,8 @@ export default function Importar() {
                 </li>
               </ol>
               <div className="pt-1 border-t border-slate-200/60 font-mono text-[9px] text-slate-500 break-words leading-tight select-all">
-                SAP &gt; Ferramentas &gt; Consultas &gt; Gerenciador de Consultas &gt; Financeiro
-                &gt; Consultas Net Sales_v4 - Revenda &gt; Botão direito no # da tabela &gt; Copiar
+                SAP &gt; Ferramentas &gt; Consultas &gt; Gerenciador de Consultas &gt; Comercial
+                &gt; Consulta Net Sales_v4 - Revenda &gt; Botão direito no # da tabela &gt; Copiar
                 Tabela &gt; Colar no Excel &gt; Salve em um local e realize a importação do arquivo:
                 NetSales_v4 (SAP)
               </div>
