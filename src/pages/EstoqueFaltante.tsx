@@ -53,7 +53,13 @@ import {
   fetchTiposClienteMap,
   type TipoClienteInfo,
 } from '@/services/tiposCliente'
-import { formatCurrency, formatNumber, formatDate, formatDateTime } from '@/lib/formatters'
+import {
+  formatCurrency,
+  formatNumber,
+  formatDate,
+  formatDateTime,
+  exportToCSV,
+} from '@/lib/formatters'
 import { isAbortLikeError } from '@/lib/abort'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -917,6 +923,92 @@ export default function EstoqueFaltante() {
     }
   }
 
+  /**
+   * Exporta o RELATÓRIO AGREGADO de Itens Faltantes (Por Item / Por Cliente)
+   * para CSV — o bloco "Itens Faltantes agrupados por ...".
+   *
+   * Diferente do botão "Exportar Excel" do topo (que baixa as linhas
+   * detalhadas, uma por item/canal), este exporta exatamente a tabela
+   * consolidada que o usuário está vendo: uma linha por chave, com Valor em
+   * Aberto, Qtd Aberta, Pedidos e Clientes/Itens, mais uma linha TOTAL.
+   *
+   * O backend devolve TODOS os grupos de uma vez (`grupos` vem sem paginação,
+   * com `totalPages: 1`), então o arquivo sai completo e não apenas a página
+   * visível.
+   */
+  const handleExportGruposCSV = () => {
+    if (gruposLista.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Nenhum dado para exportar',
+        description: 'Não há linhas agrupadas no recorte atual.',
+      })
+      return
+    }
+
+    try {
+      const porItem = grupoPor === 'item'
+
+      const exportCols = [
+        { key: 'chave', label: porItem ? 'Código do Item' : 'Cliente' },
+        { key: 'descricao', label: porItem ? 'Descrição' : 'Nome' },
+        { key: 'valor_em_aberto', label: 'Valor em Aberto (R$)' },
+        { key: 'qtd_aberto', label: 'Qtd Aberta' },
+        { key: 'pedidos_qtd', label: 'Pedidos' },
+        { key: 'detalhe_qtd', label: porItem ? 'Clientes' : 'Itens' },
+      ]
+
+      // Números vão como número para o exportToCSV gravar com vírgula decimal
+      // (o Excel pt-BR lê como número, não como texto).
+      const rows: Record<string, unknown>[] = gruposLista.map((g) => ({
+        chave: g.chave || '',
+        descricao: g.descricao || '',
+        valor_em_aberto: Number((g.valor_em_aberto || 0).toFixed(2)),
+        qtd_aberto: Number((g.qtd_aberto || 0).toFixed(2)),
+        pedidos_qtd: g.pedidos_qtd || 0,
+        detalhe_qtd: porItem ? g.clientes_qtd || 0 : g.itens_qtd || 0,
+      }))
+
+      const somaValor = gruposLista.reduce((a, g) => a + (g.valor_em_aberto || 0), 0)
+      const somaQtd = gruposLista.reduce((a, g) => a + (g.qtd_aberto || 0), 0)
+      const somaPedidos = gruposLista.reduce((a, g) => a + (g.pedidos_qtd || 0), 0)
+      const somaDetalhe = gruposLista.reduce(
+        (a, g) => a + (porItem ? g.clientes_qtd || 0 : g.itens_qtd || 0),
+        0,
+      )
+
+      rows.push({
+        chave: 'TOTAL',
+        descricao: '',
+        valor_em_aberto: Number(somaValor.toFixed(2)),
+        qtd_aberto: Number(somaQtd.toFixed(2)),
+        pedidos_qtd: somaPedidos,
+        detalhe_qtd: somaDetalhe,
+      })
+
+      const dateStr = new Date().toISOString().slice(0, 10)
+      exportToCSV(
+        `itens_faltantes_por_${porItem ? 'item' : 'cliente'}_${dateStr}`,
+        rows,
+        exportCols,
+      )
+
+      toast({
+        title: 'Exportação concluída!',
+        description: `${gruposLista.length} linha(s) agrupada(s) por ${
+          porItem ? 'código de item' : 'cliente'
+        } exportadas.`,
+      })
+    } catch (err) {
+      console.error('Erro ao exportar agrupamento de itens faltantes:', err)
+      toast({
+        variant: 'destructive',
+        title: 'Falha na exportação',
+        description: 'Não foi possível gerar a planilha CSV do relatório.',
+      })
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
       {/* Cabeçalho da Página */}
@@ -1278,6 +1370,17 @@ export default function EstoqueFaltante() {
                   >
                     {formatNumber(gruposLista.length)} linha(s)
                   </Badge>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExportGruposCSV}
+                    className="ml-auto h-7 px-2.5 text-[11px] bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-bold gap-1 shadow-2xs"
+                    title="Exportar este relatório agrupado para CSV"
+                  >
+                    <Download className="w-3 h-3 text-[#0B6E99]" />
+                    Exportar CSV
+                  </Button>
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500 mt-0.5">
                   Soma de Valor em Aberto: {formatCurrency(totalValor)} • {formatNumber(totalQtd)}{' '}
