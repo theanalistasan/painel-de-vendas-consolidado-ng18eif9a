@@ -1750,6 +1750,95 @@ export default function PedidosAbertos() {
     }
   }
 
+  /**
+   * Exporta o relatório "Pedidos em Aberto por Tipo de Cliente" COMO ELE É
+   * EXIBIDO: uma linha por tipo de cliente, com os mesmos totais consolidados
+   * da tabela (pedidos, linhas pendentes, clientes distintos, quantidade em
+   * aberto/solicitada, valor em aberto, preço médio e valor líquido) e uma
+   * linha final de TOTAL do recorte.
+   *
+   * Usa `tipoClienteGroups`, que é montado a partir de `allFilteredPedidos` —
+   * ou seja, o mesmo recorte de filtros/busca/status que a tela mostra, para o
+   * arquivo não divergir do que o usuário está vendo.
+   */
+  const handleExportTipoClienteCSV = () => {
+    if (tipoClienteGroups.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Nenhum dado para exportar',
+        description: 'Não há tipos de cliente no recorte atual.',
+      })
+      return
+    }
+
+    try {
+      const exportCols = [
+        { key: 'tipo_cliente', label: 'Tipo de Cliente' },
+        { key: 'totalPedidos', label: 'Pedidos' },
+        { key: 'totalLinhas', label: 'Linhas Pendentes' },
+        { key: 'totalClientes', label: 'Clientes Distintos' },
+        { key: 'totalQtdAberto', label: 'Qtd em Aberto' },
+        { key: 'totalQtdSolicitada', label: 'Qtd Solicitada' },
+        { key: 'totalValorEmAberto', label: 'Valor em Aberto (R$)' },
+        { key: 'precoMedio', label: 'Preço Médio (R$)' },
+        { key: 'totalValorLiquido', label: 'Valor Líquido (R$)' },
+      ]
+
+      // Valores numéricos vão como NÚMERO: exportToCSV troca o ponto por vírgula
+      // decimal, que é o que o Excel pt-BR lê como número (não como texto).
+      const rows: Record<string, unknown>[] = tipoClienteGroups.map((g) => ({
+        tipo_cliente: g.tipo_cliente || 'Sem tipo',
+        totalPedidos: g.totalPedidos,
+        totalLinhas: g.totalLinhas,
+        totalClientes: g.totalClientes,
+        totalQtdAberto: Number(g.totalQtdAberto.toFixed(2)),
+        totalQtdSolicitada: Number(g.totalQtdSolicitada.toFixed(2)),
+        totalValorEmAberto: Number(g.totalValorEmAberto.toFixed(2)),
+        precoMedio:
+          g.totalQtdAberto > 0 ? Number((g.totalValorEmAberto / g.totalQtdAberto).toFixed(2)) : 0,
+        totalValorLiquido: Number(g.totalValorLiquido.toFixed(2)),
+      }))
+
+      // Linha de fechamento do recorte
+      const totPedidos = tipoClienteGroups.reduce((a, g) => a + g.totalPedidos, 0)
+      const totLinhas = tipoClienteGroups.reduce((a, g) => a + g.totalLinhas, 0)
+      const totClientes = tipoClienteGroups.reduce((a, g) => a + g.totalClientes, 0)
+      const totQtdAberto = tipoClienteGroups.reduce((a, g) => a + g.totalQtdAberto, 0)
+      const totQtdSolicitada = tipoClienteGroups.reduce((a, g) => a + g.totalQtdSolicitada, 0)
+      const totValorEmAberto = tipoClienteGroups.reduce((a, g) => a + g.totalValorEmAberto, 0)
+      const totValorLiquido = tipoClienteGroups.reduce((a, g) => a + g.totalValorLiquido, 0)
+
+      rows.push({
+        tipo_cliente: 'TOTAL',
+        totalPedidos: totPedidos,
+        totalLinhas: totLinhas,
+        totalClientes: totClientes,
+        totalQtdAberto: Number(totQtdAberto.toFixed(2)),
+        totalQtdSolicitada: Number(totQtdSolicitada.toFixed(2)),
+        totalValorEmAberto: Number(totValorEmAberto.toFixed(2)),
+        precoMedio: totQtdAberto > 0 ? Number((totValorEmAberto / totQtdAberto).toFixed(2)) : 0,
+        totalValorLiquido: Number(totValorLiquido.toFixed(2)),
+      })
+
+      const dateStr = new Date().toISOString().slice(0, 10)
+      exportToCSV(`pedidos_em_aberto_por_tipo_cliente_${dateStr}`, rows, exportCols)
+
+      toast({
+        title: 'Exportação concluída!',
+        description: `${tipoClienteGroups.length} tipo(s) de cliente exportados (${
+          rows.length - 1
+        } linhas + total).`,
+      })
+    } catch (err) {
+      console.error('Erro na exportação por tipo de cliente:', err)
+      toast({
+        variant: 'destructive',
+        title: 'Falha na exportação',
+        description: 'Não foi possível gerar a planilha CSV do relatório.',
+      })
+    }
+  }
+
   return (
     <div className="space-y-6 min-w-0 max-w-full">
       {/* Header Info */}
@@ -2176,6 +2265,17 @@ export default function PedidosAbertos() {
                 <span className="text-[11px] text-slate-500 font-medium mr-1 hidden sm:inline">
                   {tipoClienteGroups.length} tipo(s) •
                 </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportTipoClienteCSV}
+                  className="h-7 px-2.5 text-[11px] bg-white border-slate-200 text-slate-700 hover:bg-slate-50 font-bold gap-1 shadow-2xs"
+                  title="Exportar este relatório consolidado por Tipo de Cliente para CSV"
+                >
+                  <Download className="w-3 h-3 text-[#0B6E99]" />
+                  Exportar CSV
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
