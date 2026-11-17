@@ -552,7 +552,10 @@ export default function Layout() {
                   <span className="text-xs font-bold text-white truncate">
                     {user.name || 'Usuário'}
                   </span>
-                  <span className="text-[11px] text-slate-400 truncate">{user.email}</span>
+                  {/* Sem truncate: o e-mail precisa aparecer inteiro (quebra linha se faltar espaço) */}
+                  <span className="text-[11px] text-slate-400 break-all leading-tight">
+                    {user.email}
+                  </span>
                 </div>
               )}
             </div>
@@ -815,7 +818,10 @@ export default function Layout() {
                     <span className="text-xs font-bold text-white truncate">
                       {user.name || 'Usuário'}
                     </span>
-                    <span className="text-[11px] text-slate-400 truncate">{user.email}</span>
+                    {/* Sem truncate: o e-mail precisa aparecer inteiro (quebra linha se faltar espaço) */}
+                    <span className="text-[11px] text-slate-400 break-all leading-tight">
+                      {user.email}
+                    </span>
                   </div>
                 </div>
                 <Button
