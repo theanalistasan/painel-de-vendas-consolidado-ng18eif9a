@@ -192,8 +192,36 @@ export default function DashboardCanais() {
         setInitializedFromBase(true)
       }
 
-      setData(res)
+      // PERF (2026-11-18): a tela pinta com a parte 'core' (KPIs, período e
+      // opções de filtro) e busca os gráficos em paralelo, numa segunda
+      // requisição. Antes o usuário esperava a resposta inteira (~2s em cache
+      // frio) para ver qualquer número, porque os gráficos respondem pela
+      // maior parte do tempo de processamento.
+      // `charts` vazio: os gráficos chegam na segunda requisição logo abaixo.
+      setData({ ...res, charts: res.charts || {} } as DashboardStatsResult)
       setLoading(false)
+
+      // Gráficos: chegam depois e são mesclados sem bloquear os KPIs.
+      fetchDashboardStats(activeFilters as unknown as Record<string, unknown>, {
+        signal: currentController.signal,
+        parts: 'charts',
+      })
+        .then((chartsRes) => {
+          if (seq !== requestSeqRef.current) return
+          if (chartsRes?.charts) {
+            setData(
+              (prev) =>
+                ({
+                  ...(prev as DashboardStatsResult),
+                  charts: chartsRes.charts,
+                }) as DashboardStatsResult,
+            )
+          }
+        })
+        .catch(() => {
+          // Silencioso: os KPIs já estão na tela. Se os gráficos falharem, os
+          // cards continuam válidos e o próximo filtro tenta de novo.
+        })
     } catch (err: unknown) {
       if (isAbortLikeError(err)) {
         return

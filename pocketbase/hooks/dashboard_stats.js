@@ -40,6 +40,24 @@ var __dashboardStatsHandler = (e) => {
     }
     const f = body.filters || {}
 
+    // PERF (2026-11-18): divisão da resposta em partes.
+    // O handler roda ~20 agregações numa única tacada (~2s em cache frio) e o
+    // front só pintava a tela quando TODAS terminavam. Com `parts` a Visão
+    // Canais busca primeiro 'core' (KPIs + filterOptions + charts.estado) e só
+    // depois 'charts' (o resto dos gráficos), então os números principais
+    // aparecem ~3x mais rápido e os gráficos chegam em seguida.
+    // Sem `parts` (ou parts='all') o comportamento é EXATAMENTE o de antes —
+    // nenhuma outra tela que consome este endpoint muda.
+    //   parts='core'   -> { kpis, porAno, estado, filterOptions, recentSales }
+    //   parts='charts' -> { charts } (sem estado, que já veio no core)
+    let parts = 'all'
+    if (body && typeof body.parts === 'string') {
+      const p = body.parts.trim().toLowerCase()
+      if (p === 'core' || p === 'charts') parts = p
+    }
+    const onlyCore = parts === 'core'
+    const onlyCharts = parts === 'charts'
+
     // 0. Auto-inicialização defensiva das tabelas de resumo SQLite (executa em < 1ms se já existem)
     try {
       $app
@@ -320,7 +338,10 @@ var __dashboardStatsHandler = (e) => {
     // Silvio 0.0.357) e entradas vazias gravadas antes do BUG 0.0.360 (ORDER BY
     // antes de UNION ALL / ano_mes na base bruta — grupo/vendedor/cliente/mensal
     // por grupo voltavam [] e a resposta vazia ficou 5 min no cache).
-    const cacheKey = 'v4:' + stableCacheKey(f || {})
+    // A parte entra na chave: 'core' e 'charts' têm payloads diferentes e não
+    // podem dividir a mesma entrada de cache. 'all' mantém a chave original
+    // ('v4:...') para não invalidar o cache já existente desse formato.
+    const cacheKey = 'v4:' + (parts === 'all' ? '' : parts + ':') + stableCacheKey(f || {})
     const now = Date.now()
     let cachedEntry = null
     try {
@@ -1144,527 +1165,557 @@ var __dashboardStatsHandler = (e) => {
     // ============================================================
     // 2) Charts
     // ============================================================
-    // 2.1) vendasPorMes (últimos 6 meses)
-    // REGRA DE NEGÓCIO: O dashboard da Visão Geral deve SEMPRE mostrar as movimentações
-    // dos últimos 6 meses da base (terminando no último mês disponível na base, ex: Ago-2026),
-    // independente do filtro de período (ano/mês/dia) selecionado, mantendo a regra dos gráficos históricos.
-    // Respeita os filtros de dimensão e base (sqlWhereBase).
+    // PERF (2026-11-18): divisão da resposta em partes.
+    // Numa requisição parts='core' (a que pinta os KPIs da Visão Canais) TODA a
+    // seção 2 é desnecessária: são ~14 agregações sobre a base bruta `vendas`,
+    // medidas em ~0,5s das 0,65s totais em cache frio. O bloco abaixo roda
+    // dentro de `if (!onlyCore)`. Em parts='all'/'charts' ele executa como
+    // sempre. As variáveis consumidas pela seção 5 (só `ultimos6MesesAlvo`,
+    // que precisa do mesmo comprimento) recebem valor equivalente fora do if.
     const ultimos6MesesAlvo = []
     // (ultimoYmGeral já foi calculado antes das cláusulas de filtro)
-    const ymParts = ultimoYmGeral.split('-')
-    const maxY = parseInt(ymParts[0], 10) || 2026
-    const maxM = parseInt(ymParts[1], 10) || 8
+    const ymPartsCore = ultimoYmGeral.split('-')
+    const maxYCore = parseInt(ymPartsCore[0], 10) || 2026
+    const maxMCore = parseInt(ymPartsCore[1], 10) || 8
     for (let i = 5; i >= 0; i--) {
-      const totalMeses = maxY * 12 + (maxM - 1) - i
+      const totalMeses = maxYCore * 12 + (maxMCore - 1) - i
       const y = Math.floor(totalMeses / 12)
       const m = (totalMeses % 12) + 1
       ultimos6MesesAlvo.push(String(y) + '-' + String(m).padStart(2, '0'))
     }
 
-    // OTIMIZAÇÃO: varredura única cobrindo os 3 anos (atual, ano anterior e ano retrasado).
-    // Como os 18 períodos (6 atuais + 6 ano-1 + 6 ano-2) são disjuntos,
-    // uma única varredura com IN cobre as três séries trienais (ex: 2024, 2025, 2026).
-    const mesesAnoAnterior6 = ultimos6MesesAlvo.map((m) => {
-      const p = m.split('-')
-      const y = parseInt(p[0], 10) - 1
-      return String(y) + '-' + p[1]
-    })
-    const mesesAnoRetrasado6 = ultimos6MesesAlvo.map((m) => {
-      const p = m.split('-')
-      const y = parseInt(p[0], 10) - 2
-      return String(y) + '-' + p[1]
-    })
-    const todosMesesJanela = ultimos6MesesAlvo.concat(mesesAnoAnterior6).concat(mesesAnoRetrasado6)
-    const janelaInClause = todosMesesJanela.map((m) => "'" + m + "'").join(',')
+    // Valores padrão: usados quando parts='core' (gráficos não calculados).
+    // Declarados aqui para que a montagem da resposta na seção final nunca
+    // referencie variável inexistente.
+    let vendasPorMes = []
+    let vendasPorAno = []
+    let grupoItem = []
+    let topVendedores = []
+    let topClientes = []
+    let estado = []
+    let tipoDocumento = []
+    let utilizacao = []
+    let revendasFaturamento = {}
+    let vendasPorGrupoItemMensal = []
 
-    // Ciclo C: vendasPorMes respeita EXCLUSIVAMENTE os 5 filtros globais (sqlWhereGlobalRestricted),
-    // ignorando vendedor/cliente, canal, base, período selecionado etc.
-    // REGRA Silvio (0.0.357): a Visão Canais usa esta série no gráfico NET x Bruto —
-    // `bruto` = SUM(total_nf_novo) LINHA A LINHA na base bruta `vendas` (nunca MAX/MIN).
-    const mesSql =
-      "SELECT COALESCE(ano_mes,'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b, COALESCE(SUM(valor_liquido),0) AS c, " +
-      'COALESCE(SUM(total_devolucao),0) AS d ' +
-      'FROM resumo_vendas_mensal WHERE ' +
-      sqlWhereGlobalRestricted +
-      ' AND ano_mes IN (' +
-      janelaInClause +
-      ') ' +
-      "GROUP BY COALESCE(ano_mes,'Sem informação') ORDER BY 1 ASC"
-    const mesRows = runAgg(mesSql)
+    if (!onlyCore) {
+      // 2.1) vendasPorMes (últimos 6 meses)
+      // REGRA DE NEGÓCIO: O dashboard da Visão Geral deve SEMPRE mostrar as movimentações
+      // dos últimos 6 meses da base (terminando no último mês disponível na base, ex: Ago-2026),
+      // independente do filtro de período (ano/mês/dia) selecionado, mantendo a regra dos gráficos históricos.
+      // Respeita os filtros de dimensão e base (sqlWhereBase).
+      // (ultimos6MesesAlvo já foi montado acima, fora do if — a seção 5 usa.)
 
-    // Janela contígua dos 6 meses-alvo como FAIXA DE DATAS (sargável, usa índice).
-    const janelaInicioIso = ultimos6MesesAlvo[0] + '-01 00:00:00.000Z'
-    const janelaFimIso = (() => {
-      const p = ultimos6MesesAlvo[ultimos6MesesAlvo.length - 1].split('-')
-      let y = parseInt(p[0], 10)
-      let m = parseInt(p[1], 10) + 1
-      if (m > 12) {
-        m = 1
-        y += 1
+      // OTIMIZAÇÃO: varredura única cobrindo os 3 anos (atual, ano anterior e ano retrasado).
+      // Como os 18 períodos (6 atuais + 6 ano-1 + 6 ano-2) são disjuntos,
+      // uma única varredura com IN cobre as três séries trienais (ex: 2024, 2025, 2026).
+      const mesesAnoAnterior6 = ultimos6MesesAlvo.map((m) => {
+        const p = m.split('-')
+        const y = parseInt(p[0], 10) - 1
+        return String(y) + '-' + p[1]
+      })
+      const mesesAnoRetrasado6 = ultimos6MesesAlvo.map((m) => {
+        const p = m.split('-')
+        const y = parseInt(p[0], 10) - 2
+        return String(y) + '-' + p[1]
+      })
+      const todosMesesJanela = ultimos6MesesAlvo
+        .concat(mesesAnoAnterior6)
+        .concat(mesesAnoRetrasado6)
+      const janelaInClause = todosMesesJanela.map((m) => "'" + m + "'").join(',')
+
+      // Ciclo C: vendasPorMes respeita EXCLUSIVAMENTE os 5 filtros globais (sqlWhereGlobalRestricted),
+      // ignorando vendedor/cliente, canal, base, período selecionado etc.
+      // REGRA Silvio (0.0.357): a Visão Canais usa esta série no gráfico NET x Bruto —
+      // `bruto` = SUM(total_nf_novo) LINHA A LINHA na base bruta `vendas` (nunca MAX/MIN).
+      const mesSql =
+        "SELECT COALESCE(ano_mes,'Sem informação') AS a, COALESCE(SUM(total_linha),0) AS b, COALESCE(SUM(valor_liquido),0) AS c, " +
+        'COALESCE(SUM(total_devolucao),0) AS d ' +
+        'FROM resumo_vendas_mensal WHERE ' +
+        sqlWhereGlobalRestricted +
+        ' AND ano_mes IN (' +
+        janelaInClause +
+        ') ' +
+        "GROUP BY COALESCE(ano_mes,'Sem informação') ORDER BY 1 ASC"
+      const mesRows = runAgg(mesSql)
+
+      // Janela contígua dos 6 meses-alvo como FAIXA DE DATAS (sargável, usa índice).
+      const janelaInicioIso = ultimos6MesesAlvo[0] + '-01 00:00:00.000Z'
+      const janelaFimIso = (() => {
+        const p = ultimos6MesesAlvo[ultimos6MesesAlvo.length - 1].split('-')
+        let y = parseInt(p[0], 10)
+        let m = parseInt(p[1], 10) + 1
+        if (m > 12) {
+          m = 1
+          y += 1
+        }
+        return String(y) + '-' + pad2(m) + '-01 00:00:00.000Z'
+      })()
+
+      const brutoRowsMes = arrayOf(new DynamicModel({ a: '', b: '' }))
+      try {
+        // O `bruto` do mês é a série usada pelos gráficos da Visão Canais
+        // (inclusive as barras empilhadas por semana). Ele tem de usar a MESMA
+        // base de filtros da quebra semanal (sqlWhereVendasSemPeriodo) — com
+        // sqlWhereGlobalRestrictedVendasSemPeriodo o total do mês ignorava
+        // vendedor/cliente/canal/UF e a soma das semanas não fechava com o mês.
+        // PERFORMANCE: a janela dos 6 meses é CONTÍGUA e o filtro era
+        // `substr(data_lancamento,1,7) IN (...)` — função na coluna impede o uso do
+        // índice e obriga varredura completa de `vendas` (61 mil linhas; com a carga
+        // de 2024 o custo subiu ~57% e a chamada de cache frio passou a estourar o
+        // teto de 25s, devolvendo 504). Faixa de datas usa idx_vnd_data_lancamento.
+        // `janelaInicioIso`/`janelaFimIso` são declarados ANTES do try (escopo do
+        // handler) porque a quebra semanal logo abaixo também os usa.
+        const brutoSqlMes =
+          'SELECT substr(data_lancamento, 1, 7) AS a, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
+          'FROM vendas WHERE ' +
+          sqlWhereVendasSemPeriodo +
+          " AND data_lancamento >= '" +
+          janelaInicioIso +
+          "' AND data_lancamento < '" +
+          janelaFimIso +
+          "' " +
+          'GROUP BY substr(data_lancamento, 1, 7) ORDER BY 1 ASC'
+        $app.db().newQuery(brutoSqlMes).all(brutoRowsMes)
+      } catch (brutoErrMes) {
+        console.error('dashboard_stats: bruto mensal (vendas) falhou:', brutoErrMes)
       }
-      return String(y) + '-' + pad2(m) + '-01 00:00:00.000Z'
-    })()
 
-    const brutoRowsMes = arrayOf(new DynamicModel({ a: '', b: '' }))
-    try {
-      // O `bruto` do mês é a série usada pelos gráficos da Visão Canais
-      // (inclusive as barras empilhadas por semana). Ele tem de usar a MESMA
-      // base de filtros da quebra semanal (sqlWhereVendasSemPeriodo) — com
-      // sqlWhereGlobalRestrictedVendasSemPeriodo o total do mês ignorava
-      // vendedor/cliente/canal/UF e a soma das semanas não fechava com o mês.
-      // PERFORMANCE: a janela dos 6 meses é CONTÍGUA e o filtro era
-      // `substr(data_lancamento,1,7) IN (...)` — função na coluna impede o uso do
-      // índice e obriga varredura completa de `vendas` (61 mil linhas; com a carga
-      // de 2024 o custo subiu ~57% e a chamada de cache frio passou a estourar o
-      // teto de 25s, devolvendo 504). Faixa de datas usa idx_vnd_data_lancamento.
-      // `janelaInicioIso`/`janelaFimIso` são declarados ANTES do try (escopo do
-      // handler) porque a quebra semanal logo abaixo também os usa.
-      const brutoSqlMes =
-        'SELECT substr(data_lancamento, 1, 7) AS a, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
-        'FROM vendas WHERE ' +
-        sqlWhereVendasSemPeriodo +
-        " AND data_lancamento >= '" +
-        janelaInicioIso +
-        "' AND data_lancamento < '" +
-        janelaFimIso +
-        "' " +
-        'GROUP BY substr(data_lancamento, 1, 7) ORDER BY 1 ASC'
-      $app.db().newQuery(brutoSqlMes).all(brutoRowsMes)
-    } catch (brutoErrMes) {
-      console.error('dashboard_stats: bruto mensal (vendas) falhou:', brutoErrMes)
-    }
+      const monthNames = [
+        'Jan',
+        'Fev',
+        'Mar',
+        'Abr',
+        'Mai',
+        'Jun',
+        'Jul',
+        'Ago',
+        'Set',
+        'Out',
+        'Nov',
+        'Dez',
+      ]
 
-    const monthNames = [
-      'Jan',
-      'Fev',
-      'Mar',
-      'Abr',
-      'Mai',
-      'Jun',
-      'Jul',
-      'Ago',
-      'Set',
-      'Out',
-      'Nov',
-      'Dez',
-    ]
+      const brutoMapMes = {}
+      for (let bi = 0; bi < brutoRowsMes.length; bi++) {
+        brutoMapMes[brutoRowsMes[bi].a] = toNum(brutoRowsMes[bi].b)
+      }
 
-    const brutoMapMes = {}
-    for (let bi = 0; bi < brutoRowsMes.length; bi++) {
-      brutoMapMes[brutoRowsMes[bi].a] = toNum(brutoRowsMes[bi].b)
-    }
+      // Item 7 do plano: quebra SEMANAL dos 6 meses do gráfico
+      // "Valor Total (Bruto) por Mês — Semanas 1 a 5" (Visão Canais).
+      // Semana = faixa de dias dentro do mês: 1 (1-7), 2 (8-14), 3 (15-21),
+      // 4 (22-28) e 5 (29-31, quando o mês tiver). Bruto = SUM(total_nf_novo),
+      // NET = SUM(valor_liquido), linha a linha na base bruta `vendas`.
+      //
+      // BUG (corrigido 0.0.381, reportado pelo Silvio): a série usava
+      // sqlWhereGlobalRestrictedVendasSemPeriodo, que só carrega os 5 filtros
+      // globais (Grupo do Item, Utilização, Tipo de Documento, Tipo de Cliente) —
+      // NÃO carrega as dimensões de Canais. Consequência: escolher
+      // "Vendedor > Cliente" (ou Vendedor, Cliente, Canal, Clientes do Canal,
+      // Deploy, Inside, UF) não mudava nada neste gráfico, enquanto os demais
+      // respeitavam. Agora usa sqlWhereVendasSemPeriodo, a MESMA base de filtros
+      // dos outros gráficos da Visão Canais (período removido, 6 meses fixos),
+      // então as semanas batem com o total do mês e com o restante da tela.
+      const semanaPorMes = {}
+      try {
+        const semRows = arrayOf(new DynamicModel({ a: '', sem: '', bruto: '', liquido: '' }))
+        const semSql =
+          'SELECT substr(data_lancamento, 1, 7) AS a, ' +
+          'CAST(((CAST(substr(data_lancamento, 9, 2) AS INTEGER) - 1) / 7) + 1 AS INTEGER) AS sem, ' +
+          'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS bruto, ' +
+          'COALESCE(SUM(COALESCE(valor_liquido,0)),0) AS liquido ' +
+          'FROM vendas WHERE ' +
+          sqlWhereVendasSemPeriodo +
+          " AND data_lancamento >= '" +
+          janelaInicioIso +
+          "' AND data_lancamento < '" +
+          janelaFimIso +
+          "' " +
+          'GROUP BY substr(data_lancamento, 1, 7), sem ORDER BY 1 ASC, sem ASC'
+        $app.db().newQuery(semSql).all(semRows)
+        for (let si = 0; si < semRows.length; si++) {
+          const ym = semRows[si].a
+          const sem = parseInt(semRows[si].sem, 10)
+          if (!ym || !sem || sem < 1 || sem > 5) continue
+          if (!semanaPorMes[ym]) semanaPorMes[ym] = []
+          semanaPorMes[ym].push({
+            semana: sem,
+            bruto: toNum(semRows[si].bruto),
+            liquido: toNum(semRows[si].liquido),
+          })
+        }
+      } catch (semErr) {
+        console.error('dashboard_stats: quebra semanal por mes falhou:', semErr)
+      }
 
-    // Item 7 do plano: quebra SEMANAL dos 6 meses do gráfico
-    // "Valor Total (Bruto) por Mês — Semanas 1 a 5" (Visão Canais).
-    // Semana = faixa de dias dentro do mês: 1 (1-7), 2 (8-14), 3 (15-21),
-    // 4 (22-28) e 5 (29-31, quando o mês tiver). Bruto = SUM(total_nf_novo),
-    // NET = SUM(valor_liquido), linha a linha na base bruta `vendas`.
-    //
-    // BUG (corrigido 0.0.381, reportado pelo Silvio): a série usava
-    // sqlWhereGlobalRestrictedVendasSemPeriodo, que só carrega os 5 filtros
-    // globais (Grupo do Item, Utilização, Tipo de Documento, Tipo de Cliente) —
-    // NÃO carrega as dimensões de Canais. Consequência: escolher
-    // "Vendedor > Cliente" (ou Vendedor, Cliente, Canal, Clientes do Canal,
-    // Deploy, Inside, UF) não mudava nada neste gráfico, enquanto os demais
-    // respeitavam. Agora usa sqlWhereVendasSemPeriodo, a MESMA base de filtros
-    // dos outros gráficos da Visão Canais (período removido, 6 meses fixos),
-    // então as semanas batem com o total do mês e com o restante da tela.
-    const semanaPorMes = {}
-    try {
-      const semRows = arrayOf(new DynamicModel({ a: '', sem: '', bruto: '', liquido: '' }))
-      const semSql =
-        'SELECT substr(data_lancamento, 1, 7) AS a, ' +
-        'CAST(((CAST(substr(data_lancamento, 9, 2) AS INTEGER) - 1) / 7) + 1 AS INTEGER) AS sem, ' +
-        'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS bruto, ' +
-        'COALESCE(SUM(COALESCE(valor_liquido,0)),0) AS liquido ' +
-        'FROM vendas WHERE ' +
-        sqlWhereVendasSemPeriodo +
-        " AND data_lancamento >= '" +
-        janelaInicioIso +
-        "' AND data_lancamento < '" +
-        janelaFimIso +
-        "' " +
-        'GROUP BY substr(data_lancamento, 1, 7), sem ORDER BY 1 ASC, sem ASC'
-      $app.db().newQuery(semSql).all(semRows)
-      for (let si = 0; si < semRows.length; si++) {
-        const ym = semRows[si].a
-        const sem = parseInt(semRows[si].sem, 10)
-        if (!ym || !sem || sem < 1 || sem > 5) continue
-        if (!semanaPorMes[ym]) semanaPorMes[ym] = []
-        semanaPorMes[ym].push({
-          semana: sem,
-          bruto: toNum(semRows[si].bruto),
-          liquido: toNum(semRows[si].liquido),
+      // Consolida as 5 semanas possíveis por mês (semanas ausentes = 0), garantindo
+      // série estável para o gráfico empilhado.
+      const semanasDoMes = (ym) => {
+        const map = {}
+        const lista = semanaPorMes[ym] || []
+        for (let i = 0; i < lista.length; i++) map[lista[i].semana] = lista[i]
+        const out = []
+        for (let s = 1; s <= 5; s++) {
+          const cur = map[s] || { bruto: 0, liquido: 0 }
+          out.push({ semana: s, bruto: cur.bruto, liquido: cur.liquido })
+        }
+        return out
+      }
+
+      const mesMapAtual = {}
+      const prevYearMap = {}
+      const prevYear2Map = {}
+      for (let i = 0; i < mesRows.length; i++) {
+        const ym = mesRows[i].a
+        if (ym) {
+          const entry = {
+            faturamento: toNum(mesRows[i].b),
+            liquido: toNum(mesRows[i].c),
+            devolucoes: toNum(mesRows[i].d),
+          }
+          if (ultimos6MesesAlvo.indexOf(ym) >= 0) {
+            mesMapAtual[ym] = entry
+          } else if (mesesAnoAnterior6.indexOf(ym) >= 0) {
+            prevYearMap[ym] = toNum(mesRows[i].b)
+          } else {
+            prevYear2Map[ym] = toNum(mesRows[i].b)
+          }
+        }
+      }
+
+      vendasPorMes = []
+      for (let i = 0; i < ultimos6MesesAlvo.length; i++) {
+        const ym = ultimos6MesesAlvo[i]
+        const p = ym.split('-')
+        const y = p[0]
+        const mo = parseInt(p[1], 10)
+        const prevKey = String(parseInt(y, 10) - 1) + '-' + String(mo).padStart(2, '0')
+        const prev2Key = String(parseInt(y, 10) - 2) + '-' + String(mo).padStart(2, '0')
+        const atual = mesMapAtual[ym] || { faturamento: 0, liquido: 0, devolucoes: 0 }
+        // Item 7 do plano: semanas[] carrega o Bruto e o NET de cada semana (1..5)
+        // do mês, para o gráfico empilhado. `semanaBrutoTotal`/`semanaLiquidoTotal`
+        // são as somas das semanas — devem bater com `bruto` e `liquido`.
+        const semanas = semanasDoMes(ym)
+        let semanaBrutoTotal = 0
+        let semanaLiquidoTotal = 0
+        for (let sw = 0; sw < semanas.length; sw++) {
+          semanaBrutoTotal += semanas[sw].bruto
+          semanaLiquidoTotal += semanas[sw].liquido
+        }
+
+        vendasPorMes.push({
+          mes: monthNames[mo - 1] + '/' + y.slice(2),
+          mesIso: ym,
+          faturamento: atual.faturamento,
+          liquido: atual.liquido,
+          bruto: brutoMapMes[ym] || 0,
+          devolucoes: atual.devolucoes,
+          semanas: semanas,
+          semanaBrutoTotal: semanaBrutoTotal,
+          semanaLiquidoTotal: semanaLiquidoTotal,
+          faturamento_ano_anterior: prevYearMap[prevKey] || 0,
+          faturamento_ano_retrasado: prevYear2Map[prev2Key] || 0,
         })
       }
-    } catch (semErr) {
-      console.error('dashboard_stats: quebra semanal por mes falhou:', semErr)
-    }
 
-    // Consolida as 5 semanas possíveis por mês (semanas ausentes = 0), garantindo
-    // série estável para o gráfico empilhado.
-    const semanasDoMes = (ym) => {
-      const map = {}
-      const lista = semanaPorMes[ym] || []
-      for (let i = 0; i < lista.length; i++) map[lista[i].semana] = lista[i]
-      const out = []
-      for (let s = 1; s <= 5; s++) {
-        const cur = map[s] || { bruto: 0, liquido: 0 }
-        out.push({ semana: s, bruto: cur.bruto, liquido: cur.liquido })
-      }
-      return out
-    }
-
-    const mesMapAtual = {}
-    const prevYearMap = {}
-    const prevYear2Map = {}
-    for (let i = 0; i < mesRows.length; i++) {
-      const ym = mesRows[i].a
-      if (ym) {
-        const entry = {
-          faturamento: toNum(mesRows[i].b),
-          liquido: toNum(mesRows[i].c),
-          devolucoes: toNum(mesRows[i].d),
+      // 2.2) vendasPorAno — Mostra SEMPRE todos os anos da base respeitando SOMENTE os 5 filtros globais (Ciclo C)
+      const anoSql =
+        'SELECT CAST(ano AS TEXT) AS a, COALESCE(SUM(total_linha),0) AS b, ' +
+        'COALESCE(SUM(total_devolucao),0) AS c ' +
+        'FROM resumo_vendas_mensal WHERE ' +
+        sqlWhereGlobalRestricted +
+        ' AND ano >= 2015 ' +
+        'GROUP BY ano ORDER BY ano ASC'
+      const anoRows = runAgg(anoSql)
+      vendasPorAno = []
+      let anoAnterior = null
+      for (let i = 0; i < anoRows.length; i++) {
+        const ano = anoRows[i].a
+        const faturamento = toNum(anoRows[i].b)
+        const devolucoes = toNum(anoRows[i].c)
+        let variacao = null
+        if (anoAnterior !== null && anoAnterior !== 0) {
+          variacao = ((faturamento - anoAnterior) / anoAnterior) * 100
         }
-        if (ultimos6MesesAlvo.indexOf(ym) >= 0) {
-          mesMapAtual[ym] = entry
-        } else if (mesesAnoAnterior6.indexOf(ym) >= 0) {
-          prevYearMap[ym] = toNum(mesRows[i].b)
-        } else {
-          prevYear2Map[ym] = toNum(mesRows[i].b)
+        vendasPorAno.push({
+          ano: ano,
+          faturamento: faturamento,
+          devolucoes: devolucoes,
+          variacao: variacao,
+        })
+        anoAnterior = faturamento
+      }
+
+      // 2.3–2.6) grupoItem, topVendedores, topClientes e estado
+      // OTIMIZAÇÃO: as 4 agregações usavam 4 varreduras completas do resumo com o MESMO
+      // sqlWhere. Agora uma única varredura (UNION ALL com rótulo de dimensão) produz as
+      // quatro listas; a ordenação por valor DESC e o LIMIT 10 (top 10) são aplicados em JS,
+      // preservando exatamente os mesmos valores/números de antes.
+      const multiDimRows = arrayOf(new DynamicModel({ dim: '', k: '', v: '', v2: '' }))
+      try {
+        // REGRA Silvio (0.0.357): grupo/vendedor/cliente alimentam a Visão Canais e
+        // somam total_nf_novo (Valor Total Bruto) — a resumo não tem a coluna, então
+        // essas séries rodam na base bruta `vendas`.
+        // REGRA 0.0.374 (item 1 e 4 do plano): tipo_documento, utilização e grupo
+        // passam a devolver DUAS medidas por chave — v = Valor Total (Bruto)
+        // (SUM(total_nf_novo)) e v2 = Valor Líquido (NET) (SUM(valor_liquido)) —
+        // ambas linha a linha na base bruta. Sai o CASE "maior entre total_linha e
+        // valor_liquido", que escondia o par Bruto/NET.
+        const vendasDimBase = 'FROM vendas WHERE ' + sqlWhereVendas + ' GROUP BY 2'
+        const vendedorDimBase = vendasDimBase
+        const dimArm = (dim, keyExpr) =>
+          "SELECT '" +
+          dim +
+          "' AS dim, " +
+          keyExpr +
+          ' AS k, ' +
+          'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v, ' +
+          'COALESCE(SUM(COALESCE(valor_liquido,0)),0) AS v2 ' +
+          vendasDimBase
+        // BUG 0.0.360: ORDER BY dentro de cada braço quebra o UNION ALL do SQLite
+        // ("ORDER BY clause should come after UNION ALL not before") — a agregação
+        // falhava por inteiro. O ORDER BY deve vir UMA vez, no FIM do compound.
+        const multiDimSql =
+          dimArm('tipo_documento', "COALESCE(NULLIF(tipo_documento,''),'Sem classificação')") +
+          ' UNION ALL ' +
+          dimArm('utilizacao', "COALESCE(NULLIF(utilizacao,''),'Sem classificação')") +
+          ' UNION ALL ' +
+          dimArm('grupo', "COALESCE(NULLIF(grupo_item,''),'Sem informação')") +
+          ' UNION ALL ' +
+          dimArm('vendedor', "COALESCE(NULLIF(nome_vendedor,''),'Sem informação')") +
+          ' UNION ALL ' +
+          dimArm('cliente', "COALESCE(NULLIF(nome_cliente,''),'Sem informação')") +
+          ' ORDER BY v DESC'
+        $app.db().newQuery(multiDimSql).all(multiDimRows)
+        // vendedorDimBase existe só para clareza do bloco acima (mesma base/where)
+        if (false) console.log(vendedorDimBase)
+      } catch (err) {
+        console.error('dashboard_stats: agregacao multi-dimensao falhou:', err)
+      }
+
+      const dimLists = {
+        grupo: [],
+        vendedor: [],
+        cliente: [],
+        estado: [],
+        tipo_documento: [],
+        utilizacao: [],
+      }
+      for (let i = 0; i < multiDimRows.length; i++) {
+        const dim = String(multiDimRows[i].dim || '')
+        const key = multiDimRows[i].k || 'Sem classificação'
+        const val = toNum(multiDimRows[i].v)
+        const val2 = toNum(multiDimRows[i].v2)
+        if (dimLists[dim]) dimLists[dim].push({ k: key, v: val, v2: val2 })
+      }
+
+      // Vendas por UF: SUM(total_nf_novo) por estado na base bruta `vendas` — a
+      // resumo_vendas_mensal não tem essa coluna (ver comentário no multiDimSql).
+      // Mesma convenção dos KPIs Bruto/Sem Frete: SUM linha a linha (Silvio).
+      try {
+        const estadoRows = arrayOf(new DynamicModel({ k: '', v: '' }))
+        const estadoSql =
+          "SELECT COALESCE(NULLIF(estado,''),'Sem informação') AS k, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v " +
+          'FROM vendas WHERE ' +
+          sqlWhereVendas +
+          ' GROUP BY 1 ORDER BY 2 DESC'
+        $app.db().newQuery(estadoSql).all(estadoRows)
+        for (let i = 0; i < estadoRows.length; i++) {
+          dimLists.estado.push({
+            k: estadoRows[i].k || 'Sem informação',
+            v: toNum(estadoRows[i].v),
+          })
         }
-      }
-    }
-
-    const vendasPorMes = []
-    for (let i = 0; i < ultimos6MesesAlvo.length; i++) {
-      const ym = ultimos6MesesAlvo[i]
-      const p = ym.split('-')
-      const y = p[0]
-      const mo = parseInt(p[1], 10)
-      const prevKey = String(parseInt(y, 10) - 1) + '-' + String(mo).padStart(2, '0')
-      const prev2Key = String(parseInt(y, 10) - 2) + '-' + String(mo).padStart(2, '0')
-      const atual = mesMapAtual[ym] || { faturamento: 0, liquido: 0, devolucoes: 0 }
-      // Item 7 do plano: semanas[] carrega o Bruto e o NET de cada semana (1..5)
-      // do mês, para o gráfico empilhado. `semanaBrutoTotal`/`semanaLiquidoTotal`
-      // são as somas das semanas — devem bater com `bruto` e `liquido`.
-      const semanas = semanasDoMes(ym)
-      let semanaBrutoTotal = 0
-      let semanaLiquidoTotal = 0
-      for (let sw = 0; sw < semanas.length; sw++) {
-        semanaBrutoTotal += semanas[sw].bruto
-        semanaLiquidoTotal += semanas[sw].liquido
+      } catch (estadoErr) {
+        console.error(
+          'dashboard_stats: agregacao vendas por UF (SUM total_nf_novo) falhou:',
+          estadoErr,
+        )
       }
 
-      vendasPorMes.push({
-        mes: monthNames[mo - 1] + '/' + y.slice(2),
-        mesIso: ym,
-        faturamento: atual.faturamento,
-        liquido: atual.liquido,
-        bruto: brutoMapMes[ym] || 0,
-        devolucoes: atual.devolucoes,
-        semanas: semanas,
-        semanaBrutoTotal: semanaBrutoTotal,
-        semanaLiquidoTotal: semanaLiquidoTotal,
-        faturamento_ano_anterior: prevYearMap[prevKey] || 0,
-        faturamento_ano_retrasado: prevYear2Map[prev2Key] || 0,
-      })
-    }
+      // Item 1 e 4 do plano: as séries de grupo do item, tipo de documento e
+      // utilização entregam `value` (Valor Total Bruto) e `valueLiquido`
+      // (Valor Líquido NET). `value` é mantido para os consumidores antigos.
+      grupoItem = dimLists.grupo.map((r) => ({
+        name: r.k,
+        value: r.v,
+        valueLiquido: r.v2 || 0,
+      }))
+      topVendedores = dimLists.vendedor.slice(0, 10).map((r) => ({ name: r.k, total: r.v }))
+      topClientes = dimLists.cliente.slice(0, 10).map((r) => ({ name: r.k, total: r.v }))
+      estado = dimLists.estado.map((r) => ({ uf: r.k, total: r.v }))
+      tipoDocumento = (dimLists.tipo_documento || []).map((r) => ({
+        name: r.k,
+        value: r.v,
+        valueLiquido: r.v2 || 0,
+      }))
+      utilizacao = (dimLists.utilizacao || []).map((r) => ({
+        name: r.k,
+        value: r.v,
+        valueLiquido: r.v2 || 0,
+      }))
 
-    // 2.2) vendasPorAno — Mostra SEMPRE todos os anos da base respeitando SOMENTE os 5 filtros globais (Ciclo C)
-    const anoSql =
-      'SELECT CAST(ano AS TEXT) AS a, COALESCE(SUM(total_linha),0) AS b, ' +
-      'COALESCE(SUM(total_devolucao),0) AS c ' +
-      'FROM resumo_vendas_mensal WHERE ' +
-      sqlWhereGlobalRestricted +
-      ' AND ano >= 2015 ' +
-      'GROUP BY ano ORDER BY ano ASC'
-    const anoRows = runAgg(anoSql)
-    const vendasPorAno = []
-    let anoAnterior = null
-    for (let i = 0; i < anoRows.length; i++) {
-      const ano = anoRows[i].a
-      const faturamento = toNum(anoRows[i].b)
-      const devolucoes = toNum(anoRows[i].c)
-      let variacao = null
-      if (anoAnterior !== null && anoAnterior !== 0) {
-        variacao = ((faturamento - anoAnterior) / anoAnterior) * 100
-      }
-      vendasPorAno.push({
-        ano: ano,
-        faturamento: faturamento,
-        devolucoes: devolucoes,
-        variacao: variacao,
-      })
-      anoAnterior = faturamento
-    }
+      // 2.7) revendasFaturamento
+      const revendaConfigs = [
+        { id: 'adenil', patterns: ['ADENIL', 'ADENILL'] },
+        { id: 'aquarela', patterns: ['AQUARELA'] },
+        { id: 'bluebird', patterns: ['BLUE BIRD'] },
+        { id: 'brastech', patterns: ['BRASTECH', 'CARVALHO LIMA'] },
+        { id: 'ch-suprimentos', patterns: ['CH SUPRIMENTOS'] },
+        { id: 'cyancolor', patterns: ['CYANCOLOR', 'CYANPRINT', 'CYAN PRINT'] },
+        { id: 'd-printer', patterns: ['D PRINTER', 'DPRINTER', 'D. PRINTER'] },
+        { id: 'dental-globo', patterns: ['DENTAL GLOBO'] },
+        {
+          id: 'diamante-tintas',
+          patterns: ['DIAMANTE COMERCIO DE TINTAS', 'DIAMANTE TINTAS', 'DIAMANTE COM DE TINTAS'],
+        },
+        { id: 'dj-comercio', patterns: ['DJ COMERCIO', 'DJ COMÉRCIO', 'DJ COM. DE ADESIVOS'] },
+        { id: 'drucken', patterns: ['DRUCKEN'] },
+        { id: 'eldorado', patterns: ['ELDORADO', 'ROBERTO LEITE DOS SANTOS'] },
+        { id: 'emporio-do-adesivo', patterns: ['EMPORIO DO ADESIVO', 'EMPÓRIO DO ADESIVO'] },
+        {
+          id: 'formato-go',
+          patterns: ['FORMATO GO', 'FORMATO GYN', 'FORMATO DIGITAL GO', 'FORMATO COM'],
+        },
+        {
+          id: 'formato-mg',
+          patterns: ['FORMATO MG', 'FORMATO BH', 'FORMATO DIGITAL MG', 'FORMATO COMERCIO'],
+        },
+        { id: 'impar', patterns: ['IMPAR', 'ÍMPAR'] },
+        { id: 'konica-minolta', patterns: ['KONICA MINOLTA', 'KONICA'] },
+        { id: 'kromadecka', patterns: ['KROMADECKA'] },
+        { id: 'm2', patterns: ['M2 DIGITAL', 'M2 SOLUCOES', 'M2'] },
+        { id: 'nrm-leite', patterns: ['N. R. M. LEITE', 'NRM LEITE', 'N R M LEITE', 'LEITE &'] },
+        { id: 'neodent', patterns: ['NEODENT', 'JJGC IND'] },
+        { id: 'nova-silk', patterns: ['NOVA SILK', 'NOVASILK'] },
+        { id: 'novo-tempo-digital', patterns: ['NOVO TEMPO', 'NOVO TEMPO DIGITAL'] },
+        { id: 'ocean', patterns: ['OCEAN SOLUCOES', 'OCEAN SOLUÇÕES', 'OCEAN'] },
+        { id: 'plastsign', patterns: ['PLASTSIGN', 'PLAST SIGN'] },
+        { id: 'substrato', patterns: ['SUBSTRATO'] },
+      ]
 
-    // 2.3–2.6) grupoItem, topVendedores, topClientes e estado
-    // OTIMIZAÇÃO: as 4 agregações usavam 4 varreduras completas do resumo com o MESMO
-    // sqlWhere. Agora uma única varredura (UNION ALL com rótulo de dimensão) produz as
-    // quatro listas; a ordenação por valor DESC e o LIMIT 10 (top 10) são aplicados em JS,
-    // preservando exatamente os mesmos valores/números de antes.
-    const multiDimRows = arrayOf(new DynamicModel({ dim: '', k: '', v: '', v2: '' }))
-    try {
-      // REGRA Silvio (0.0.357): grupo/vendedor/cliente alimentam a Visão Canais e
-      // somam total_nf_novo (Valor Total Bruto) — a resumo não tem a coluna, então
-      // essas séries rodam na base bruta `vendas`.
-      // REGRA 0.0.374 (item 1 e 4 do plano): tipo_documento, utilização e grupo
-      // passam a devolver DUAS medidas por chave — v = Valor Total (Bruto)
-      // (SUM(total_nf_novo)) e v2 = Valor Líquido (NET) (SUM(valor_liquido)) —
-      // ambas linha a linha na base bruta. Sai o CASE "maior entre total_linha e
-      // valor_liquido", que escondia o par Bruto/NET.
-      const vendasDimBase = 'FROM vendas WHERE ' + sqlWhereVendas + ' GROUP BY 2'
-      const vendedorDimBase = vendasDimBase
-      const dimArm = (dim, keyExpr) =>
-        "SELECT '" +
-        dim +
-        "' AS dim, " +
-        keyExpr +
-        ' AS k, ' +
-        'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v, ' +
-        'COALESCE(SUM(COALESCE(valor_liquido,0)),0) AS v2 ' +
-        vendasDimBase
-      // BUG 0.0.360: ORDER BY dentro de cada braço quebra o UNION ALL do SQLite
-      // ("ORDER BY clause should come after UNION ALL not before") — a agregação
-      // falhava por inteiro. O ORDER BY deve vir UMA vez, no FIM do compound.
-      const multiDimSql =
-        dimArm('tipo_documento', "COALESCE(NULLIF(tipo_documento,''),'Sem classificação')") +
-        ' UNION ALL ' +
-        dimArm('utilizacao', "COALESCE(NULLIF(utilizacao,''),'Sem classificação')") +
-        ' UNION ALL ' +
-        dimArm('grupo', "COALESCE(NULLIF(grupo_item,''),'Sem informação')") +
-        ' UNION ALL ' +
-        dimArm('vendedor', "COALESCE(NULLIF(nome_vendedor,''),'Sem informação')") +
-        ' UNION ALL ' +
-        dimArm('cliente', "COALESCE(NULLIF(nome_cliente,''),'Sem informação')") +
-        ' ORDER BY v DESC'
-      $app.db().newQuery(multiDimSql).all(multiDimRows)
-      // vendedorDimBase existe só para clareza do bloco acima (mesma base/where)
-      if (false) console.log(vendedorDimBase)
-    } catch (err) {
-      console.error('dashboard_stats: agregacao multi-dimensao falhou:', err)
-    }
-
-    const dimLists = {
-      grupo: [],
-      vendedor: [],
-      cliente: [],
-      estado: [],
-      tipo_documento: [],
-      utilizacao: [],
-    }
-    for (let i = 0; i < multiDimRows.length; i++) {
-      const dim = String(multiDimRows[i].dim || '')
-      const key = multiDimRows[i].k || 'Sem classificação'
-      const val = toNum(multiDimRows[i].v)
-      const val2 = toNum(multiDimRows[i].v2)
-      if (dimLists[dim]) dimLists[dim].push({ k: key, v: val, v2: val2 })
-    }
-
-    // Vendas por UF: SUM(total_nf_novo) por estado na base bruta `vendas` — a
-    // resumo_vendas_mensal não tem essa coluna (ver comentário no multiDimSql).
-    // Mesma convenção dos KPIs Bruto/Sem Frete: SUM linha a linha (Silvio).
-    try {
-      const estadoRows = arrayOf(new DynamicModel({ k: '', v: '' }))
-      const estadoSql =
-        "SELECT COALESCE(NULLIF(estado,''),'Sem informação') AS k, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS v " +
-        'FROM vendas WHERE ' +
-        sqlWhereVendas +
-        ' GROUP BY 1 ORDER BY 2 DESC'
-      $app.db().newQuery(estadoSql).all(estadoRows)
-      for (let i = 0; i < estadoRows.length; i++) {
-        dimLists.estado.push({ k: estadoRows[i].k || 'Sem informação', v: toNum(estadoRows[i].v) })
-      }
-    } catch (estadoErr) {
-      console.error(
-        'dashboard_stats: agregacao vendas por UF (SUM total_nf_novo) falhou:',
-        estadoErr,
-      )
-    }
-
-    // Item 1 e 4 do plano: as séries de grupo do item, tipo de documento e
-    // utilização entregam `value` (Valor Total Bruto) e `valueLiquido`
-    // (Valor Líquido NET). `value` é mantido para os consumidores antigos.
-    const grupoItem = dimLists.grupo.map((r) => ({
-      name: r.k,
-      value: r.v,
-      valueLiquido: r.v2 || 0,
-    }))
-    const topVendedores = dimLists.vendedor.slice(0, 10).map((r) => ({ name: r.k, total: r.v }))
-    const topClientes = dimLists.cliente.slice(0, 10).map((r) => ({ name: r.k, total: r.v }))
-    const estado = dimLists.estado.map((r) => ({ uf: r.k, total: r.v }))
-    const tipoDocumento = (dimLists.tipo_documento || []).map((r) => ({
-      name: r.k,
-      value: r.v,
-      valueLiquido: r.v2 || 0,
-    }))
-    const utilizacao = (dimLists.utilizacao || []).map((r) => ({
-      name: r.k,
-      value: r.v,
-      valueLiquido: r.v2 || 0,
-    }))
-
-    // 2.7) revendasFaturamento
-    const revendaConfigs = [
-      { id: 'adenil', patterns: ['ADENIL', 'ADENILL'] },
-      { id: 'aquarela', patterns: ['AQUARELA'] },
-      { id: 'bluebird', patterns: ['BLUE BIRD'] },
-      { id: 'brastech', patterns: ['BRASTECH', 'CARVALHO LIMA'] },
-      { id: 'ch-suprimentos', patterns: ['CH SUPRIMENTOS'] },
-      { id: 'cyancolor', patterns: ['CYANCOLOR', 'CYANPRINT', 'CYAN PRINT'] },
-      { id: 'd-printer', patterns: ['D PRINTER', 'DPRINTER', 'D. PRINTER'] },
-      { id: 'dental-globo', patterns: ['DENTAL GLOBO'] },
-      {
-        id: 'diamante-tintas',
-        patterns: ['DIAMANTE COMERCIO DE TINTAS', 'DIAMANTE TINTAS', 'DIAMANTE COM DE TINTAS'],
-      },
-      { id: 'dj-comercio', patterns: ['DJ COMERCIO', 'DJ COMÉRCIO', 'DJ COM. DE ADESIVOS'] },
-      { id: 'drucken', patterns: ['DRUCKEN'] },
-      { id: 'eldorado', patterns: ['ELDORADO', 'ROBERTO LEITE DOS SANTOS'] },
-      { id: 'emporio-do-adesivo', patterns: ['EMPORIO DO ADESIVO', 'EMPÓRIO DO ADESIVO'] },
-      {
-        id: 'formato-go',
-        patterns: ['FORMATO GO', 'FORMATO GYN', 'FORMATO DIGITAL GO', 'FORMATO COM'],
-      },
-      {
-        id: 'formato-mg',
-        patterns: ['FORMATO MG', 'FORMATO BH', 'FORMATO DIGITAL MG', 'FORMATO COMERCIO'],
-      },
-      { id: 'impar', patterns: ['IMPAR', 'ÍMPAR'] },
-      { id: 'konica-minolta', patterns: ['KONICA MINOLTA', 'KONICA'] },
-      { id: 'kromadecka', patterns: ['KROMADECKA'] },
-      { id: 'm2', patterns: ['M2 DIGITAL', 'M2 SOLUCOES', 'M2'] },
-      { id: 'nrm-leite', patterns: ['N. R. M. LEITE', 'NRM LEITE', 'N R M LEITE', 'LEITE &'] },
-      { id: 'neodent', patterns: ['NEODENT', 'JJGC IND'] },
-      { id: 'nova-silk', patterns: ['NOVA SILK', 'NOVASILK'] },
-      { id: 'novo-tempo-digital', patterns: ['NOVO TEMPO', 'NOVO TEMPO DIGITAL'] },
-      { id: 'ocean', patterns: ['OCEAN SOLUCOES', 'OCEAN SOLUÇÕES', 'OCEAN'] },
-      { id: 'plastsign', patterns: ['PLASTSIGN', 'PLAST SIGN'] },
-      { id: 'substrato', patterns: ['SUBSTRATO'] },
-    ]
-
-    const revendasFaturamento = {}
-    for (let rIdx = 0; rIdx < revendaConfigs.length; rIdx++) {
-      revendasFaturamento[revendaConfigs[rIdx].id] = { faturamento: 0, documentos: 0, itens: 0 }
-    }
-
-    try {
-      const revPatternClauses = []
+      const revendasFaturamento = {}
       for (let rIdx = 0; rIdx < revendaConfigs.length; rIdx++) {
-        const pats = revendaConfigs[rIdx].patterns
-        for (let pIdx = 0; pIdx < pats.length; pIdx++) {
-          revPatternClauses.push("UPPER(nome_cliente) LIKE '%" + sqlEsc(pats[pIdx]) + "%'")
-        }
+        revendasFaturamento[revendaConfigs[rIdx].id] = { faturamento: 0, documentos: 0, itens: 0 }
       }
-      const revMatchClause = '(' + revPatternClauses.join(' OR ') + ')'
 
-      // REGRA Silvio (0.0.357): faturamento das revendas = SUM(total_nf_novo)
-      // LINHA A LINHA na base bruta `vendas` (a resumo não tem a coluna).
-      const revSql =
-        "SELECT COALESCE(nome_cliente,'') AS a, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b, " +
-        'COUNT(DISTINCT numero_nfe) AS c, COUNT(*) AS d ' +
-        'FROM vendas WHERE ' +
-        sqlWhereVendas +
-        " AND nome_cliente IS NOT NULL AND nome_cliente != '' AND " +
-        revMatchClause +
-        ' GROUP BY nome_cliente'
-
-      const revRows = arrayOf(new DynamicModel({ a: '', b: '', c: '', d: '' }))
-      $app.db().newQuery(revSql).all(revRows)
-
-      for (let i = 0; i < revRows.length; i++) {
-        const clienteUpper = String(revRows[i].a || '').toUpperCase()
-        const fat = toNum(revRows[i].b)
-        const doc = parseInt(revRows[i].c, 10) || 0
-        const itens = parseInt(revRows[i].d, 10) || 0
-
+      try {
+        const revPatternClauses = []
         for (let rIdx = 0; rIdx < revendaConfigs.length; rIdx++) {
-          const rev = revendaConfigs[rIdx]
-          let matches = false
-          for (let pIdx = 0; pIdx < rev.patterns.length; pIdx++) {
-            if (clienteUpper.indexOf(rev.patterns[pIdx]) >= 0) {
-              matches = true
+          const pats = revendaConfigs[rIdx].patterns
+          for (let pIdx = 0; pIdx < pats.length; pIdx++) {
+            revPatternClauses.push("UPPER(nome_cliente) LIKE '%" + sqlEsc(pats[pIdx]) + "%'")
+          }
+        }
+        const revMatchClause = '(' + revPatternClauses.join(' OR ') + ')'
+
+        // REGRA Silvio (0.0.357): faturamento das revendas = SUM(total_nf_novo)
+        // LINHA A LINHA na base bruta `vendas` (a resumo não tem a coluna).
+        const revSql =
+          "SELECT COALESCE(nome_cliente,'') AS a, COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b, " +
+          'COUNT(DISTINCT numero_nfe) AS c, COUNT(*) AS d ' +
+          'FROM vendas WHERE ' +
+          sqlWhereVendas +
+          " AND nome_cliente IS NOT NULL AND nome_cliente != '' AND " +
+          revMatchClause +
+          ' GROUP BY nome_cliente'
+
+        const revRows = arrayOf(new DynamicModel({ a: '', b: '', c: '', d: '' }))
+        $app.db().newQuery(revSql).all(revRows)
+
+        for (let i = 0; i < revRows.length; i++) {
+          const clienteUpper = String(revRows[i].a || '').toUpperCase()
+          const fat = toNum(revRows[i].b)
+          const doc = parseInt(revRows[i].c, 10) || 0
+          const itens = parseInt(revRows[i].d, 10) || 0
+
+          for (let rIdx = 0; rIdx < revendaConfigs.length; rIdx++) {
+            const rev = revendaConfigs[rIdx]
+            let matches = false
+            for (let pIdx = 0; pIdx < rev.patterns.length; pIdx++) {
+              if (clienteUpper.indexOf(rev.patterns[pIdx]) >= 0) {
+                matches = true
+                break
+              }
+            }
+            if (matches) {
+              revendasFaturamento[rev.id].faturamento += fat
+              revendasFaturamento[rev.id].documentos += doc
+              revendasFaturamento[rev.id].itens += itens
               break
             }
           }
-          if (matches) {
-            revendasFaturamento[rev.id].faturamento += fat
-            revendasFaturamento[rev.id].documentos += doc
-            revendasFaturamento[rev.id].itens += itens
-            break
-          }
         }
-      }
-    } catch (err) {
-      console.error('dashboard_stats: revendasFaturamento falhou:', err)
-    }
-
-    // 2.8) vendasPorGrupoItemMensal — últimos 6 meses
-    // REGRA DE NEGÓCIO (Visão Canais): este gráfico mostra SEMPRE os últimos 6 meses
-    // completos da base, IGNORANDO o filtro de período (ano/mês/dia/dataDe/dataAte)
-    // — apenas para este gráfico. Dimensões (grupo do item, canal, vendedor, cliente,
-    // estado, utilização, tipo de documento etc.) continuam valendo via sqlWhereSemPeriodo.
-    const vendasPorGrupoItemMensal = []
-    try {
-      const mesesAlvoGrupo = ultimos6MesesAlvo
-      const minMesTarget = mesesAlvoGrupo[0]
-      const maxMesTarget = mesesAlvoGrupo[mesesAlvoGrupo.length - 1]
-      // BUG 0.0.360: a query usava `ano_mes >= ... AND ano_mes <= ...` sobre a
-      // base bruta `vendas` — coluna que SÓ existe no resumo; a SQL falhava
-      // ("no such column: ano_mes"), o runAgg engolia o erro e o gráfico
-      // "Venda Mensal por Grupo do Item" voltava vazio. Na base bruta o recorte
-      // de período é FAIXA DE DATA (1º dia do 1º mês-alvo inclusivo → 1º dia do
-      // mês seguinte ao último exclusivo), preservando o índice de data.
-      let gyMax = parseInt(maxMesTarget.split('-')[0], 10)
-      let gmNext = parseInt(maxMesTarget.split('-')[1], 10) + 1
-      if (gmNext > 12) {
-        gmNext = 1
-        gyMax += 1
-      }
-      const mesSeguinteExclusive = gyMax + '-' + pad2(gmNext)
-      // REGRA Silvio (0.0.357): valor do gráfico = SUM(total_nf_novo) linha a
-      // linha na base bruta `vendas` (a resumo não tem a coluna).
-      // Item 4 do plano: além do Bruto (total_nf_novo), devolve o Valor Líquido
-      // (NET) por grupo/mês na coluna d.
-      const gmSql =
-        'SELECT substr(data_lancamento, 1, 7) AS a, ' +
-        "COALESCE(NULLIF(grupo_item,''),'Sem informação') AS b, " +
-        'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS c, ' +
-        'COALESCE(SUM(COALESCE(valor_liquido,0)),0) AS d ' +
-        'FROM vendas WHERE ' +
-        sqlWhereVendasSemPeriodo +
-        " AND data_lancamento >= '" +
-        minMesTarget +
-        "-01 00:00:00.000Z' AND data_lancamento < '" +
-        mesSeguinteExclusive +
-        "-01 00:00:00.000Z' " +
-        "GROUP BY substr(data_lancamento, 1, 7), COALESCE(NULLIF(grupo_item,''),'Sem informação') " +
-        'ORDER BY 1 ASC'
-      const gmRows = runAgg(gmSql)
-
-      const porMes = {}
-      for (let i = 0; i < gmRows.length; i++) {
-        const mes = gmRows[i].a
-        const grupo = gmRows[i].b || 'Sem informação'
-        const total = toNum(gmRows[i].c)
-        const liquido = toNum(gmRows[i].d)
-        if (!mes || !grupo) continue
-        if (total === 0 && liquido === 0) continue
-        if (!porMes[mes]) porMes[mes] = []
-        porMes[mes].push({ grupo: grupo, total: total, liquido: liquido })
+      } catch (err) {
+        console.error('dashboard_stats: revendasFaturamento falhou:', err)
       }
 
-      for (let i = 0; i < mesesAlvoGrupo.length; i++) {
-        const mes = mesesAlvoGrupo[i]
-        vendasPorGrupoItemMensal.push({
-          mes: mes,
-          grupos: porMes[mes] || [],
-        })
+      // 2.8) vendasPorGrupoItemMensal — últimos 6 meses
+      // REGRA DE NEGÓCIO (Visão Canais): este gráfico mostra SEMPRE os últimos 6 meses
+      // completos da base, IGNORANDO o filtro de período (ano/mês/dia/dataDe/dataAte)
+      // — apenas para este gráfico. Dimensões (grupo do item, canal, vendedor, cliente,
+      // estado, utilização, tipo de documento etc.) continuam valendo via sqlWhereSemPeriodo.
+      const vendasPorGrupoItemMensal = []
+      try {
+        const mesesAlvoGrupo = ultimos6MesesAlvo
+        const minMesTarget = mesesAlvoGrupo[0]
+        const maxMesTarget = mesesAlvoGrupo[mesesAlvoGrupo.length - 1]
+        // BUG 0.0.360: a query usava `ano_mes >= ... AND ano_mes <= ...` sobre a
+        // base bruta `vendas` — coluna que SÓ existe no resumo; a SQL falhava
+        // ("no such column: ano_mes"), o runAgg engolia o erro e o gráfico
+        // "Venda Mensal por Grupo do Item" voltava vazio. Na base bruta o recorte
+        // de período é FAIXA DE DATA (1º dia do 1º mês-alvo inclusivo → 1º dia do
+        // mês seguinte ao último exclusivo), preservando o índice de data.
+        let gyMax = parseInt(maxMesTarget.split('-')[0], 10)
+        let gmNext = parseInt(maxMesTarget.split('-')[1], 10) + 1
+        if (gmNext > 12) {
+          gmNext = 1
+          gyMax += 1
+        }
+        const mesSeguinteExclusive = gyMax + '-' + pad2(gmNext)
+        // REGRA Silvio (0.0.357): valor do gráfico = SUM(total_nf_novo) linha a
+        // linha na base bruta `vendas` (a resumo não tem a coluna).
+        // Item 4 do plano: além do Bruto (total_nf_novo), devolve o Valor Líquido
+        // (NET) por grupo/mês na coluna d.
+        const gmSql =
+          'SELECT substr(data_lancamento, 1, 7) AS a, ' +
+          "COALESCE(NULLIF(grupo_item,''),'Sem informação') AS b, " +
+          'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS c, ' +
+          'COALESCE(SUM(COALESCE(valor_liquido,0)),0) AS d ' +
+          'FROM vendas WHERE ' +
+          sqlWhereVendasSemPeriodo +
+          " AND data_lancamento >= '" +
+          minMesTarget +
+          "-01 00:00:00.000Z' AND data_lancamento < '" +
+          mesSeguinteExclusive +
+          "-01 00:00:00.000Z' " +
+          "GROUP BY substr(data_lancamento, 1, 7), COALESCE(NULLIF(grupo_item,''),'Sem informação') " +
+          'ORDER BY 1 ASC'
+        const gmRows = runAgg(gmSql)
+
+        const porMes = {}
+        for (let i = 0; i < gmRows.length; i++) {
+          const mes = gmRows[i].a
+          const grupo = gmRows[i].b || 'Sem informação'
+          const total = toNum(gmRows[i].c)
+          const liquido = toNum(gmRows[i].d)
+          if (!mes || !grupo) continue
+          if (total === 0 && liquido === 0) continue
+          if (!porMes[mes]) porMes[mes] = []
+          porMes[mes].push({ grupo: grupo, total: total, liquido: liquido })
+        }
+
+        for (let i = 0; i < mesesAlvoGrupo.length; i++) {
+          const mes = mesesAlvoGrupo[i]
+          vendasPorGrupoItemMensal.push({
+            mes: mes,
+            grupos: porMes[mes] || [],
+          })
+        }
+      } catch (err) {
+        console.error('dashboard_stats: vendasPorGrupoItemMensal falhou:', err)
       }
-    } catch (err) {
-      console.error('dashboard_stats: vendasPorGrupoItemMensal falhou:', err)
-    }
+    } // fim do if (!onlyCore) — seção 2 (Charts)
 
     // ============================================================
     // 3) recentSales — LIMIT 8 da tabela vendas
@@ -2084,524 +2135,564 @@ var __dashboardStatsHandler = (e) => {
     // ============================================================
     // 5) Queries de Análise
     // ============================================================
+    // PERF (2026-11-18): também não são necessárias na parte 'core'. Medidas em
+    // ~0,1s (equipamentos/insumos/clientes ativos/canal). O bloco inteiro fica
+    // sob `if (!onlyCore)`; em parts='all'/'charts' executa como sempre.
+    // Valores padrão das séries da seção 5 (usados quando parts='core').
+    let vendasEquipamentosHistorico = []
+    let vendasInsumosHistorico = []
+    let clientesAtivosEquipamentos = []
+    let clientesAtivosInsumos = []
+    let clientesAtivosTintas = []
+    let clientesAtivosAcessorios = []
+    let clientesAtivosPecas = []
+    let vendasPorCanal = []
+    let vendasPorDeploy = []
+    let canaisSummary = { canaisAtivos: 0, clientesVinculados: 0, faturamentoTotal: 0 }
 
-    // 5.1) vendasEquipamentosHistorico — Tendência de Vendas de Equipamentos
-    // REGRA DE NEGÓCIO (Ciclo C): Traz SEMPRE toda a base histórica (2015 em diante),
-    // agrupada por mês (yyyy-mm), respeitando SOMENTE os 5 filtros globais (sqlWhereGlobalRestricted),
-    // e ignorando todos os demais filtros (período, canal, vendedor, base, etc).
-    const vendasEquipamentosHistorico = []
-    try {
-      // Item 8 do plano: o gráfico exibe o Valor Total (Bruto) — SUM(total_nf_novo)
-      // linha a linha na base bruta `vendas` (a resumo não tem a coluna). O recorte
-      // histórico 2015+ passa a ser por faixa de data, preservando o índice.
-      const equipSql =
-        'SELECT substr(data_lancamento, 1, 7) AS a, ' +
-        'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
-        'FROM vendas WHERE ' +
-        sqlWhereGlobalRestrictedVendas +
-        " AND data_lancamento >= '2015-01-01' " +
-        " AND UPPER(TRIM(COALESCE(grupo_item,''))) = 'EQUIPAMENTOS' " +
-        'GROUP BY substr(data_lancamento, 1, 7) ORDER BY 1 ASC'
-      const equipRows = runAgg(equipSql)
+    if (!onlyCore) {
+      // 5.1) vendasEquipamentosHistorico — Tendência de Vendas de Equipamentos
+      // REGRA DE NEGÓCIO (Ciclo C): Traz SEMPRE toda a base histórica (2015 em diante),
+      // agrupada por mês (yyyy-mm), respeitando SOMENTE os 5 filtros globais (sqlWhereGlobalRestricted),
+      // e ignorando todos os demais filtros (período, canal, vendedor, base, etc).
+      vendasEquipamentosHistorico = []
+      try {
+        // Item 8 do plano: o gráfico exibe o Valor Total (Bruto) — SUM(total_nf_novo)
+        // linha a linha na base bruta `vendas` (a resumo não tem a coluna). O recorte
+        // histórico 2015+ passa a ser por faixa de data, preservando o índice.
+        const equipSql =
+          'SELECT substr(data_lancamento, 1, 7) AS a, ' +
+          'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
+          'FROM vendas WHERE ' +
+          sqlWhereGlobalRestrictedVendas +
+          " AND data_lancamento >= '2015-01-01' " +
+          " AND UPPER(TRIM(COALESCE(grupo_item,''))) = 'EQUIPAMENTOS' " +
+          'GROUP BY substr(data_lancamento, 1, 7) ORDER BY 1 ASC'
+        const equipRows = runAgg(equipSql)
 
-      for (let i = 0; i < equipRows.length; i++) {
-        const periodo = equipRows[i].a
-        if (!periodo || periodo.indexOf('-') < 0) continue
-        vendasEquipamentosHistorico.push({
-          periodo: periodo,
-          total: toNum(equipRows[i].b),
-        })
-      }
-    } catch (err) {
-      console.error('dashboard_stats: vendasEquipamentosHistorico falhou:', err)
-    }
-
-    // 5.2) vendasInsumosHistorico — Histórico/Tendência de Insumos (Acumulado de Vendas — Insumos)
-    // REGRA DE NEGÓCIO (Ciclo C): Traz SEMPRE toda a base histórica (2015 em diante),
-    // agrupada por mês (yyyy-mm), dos grupos TINTAS, PEÇAS e ACESSÓRIOS.
-    // Respeita SOMENTE os 5 filtros globais (sqlWhereGlobalRestricted).
-    const vendasInsumosHistorico = []
-    try {
-      // Item 8 do plano: idem Equipamentos — Valor Total (Bruto) via
-      // SUM(total_nf_novo) na base bruta, histórico 2015+ por faixa de data.
-      const insumoSql =
-        'SELECT substr(data_lancamento, 1, 7) AS a, ' +
-        'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
-        'FROM vendas WHERE ' +
-        sqlWhereGlobalRestrictedVendas +
-        " AND data_lancamento >= '2015-01-01' " +
-        " AND UPPER(TRIM(COALESCE(grupo_item,''))) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
-        'GROUP BY substr(data_lancamento, 1, 7) ORDER BY 1 ASC'
-      const insumoRows = runAgg(insumoSql)
-
-      for (let i = 0; i < insumoRows.length; i++) {
-        const periodo = insumoRows[i].a
-        if (!periodo || periodo.indexOf('-') < 0) continue
-        vendasInsumosHistorico.push({
-          periodo: periodo,
-          total: toNum(insumoRows[i].b),
-        })
-      }
-    } catch (err) {
-      console.error('dashboard_stats: vendasInsumosHistorico falhou:', err)
-    }
-
-    // 5.3) clientesAtivosEquipamentos, clientesAtivosInsumos e segregados (Tintas, Acessórios, Peças)
-    // REGRA DE NEGÓCIO (Ciclo C): Mostra SEMPRE os últimos 6 meses da base (terminando no último mês disponível, ex: Ago-2026),
-    // comparados com o mesmo mês do ano anterior e retrasado, independente de período/canal/vendedor/base.
-    // Respeita EXCLUSIVAMENTE os 5 filtros globais:
-    // - Se não houver filtros globais específicos (sqlGlobalRestrictedParts vazio), lê da tabela de resumo_clientes_ativos ultra-rápida.
-    // - Se houver filtros globais ativos (tipo_documento, utilizacao, tipo_cliente, grupo_item, tipo_devolucao):
-    //   consulta `resumo_vendas_mensal` (ou `vendas` se tipo_cliente estiver ativo) aplicando sqlWhereGlobalRestricted.
-    const clientesAtivosEquipamentos = []
-    const clientesAtivosInsumos = []
-    const clientesAtivosTintas = []
-    const clientesAtivosAcessorios = []
-    const clientesAtivosPecas = []
-
-    try {
-      const mesesAlvoClientes = ultimos6MesesAlvo
-      const mesesAnoAnterior = mesesAlvoClientes.map((m) => {
-        const p = m.split('-')
-        const y = parseInt(p[0], 10) - 1
-        return String(y) + '-' + p[1]
-      })
-      const mesesAnoRetrasado = mesesAlvoClientes.map((m) => {
-        const p = m.split('-')
-        const y = parseInt(p[0], 10) - 2
-        return String(y) + '-' + p[1]
-      })
-
-      const allMesesNeeded = mesesAlvoClientes.concat(mesesAnoAnterior).concat(mesesAnoRetrasado)
-      const inMesesList = allMesesNeeded.map((m) => "'" + m + "'").join(',')
-
-      // Helper para montar série comparativa dos últimos 6 meses vs ano anterior vs ano retrasado (3 anos) a partir de mapa de contagens
-      const buildSeriesFromMap = (mapData) => {
-        const series = []
-        for (let i = 0; i < mesesAlvoClientes.length; i++) {
-          const m = mesesAlvoClientes[i]
-          const p = m.split('-')
-          const prevM = String(parseInt(p[0], 10) - 1) + '-' + p[1]
-          const prev2M = String(parseInt(p[0], 10) - 2) + '-' + p[1]
-          series.push({
-            mes: m,
-            clientes: mapData[m] || 0,
-            clientesAnoAnterior: mapData[prevM] || 0,
-            clientesAnoRetrasado: mapData[prev2M] || 0,
+        for (let i = 0; i < equipRows.length; i++) {
+          const periodo = equipRows[i].a
+          if (!periodo || periodo.indexOf('-') < 0) continue
+          vendasEquipamentosHistorico.push({
+            periodo: periodo,
+            total: toNum(equipRows[i].b),
           })
         }
-        return series
+      } catch (err) {
+        console.error('dashboard_stats: vendasEquipamentosHistorico falhou:', err)
       }
 
-      // Verificação: se houver filtros globais ativos além de grupoItem, usamos resumo_vendas_mensal (ou vendas se tipo_cliente)
-      // para Equipamentos e Insumos, garantindo que tipo_documento, utilizacao e tipo_cliente reflitam em clientes ativos.
-      const hasGlobalFiltersActive = sqlGlobalRestrictedParts.length > 0
-
-      const cliEquipMap = {}
-      const cliInsumosMap = {}
-
-      if (!hasGlobalFiltersActive) {
-        // Caminho rápido pré-calculado: resumo_clientes_ativos
-        const cliCatSql =
-          'SELECT ano_mes AS a, grupo_categoria AS b, COUNT(*) AS c ' +
-          'FROM resumo_clientes_ativos WHERE ' +
-          "grupo_categoria IN ('EQUIPAMENTOS', 'INSUMOS') " +
-          'AND ano_mes IN (' +
-          inMesesList +
-          ') GROUP BY ano_mes, grupo_categoria'
-        const cliCatRows = runAgg(cliCatSql)
-        for (let i = 0; i < cliCatRows.length; i++) {
-          const ym = cliCatRows[i].a
-          const cnt = parseInt(cliCatRows[i].c, 10) || 0
-          if (String(cliCatRows[i].b) === 'EQUIPAMENTOS') cliEquipMap[ym] = cnt
-          else if (String(cliCatRows[i].b) === 'INSUMOS') cliInsumosMap[ym] = cnt
-        }
-      } else if (!hasTipoCliente) {
-        // Filtros globais presentes (tipo_documento, utilizacao, grupo_item, tipo_devolucao), sem tipo_cliente:
-        // resumo_vendas_mensal possui todas essas colunas!
-        const cliEquipSql =
-          'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
-          'FROM resumo_vendas_mensal WHERE ' +
-          sqlWhereGlobalRestricted +
-          " AND UPPER(TRIM(grupo_item)) = 'EQUIPAMENTOS' " +
-          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
-          'AND ano_mes IN (' +
-          inMesesList +
-          ') GROUP BY ano_mes'
-        const cliEquipRows = runAgg(cliEquipSql)
-        for (let i = 0; i < cliEquipRows.length; i++) {
-          cliEquipMap[cliEquipRows[i].a] = parseInt(cliEquipRows[i].b, 10) || 0
-        }
-
-        const cliInsSql =
-          'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
-          'FROM resumo_vendas_mensal WHERE ' +
-          sqlWhereGlobalRestricted +
-          " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
-          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
-          'AND ano_mes IN (' +
-          inMesesList +
-          ') GROUP BY ano_mes'
-        const cliInsRows = runAgg(cliInsSql)
-        for (let i = 0; i < cliInsRows.length; i++) {
-          cliInsumosMap[cliInsRows[i].a] = parseInt(cliInsRows[i].b, 10) || 0
-        }
-      } else {
-        // tipo_cliente ativo: consulta a tabela vendas bruta com os 5 filtros globais
-        // delimitando data_lancamento para a janela necessária (inMesesList)
-        const minMesYm = allMesesNeeded.sort()[0]
-        const cliEquipSql =
-          'SELECT substr(data_lancamento, 1, 7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+      // 5.2) vendasInsumosHistorico — Histórico/Tendência de Insumos (Acumulado de Vendas — Insumos)
+      // REGRA DE NEGÓCIO (Ciclo C): Traz SEMPRE toda a base histórica (2015 em diante),
+      // agrupada por mês (yyyy-mm), dos grupos TINTAS, PEÇAS e ACESSÓRIOS.
+      // Respeita SOMENTE os 5 filtros globais (sqlWhereGlobalRestricted).
+      vendasInsumosHistorico = []
+      try {
+        // Item 8 do plano: idem Equipamentos — Valor Total (Bruto) via
+        // SUM(total_nf_novo) na base bruta, histórico 2015+ por faixa de data.
+        const insumoSql =
+          'SELECT substr(data_lancamento, 1, 7) AS a, ' +
+          'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
           'FROM vendas WHERE ' +
           sqlWhereGlobalRestrictedVendas +
-          " AND UPPER(TRIM(grupo_item)) = 'EQUIPAMENTOS' " +
-          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
-          "AND data_lancamento >= '" +
-          minMesYm +
-          "-01 00:00:00.000Z' " +
-          "AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS' " +
-          'GROUP BY substr(data_lancamento, 1, 7)'
-        const cliEquipRows = runAgg(cliEquipSql)
-        for (let i = 0; i < cliEquipRows.length; i++) {
-          cliEquipMap[cliEquipRows[i].a] = parseInt(cliEquipRows[i].b, 10) || 0
-        }
+          " AND data_lancamento >= '2015-01-01' " +
+          " AND UPPER(TRIM(COALESCE(grupo_item,''))) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+          'GROUP BY substr(data_lancamento, 1, 7) ORDER BY 1 ASC'
+        const insumoRows = runAgg(insumoSql)
 
-        const cliInsSql =
-          'SELECT substr(data_lancamento, 1, 7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
-          'FROM vendas WHERE ' +
-          sqlWhereGlobalRestrictedVendas +
-          " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
-          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
-          "AND data_lancamento >= '" +
-          minMesYm +
-          "-01 00:00:00.000Z' " +
-          "AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS' " +
-          'GROUP BY substr(data_lancamento, 1, 7)'
-        const cliInsRows = runAgg(cliInsSql)
-        for (let i = 0; i < cliInsRows.length; i++) {
-          cliInsumosMap[cliInsRows[i].a] = parseInt(cliInsRows[i].b, 10) || 0
+        for (let i = 0; i < insumoRows.length; i++) {
+          const periodo = insumoRows[i].a
+          if (!periodo || periodo.indexOf('-') < 0) continue
+          vendasInsumosHistorico.push({
+            periodo: periodo,
+            total: toNum(insumoRows[i].b),
+          })
         }
+      } catch (err) {
+        console.error('dashboard_stats: vendasInsumosHistorico falhou:', err)
       }
 
-      const sEquip = buildSeriesFromMap(cliEquipMap)
-      for (let i = 0; i < sEquip.length; i++) clientesAtivosEquipamentos.push(sEquip[i])
+      // 5.3) clientesAtivosEquipamentos, clientesAtivosInsumos e segregados (Tintas, Acessórios, Peças)
+      // REGRA DE NEGÓCIO (Ciclo C): Mostra SEMPRE os últimos 6 meses da base (terminando no último mês disponível, ex: Ago-2026),
+      // comparados com o mesmo mês do ano anterior e retrasado, independente de período/canal/vendedor/base.
+      // Respeita EXCLUSIVAMENTE os 5 filtros globais:
+      // - Se não houver filtros globais específicos (sqlGlobalRestrictedParts vazio), lê da tabela de resumo_clientes_ativos ultra-rápida.
+      // - Se houver filtros globais ativos (tipo_documento, utilizacao, tipo_cliente, grupo_item, tipo_devolucao):
+      //   consulta `resumo_vendas_mensal` (ou `vendas` se tipo_cliente estiver ativo) aplicando sqlWhereGlobalRestricted.
+      clientesAtivosEquipamentos = []
+      clientesAtivosInsumos = []
+      clientesAtivosTintas = []
+      clientesAtivosAcessorios = []
+      clientesAtivosPecas = []
 
-      const sIns = buildSeriesFromMap(cliInsumosMap)
-      for (let i = 0; i < sIns.length; i++) clientesAtivosInsumos.push(sIns[i])
+      try {
+        const mesesAlvoClientes = ultimos6MesesAlvo
+        const mesesAnoAnterior = mesesAlvoClientes.map((m) => {
+          const p = m.split('-')
+          const y = parseInt(p[0], 10) - 1
+          return String(y) + '-' + p[1]
+        })
+        const mesesAnoRetrasado = mesesAlvoClientes.map((m) => {
+          const p = m.split('-')
+          const y = parseInt(p[0], 10) - 2
+          return String(y) + '-' + p[1]
+        })
 
-      // Queries para as séries segregadas de Tintas, Acessórios e Peças
-      // Se tipoCliente estiver ativo, consulta vendas; se não, consulta resumo_vendas_mensal
-      if (!hasTipoCliente) {
-        // Query resumo_vendas_mensal para TINTAS
-        const cliTintasSql =
-          'SELECT ano_mes AS a, COUNT(*) AS b ' +
-          'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
-          sqlWhereGlobalRestricted +
-          " AND UPPER(TRIM(grupo_item)) = 'TINTAS' " +
-          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
-          'AND ano_mes IN (' +
-          inMesesList +
-          ')) GROUP BY ano_mes'
-        const cliTintasRows = runAgg(cliTintasSql)
-        const cliTintasMap = {}
-        for (let i = 0; i < cliTintasRows.length; i++) {
-          cliTintasMap[cliTintasRows[i].a] = parseInt(cliTintasRows[i].b, 10) || 0
+        const allMesesNeeded = mesesAlvoClientes.concat(mesesAnoAnterior).concat(mesesAnoRetrasado)
+        const inMesesList = allMesesNeeded.map((m) => "'" + m + "'").join(',')
+
+        // Helper para montar série comparativa dos últimos 6 meses vs ano anterior vs ano retrasado (3 anos) a partir de mapa de contagens
+        const buildSeriesFromMap = (mapData) => {
+          const series = []
+          for (let i = 0; i < mesesAlvoClientes.length; i++) {
+            const m = mesesAlvoClientes[i]
+            const p = m.split('-')
+            const prevM = String(parseInt(p[0], 10) - 1) + '-' + p[1]
+            const prev2M = String(parseInt(p[0], 10) - 2) + '-' + p[1]
+            series.push({
+              mes: m,
+              clientes: mapData[m] || 0,
+              clientesAnoAnterior: mapData[prevM] || 0,
+              clientesAnoRetrasado: mapData[prev2M] || 0,
+            })
+          }
+          return series
         }
-        const sTintas = buildSeriesFromMap(cliTintasMap)
-        for (let i = 0; i < sTintas.length; i++) clientesAtivosTintas.push(sTintas[i])
 
-        // Query resumo_vendas_mensal para ACESSORIOS
-        const cliAcesSql =
-          'SELECT ano_mes AS a, COUNT(*) AS b ' +
-          'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
-          sqlWhereGlobalRestricted +
-          " AND UPPER(TRIM(grupo_item)) IN ('ACESSÓRIOS', 'ACESSORIOS') " +
-          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
-          'AND ano_mes IN (' +
-          inMesesList +
-          ')) GROUP BY ano_mes'
-        const cliAcesRows = runAgg(cliAcesSql)
-        const cliAcesMap = {}
-        for (let i = 0; i < cliAcesRows.length; i++) {
-          cliAcesMap[cliAcesRows[i].a] = parseInt(cliAcesRows[i].b, 10) || 0
-        }
-        const sAces = buildSeriesFromMap(cliAcesMap)
-        for (let i = 0; i < sAces.length; i++) clientesAtivosAcessorios.push(sAces[i])
+        // Verificação: se houver filtros globais ativos além de grupoItem, usamos resumo_vendas_mensal (ou vendas se tipo_cliente)
+        // para Equipamentos e Insumos, garantindo que tipo_documento, utilizacao e tipo_cliente reflitam em clientes ativos.
+        const hasGlobalFiltersActive = sqlGlobalRestrictedParts.length > 0
 
-        // Query resumo_vendas_mensal para PECAS
-        const cliPecasSql =
-          'SELECT ano_mes AS a, COUNT(*) AS b ' +
-          'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
-          sqlWhereGlobalRestricted +
-          " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS') " +
-          "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
-          'AND ano_mes IN (' +
-          inMesesList +
-          ')) GROUP BY ano_mes'
-        const cliPecasRows = runAgg(cliPecasSql)
-        const cliPecasMap = {}
-        for (let i = 0; i < cliPecasRows.length; i++) {
-          cliPecasMap[cliPecasRows[i].a] = parseInt(cliPecasRows[i].b, 10) || 0
-        }
-        const sPecas = buildSeriesFromMap(cliPecasMap)
-        for (let i = 0; i < sPecas.length; i++) clientesAtivosPecas.push(sPecas[i])
-      } else {
-        const minMesYm = allMesesNeeded.sort()[0]
-        const runSegregadoVendas = (filtroGrupo) => {
-          const sql =
+        const cliEquipMap = {}
+        const cliInsumosMap = {}
+
+        if (!hasGlobalFiltersActive) {
+          // Caminho rápido pré-calculado: resumo_clientes_ativos
+          const cliCatSql =
+            'SELECT ano_mes AS a, grupo_categoria AS b, COUNT(*) AS c ' +
+            'FROM resumo_clientes_ativos WHERE ' +
+            "grupo_categoria IN ('EQUIPAMENTOS', 'INSUMOS') " +
+            'AND ano_mes IN (' +
+            inMesesList +
+            ') GROUP BY ano_mes, grupo_categoria'
+          const cliCatRows = runAgg(cliCatSql)
+          for (let i = 0; i < cliCatRows.length; i++) {
+            const ym = cliCatRows[i].a
+            const cnt = parseInt(cliCatRows[i].c, 10) || 0
+            if (String(cliCatRows[i].b) === 'EQUIPAMENTOS') cliEquipMap[ym] = cnt
+            else if (String(cliCatRows[i].b) === 'INSUMOS') cliInsumosMap[ym] = cnt
+          }
+        } else if (!hasTipoCliente) {
+          // Filtros globais presentes (tipo_documento, utilizacao, grupo_item, tipo_devolucao), sem tipo_cliente:
+          // resumo_vendas_mensal possui todas essas colunas!
+          const cliEquipSql =
+            'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+            'FROM resumo_vendas_mensal WHERE ' +
+            sqlWhereGlobalRestricted +
+            " AND UPPER(TRIM(grupo_item)) = 'EQUIPAMENTOS' " +
+            "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+            'AND ano_mes IN (' +
+            inMesesList +
+            ') GROUP BY ano_mes'
+          const cliEquipRows = runAgg(cliEquipSql)
+          for (let i = 0; i < cliEquipRows.length; i++) {
+            cliEquipMap[cliEquipRows[i].a] = parseInt(cliEquipRows[i].b, 10) || 0
+          }
+
+          const cliInsSql =
+            'SELECT ano_mes AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+            'FROM resumo_vendas_mensal WHERE ' +
+            sqlWhereGlobalRestricted +
+            " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+            "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+            'AND ano_mes IN (' +
+            inMesesList +
+            ') GROUP BY ano_mes'
+          const cliInsRows = runAgg(cliInsSql)
+          for (let i = 0; i < cliInsRows.length; i++) {
+            cliInsumosMap[cliInsRows[i].a] = parseInt(cliInsRows[i].b, 10) || 0
+          }
+        } else {
+          // tipo_cliente ativo: consulta a tabela vendas bruta com os 5 filtros globais
+          // delimitando data_lancamento para a janela necessária (inMesesList)
+          const minMesYm = allMesesNeeded.sort()[0]
+          const cliEquipSql =
             'SELECT substr(data_lancamento, 1, 7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
             'FROM vendas WHERE ' +
             sqlWhereGlobalRestrictedVendas +
-            ' AND ' +
-            filtroGrupo +
-            " AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+            " AND UPPER(TRIM(grupo_item)) = 'EQUIPAMENTOS' " +
+            "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
             "AND data_lancamento >= '" +
             minMesYm +
             "-01 00:00:00.000Z' " +
-            "AND (UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS') " +
+            "AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS' " +
             'GROUP BY substr(data_lancamento, 1, 7)'
-          const rows = runAgg(sql)
-          const map = {}
-          for (let i = 0; i < rows.length; i++) {
-            map[rows[i].a] = parseInt(rows[i].b, 10) || 0
+          const cliEquipRows = runAgg(cliEquipSql)
+          for (let i = 0; i < cliEquipRows.length; i++) {
+            cliEquipMap[cliEquipRows[i].a] = parseInt(cliEquipRows[i].b, 10) || 0
           }
-          return buildSeriesFromMap(map)
-        }
 
-        const sTintas = runSegregadoVendas("UPPER(TRIM(grupo_item)) = 'TINTAS'")
-        for (let i = 0; i < sTintas.length; i++) clientesAtivosTintas.push(sTintas[i])
-
-        const sAces = runSegregadoVendas("UPPER(TRIM(grupo_item)) IN ('ACESSÓRIOS', 'ACESSORIOS')")
-        for (let i = 0; i < sAces.length; i++) clientesAtivosAcessorios.push(sAces[i])
-
-        const sPecas = runSegregadoVendas("UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS')")
-        for (let i = 0; i < sPecas.length; i++) clientesAtivosPecas.push(sPecas[i])
-      }
-    } catch (err) {
-      console.error('dashboard_stats: clientesAtivos queries falharam:', err)
-    }
-
-    // ============================================================
-    // 5.5) Vendas por Canal & Vendas por Deploy (Visão Geral & Canais)
-    // Agregação rápida cruzando canais_clientes (eh_canal = SIM/1/true) com resumo_vendas_mensal
-    // Respeita todos os filtros ativos (sqlWhere)
-    // ============================================================
-    const vendasPorCanal = []
-    const vendasPorDeploy = []
-    let canaisSummary = { canaisAtivos: 0, clientesVinculados: 0, faturamentoTotal: 0 }
-
-    try {
-      // 1. Mapa de todos os canais_clientes ativos (eh_canal = true)
-      // Carrega em memória (são poucas centenas de registros na tabela canais_clientes)
-      const ccMapRows = arrayOf(
-        new DynamicModel({
-          codigo_cliente: '',
-          nome_cliente: '',
-          nome_canal: '',
-          deploy: '',
-        }),
-      )
-      $app
-        .db()
-        .newQuery(
-          "SELECT DISTINCT COALESCE(codigo_cliente,'') AS codigo_cliente, " +
-            "COALESCE(nome_cliente,'') AS nome_cliente, " +
-            "COALESCE(nome_canal,'') AS nome_canal, " +
-            "COALESCE(deploy,'') AS deploy " +
-            "FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') " +
-            "AND nome_canal IS NOT NULL AND nome_canal != ''",
-        )
-        .all(ccMapRows)
-
-      // Mapas deduplicados: codigo_cliente -> lista de { canal, deploy }
-      // e nome_cliente (fallback) -> lista de { canal, deploy }
-      const codToCanalMap = {}
-      const nomToCanalMap = {}
-      const todosCanaisSet = new Set()
-      const todosClientesSet = new Set()
-
-      for (let i = 0; i < ccMapRows.length; i++) {
-        const cod = (ccMapRows[i].codigo_cliente || '').trim()
-        const nom = (ccMapRows[i].nome_cliente || '').trim().toUpperCase()
-        const canal = (ccMapRows[i].nome_canal || '').trim()
-        let dep = (ccMapRows[i].deploy || '').trim().toUpperCase()
-        if (dep.indexOf('AGIS') >= 0) dep = 'AGIS'
-        else if (dep.indexOf('ROLAND') >= 0) dep = 'ROLAND'
-        else dep = 'Nenhum'
-
-        if (canal) {
-          todosCanaisSet.add(canal)
-          if (cod && cod !== '-') {
-            todosClientesSet.add(cod)
-            if (!codToCanalMap[cod]) codToCanalMap[cod] = []
-            const exists = codToCanalMap[cod].some(
-              (item) => item.canal === canal && item.deploy === dep,
-            )
-            if (!exists) {
-              codToCanalMap[cod].push({ canal: canal, deploy: dep })
-            }
-          }
-          if (nom) {
-            todosClientesSet.add(nom)
-            if (!nomToCanalMap[nom]) nomToCanalMap[nom] = []
-            const exists = nomToCanalMap[nom].some(
-              (item) => item.canal === canal && item.deploy === dep,
-            )
-            if (!exists) {
-              nomToCanalMap[nom].push({ canal: canal, deploy: dep })
-            }
+          const cliInsSql =
+            'SELECT substr(data_lancamento, 1, 7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+            'FROM vendas WHERE ' +
+            sqlWhereGlobalRestrictedVendas +
+            " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
+            "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+            "AND data_lancamento >= '" +
+            minMesYm +
+            "-01 00:00:00.000Z' " +
+            "AND UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS' " +
+            'GROUP BY substr(data_lancamento, 1, 7)'
+          const cliInsRows = runAgg(cliInsSql)
+          for (let i = 0; i < cliInsRows.length; i++) {
+            cliInsumosMap[cliInsRows[i].a] = parseInt(cliInsRows[i].b, 10) || 0
           }
         }
-      }
 
-      // 2. Consulta agrupada por cliente (codigo_cliente, nome_cliente) a partir do resumo_vendas_mensal (ou vendas se hasSearchOrDay)
-      // aplicando todos os filtros ativos (sqlWhere)
-      let cliSalesSql = ''
-      if (!hasSearchOrDay) {
-        cliSalesSql =
-          "SELECT COALESCE(codigo_cliente,'') AS a, COALESCE(nome_cliente,'') AS b, COALESCE(SUM(total_linha),0) AS c, COUNT(DISTINCT qtd_documentos) AS d " +
-          'FROM resumo_vendas_mensal WHERE ' +
-          sqlWhere +
-          ' GROUP BY codigo_cliente, nome_cliente'
-      } else {
-        cliSalesSql =
-          "SELECT COALESCE(codigo_cliente,'') AS a, COALESCE(nome_cliente,'') AS b, COALESCE(SUM(total_linha),0) AS c, COUNT(DISTINCT numero_nfe) AS d " +
-          'FROM vendas WHERE ' +
-          sqlWhereVendas +
-          ' GROUP BY codigo_cliente, nome_cliente'
-      }
+        const sEquip = buildSeriesFromMap(cliEquipMap)
+        for (let i = 0; i < sEquip.length; i++) clientesAtivosEquipamentos.push(sEquip[i])
 
-      const cliSalesRows = arrayOf(
-        new DynamicModel({
-          a: '',
-          b: '',
-          c: '',
-          d: '',
-        }),
-      )
-      $app.db().newQuery(cliSalesSql).all(cliSalesRows)
+        const sIns = buildSeriesFromMap(cliInsumosMap)
+        for (let i = 0; i < sIns.length; i++) clientesAtivosInsumos.push(sIns[i])
 
-      const canalTotals = {}
-      const canalClientesUnicos = {}
-      const deployTotals = {
-        AGIS: 0,
-        Roland: 0,
-        Nenhum: 0,
-      }
-      let totalRecorteCanais = 0
-      const clientesComVendaNoRecorte = new Set()
-      const canaisComVendaNoRecorte = new Set()
-
-      for (let i = 0; i < cliSalesRows.length; i++) {
-        const cod = (cliSalesRows[i].a || '').trim()
-        const nom = (cliSalesRows[i].b || '').trim().toUpperCase()
-        const total = toNum(cliSalesRows[i].c)
-        if (total === 0) continue
-
-        // Encontra os canais associados a este cliente
-        let matches = codToCanalMap[cod]
-        if (!matches || matches.length === 0) {
-          matches = nomToCanalMap[nom]
-        }
-
-        if (matches && matches.length > 0) {
-          // Cliente vinculado a canal(is)
-          // Se houver mais de 1 canal para o mesmo cliente, distribui proporcionalmente ou associa a cada um
-          const splitFactor = matches.length
-          for (let m = 0; m < matches.length; m++) {
-            const canalName = matches[m].canal
-            const depName = matches[m].deploy
-            const partTotal = total / splitFactor
-
-            if (!canalTotals[canalName]) {
-              canalTotals[canalName] = 0
-              canalClientesUnicos[canalName] = new Set()
-            }
-            canalTotals[canalName] += partTotal
-            if (cod) canalClientesUnicos[canalName].add(cod)
-            else canalClientesUnicos[canalName].add(nom)
-
-            if (depName === 'AGIS') {
-              deployTotals.AGIS += partTotal
-            } else if (depName === 'ROLAND') {
-              deployTotals.Roland += partTotal
-            } else {
-              deployTotals.Nenhum += partTotal
-            }
-
-            totalRecorteCanais += partTotal
-            canaisComVendaNoRecorte.add(canalName)
-            if (cod) clientesComVendaNoRecorte.add(cod)
-            else clientesComVendaNoRecorte.add(nom)
+        // Queries para as séries segregadas de Tintas, Acessórios e Peças
+        // Se tipoCliente estiver ativo, consulta vendas; se não, consulta resumo_vendas_mensal
+        if (!hasTipoCliente) {
+          // Query resumo_vendas_mensal para TINTAS
+          const cliTintasSql =
+            'SELECT ano_mes AS a, COUNT(*) AS b ' +
+            'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
+            sqlWhereGlobalRestricted +
+            " AND UPPER(TRIM(grupo_item)) = 'TINTAS' " +
+            "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+            'AND ano_mes IN (' +
+            inMesesList +
+            ')) GROUP BY ano_mes'
+          const cliTintasRows = runAgg(cliTintasSql)
+          const cliTintasMap = {}
+          for (let i = 0; i < cliTintasRows.length; i++) {
+            cliTintasMap[cliTintasRows[i].a] = parseInt(cliTintasRows[i].b, 10) || 0
           }
+          const sTintas = buildSeriesFromMap(cliTintasMap)
+          for (let i = 0; i < sTintas.length; i++) clientesAtivosTintas.push(sTintas[i])
+
+          // Query resumo_vendas_mensal para ACESSORIOS
+          const cliAcesSql =
+            'SELECT ano_mes AS a, COUNT(*) AS b ' +
+            'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
+            sqlWhereGlobalRestricted +
+            " AND UPPER(TRIM(grupo_item)) IN ('ACESSÓRIOS', 'ACESSORIOS') " +
+            "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+            'AND ano_mes IN (' +
+            inMesesList +
+            ')) GROUP BY ano_mes'
+          const cliAcesRows = runAgg(cliAcesSql)
+          const cliAcesMap = {}
+          for (let i = 0; i < cliAcesRows.length; i++) {
+            cliAcesMap[cliAcesRows[i].a] = parseInt(cliAcesRows[i].b, 10) || 0
+          }
+          const sAces = buildSeriesFromMap(cliAcesMap)
+          for (let i = 0; i < sAces.length; i++) clientesAtivosAcessorios.push(sAces[i])
+
+          // Query resumo_vendas_mensal para PECAS
+          const cliPecasSql =
+            'SELECT ano_mes AS a, COUNT(*) AS b ' +
+            'FROM (SELECT DISTINCT ano_mes, codigo_cliente FROM resumo_vendas_mensal WHERE ' +
+            sqlWhereGlobalRestricted +
+            " AND UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS') " +
+            "AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+            'AND ano_mes IN (' +
+            inMesesList +
+            ')) GROUP BY ano_mes'
+          const cliPecasRows = runAgg(cliPecasSql)
+          const cliPecasMap = {}
+          for (let i = 0; i < cliPecasRows.length; i++) {
+            cliPecasMap[cliPecasRows[i].a] = parseInt(cliPecasRows[i].b, 10) || 0
+          }
+          const sPecas = buildSeriesFromMap(cliPecasMap)
+          for (let i = 0; i < sPecas.length; i++) clientesAtivosPecas.push(sPecas[i])
         } else {
-          // Vendas de clientes que NÃO estão vinculados a nenhum canal (Deploy: Nenhum)
-          deployTotals.Nenhum += total
+          const minMesYm = allMesesNeeded.sort()[0]
+          const runSegregadoVendas = (filtroGrupo) => {
+            const sql =
+              'SELECT substr(data_lancamento, 1, 7) AS a, COUNT(DISTINCT codigo_cliente) AS b ' +
+              'FROM vendas WHERE ' +
+              sqlWhereGlobalRestrictedVendas +
+              ' AND ' +
+              filtroGrupo +
+              " AND codigo_cliente IS NOT NULL AND codigo_cliente != '' " +
+              "AND data_lancamento >= '" +
+              minMesYm +
+              "-01 00:00:00.000Z' " +
+              "AND (UPPER(TRIM(COALESCE(codigo_item, ''))) != 'SERVICOS') " +
+              'GROUP BY substr(data_lancamento, 1, 7)'
+            const rows = runAgg(sql)
+            const map = {}
+            for (let i = 0; i < rows.length; i++) {
+              map[rows[i].a] = parseInt(rows[i].b, 10) || 0
+            }
+            return buildSeriesFromMap(map)
+          }
+
+          const sTintas = runSegregadoVendas("UPPER(TRIM(grupo_item)) = 'TINTAS'")
+          for (let i = 0; i < sTintas.length; i++) clientesAtivosTintas.push(sTintas[i])
+
+          const sAces = runSegregadoVendas(
+            "UPPER(TRIM(grupo_item)) IN ('ACESSÓRIOS', 'ACESSORIOS')",
+          )
+          for (let i = 0; i < sAces.length; i++) clientesAtivosAcessorios.push(sAces[i])
+
+          const sPecas = runSegregadoVendas("UPPER(TRIM(grupo_item)) IN ('PEÇAS', 'PECAS')")
+          for (let i = 0; i < sPecas.length; i++) clientesAtivosPecas.push(sPecas[i])
         }
+      } catch (err) {
+        console.error('dashboard_stats: clientesAtivos queries falharam:', err)
       }
 
-      // Ordena os canais por faturamento decrescente
-      const sortedCanais = Object.keys(canalTotals).sort((a, b) => canalTotals[b] - canalTotals[a])
+      // ============================================================
+      // 5.5) Vendas por Canal & Vendas por Deploy (Visão Geral & Canais)
+      // Agregação rápida cruzando canais_clientes (eh_canal = SIM/1/true) com resumo_vendas_mensal
+      // Respeita todos os filtros ativos (sqlWhere)
+      // ============================================================
+      vendasPorCanal = []
+      vendasPorDeploy = []
+      canaisSummary = { canaisAtivos: 0, clientesVinculados: 0, faturamentoTotal: 0 }
 
-      for (let i = 0; i < sortedCanais.length; i++) {
-        const cName = sortedCanais[i]
-        vendasPorCanal.push({
-          canal: cName,
-          faturamento: canalTotals[cName],
-          clientesQtd: canalClientesUnicos[cName] ? canalClientesUnicos[cName].size : 0,
-        })
+      try {
+        // 1. Mapa de todos os canais_clientes ativos (eh_canal = true)
+        // Carrega em memória (são poucas centenas de registros na tabela canais_clientes)
+        const ccMapRows = arrayOf(
+          new DynamicModel({
+            codigo_cliente: '',
+            nome_cliente: '',
+            nome_canal: '',
+            deploy: '',
+          }),
+        )
+        $app
+          .db()
+          .newQuery(
+            "SELECT DISTINCT COALESCE(codigo_cliente,'') AS codigo_cliente, " +
+              "COALESCE(nome_cliente,'') AS nome_cliente, " +
+              "COALESCE(nome_canal,'') AS nome_canal, " +
+              "COALESCE(deploy,'') AS deploy " +
+              "FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') " +
+              "AND nome_canal IS NOT NULL AND nome_canal != ''",
+          )
+          .all(ccMapRows)
+
+        // Mapas deduplicados: codigo_cliente -> lista de { canal, deploy }
+        // e nome_cliente (fallback) -> lista de { canal, deploy }
+        const codToCanalMap = {}
+        const nomToCanalMap = {}
+        const todosCanaisSet = new Set()
+        const todosClientesSet = new Set()
+
+        for (let i = 0; i < ccMapRows.length; i++) {
+          const cod = (ccMapRows[i].codigo_cliente || '').trim()
+          const nom = (ccMapRows[i].nome_cliente || '').trim().toUpperCase()
+          const canal = (ccMapRows[i].nome_canal || '').trim()
+          let dep = (ccMapRows[i].deploy || '').trim().toUpperCase()
+          if (dep.indexOf('AGIS') >= 0) dep = 'AGIS'
+          else if (dep.indexOf('ROLAND') >= 0) dep = 'ROLAND'
+          else dep = 'Nenhum'
+
+          if (canal) {
+            todosCanaisSet.add(canal)
+            if (cod && cod !== '-') {
+              todosClientesSet.add(cod)
+              if (!codToCanalMap[cod]) codToCanalMap[cod] = []
+              const exists = codToCanalMap[cod].some(
+                (item) => item.canal === canal && item.deploy === dep,
+              )
+              if (!exists) {
+                codToCanalMap[cod].push({ canal: canal, deploy: dep })
+              }
+            }
+            if (nom) {
+              todosClientesSet.add(nom)
+              if (!nomToCanalMap[nom]) nomToCanalMap[nom] = []
+              const exists = nomToCanalMap[nom].some(
+                (item) => item.canal === canal && item.deploy === dep,
+              )
+              if (!exists) {
+                nomToCanalMap[nom].push({ canal: canal, deploy: dep })
+              }
+            }
+          }
+        }
+
+        // 2. Consulta agrupada por cliente (codigo_cliente, nome_cliente) a partir do resumo_vendas_mensal (ou vendas se hasSearchOrDay)
+        // aplicando todos os filtros ativos (sqlWhere)
+        let cliSalesSql = ''
+        if (!hasSearchOrDay) {
+          cliSalesSql =
+            "SELECT COALESCE(codigo_cliente,'') AS a, COALESCE(nome_cliente,'') AS b, COALESCE(SUM(total_linha),0) AS c, COUNT(DISTINCT qtd_documentos) AS d " +
+            'FROM resumo_vendas_mensal WHERE ' +
+            sqlWhere +
+            ' GROUP BY codigo_cliente, nome_cliente'
+        } else {
+          cliSalesSql =
+            "SELECT COALESCE(codigo_cliente,'') AS a, COALESCE(nome_cliente,'') AS b, COALESCE(SUM(total_linha),0) AS c, COUNT(DISTINCT numero_nfe) AS d " +
+            'FROM vendas WHERE ' +
+            sqlWhereVendas +
+            ' GROUP BY codigo_cliente, nome_cliente'
+        }
+
+        const cliSalesRows = arrayOf(
+          new DynamicModel({
+            a: '',
+            b: '',
+            c: '',
+            d: '',
+          }),
+        )
+        $app.db().newQuery(cliSalesSql).all(cliSalesRows)
+
+        const canalTotals = {}
+        const canalClientesUnicos = {}
+        const deployTotals = {
+          AGIS: 0,
+          Roland: 0,
+          Nenhum: 0,
+        }
+        let totalRecorteCanais = 0
+        const clientesComVendaNoRecorte = new Set()
+        const canaisComVendaNoRecorte = new Set()
+
+        for (let i = 0; i < cliSalesRows.length; i++) {
+          const cod = (cliSalesRows[i].a || '').trim()
+          const nom = (cliSalesRows[i].b || '').trim().toUpperCase()
+          const total = toNum(cliSalesRows[i].c)
+          if (total === 0) continue
+
+          // Encontra os canais associados a este cliente
+          let matches = codToCanalMap[cod]
+          if (!matches || matches.length === 0) {
+            matches = nomToCanalMap[nom]
+          }
+
+          if (matches && matches.length > 0) {
+            // Cliente vinculado a canal(is)
+            // Se houver mais de 1 canal para o mesmo cliente, distribui proporcionalmente ou associa a cada um
+            const splitFactor = matches.length
+            for (let m = 0; m < matches.length; m++) {
+              const canalName = matches[m].canal
+              const depName = matches[m].deploy
+              const partTotal = total / splitFactor
+
+              if (!canalTotals[canalName]) {
+                canalTotals[canalName] = 0
+                canalClientesUnicos[canalName] = new Set()
+              }
+              canalTotals[canalName] += partTotal
+              if (cod) canalClientesUnicos[canalName].add(cod)
+              else canalClientesUnicos[canalName].add(nom)
+
+              if (depName === 'AGIS') {
+                deployTotals.AGIS += partTotal
+              } else if (depName === 'ROLAND') {
+                deployTotals.Roland += partTotal
+              } else {
+                deployTotals.Nenhum += partTotal
+              }
+
+              totalRecorteCanais += partTotal
+              canaisComVendaNoRecorte.add(canalName)
+              if (cod) clientesComVendaNoRecorte.add(cod)
+              else clientesComVendaNoRecorte.add(nom)
+            }
+          } else {
+            // Vendas de clientes que NÃO estão vinculados a nenhum canal (Deploy: Nenhum)
+            deployTotals.Nenhum += total
+          }
+        }
+
+        // Ordena os canais por faturamento decrescente
+        const sortedCanais = Object.keys(canalTotals).sort(
+          (a, b) => canalTotals[b] - canalTotals[a],
+        )
+
+        for (let i = 0; i < sortedCanais.length; i++) {
+          const cName = sortedCanais[i]
+          vendasPorCanal.push({
+            canal: cName,
+            faturamento: canalTotals[cName],
+            clientesQtd: canalClientesUnicos[cName] ? canalClientesUnicos[cName].size : 0,
+          })
+        }
+
+        // Estrutura do deploy (AGIS, Roland, Nenhum)
+        vendasPorDeploy.push(
+          { deploy: 'AGIS', faturamento: deployTotals.AGIS, label: 'AGIS (revenda)' },
+          { deploy: 'Roland', faturamento: deployTotals.Roland, label: 'Roland (direta)' },
+          { deploy: 'Nenhum', faturamento: deployTotals.Nenhum, label: 'Nenhum (sem deploy)' },
+        )
+
+        canaisSummary = {
+          canaisAtivos: canaisComVendaNoRecorte.size,
+          clientesVinculados: clientesComVendaNoRecorte.size,
+          faturamentoTotal: totalRecorteCanais,
+        }
+      } catch (canalAggErr) {
+        console.error(
+          'dashboard_stats: agregacao vendasPorCanal/vendasPorDeploy falhou:',
+          canalAggErr,
+        )
       }
+    } // fim do if (!onlyCore) — seção 5 (Queries de Análise)
 
-      // Estrutura do deploy (AGIS, Roland, Nenhum)
-      vendasPorDeploy.push(
-        { deploy: 'AGIS', faturamento: deployTotals.AGIS, label: 'AGIS (revenda)' },
-        { deploy: 'Roland', faturamento: deployTotals.Roland, label: 'Roland (direta)' },
-        { deploy: 'Nenhum', faturamento: deployTotals.Nenhum, label: 'Nenhum (sem deploy)' },
-      )
-
-      canaisSummary = {
-        canaisAtivos: canaisComVendaNoRecorte.size,
-        clientesVinculados: clientesComVendaNoRecorte.size,
-        faturamentoTotal: totalRecorteCanais,
-      }
-    } catch (canalAggErr) {
-      console.error(
-        'dashboard_stats: agregacao vendasPorCanal/vendasPorDeploy falhou:',
-        canalAggErr,
-      )
+    const chartsPayload = {
+      vendasPorMes: vendasPorMes,
+      vendasPorAno: vendasPorAno,
+      grupoItem: grupoItem,
+      vendasPorGrupoItemMensal: vendasPorGrupoItemMensal,
+      vendasEquipamentosPorAno: vendasEquipamentosHistorico,
+      vendasInsumosPorAno: vendasInsumosHistorico,
+      vendasEquipamentosHistorico: vendasEquipamentosHistorico,
+      vendasInsumosHistorico: vendasInsumosHistorico,
+      clientesAtivosEquipamentos: clientesAtivosEquipamentos,
+      clientesAtivosInsumos: clientesAtivosInsumos,
+      clientesAtivosTintas: clientesAtivosTintas,
+      clientesAtivosAcessorios: clientesAtivosAcessorios,
+      clientesAtivosPecas: clientesAtivosPecas,
+      topVendedores: topVendedores,
+      topClientes: topClientes,
+      estado: estado,
+      revendasFaturamento: revendasFaturamento,
+      vendasPorCanal: vendasPorCanal,
+      vendasPorDeploy: vendasPorDeploy,
+      tipoDocumento: tipoDocumento,
+      utilizacao: utilizacao,
+      canaisSummary: canaisSummary,
     }
 
-    const responsePayload = {
-      kpis: kpis,
-      // Breakdown por ano dos 5 KPIs de valor (ver seção 1.1). Com 1 ano só o
-      // front mantém o comportamento atual (cards); com 2+ anos, plota as barras.
-      porAno: porAno,
-      charts: {
-        vendasPorMes: vendasPorMes,
-        vendasPorAno: vendasPorAno,
-        grupoItem: grupoItem,
-        vendasPorGrupoItemMensal: vendasPorGrupoItemMensal,
-        vendasEquipamentosPorAno: vendasEquipamentosHistorico,
-        vendasInsumosPorAno: vendasInsumosHistorico,
-        vendasEquipamentosHistorico: vendasEquipamentosHistorico,
-        vendasInsumosHistorico: vendasInsumosHistorico,
-        clientesAtivosEquipamentos: clientesAtivosEquipamentos,
-        clientesAtivosInsumos: clientesAtivosInsumos,
-        clientesAtivosTintas: clientesAtivosTintas,
-        clientesAtivosAcessorios: clientesAtivosAcessorios,
-        clientesAtivosPecas: clientesAtivosPecas,
-        topVendedores: topVendedores,
-        topClientes: topClientes,
-        estado: estado,
-        revendasFaturamento: revendasFaturamento,
-        vendasPorCanal: vendasPorCanal,
-        vendasPorDeploy: vendasPorDeploy,
-        tipoDocumento: tipoDocumento,
-        utilizacao: utilizacao,
-        canaisSummary: canaisSummary,
-      },
-      recentSales: recentSales,
-      filterOptions: filterOptions,
+    // Montagem por parte (ver `parts` no início do handler).
+    // 'all' -> payload completo, exatamente como antes.
+    // 'core' -> KPIs + período + recentes + opções de filtro (os gráficos são
+    //           todos vazios de propósito; o front os pede depois).
+    // 'charts' -> somente `charts`, para o front completar a tela.
+    let responsePayload
+    if (onlyCore) {
+      responsePayload = {
+        kpis: kpis,
+        porAno: porAno,
+        recentSales: recentSales,
+        filterOptions: filterOptions,
+        part: 'core',
+      }
+    } else if (onlyCharts) {
+      responsePayload = { charts: chartsPayload, part: 'charts' }
+    } else {
+      responsePayload = {
+        kpis: kpis,
+        // Breakdown por ano dos 5 KPIs de valor (ver seção 1.1). Com 1 ano só o
+        // front mantém o comportamento atual (cards); com 2+ anos, plota as barras.
+        porAno: porAno,
+        charts: chartsPayload,
+        recentSales: recentSales,
+        filterOptions: filterOptions,
+      }
     }
 
     // Salva no cache por 5 minutos

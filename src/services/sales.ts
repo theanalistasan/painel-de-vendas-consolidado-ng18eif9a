@@ -709,9 +709,12 @@ export async function fetchCanaisComparativo(params?: {
 
 export async function fetchDashboardStats(
   filters?: Record<string, unknown>,
-  options?: { timeoutMs?: number; signal?: AbortSignal },
+  // `parts` (2026-11-18): divide a resposta no backend. 'core' = KPIs/período/
+  // opções de filtro (rápido, pinta a tela); 'charts' = só os gráficos.
+  // Omitido = 'all', comportamento original (outras telas não mudam).
+  options?: { timeoutMs?: number; signal?: AbortSignal; parts?: 'core' | 'charts' | 'all' },
 ): Promise<DashboardStatsResult> {
-  const cacheKey = JSON.stringify(filters || {})
+  const cacheKey = JSON.stringify(filters || {}) + '|p:' + (options?.parts || 'all')
 
   // Se já houver uma requisição idêntica em andamento e nenhum signal customizado for passado,
   // reutiliza a promise em voo (deduplicação real no frontend)
@@ -749,7 +752,10 @@ export async function fetchDashboardStats(
   const run = () =>
     pb.send<DashboardStatsResult>('/backend/v1/dashboard/stats', {
       method: 'POST',
-      body: { filters: filters || {} },
+      body:
+        options?.parts && options.parts !== 'all'
+          ? { filters: filters || {}, parts: options.parts }
+          : { filters: filters || {} },
       signal: internalController.signal,
     })
 
