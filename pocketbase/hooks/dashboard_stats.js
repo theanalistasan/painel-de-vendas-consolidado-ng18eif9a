@@ -58,6 +58,28 @@ var __dashboardStatsHandler = (e) => {
     const onlyCore = parts === 'core'
     const onlyCharts = parts === 'charts'
 
+    // PERF (2026-11-18): `filterOptions.vendedorCliente` é a MAIOR parte do
+    // payload — 1.334 itens, 81,8 KB de 107 KB (76% de cada resposta), vinda de
+    // DISTINCT vendedor_cliente com até 3000 valores.
+    // Ela só é consumida pelo dropdown "Vendedor > Cliente" do Setup
+    // (FiltrosGlobais.tsx -> FilterBar). A Visão Geral e a Visão Canais não a
+    // usam: `buildDynamicInitialFilters` só toca anos/meses/tipoDocumento/
+    // grupoItem/utilizacao. Antes, toda visita a essas telas baixava os 81,8 KB
+    // sem motivo.
+    // Regra: só inclui a lista quando o cliente pedir explicitamente
+    // (`includeVendedorCliente: true`) OU quando `parts` não vier — assim
+    // qualquer consumidor que dependa do payload completo (scripts, chamadas
+    // antigas, GET ?lite) não muda. Só FiltrosGlobais passa a pedir a lista.
+    // Padrão: NÃO envia a lista (economiza 81,8 KB por requisição). Só o Setup
+    // pede explicitamente `includeVendedorCliente: true`.
+    // Consumidores verificados: Visão Geral e Visão Canais usam filterOptions
+    // apenas em `buildDynamicInitialFilters` (anos/meses/tipoDocumento/
+    // grupoItem/utilizacao) e nunca leem vendedorCliente; a exportação e o
+    // JP-Class não consomem filterOptions. `getFilterOptionsCache` guarda a
+    // lista em cache de 30 min, então quando o Setup a pede ela já está pronta
+    // e custa ~0ms.
+    const includeVendedorCliente = !!(body && body.includeVendedorCliente === true)
+
     // 0. Auto-inicialização defensiva das tabelas de resumo SQLite (executa em < 1ms se já existem)
     try {
       $app
@@ -341,7 +363,14 @@ var __dashboardStatsHandler = (e) => {
     // A parte entra na chave: 'core' e 'charts' têm payloads diferentes e não
     // podem dividir a mesma entrada de cache. 'all' mantém a chave original
     // ('v4:...') para não invalidar o cache já existente desse formato.
-    const cacheKey = 'v4:' + (parts === 'all' ? '' : parts + ':') + stableCacheKey(f || {})
+    // O flag da lista também entra na chave: uma entrada sem `vendedorCliente`
+    // não pode ser servida a uma requisição que a pede (o Setup veria o
+    // dropdown vazio). `includeVendedorCliente` está declarado acima.
+    const cacheKey =
+      'v4:' +
+      (parts === 'all' ? '' : parts + ':') +
+      (includeVendedorCliente ? 'vc:' : '') +
+      stableCacheKey(f || {})
     const now = Date.now()
     let cachedEntry = null
     try {
@@ -2097,9 +2126,15 @@ var __dashboardStatsHandler = (e) => {
     //   SOBREVIVE ao zeramento (fonte única "Gestão de Canais de Vendas") — são as
     //   opções legítimas desses filtros; o consolidado é derivado delas.
     const filterOptions = {
-      vendedorCliente: cachedOptions('optVendedorCliente', () =>
-        cleanFilterOptions(distinctSummaryCol('vendedor_cliente', 3000), true),
-      ),
+      // Lista "Vendedor > Cliente": 81,8 KB (1.334 itens) — só quando pedida
+      // explicitamente (ver `includeVendedorCliente` no início do handler).
+      // Sem ela o dropdown do Setup receberia [] e ficaria vazio, por isso
+      // FiltrosGlobais.tsx passa includeVendedorCliente: true.
+      vendedorCliente: includeVendedorCliente
+        ? cachedOptions('optVendedorCliente', () =>
+            cleanFilterOptions(distinctSummaryCol('vendedor_cliente', 3000), true),
+          )
+        : [],
       vendedor: cachedOptions('optVendedor', () =>
         cleanFilterOptions(distinctSummaryCol('nome_vendedor', 500)),
       ),

@@ -121,8 +121,12 @@ export default function FiltrosGlobais() {
     setLoading(true)
     setError(null)
     try {
+      // O Setup é o ÚNICO consumidor da lista "Vendedor > Cliente" (1.334 itens,
+      // 81,8 KB). As demais telas não a pedem, e o backend deixa de enviá-la
+      // por padrão — por isso o pedido explícito aqui.
       const res = await fetchDashboardStats(
         filtersRef.current as unknown as Record<string, unknown>,
+        { includeVendedorCliente: true },
       )
 
       // Primeiro acesso sem sessão: aplica os filtros dinâmicos padrão da base

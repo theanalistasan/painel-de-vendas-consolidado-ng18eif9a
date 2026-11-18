@@ -712,9 +712,21 @@ export async function fetchDashboardStats(
   // `parts` (2026-11-18): divide a resposta no backend. 'core' = KPIs/período/
   // opções de filtro (rápido, pinta a tela); 'charts' = só os gráficos.
   // Omitido = 'all', comportamento original (outras telas não mudam).
-  options?: { timeoutMs?: number; signal?: AbortSignal; parts?: 'core' | 'charts' | 'all' },
+  options?: {
+    timeoutMs?: number
+    signal?: AbortSignal
+    parts?: 'core' | 'charts' | 'all'
+    // Lista "Vendedor > Cliente" (81,8 KB). Só o Setup pede; as demais telas
+    // não a consomem e o backend não a envia por padrão.
+    includeVendedorCliente?: boolean
+  },
 ): Promise<DashboardStatsResult> {
-  const cacheKey = JSON.stringify(filters || {}) + '|p:' + (options?.parts || 'all')
+  const cacheKey =
+    JSON.stringify(filters || {}) +
+    '|p:' +
+    (options?.parts || 'all') +
+    '|vc:' +
+    (options?.includeVendedorCliente ? '1' : '0')
 
   // Se já houver uma requisição idêntica em andamento e nenhum signal customizado for passado,
   // reutiliza a promise em voo (deduplicação real no frontend)
@@ -752,10 +764,11 @@ export async function fetchDashboardStats(
   const run = () =>
     pb.send<DashboardStatsResult>('/backend/v1/dashboard/stats', {
       method: 'POST',
-      body:
-        options?.parts && options.parts !== 'all'
-          ? { filters: filters || {}, parts: options.parts }
-          : { filters: filters || {} },
+      body: {
+        filters: filters || {},
+        ...(options?.parts && options.parts !== 'all' ? { parts: options.parts } : {}),
+        ...(options?.includeVendedorCliente ? { includeVendedorCliente: true } : {}),
+      },
       signal: internalController.signal,
     })
 
