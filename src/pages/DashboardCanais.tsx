@@ -442,22 +442,36 @@ export default function DashboardCanais() {
     }
   }
 
-  // Recarrega relatório quando filtros, modo de agrupamento, página, limite ou ordenação mudam
-  useEffect(() => {
-    loadRelatorioVendas()
-  }, [
-    filtrosEfetivos,
-    relatorioGroupByMode,
-    relatorioPage,
-    relatorioLimit,
-    relatorioSortField,
-    relatorioSortDir,
-  ])
+  // Chave estável do recorte (filtros + modo de agrupamento).
+  //
+  // PERF (2026-11-18): antes eram DOIS efeitos separados — um resetava a página
+  // para 1 e o outro recarregava o relatório, ambos observando `filtrosEfetivos`.
+  // Quando o usuário estava numa página > 1 e trocava um filtro, a mudança
+  // disparava DUAS requisições para o mesmo recorte: uma com a página antiga
+  // (descartada em seguida) e outra com a página 1. Num clique de filtro isso
+  // somava ~0,5 s de espera inútil em `/backend/v1/vendas/list`.
+  // Agora a chave muda só quando o recorte muda de fato e a carga acontece uma
+  // única vez, já com a página corrigida.
+  const relatorioFiltrosKey = useMemo(
+    () => JSON.stringify({ f: filtrosEfetivos, g: relatorioGroupByMode }),
+    [filtrosEfetivos, relatorioGroupByMode],
+  )
+  const relatorioFiltrosKeyRef = useRef(relatorioFiltrosKey)
 
-  // Resetar para a primeira página quando os filtros ou o modo de agrupamento mudam
+  // Mudou o recorte: volta para a 1ª página antes de buscar.
   useEffect(() => {
-    setRelatorioPage(1)
-  }, [filtrosEfetivos, relatorioGroupByMode])
+    if (relatorioPage !== 1) setRelatorioPage(1)
+  }, [relatorioFiltrosKey])
+
+  // Uma única carga por mudança de recorte, página, limite ou ordenação.
+  useEffect(() => {
+    const recorteMudou = relatorioFiltrosKeyRef.current !== relatorioFiltrosKey
+    relatorioFiltrosKeyRef.current = relatorioFiltrosKey
+    // Recorte novo com página > 1: o efeito acima zera a página e esta carga
+    // roda de novo logo em seguida. Buscar agora seria desperdício.
+    if (recorteMudou && relatorioPage !== 1) return
+    loadRelatorioVendas()
+  }, [relatorioFiltrosKey, relatorioPage, relatorioLimit, relatorioSortField, relatorioSortDir])
 
   const handleRelatorioSort = (field: string) => {
     if (relatorioSortField === field) {
