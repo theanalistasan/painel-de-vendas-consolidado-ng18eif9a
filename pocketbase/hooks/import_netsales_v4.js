@@ -123,18 +123,35 @@ routerAdd(
     }
 
     // Helper de dedupe: ids dos registros já gravados com a mesma chave (mais recente primeiro)
+    //
+    // BUG CORRIGIDO (2026-11-18, caso AGIS out/2026): a chave não incluía a
+    // OCORRÊNCIA da linha, então duas linhas legítimas do mesmo item na mesma
+    // nota colidiam. A 2ª era tratada como "já existe" e sobrescrevia a 1ª,
+    // perdendo faturamento em silêncio (7 linhas da planilha viravam 5 no
+    // painel = R$ 107.758,96 brutos a menos). Agora `numero_linha` (contador de
+    // ocorrência da chave, calculado no frontend sobre o arquivo inteiro) faz
+    // parte da chave. Registros antigos, gravados antes desta correção, têm
+    // numero_linha nulo/0 e continuam casando entre si (COALESCE).
     const buscarIdsPorChave = (tabela, k) => {
       const hist = tabela === 'vendas_historico'
       const colDoc = hist ? 'numero_sap' : 'chave_documento'
       const colSer = hist ? 'numero_nfe' : 'serial'
       const colDt = hist ? 'data_lancamento' : 'docdate'
+      const colLin = hist ? 'numero_linha' : 'numero_linha'
       const rows = arrayOf(new DynamicModel({ id: '' }))
       $app
         .db()
         .newQuery(
-          `SELECT id FROM ${tabela} WHERE ${colDoc} = {:cd} AND ${colSer} = {:sr} AND ${colDt} = {:dt} AND codigo_cliente = {:cc} AND codigo_item = {:ci} ORDER BY data_carga DESC, id DESC`,
+          `SELECT id FROM ${tabela} WHERE ${colDoc} = {:cd} AND ${colSer} = {:sr} AND ${colDt} = {:dt} AND codigo_cliente = {:cc} AND codigo_item = {:ci} AND COALESCE(${colLin}, 0) = {:ln} ORDER BY data_carga DESC, id DESC`,
         )
-        .bind({ cd: k.cd, sr: k.sr, dt: k.dt, cc: k.cc, ci: k.ci })
+        .bind({
+          cd: k.cd,
+          sr: k.sr,
+          dt: k.dt,
+          cc: k.cc,
+          ci: k.ci,
+          ln: typeof k.ln === 'number' && !isNaN(k.ln) ? k.ln : 0,
+        })
         .all(rows)
       const ids = []
       for (let r = 0; r < rows.length; r++) ids.push(rows[r].id)
@@ -269,12 +286,22 @@ routerAdd(
       try {
         // Dedupe: chave já existe na base -> SUBSTITUI o registro (e remove
         // eventuais cópias extras da mesma chave). Senão, cria novo.
+        // Ocorrência da linha (1ª, 2ª, 3ª...) dentro do grupo da chave. Vem do
+        // frontend, calculada sobre o arquivo inteiro. Sem ela, duas linhas
+        // iguais do mesmo item na mesma nota seriam fundidas em uma só.
+        const numeroLinhaOcorrencia = (() => {
+          const v = pick(m, ['numero_linha', 'linha', 'n_linha', 'num_linha'])
+          const n = parseInt(String(v), 10)
+          return isNaN(n) || n < 0 ? 0 : n
+        })()
+
         const idsExistentes = buscarIdsPorChave(targetName, {
           cd: chaveDocumento,
           sr: serial,
           dt: docDate || '',
           cc: codigoCliente,
           ci: codigoItem,
+          ln: numeroLinhaOcorrencia,
         })
         let record
         if (idsExistentes.length > 0) {
@@ -349,6 +376,7 @@ routerAdd(
           record.set('data_carga', nowIso)
           record.set('tem_racnew', false)
           record.set('tem_netsales', true)
+          record.set('numero_linha', numeroLinhaOcorrencia)
         } else {
           // Base ativa: coleção netsales (staging da consolidação)
           record.set('tipo', tipo)
@@ -379,6 +407,7 @@ routerAdd(
           record.set('estado', estado)
           record.set('origem', 'NetSales_v4')
           record.set('data_carga', nowIso)
+          record.set('numero_linha', numeroLinhaOcorrencia)
         }
 
         // Enriquecimento de Tipo de Cliente por codigoCliente

@@ -235,10 +235,47 @@ function BaseImportCard({
     setResult(null)
     setBatchResult(null)
 
+    // Antes de fatiar em lotes: calcula a OCORRÊNCIA de cada linha dentro do
+    // grupo da chave de dedupe (documento + serial + data + cliente + item) e
+    // grava em `numero_linha`. Sem isso, duas linhas legítimas do mesmo item na
+    // mesma nota são fundidas em uma só pelo importador (perda de faturamento —
+    // caso AGIS out/2026, R$ 107.758,96). Precisa ser calculado sobre o arquivo
+    // INTEIRO, porque cada lote de 5.000 é enviado separadamente e perderia a
+    // contagem do grupo que atravessa a fronteira dos lotes.
+    const ocorrencias = new Map<string, number>()
+    const normTxt = (v: unknown) =>
+      v === undefined || v === null ? '' : String(v).trim().toUpperCase()
+    const chaveDaLinha = (row: Record<string, unknown>) => {
+      const g = (aliases: string[]) => {
+        for (const a of aliases) {
+          const hit = Object.keys(row).find((k) => k.trim().toLowerCase() === a)
+          if (hit !== undefined && row[hit] !== undefined && row[hit] !== null) {
+            const v = row[hit]
+            if (String(v).trim() !== '') return v
+          }
+        }
+        return ''
+      }
+      return [
+        normTxt(g(['chave_documento', 'numero_sap', 'chave_documento_fiscal'])),
+        normTxt(g(['serial', 'n_nfe', 'no_nfe', 'numero_nfe', 'nfe'])),
+        normTxt(g(['docdate', 'data_de_lancamento', 'data_lancamento', 'data'])),
+        normTxt(g(['cod_cliente', 'codigo_cliente', 'cod_do_cliente', 'cliente_codigo'])),
+        normTxt(g(['codigo_do_item', 'codigo_item', 'cod_do_item', 'cod_item'])),
+      ].join('|')
+    }
+
+    const rowsComOcorrencia = parsedRows.map((row) => {
+      const k = chaveDaLinha(row)
+      const n = (ocorrencias.get(k) || 0) + 1
+      ocorrencias.set(k, n)
+      return { ...row, __numero_linha: String(n) }
+    })
+
     // Divide os registros em lotes de até CHUNK_SIZE
     const chunks: Record<string, string>[][] = []
-    for (let i = 0; i < parsedRows.length; i += CHUNK_SIZE) {
-      chunks.push(parsedRows.slice(i, i + CHUNK_SIZE))
+    for (let i = 0; i < rowsComOcorrencia.length; i += CHUNK_SIZE) {
+      chunks.push(rowsComOcorrencia.slice(i, i + CHUNK_SIZE))
     }
     const totalBatches = chunks.length
 

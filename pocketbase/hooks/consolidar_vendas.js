@@ -825,7 +825,11 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
       '  n.docdate AS data_lancamento, ' +
       "  '' AS ultima_data_vencimento, '' AS docto_origem_destino, '' AS data_origem_destino, " +
       "  '' AS condicao_pagamento, n.codigo_cliente, n.nome_cliente, " +
-      "  0.0 AS numero_linha, n.codigo_item, COALESCE(n.descrip, '') AS descricao_item, " +
+      // numero_linha = ocorrência da linha dentro do grupo da chave de dedupe.
+      // Precisa ser propagado de `netsales` (antes era 0.0 fixo), senão as
+      // linhas repetidas do mesmo item na mesma nota chegam à base `vendas`
+      // indistinguíveis e voltam a ser fundidas em relatórios/agrupamentos.
+      "  COALESCE(n.numero_linha, 0) AS numero_linha, n.codigo_item, COALESCE(n.descrip, '') AS descricao_item, " +
       '  COALESCE(n.quantidade, 0.0) AS quantidade, 0.0 AS qty_kg_lt, 0.0 AS preco_item, ' +
       '  0.0 AS desconto_linha, 0.0 AS icms, 0.0 AS pis, ' +
       '  0.0 AS cofins, 0.0 AS ipi, 0.0 AS icms_partilha, ' +
