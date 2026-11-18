@@ -20,10 +20,16 @@ routerAdd(
     const body = e.requestInfo().body || {}
     const rows = Array.isArray(body.rows) ? body.rows : Array.isArray(body) ? body : []
 
-    // Helper da janela dinâmica inline (regra: dois anos anteriores + ano atual = 3 anos)
+    // Helper da janela dinâmica inline.
+    // JANELA AMPLIADA PARA 4 ANOS (decisão do Silvio, 2026-11-18 — opção A1):
+    // era `anoFim - 2` (3 anos), o que empurrava 2023 para `vendas_historico`
+    // e o deixava INVISÍVEL (nenhuma tela lê essa coleção). Com 4 anos, 2023
+    // entra na base ativa. Este corte TEM de ser idêntico ao de
+    // consolidar_vendas.js, senão o importador manda 2023 para o histórico e o
+    // consolidador o traz de volta, ou o contrário.
     const getJanelaDinamica = () => {
       const anoFim = new Date().getFullYear()
-      const anoInicio = anoFim - 2
+      const anoInicio = anoFim - 3
       return {
         anoInicio,
         anoFim,

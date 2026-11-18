@@ -520,10 +520,17 @@ routerAdd('GET', '/backend/v1/vendas/consolidar/status', (e) => {
 routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
   const BATCH_SIZE = 10000
 
-  // Helper da janela dinâmica inline (regra: dois anos anteriores + ano atual = 3 anos)
+  // Helper da janela dinâmica inline.
+  // JANELA AMPLIADA PARA 4 ANOS (decisão do Silvio, 2026-11-18 — opção A1):
+  // era `anoFim - 2` (3 anos), o que empurrava 2023 para `vendas_historico`
+  // e o deixava INVISÍVEL (nenhuma tela lê essa coleção). Com 4 anos, 2023
+  // passa a fazer parte da base ativa e aparece nos gráficos e no filtro de
+  // Ano. Importante: o corte precisa valer IGUAL no importador
+  // (import_netsales_v4.js) e aqui — se divergirem, linhas caem no histórico
+  // de um lado e na base ativa do outro.
   const getJanelaDinamica = () => {
     const anoFim = new Date().getFullYear()
-    const anoInicio = anoFim - 2
+    const anoInicio = anoFim - 3
     return {
       anoInicio,
       anoFim,
