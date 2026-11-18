@@ -301,6 +301,11 @@ routerAdd(
     let vinculosReconciliados = 0
     const origemInsideByRevendaId = {}
     const origemInsideByRevendaCodigo = {}
+    // Quantas revendas tiveram o `inside_sales` REALMENTE resolvido pelo expand.
+    // Sem isso não há como distinguir "revenda sem inside sales" de "expand
+    // falhou e veio null" — e tratá-los igual apaga a carteira inteira
+    // (foi o BUG 0.0.407: o sync zerou o `inside` de todos os 117 registros).
+    let reconComExpand = 0
 
     try {
       let reconPage = 1
@@ -309,7 +314,10 @@ routerAdd(
         const q =
           '/api/collections/revendas/records?perPage=500&page=' +
           reconPage +
-          '&fields=id,codigo,nome,canal,inside_sales&expand=inside_sales'
+          // NUNCA mandar `fields=` junto de `expand=`: no PocketBase a presença
+          // de `fields` faz o `expand` voltar null. Era exatamente isso que
+          // zerava o Inside Sales de TODA a base (ver BUG 0.0.407 abaixo).
+          '&expand=inside_sales'
         const data = getWithRetry(q)
         reconTotalPages = data.totalPages || 1
         const items = data.items || []
@@ -317,7 +325,9 @@ routerAdd(
         for (let i = 0; i < items.length; i++) {
           const r = items[i]
           const rExp = r.expand || {}
-          const insideNome = (rExp.inside_sales && rExp.inside_sales.nome) || ''
+          const insideSalesExp = rExp.inside_sales
+          const insideNome = (insideSalesExp && insideSalesExp.nome) || ''
+          if (insideSalesExp) reconComExpand++
           const rId = (r.id || '').trim()
           const rCod = norm(r.codigo)
 
@@ -335,6 +345,18 @@ routerAdd(
         }
       }
 
+      // TRAVA DE SEGURANÇA (BUG 0.0.407): se NENHUMA revenda voltou com
+      // expand.inside_sales resolvido, o expand falhou (é o que acontece quando
+      // se manda `fields=` junto). Nesse estado o mapa acima está vazio de
+      // valores e a reconciliação apagaria o inside de toda a base. Abortamos.
+      if (reconComExpand === 0 && Object.keys(origemInsideByRevendaId).length > 0) {
+        console.warn(
+          'sync_canais: ABORTANDO reconciliação de inside sales — o expand não ' +
+            'resolveu nenhuma revenda. Nenhum vínculo foi alterado.',
+        )
+        throw new Error('expand de inside_sales indisponível; reconciliação abortada')
+      }
+
       // Varrer registros locais de canais_clientes que têm inside preenchido
       // e comparar com a autoridade da origem para aquela revenda
       const rowsWithInside = arrayOf(
@@ -345,11 +367,15 @@ routerAdd(
           inside: '',
         }),
       )
+      // IMPORTANTE: varremos TODOS os registros, não só os que já têm inside.
+      // A versão anterior filtrava por `inside != ''`, o que criava um impasse:
+      // depois do BUG 0.0.407 zerar o campo em toda a base, a reconciliação
+      // nunca mais repovoava nada — não havia registro com inside para varrer.
+      // Com a varredura completa, registros com inside vazio também recebem o
+      // valor oficial da origem.
       $app
         .db()
-        .newQuery(
-          "SELECT id, origem_id_revenda, codigo_cliente, inside FROM canais_clientes WHERE inside IS NOT NULL AND inside != ''",
-        )
+        .newQuery('SELECT id, origem_id_revenda, codigo_cliente, inside FROM canais_clientes')
         .all(rowsWithInside)
 
       for (let j = 0; j < rowsWithInside.length; j++) {

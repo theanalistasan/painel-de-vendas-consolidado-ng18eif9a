@@ -1623,7 +1623,7 @@ var __dashboardStatsHandler = (e) => {
         { id: 'substrato', patterns: ['SUBSTRATO'] },
       ]
 
-      const revendasFaturamento = {}
+      revendasFaturamento = {}
       for (let rIdx = 0; rIdx < revendaConfigs.length; rIdx++) {
         revendasFaturamento[revendaConfigs[rIdx].id] = { faturamento: 0, documentos: 0, itens: 0 }
       }
@@ -1684,7 +1684,7 @@ var __dashboardStatsHandler = (e) => {
       // completos da base, IGNORANDO o filtro de período (ano/mês/dia/dataDe/dataAte)
       // — apenas para este gráfico. Dimensões (grupo do item, canal, vendedor, cliente,
       // estado, utilização, tipo de documento etc.) continuam valendo via sqlWhereSemPeriodo.
-      const vendasPorGrupoItemMensal = []
+      vendasPorGrupoItemMensal = []
       try {
         const mesesAlvoGrupo = ultimos6MesesAlvo
         const minMesTarget = mesesAlvoGrupo[0]
