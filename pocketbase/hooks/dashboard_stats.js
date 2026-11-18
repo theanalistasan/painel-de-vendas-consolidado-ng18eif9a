@@ -428,13 +428,34 @@ var __dashboardStatsHandler = (e) => {
           const insideSqlList = insideFilter
             .map((ins) => "'" + sqlEsc(String(ins).trim().toUpperCase()) + "'")
             .join(',')
-          ccWhereClauses.push(
-            "(UPPER(TRIM(COALESCE(inside, ''))) IN (" +
-              insideSqlList +
-              ") OR UPPER(TRIM(COALESCE(responsavel, ''))) IN (" +
-              insideSqlList +
-              '))',
-          )
+          // `inside` é a fonte da verdade do Inside Sales. O `responsavel` só é
+          // considerado quando NÃO há nenhum registro com inside preenchido
+          // (fallback de bases antigas) — antes os dois eram somados sempre, o
+          // que misturava responsável comercial com Inside Sales e fazia
+          // "FERNANDA" retornar o conjunto errado de clientes.
+          let temInsidePreenchido = false
+          try {
+            const chk = arrayOf(new DynamicModel({ c: 0 }))
+            $app
+              .db()
+              .newQuery(
+                "SELECT COUNT(*) AS c FROM canais_clientes WHERE (eh_canal = 1 OR eh_canal = 'true' OR eh_canal = 'SIM' OR eh_canal = 'Sim' OR eh_canal = 's') AND inside IS NOT NULL AND TRIM(inside) != '' AND TRIM(inside) != '-'",
+              )
+              .all(chk)
+            temInsidePreenchido = chk.length > 0 && parseInt(chk[0].c, 10) > 0
+          } catch (_) {}
+
+          if (temInsidePreenchido) {
+            ccWhereClauses.push("UPPER(TRIM(COALESCE(inside, ''))) IN (" + insideSqlList + ')')
+          } else {
+            ccWhereClauses.push(
+              "(UPPER(TRIM(COALESCE(inside, ''))) IN (" +
+                insideSqlList +
+                ") OR UPPER(TRIM(COALESCE(responsavel, ''))) IN (" +
+                insideSqlList +
+                '))',
+            )
+          }
         }
 
         const ccQuerySql =
@@ -1964,7 +1985,16 @@ var __dashboardStatsHandler = (e) => {
     })
 
     // Opções deduplicadas e normalizadas de Inside (apenas registros eh_canal = 1) — cache 30 min
-    // Fallback: combina valores preenchidos tanto em inside quanto em responsavel
+    //
+    // BUG CORRIGIDO (2026-11-18): a lista misturava `inside` com `responsavel` e o
+    // resultado vinha errado — apareciam CARINE e DIOGENES, faltando FERNANDA.
+    // Motivo: `responsavel` é OUTRO campo (responsável comercial, ex.: DIOGENES,
+    // Carine, Carlos), não o Inside Sales. Misturar os dois na mesma lista
+    // oferecia ao usuário valores que não são Inside e mascarava quem realmente
+    // é Inside (FERNANDA e PALOMA existem na origem e não apareciam).
+    // Agora: `inside` é a fonte da verdade; `responsavel` só entra como fallback
+    // quando NÃO existe nenhum registro com `inside` preenchido (bases antigas,
+    // anteriores ao vínculo de inside sales na origem).
     const insideOptions = cachedOptions('inside', () => {
       const out = []
       try {
@@ -1982,17 +2012,24 @@ var __dashboardStatsHandler = (e) => {
           .all(insideRows)
 
         const insideSet = new Set()
+        const respSet = new Set()
         for (let i = 0; i < insideRows.length; i++) {
           const ins = (insideRows[i].inside_val || '').trim()
           const resp = (insideRows[i].resp_val || '').trim()
           if (ins && ins !== '-' && !insideSet.has(ins)) {
             insideSet.add(ins)
-            out.push(ins)
           }
-          if (resp && resp !== '-' && resp !== 'NULL' && !insideSet.has(resp)) {
-            insideSet.add(resp)
-            out.push(resp)
+          if (resp && resp !== '-' && resp !== 'NULL' && !respSet.has(resp)) {
+            respSet.add(resp)
           }
+        }
+
+        if (insideSet.size > 0) {
+          // Fonte da verdade: só valores reais de Inside Sales.
+          insideSet.forEach((v) => out.push(v))
+        } else {
+          // Fallback legado: bases sem vínculo de inside sales na origem.
+          respSet.forEach((v) => out.push(v))
         }
         out.sort((a, b) => a.localeCompare(b))
       } catch (insideOptErr) {

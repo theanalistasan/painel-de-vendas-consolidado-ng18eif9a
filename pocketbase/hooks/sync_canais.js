@@ -814,6 +814,31 @@ routerAdd(
       console.warn('Aviso ao registrar auditoria de sync_canais:', auditErr)
     }
 
+    // Invalida o cache de opções do dashboard.
+    //
+    // BUG CORRIGIDO (2026-11-18): o filtro Inside da Visão Canais oferecia apenas
+    // CARINE e DIOGENES, sem FERNANDA, mesmo depois de a sincronização gravar
+    // `inside = FERNANDA` em 36 registros. Motivo: `dashboard_stats.js` guarda as
+    // opções de filtro em cache de 30 min (chaves 'inside', 'canais',
+    // 'canaisClientes', 'anosPeriodo') e o sync NÃO invalidava esse cache — a
+    // tela continuava mostrando a lista antiga. Sem esta invalidação, uma
+    // mudança de inside/segmento/status na origem (app Gestão de Canais) só
+    // aparecia no painel até 30 minutos depois.
+    try {
+      if (typeof globalThis !== 'undefined') {
+        if (globalThis.__skipFilterOptionsCache) {
+          globalThis.__skipFilterOptionsCache = new Map()
+          console.log('sync_canais: __skipFilterOptionsCache invalidado')
+        }
+        if (globalThis.__skipDashboardCache) {
+          globalThis.__skipDashboardCache.clear()
+          console.log('sync_canais: __skipDashboardCache invalidado')
+        }
+      }
+    } catch (cacheErr) {
+      console.warn('sync_canais: falha ao invalidar cache:', cacheErr)
+    }
+
     const duration = new Date().getTime() - startTime
 
     return e.json(200, {
