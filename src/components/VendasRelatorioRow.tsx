@@ -404,6 +404,68 @@ function VendasRelatorioRowComponent({
                 </div>
               </td>
             )
+          // Nº de Série do equipamento (venda de máquina). Vazio na maioria das
+          // linhas: o SAP só serializa equipamento, não insumo/peça.
+          case 'serial_equipamento': {
+            const serialVal = String(item.serial_equipamento || '').trim()
+            // Lista com vírgula = nota com 2 máquinas lançadas numa linha só.
+            const serialList = serialVal
+              ? serialVal
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : []
+            return (
+              <td
+                key={col.key}
+                style={cellStyle}
+                className="py-2 px-3 font-mono text-slate-800 border-r border-slate-100"
+              >
+                {serialList.length === 0 ? (
+                  <span className="text-slate-300">—</span>
+                ) : serialList.length === 1 ? (
+                  <div className={isExpanded ? '' : 'truncate'} title={serialList[0]}>
+                    {serialList[0]}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-1" title={serialList.join(', ')}>
+                    {serialList.map((sn) => (
+                      <span
+                        key={sn}
+                        className="inline-block px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] leading-tight"
+                      >
+                        {sn}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </td>
+            )
+          }
+          // Grupo do Item como vem do NetSales (ItmsGrpNam): "DENTAL",
+          // "FORA DE LINHA", "INK TRUEVIS...". Não confundir com a coluna
+          // "Grupo" (grupo_item), que é o grupo já derivado/normalizado.
+          case 'itms_grp_nam':
+            return (
+              <td
+                key={col.key}
+                style={cellStyle}
+                className="py-2 px-3 text-slate-700 border-r border-slate-100"
+              >
+                <div
+                  className={isExpanded ? 'whitespace-normal break-words' : 'truncate'}
+                  title={item.itms_grp_nam || ''}
+                >
+                  {item.itms_grp_nam ? (
+                    <span className="inline-block px-1.5 py-0.5 rounded bg-slate-50 border border-slate-200 text-[10px] font-semibold text-slate-600 uppercase tracking-wide">
+                      {item.itms_grp_nam}
+                    </span>
+                  ) : (
+                    <span className="text-slate-300">—</span>
+                  )}
+                </div>
+              </td>
+            )
           case 'preco_unitario':
             return (
               <td

@@ -465,6 +465,7 @@ var __vendasExportHandler = (e) => {
         mercado: '',
         usuario_emissor_pedido: '',
         itms_grp_nam: '',
+        serial_equipamento: '',
         numero_documento_netsales: '',
         preco_unitario: '',
         total_nf_sem_frete: '',
@@ -950,7 +951,7 @@ var __vendasExportHandler = (e) => {
           'CAST(COALESCE(total_linha, 0.0) AS REAL) AS total_linha, ' +
           'utilizacao, nome_vendedor, ' +
           'CAST(COALESCE(custo_item, 0.0) AS REAL) AS custo_item, ' +
-          'nome_filial, conta, estado, cidade, grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam, numero_documento_netsales, ' +
+          'nome_filial, conta, estado, cidade, grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam, numero_documento_netsales, serial_equipamento, ' +
           'CAST(COALESCE(preco_unitario, 0.0) AS REAL) AS preco_unitario, ' +
           'CAST(COALESCE(total_nf_sem_frete, 0.0) AS REAL) AS total_nf_sem_frete, ' +
           'CAST(COALESCE(total_nf_novo, 0.0) AS REAL) AS total_nf_novo, ' +
@@ -1011,6 +1012,7 @@ var __vendasExportHandler = (e) => {
         mercado: r.mercado,
         usuario_emissor_pedido: r.usuario_emissor_pedido,
         itms_grp_nam: r.itms_grp_nam,
+        serial_equipamento: r.serial_equipamento,
         numero_documento_netsales: r.numero_documento_netsales,
         preco_unitario: toNum(r.preco_unitario),
         total_nf_sem_frete: toNum(r.total_nf_sem_frete),

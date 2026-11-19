@@ -82,6 +82,22 @@ export const RELATORIO_COLUMNS: ColumnDef[] = [
   { key: 'codigo_cliente', label: 'Cód. Cliente', type: 'text', sortKey: 'codigo_cliente' },
   { key: 'nome_vendedor', label: 'Nome Vendedor', type: 'text', sortKey: 'nome_vendedor' },
   { key: 'codigo_item', label: 'Cód. Item', type: 'text', sortKey: 'codigo_item' },
+  // Serial da máquina e grupo do item (ItmsGrpNam do NetSales), logo após o
+  // código do item — pedido do Silvio em 2026-11-19. O serial vem de
+  // `serial_equipamento` (coluna "Nr. de Serie do Item" do export SAP) e pode
+  // trazer lista "A,B" quando a nota lançou 2 máquinas numa linha só.
+  {
+    key: 'serial_equipamento',
+    label: 'Nº de Série',
+    type: 'text',
+    sortKey: 'serial_equipamento',
+  },
+  {
+    key: 'itms_grp_nam',
+    label: 'Grupo do Item (SAP)',
+    type: 'text',
+    sortKey: 'itms_grp_nam',
+  },
   {
     key: 'preco_unitario',
     label: 'Preço Unit.',

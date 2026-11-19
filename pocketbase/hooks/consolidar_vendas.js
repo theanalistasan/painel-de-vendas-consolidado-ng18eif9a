@@ -153,6 +153,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar', (e) => {
         usuario_emissor_pedido TEXT,
         itms_grp_nam TEXT,
         numero_documento_netsales TEXT,
+        serial_equipamento TEXT,
         preco_unitario REAL,
         total_nf_sem_frete REAL,
         total_nf_novo REAL,
@@ -716,7 +717,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
             cofins, ipi, icms_partilha, total_linha, utilizacao,
             nome_vendedor, custo_item, nome_filial, conta, estado, cidade,
             grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam,
-            numero_documento_netsales, preco_unitario, total_nf_sem_frete,
+            numero_documento_netsales, serial_equipamento, preco_unitario, total_nf_sem_frete,
             total_nf_novo, valor_liquido, custo_total, classificacao,
             vendedor_revenda, grupo_item, vendedor_cliente, origem,
             tem_netsales,
@@ -732,7 +733,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
             cofins, ipi, icms_partilha, total_linha, utilizacao,
             nome_vendedor, custo_item, nome_filial, conta, estado, cidade,
             grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam,
-            numero_documento_netsales, preco_unitario, total_nf_sem_frete,
+            numero_documento_netsales, serial_equipamento, preco_unitario, total_nf_sem_frete,
             total_nf_novo, valor_liquido, custo_total, classificacao,
             vendedor_revenda, grupo_item, vendedor_cliente, origem,
             tem_netsales,
@@ -854,7 +855,11 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
       "  COALESCE(n.estado, '') AS estado, COALESCE(n.municipio, '') AS cidade, " +
       "  COALESCE(n.grupo_cliente, '') AS grupo_cliente, COALESCE(n.mercado, '') AS mercado, " +
       "  COALESCE(n.usuario_emissor, '') AS usuario_emissor_pedido, COALESCE(n.itms_grp_nam, '') AS itms_grp_nam, " +
-      "  COALESCE(n.numero_documento, '') AS numero_documento_netsales, COALESCE(n.preco_unitario, 0.0) AS preco_unitario, " +
+      "  COALESCE(n.numero_documento, '') AS numero_documento_netsales, " +
+      // Serial da máquina: vem da carga do export SAP (coluna "Nr. de Serie do
+      // Item" em netsales.serial_equipamento). Pode ser lista ("A,B") quando a
+      // nota lançou 2 máquinas numa linha só, por isso é texto.
+      "  COALESCE(n.serial_equipamento, '') AS serial_equipamento, COALESCE(n.preco_unitario, 0.0) AS preco_unitario, " +
       '  COALESCE(n.total_nf_sem_frete, 0.0) AS total_nf_sem_frete, COALESCE(n.total_nf_novo, 0.0) AS total_nf_novo, ' +
       '  COALESCE(n.valor_liquido, 0.0) AS valor_liquido, COALESCE(n.custo_total, 0.0) AS custo_total, ' +
       "  COALESCE(n.classificacao, '') AS classificacao, COALESCE(n.vendedor_revenda, '') AS vendedor_revenda, " +
@@ -916,6 +921,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
           usuario_emissor_pedido: '',
           itms_grp_nam: '',
           numero_documento_netsales: '',
+          serial_equipamento: '',
           preco_unitario: '',
           total_nf_sem_frete: '',
           total_nf_novo: '',
@@ -1055,6 +1061,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
             'numero_documento_netsales',
             (row.numero_documento_netsales || '').toString().trim(),
           )
+          record.set('serial_equipamento', (row.serial_equipamento || '').toString().trim())
           record.set('preco_unitario', toNum(row.preco_unitario))
           record.set('total_nf_sem_frete', toNum(row.total_nf_sem_frete))
           record.set('total_nf_novo', toNum(row.total_nf_novo))
@@ -1087,7 +1094,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
                 '  cofins, ipi, icms_partilha, total_linha, utilizacao, ' +
                 '  nome_vendedor, custo_item, nome_filial, conta, estado, cidade, ' +
                 '  grupo_cliente, mercado, usuario_emissor_pedido, itms_grp_nam, ' +
-                '  numero_documento_netsales, preco_unitario, total_nf_sem_frete, ' +
+                '  numero_documento_netsales, serial_equipamento, preco_unitario, total_nf_sem_frete, ' +
                 '  total_nf_novo, valor_liquido, custo_total, classificacao, ' +
                 '  vendedor_revenda, grupo_item, vendedor_cliente, origem, ' +
                 '  tem_netsales, ' +
@@ -1102,7 +1109,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
                 '  {:cofins}, {:ipi}, {:icms_partilha}, {:total_linha}, {:utilizacao}, ' +
                 '  {:nome_vendedor}, {:custo_item}, {:nome_filial}, {:conta}, {:estado}, {:cidade}, ' +
                 '  {:grupo_cliente}, {:mercado}, {:usuario_emissor_pedido}, {:itms_grp_nam}, ' +
-                '  {:numero_documento_netsales}, {:preco_unitario}, {:total_nf_sem_frete}, ' +
+                '  {:numero_documento_netsales}, {:serial_equipamento}, {:preco_unitario}, {:total_nf_sem_frete}, ' +
                 '  {:total_nf_novo}, {:valor_liquido}, {:custo_total}, {:classificacao}, ' +
                 '  {:vendedor_revenda}, {:grupo_item}, {:vendedor_cliente}, {:origem}, ' +
                 '  {:tem_netsales}, ' +
@@ -1148,6 +1155,7 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
               usuario_emissor_pedido: row.usuario_emissor_pedido || '',
               itms_grp_nam: row.itms_grp_nam || '',
               numero_documento_netsales: row.numero_documento_netsales || '',
+              serial_equipamento: row.serial_equipamento || '',
               preco_unitario: toNum(row.preco_unitario),
               total_nf_sem_frete: toNum(row.total_nf_sem_frete),
               total_nf_novo: toNum(row.total_nf_novo),

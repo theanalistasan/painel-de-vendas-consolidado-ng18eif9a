@@ -110,6 +110,9 @@ export interface VendaConsolidada extends RecordModel {
   usuario_emissor_pedido: string
   itms_grp_nam: string
   numero_documento_netsales: string
+  /** Serial da máquina (coluna "Nr. de Serie do Item" do export SAP). Pode vir
+   *  como lista "A,B" quando a nota lançou 2 máquinas numa linha só. */
+  serial_equipamento?: string
   preco_unitario: number
   total_mercadoria?: number
   total_nf_sem_frete: number
