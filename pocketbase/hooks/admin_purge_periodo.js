@@ -36,6 +36,10 @@ routerAdd('POST', '/backend/v1/admin/purge-periodo', (e) => {
   const body = e.requestInfo().body || {}
   const anos = Array.isArray(body.anos) ? body.anos : []
   const dryRun = body.dry_run !== false
+  // `vendas_historico` guarda o que fica FORA da janela ativa e não é lido por
+  // nenhuma tela. A purga só o toca quando pedido explicitamente, para que um
+  // purge de um ano visível nunca apague histórico por acidente.
+  const incluirHistorico = body.incluir_historico === true
 
   // Guarda-corpo: só aceita anos numéricos dentro de uma faixa plausível.
   const anosLimpos = []
@@ -84,7 +88,7 @@ routerAdd('POST', '/backend/v1/admin/purge-periodo', (e) => {
   for (let i = 0; i < anosLimpos.length; i++) {
     const a = anosLimpos[i]
     const n = contar(a)
-    const h = contarHistorico(a)
+    const h = incluirHistorico ? contarHistorico(a) : 0
     antes[a] = { netsales: n, historico: h }
     totalNetsales += n
     totalHistorico += h
@@ -98,12 +102,15 @@ routerAdd('POST', '/backend/v1/admin/purge-periodo', (e) => {
       antes: antes,
       total_netsales: totalNetsales,
       total_historico: totalHistorico,
+      incluir_historico: incluirHistorico,
       mensagem:
         'Simulação: ' +
         totalNetsales +
-        ' registro(s) em netsales e ' +
-        totalHistorico +
-        ' em vendas_historico seriam removidos. Nada foi apagado.',
+        ' registro(s) em netsales' +
+        (incluirHistorico
+          ? ' e ' + totalHistorico + ' em vendas_historico'
+          : ' (vendas_historico preservado; envie "incluir_historico": true para purgar também)') +
+        ' seriam removidos. Nada foi apagado.',
     })
   }
 
