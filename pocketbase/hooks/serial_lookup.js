@@ -15,15 +15,16 @@
 // Sem segredo configurado a rota responde 503 (fail closed): um endpoint público
 // indexado por serial exporia toda a base de vendas a quem varresse seriais.
 routerAdd('GET', '/backend/v1/serial-lookup', (e) => {
+  // ATENÇÃO: `e.requestInfo().headers` entrega as chaves em minúsculas COM
+  // UNDERSCORE ('x_serial_lookup_key'), não com hífen — ler com hífen devolvia
+  // undefined e a rota recusava toda chamada. `e.request.header.get()` usa o
+  // nome HTTP canônico e é o caminho confiável.
   const expected = $secrets.get('SERIAL_LOOKUP_KEY')
-  const provided =
-    e.requestInfo().headers['x-serial-lookup-key'] ||
-    e.requestInfo().headers['X-Serial-Lookup-Key'] ||
-    ''
+  const provided = String(e.request.header.get('X-Serial-Lookup-Key') || '').trim()
   if (!expected) {
     return e.json(503, { error: 'Consulta por serial não configurada neste ambiente.' })
   }
-  if (String(provided).trim() !== String(expected).trim()) {
+  if (provided !== String(expected).trim()) {
     return e.json(401, { error: 'Credencial inválida para consulta por serial.' })
   }
 
@@ -109,14 +110,11 @@ routerAdd('GET', '/backend/v1/serial-lookup', (e) => {
 // Caminho: GET /backend/v1/serial-lookup/status
 routerAdd('GET', '/backend/v1/serial-lookup/status', (e) => {
   const expected = $secrets.get('SERIAL_LOOKUP_KEY')
-  const provided =
-    e.requestInfo().headers['x-serial-lookup-key'] ||
-    e.requestInfo().headers['X-Serial-Lookup-Key'] ||
-    ''
+  const provided = String(e.request.header.get('X-Serial-Lookup-Key') || '').trim()
   if (!expected) {
     return e.json(503, { error: 'Consulta por serial não configurada neste ambiente.' })
   }
-  if (String(provided).trim() !== String(expected).trim()) {
+  if (provided !== String(expected).trim()) {
     return e.json(401, { error: 'Credencial inválida para consulta por serial.' })
   }
 
