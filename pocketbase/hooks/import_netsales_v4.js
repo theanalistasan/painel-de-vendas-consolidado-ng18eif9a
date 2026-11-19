@@ -253,7 +253,27 @@ routerAdd(
       const chaveDocumento = pick(m, ['chave_documento', 'numero_sap', 'chave_documento_fiscal'])
         .toString()
         .trim()
+      // ATENÇÃO: `serial` aqui é o número da NF (chave de dedupe junto com
+      // chave_documento). NÃO confundir com o serial do equipamento, que entra
+      // separado em `serial_equipamento` logo abaixo.
       const serial = pick(m, ['serial', 'n_nfe', 'no_nfe', 'numero_nfe', 'nfe']).toString().trim()
+
+      // Serial do equipamento (uma linha da nota = uma máquina). A origem ainda
+      // não traz a coluna; quando passar a trazer, basta nomeá-la serial,
+      // serial_equipamento, numero_de_serie, no_serie, etc.
+      const serialEquipamento = pick(m, [
+        'serial_equipamento',
+        'numero_de_serie',
+        'numero_serie',
+        'num_serie',
+        'no_serie',
+        'n_serie',
+        'serial_number',
+        'serie',
+      ])
+        .toString()
+        .trim()
+        .toUpperCase()
       const docDate = parseDateStr(
         pick(m, ['docdate', 'data_de_lancamento', 'data_lancamento', 'data']).toString().trim(),
       )
@@ -397,6 +417,7 @@ routerAdd(
           record.set('itms_grp_nam', itmsGrpNam)
           record.set('codigo_item', codigoItem)
           record.set('numero_documento', numeroDocumento)
+          record.set('serial_equipamento', serialEquipamento)
           record.set('quantidade', quantidade)
           record.set('preco_unitario', precoUnitario)
           record.set('valor_mercadoria', valorMercadoria)
