@@ -14,6 +14,14 @@
 //
 // Sem segredo configurado a rota responde 503 (fail closed): um endpoint público
 // indexado por serial exporia toda a base de vendas a quem varresse seriais.
+//
+// BUSCA POR TOKEN (corrigido em 2026-11-19): `serial_equipamento` pode guardar
+// MAIS DE UM serial na mesma linha, separado por vírgula (é o caso de uma nota
+// com 2 máquinas lançadas em quantidade 2 numa única linha, ex.: NF 87416
+// "KHE1540,KHE1542"). Comparar o campo inteiro por igualdade não achava nenhum
+// dos dois. A comparação agora é por TOKEN, não por pedaço de texto: o campo é
+// embrulhado em vírgulas e o serial procurado também, então "KHE1540" acha
+// exatamente aquele serial e "KHE15" não acha nada (sem falso positivo).
 routerAdd('GET', '/backend/v1/serial-lookup', (e) => {
   // ATENÇÃO: `e.requestInfo().headers` entrega as chaves em minúsculas COM
   // UNDERSCORE ('x_serial_lookup_key'), não com hífen — ler com hífen devolvia
@@ -51,12 +59,23 @@ routerAdd('GET', '/backend/v1/serial-lookup', (e) => {
     return m ? m[3] + '/' + m[2] + '/' + m[1] : ''
   }
 
+  // Na origem o modelo NÃO existe: `descrip` é "EQUIPAMENTOS" em toda a base.
+  // Devolver isso fazia o cliente ver "EQUIPAMENTOS" como modelo no formulário.
+  // O nome comercial é resolvido no FGE (equipment_items.commercial_name), a
+  // partir do item_code — então aqui mandamos vazio em vez do placeholder.
+  const isPlaceholderModel = function (name) {
+    const s = String(name || '')
+      .trim()
+      .toUpperCase()
+    return s === '' || s === 'EQUIPAMENTOS' || s === 'EQUIPAMENTO' || s === 'OUTROS'
+  }
+
   try {
     const rows = arrayOf(new DynamicModel({ id: '' }))
     $app
       .db()
       .newQuery(
-        "SELECT id FROM netsales WHERE UPPER(TRIM(COALESCE(serial_equipamento, ''))) = {:sn} LIMIT 5",
+        "SELECT id FROM netsales WHERE INSTR(',' || REPLACE(UPPER(COALESCE(serial_equipamento, '')), ' ', '') || ',', ',' || {:sn} || ',') > 0 LIMIT 5",
       )
       .bind({ sn: cleanSerial })
       .all(rows)
@@ -70,15 +89,14 @@ routerAdd('GET', '/backend/v1/serial-lookup', (e) => {
 
     const rec = $app.findRecordById('netsales', rows[0].id)
 
-    // Modelo: descrição da própria linha da nota. A tabela `produtos` tem
-    // esquema variável entre cargas; para não depender de um nome de coluna que
-    // pode não existir, o nome comercial vem de `descrip` (que já traz o modelo
-    // na exportação do SAP) e é refinado por `itms_grp_nam` quando útil.
-    let modelName = String(rec.getString('descrip') || '').trim()
-    const family = String(rec.getString('itms_grp_nam') || '').trim()
-    let category = ''
     const itemCode = String(rec.getString('codigo_item') || '').trim()
-    if (!modelName) modelName = itemCode || 'Equipamento Roland DG'
+    const rawDescrip = String(rec.getString('descrip') || '').trim()
+    const modelName = isPlaceholderModel(rawDescrip) ? '' : rawDescrip
+
+    // `itms_grp_nam` é o grupo do item no SAP ("DENTAL", "FORA DE LINHA") e não
+    // a família comercial do produto (DGSHAPE, MODELA, DGXPRESS) — vai como
+    // `sap_group` só para diagnóstico; a família real vem do FGE.
+    const sapGroup = String(rec.getString('itms_grp_nam') || '').trim()
 
     const docDate = rec.getString('docdate')
 
@@ -87,8 +105,9 @@ routerAdd('GET', '/backend/v1/serial-lookup', (e) => {
       serial: cleanSerial,
       model_name: modelName,
       item_code: itemCode,
-      family: family,
-      category: category,
+      family: '',
+      category: '',
+      sap_group: sapGroup,
       purchase_date: toBrDate(docDate),
       purchase_date_iso: String(docDate || '').slice(0, 10),
       invoice_number:
@@ -119,21 +138,26 @@ routerAdd('GET', '/backend/v1/serial-lookup/status', (e) => {
   }
 
   try {
-    const counters = arrayOf(new DynamicModel({ total: 0, com_serial: 0 }))
+    const counters = arrayOf(new DynamicModel({ total: 0, com_serial: 0, com_lista: 0 }))
     $app
       .db()
       .newQuery(
-        "SELECT COUNT(*) AS total, SUM(CASE WHEN TRIM(COALESCE(serial_equipamento, '')) != '' THEN 1 ELSE 0 END) AS com_serial FROM netsales",
+        'SELECT COUNT(*) AS total, ' +
+          "SUM(CASE WHEN TRIM(COALESCE(serial_equipamento, '')) != '' THEN 1 ELSE 0 END) AS com_serial, " +
+          "SUM(CASE WHEN INSTR(COALESCE(serial_equipamento, ''), ',') > 0 THEN 1 ELSE 0 END) AS com_lista " +
+          'FROM netsales',
       )
       .all(counters)
 
     const total = counters.length > 0 ? Number(counters[0].total || 0) : 0
     const comSerial = counters.length > 0 ? Number(counters[0].com_serial || 0) : 0
+    const comLista = counters.length > 0 ? Number(counters[0].com_lista || 0) : 0
 
     return e.json(200, {
       netsales_total: total,
       com_serial_equipamento: comSerial,
       sem_serial_equipamento: total - comSerial,
+      com_lista_de_seriais: comLista,
       pronto: comSerial > 0,
       mensagem:
         comSerial > 0
