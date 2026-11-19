@@ -21,15 +21,18 @@ routerAdd(
     const rows = Array.isArray(body.rows) ? body.rows : Array.isArray(body) ? body : []
 
     // Helper da janela dinâmica inline.
-    // JANELA AMPLIADA PARA 4 ANOS (decisão do Silvio, 2026-11-18 — opção A1):
-    // era `anoFim - 2` (3 anos), o que empurrava 2023 para `vendas_historico`
-    // e o deixava INVISÍVEL (nenhuma tela lê essa coleção). Com 4 anos, 2023
-    // entra na base ativa. Este corte TEM de ser idêntico ao de
-    // consolidar_vendas.js, senão o importador manda 2023 para o histórico e o
-    // consolidador o traz de volta, ou o contrário.
+    // JANELA AMPLIADA PARA 7 ANOS (decisão do Silvio, 2026-11-19): carga das
+    // bases de 2019 a 2022 na base ATIVA, para aparecerem nos dashboards. Antes
+    // eram 4 anos (2023+) e tudo anterior caía em `vendas_historico`, que nenhuma
+    // tela lê — a carga "dava sucesso" e era invisível.
+    // ATENÇÃO: este corte TEM de ser idêntico ao de consolidar_vendas.js e ao da
+    // migração 1742900010; se divergirem, o importador manda o ano para o
+    // histórico e o consolidador o traz de volta (ou o contrário).
+    const ANO_INICIAL_FIXO = 2019
+    const JANELA_ANOS = 7
     const getJanelaDinamica = () => {
       const anoFim = new Date().getFullYear()
-      const anoInicio = anoFim - 3
+      const anoInicio = Math.min(ANO_INICIAL_FIXO, anoFim - JANELA_ANOS + 1)
       return {
         anoInicio,
         anoFim,

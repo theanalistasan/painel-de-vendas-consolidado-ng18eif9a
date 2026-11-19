@@ -528,9 +528,16 @@ routerAdd('POST', '/backend/v1/vendas/consolidar/step', (e) => {
   // Ano. Importante: o corte precisa valer IGUAL no importador
   // (import_netsales_v4.js) e aqui — se divergirem, linhas caem no histórico
   // de um lado e na base ativa do outro.
+  // JANELA AMPLIADA PARA 7 ANOS (decisão do Silvio, 2026-11-19): as bases de
+  // 2019 a 2022 entram na base ATIVA (netsales -> vendas) para aparecerem nos
+  // dashboards. Precisa ser idêntica à do importador (import_netsales_v4.js) e à
+  // da migração 1742900010, senão a consolidação e a importação discordam sobre
+  // o destino de um ano.
+  const ANO_INICIAL_FIXO = 2019
+  const JANELA_ANOS = 7
   const getJanelaDinamica = () => {
     const anoFim = new Date().getFullYear()
-    const anoInicio = anoFim - 3
+    const anoInicio = Math.min(ANO_INICIAL_FIXO, anoFim - JANELA_ANOS + 1)
     return {
       anoInicio,
       anoFim,
