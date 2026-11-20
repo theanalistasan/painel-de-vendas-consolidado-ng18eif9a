@@ -81,10 +81,51 @@ var __dashboardStatsHandler = (e) => {
     const includeVendedorCliente = !!(body && body.includeVendedorCliente === true)
 
     // 0. Auto-inicialização defensiva das tabelas de resumo SQLite (executa em < 1ms se já existem)
+    //
+    // PERF (2026-11-20): isto é DEFENSIVO — as tabelas já existem e o cron as
+    // mantém. Antes, toda requisição ao endpoint entrava no bloco e, quando a
+    // tabela estava sendo repovoada pelo cron (DELETE + INSERT de 142 mil
+    // linhas), vários cliques de filtro disparavam a reconstrução AO MESMO TEMPO,
+    // cada um com uma transação de escrita longa. Como o SQLite aceita um escritor
+    // por vez, as requisições se bloqueavam em fila: medido em produção, 5
+    // requisições simultâneas levaram 9,96 s contra 0,23 s de uma sozinha, e os
+    // logs mostram 504 de 42–50 s e `stats/counts` de 65 s.
+    // Correção: só faz sentido reconstruir quando a tabela está VAZIA (base
+    // zerada/recem-criada). Uma trava em memória garante que apenas UMA
+    // requisição tente isso por vez; as demais seguem em frente e o cron
+    // reconcilia logo depois. Nada muda no caso normal (tabela preenchida).
+    let precisaAutoInicializar = true
     try {
-      $app
-        .db()
-        .newQuery(`
+      const chkRapido = arrayOf(new DynamicModel({ c: '' }))
+      $app.db().newQuery('SELECT COUNT(*) AS c FROM resumo_vendas_mensal LIMIT 1').all(chkRapido)
+      const jaTem = chkRapido.length > 0 ? parseInt(chkRapido[0].c, 10) || 0 : 0
+      precisaAutoInicializar = jaTem === 0
+    } catch (_) {
+      // Tabela ainda não existe: precisa criar.
+      precisaAutoInicializar = true
+    }
+
+    let podeInicializar = false
+    if (precisaAutoInicializar) {
+      try {
+        const agoraMs = Date.now()
+        const TRAVA_TTL_MS = 60000
+        const evitaConcorrencia =
+          globalThis.__skipResumoTravando && globalThis.__skipResumoTravando > agoraMs
+        if (!evitaConcorrencia) {
+          globalThis.__skipResumoTravando = agoraMs + TRAVA_TTL_MS
+          podeInicializar = true
+        }
+      } catch (_) {
+        podeInicializar = true
+      }
+    }
+
+    if (podeInicializar)
+      try {
+        $app
+          .db()
+          .newQuery(`
         CREATE TABLE IF NOT EXISTS resumo_vendas_mensal (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           ano_mes TEXT NOT NULL,
@@ -109,33 +150,35 @@ var __dashboardStatsHandler = (e) => {
           updated TEXT
         );
       `)
-        .execute()
-      $app
-        .db()
-        .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_anomes ON resumo_vendas_mensal (ano_mes);')
-        .execute()
-      $app
-        .db()
-        .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_ano ON resumo_vendas_mensal (ano);')
-        .execute()
-      $app
-        .db()
-        .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_grupo ON resumo_vendas_mensal (grupo_item);')
-        .execute()
-      $app
-        .db()
-        .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_estado ON resumo_vendas_mensal (estado);')
-        .execute()
-      $app
-        .db()
-        .newQuery(
-          'CREATE INDEX IF NOT EXISTS idx_rvm_netsales ON resumo_vendas_mensal (tem_netsales);',
-        )
-        .execute()
+          .execute()
+        $app
+          .db()
+          .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_anomes ON resumo_vendas_mensal (ano_mes);')
+          .execute()
+        $app
+          .db()
+          .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_ano ON resumo_vendas_mensal (ano);')
+          .execute()
+        $app
+          .db()
+          .newQuery(
+            'CREATE INDEX IF NOT EXISTS idx_rvm_grupo ON resumo_vendas_mensal (grupo_item);',
+          )
+          .execute()
+        $app
+          .db()
+          .newQuery('CREATE INDEX IF NOT EXISTS idx_rvm_estado ON resumo_vendas_mensal (estado);')
+          .execute()
+        $app
+          .db()
+          .newQuery(
+            'CREATE INDEX IF NOT EXISTS idx_rvm_netsales ON resumo_vendas_mensal (tem_netsales);',
+          )
+          .execute()
 
-      $app
-        .db()
-        .newQuery(`
+        $app
+          .db()
+          .newQuery(`
         CREATE TABLE IF NOT EXISTS resumo_clientes_ativos (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           ano_mes TEXT NOT NULL,
@@ -148,23 +191,23 @@ var __dashboardStatsHandler = (e) => {
           updated TEXT
         );
       `)
-        .execute()
-      $app
-        .db()
-        .newQuery(
-          'CREATE INDEX IF NOT EXISTS idx_rca_anomes_grp ON resumo_clientes_ativos (ano_mes, grupo_categoria);',
-        )
-        .execute()
-      $app
-        .db()
-        .newQuery(
-          'CREATE INDEX IF NOT EXISTS idx_rca_ano_grp ON resumo_clientes_ativos (ano, grupo_categoria);',
-        )
-        .execute()
+          .execute()
+        $app
+          .db()
+          .newQuery(
+            'CREATE INDEX IF NOT EXISTS idx_rca_anomes_grp ON resumo_clientes_ativos (ano_mes, grupo_categoria);',
+          )
+          .execute()
+        $app
+          .db()
+          .newQuery(
+            'CREATE INDEX IF NOT EXISTS idx_rca_ano_grp ON resumo_clientes_ativos (ano, grupo_categoria);',
+          )
+          .execute()
 
-      $app
-        .db()
-        .newQuery(`
+        $app
+          .db()
+          .newQuery(`
         CREATE TABLE IF NOT EXISTS resumo_vendas_uf_regiao (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           ano INTEGER NOT NULL,
@@ -180,23 +223,25 @@ var __dashboardStatsHandler = (e) => {
           updated TEXT
         );
       `)
-        .execute()
-      $app
-        .db()
-        .newQuery('CREATE INDEX IF NOT EXISTS idx_rvu_anomes ON resumo_vendas_uf_regiao (ano_mes);')
-        .execute()
+          .execute()
+        $app
+          .db()
+          .newQuery(
+            'CREATE INDEX IF NOT EXISTS idx_rvu_anomes ON resumo_vendas_uf_regiao (ano_mes);',
+          )
+          .execute()
 
-      // Verifica se a tabela resumo_vendas_mensal está preenchida
-      const chkRows = arrayOf(new DynamicModel({ c: '' }))
-      $app.db().newQuery('SELECT COUNT(*) as c FROM resumo_vendas_mensal LIMIT 1').all(chkRows)
-      const rvmCount = chkRows.length > 0 ? parseInt(chkRows[0].c, 10) || 0 : 0
-      if (rvmCount === 0) {
-        // Preenchimento inicial rápido
-        const nowIso = new Date().toISOString()
-        $app.runInTransaction((txApp) => {
-          txApp
-            .db()
-            .newQuery(`
+        // Verifica se a tabela resumo_vendas_mensal está preenchida
+        const chkRows = arrayOf(new DynamicModel({ c: '' }))
+        $app.db().newQuery('SELECT COUNT(*) as c FROM resumo_vendas_mensal LIMIT 1').all(chkRows)
+        const rvmCount = chkRows.length > 0 ? parseInt(chkRows[0].c, 10) || 0 : 0
+        if (rvmCount === 0) {
+          // Preenchimento inicial rápido
+          const nowIso = new Date().toISOString()
+          $app.runInTransaction((txApp) => {
+            txApp
+              .db()
+              .newQuery(`
             INSERT INTO resumo_vendas_mensal (
               ano_mes, ano, mes, tem_netsales, grupo_item, estado,
               nome_vendedor, vendedor_cliente, codigo_cliente, nome_cliente,
@@ -242,12 +287,12 @@ var __dashboardStatsHandler = (e) => {
               COALESCE(NULLIF(tipo_documento, ''), 'Sem informação'),
               COALESCE(NULLIF(utilizacao, ''), 'Sem informação')
           `)
-            .bind({ now: nowIso })
-            .execute()
+              .bind({ now: nowIso })
+              .execute()
 
-          txApp
-            .db()
-            .newQuery(`
+            txApp
+              .db()
+              .newQuery(`
             INSERT INTO resumo_clientes_ativos (
               ano_mes, ano, mes, tem_netsales, grupo_categoria, codigo_cliente, created, updated
             )
@@ -281,12 +326,12 @@ var __dashboardStatsHandler = (e) => {
               END),
               codigo_cliente
           `)
-            .bind({ now: nowIso })
-            .execute()
+              .bind({ now: nowIso })
+              .execute()
 
-          txApp
-            .db()
-            .newQuery(`
+            txApp
+              .db()
+              .newQuery(`
             INSERT INTO resumo_vendas_uf_regiao (
               ano, mes, ano_mes, uf, regiao, tem_netsales, total_linha, qtd_documentos, qtd_itens, created, updated
             )
@@ -319,13 +364,19 @@ var __dashboardStatsHandler = (e) => {
               COALESCE(NULLIF(estado, ''), 'Sem informação'),
               (CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END)
           `)
-            .bind({ now: nowIso })
-            .execute()
-        })
+              .bind({ now: nowIso })
+              .execute()
+          })
+        }
+      } catch (tblErr) {
+        console.warn('dashboard_stats: auto-inicializacao resumo warning:', tblErr)
+      } finally {
+        // Libera a trava assim que a reconstrução termina (sucesso ou erro), para
+        // o próximo visitante conseguir repovoar caso a tabela siga vazia.
+        try {
+          if (globalThis.__skipResumoTravando) globalThis.__skipResumoTravando = 0
+        } catch (_) {}
       }
-    } catch (tblErr) {
-      console.warn('dashboard_stats: auto-inicializacao resumo warning:', tblErr)
-    }
 
     // Chave de cache em memória — CANÔNICA por combinação de filtros.
     // Antes: JSON.stringify(f) cru — a MESMA combinação de filtros refeita com

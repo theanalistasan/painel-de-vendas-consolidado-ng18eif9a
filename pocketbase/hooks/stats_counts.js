@@ -14,13 +14,34 @@ routerAdd('GET', '/backend/v1/stats/counts', (e) => {
   ]
   const counts = {}
 
-  for (let i = 0; i < names.length; i++) {
-    const n = names[i]
-    try {
-      counts[n] = $app.countRecords(n)
-    } catch (_) {
-      counts[n] = 0
+  // PERF (2026-11-20): `countRecords` faz COUNT(*) em cada coleção. Na `vendas`
+  // (142 mil linhas) isso custa uma varredura; medido em produção este endpoint
+  // chegou a 65 s quando o cron de reconciliação segurava o lock de escrita.
+  // Cache curto (30 s) em memória: o card de contagem não precisa ser exato ao
+  // segundo e a tela deixa de sofrer junto com o banco.
+  const CACHE_TTL_MS = 30000
+  let cacheCounts = null
+  try {
+    if (globalThis.__skipStatsCountsCache) {
+      const c = globalThis.__skipStatsCountsCache
+      if (c.expiresAt > Date.now() && c.data) cacheCounts = c.data
     }
+  } catch (_) {}
+
+  if (cacheCounts) {
+    for (let k in cacheCounts) counts[k] = cacheCounts[k]
+  } else {
+    for (let i = 0; i < names.length; i++) {
+      const n = names[i]
+      try {
+        counts[n] = $app.countRecords(n)
+      } catch (_) {
+        counts[n] = 0
+      }
+    }
+    try {
+      globalThis.__skipStatsCountsCache = { data: counts, expiresAt: Date.now() + CACHE_TTL_MS }
+    } catch (_) {}
   }
 
   // Última data de carga das vendas consolidadas (busca rápida indexada ou resumo)

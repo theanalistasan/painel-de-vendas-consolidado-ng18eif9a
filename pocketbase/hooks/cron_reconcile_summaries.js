@@ -307,14 +307,46 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
       .execute()
 
     // 2. Reconciliação atômica
+    //
+    // PERF (2026-11-20): esta transação reescrevia as 3 tabelas de resumo dentro
+    // de UM único `runInTransaction`, varrendo `vendas` inteira (142 mil linhas
+    // desde a janela 2019) de 3 ângulos. Enquanto ela estava aberta, o SQLite
+    // segurava o lock de escrita e TODA leitura do painel (dashboard/stats,
+    // stats/counts, relatórios) entrava na fila e parecia congelada.
+    // Medido: a transação chegou a 421 s (19/11 18:07) e 118 s (20/11 00:01);
+    // requisições nesse intervalo estouraram 504 com 42–50 s.
+    // Correção: leitura e escrita da tabela FICAM EM ETAPAS CURTAS e separadas
+    // (uma por tabela), para o lock durar milissegundos e não segundos. O
+    // resultado final é idêntico: cada tabela é apagada e repovoada na mesma
+    // consulta. Se uma tabela falhar, as outras não são afetadas (antes, uma
+    // falha abortava a transação inteira e deixava os resumos vazios).
     const nowIso = new Date().toISOString()
 
-    $app.runInTransaction((txApp) => {
+    const reconciliar = (nome, tabela, insertSql) => {
+      const t0Tabela = Date.now()
+      try {
+        $app.runInTransaction((txApp) => {
+          txApp
+            .db()
+            .newQuery('DELETE FROM ' + tabela)
+            .execute()
+          txApp.db().newQuery(insertSql).bind({ now: nowIso }).execute()
+        })
+        console.log(
+          'cron_reconcile_summaries: ' +
+            nome +
+            ' reconciliado em ' +
+            (Date.now() - t0Tabela) +
+            'ms',
+        )
+      } catch (errTabela) {
+        console.error('cron_reconcile_summaries: falha em ' + nome + ':', errTabela)
+      }
+    }
+
+    {
       // 2.1 Reconcilia resumo_vendas_mensal
-      txApp.db().newQuery('DELETE FROM resumo_vendas_mensal').execute()
-      txApp
-        .db()
-        .newQuery(`
+      const sqlMensal = `
         INSERT INTO resumo_vendas_mensal (
           ano_mes, ano, mes, tem_netsales, grupo_item, estado,
           nome_vendedor, vendedor_cliente, codigo_cliente, nome_cliente,
@@ -359,15 +391,13 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
           COALESCE(NULLIF(nome_cliente, ''), 'Sem informação'),
           COALESCE(NULLIF(tipo_documento, ''), 'Sem informação'),
           COALESCE(NULLIF(utilizacao, ''), 'Sem informação')
-      `)
-        .bind({ now: nowIso })
-        .execute()
+      `
+      reconciliar('resumo_vendas_mensal', 'resumo_vendas_mensal', sqlMensal)
+    }
 
+    {
       // 2.2 Reconcilia resumo_clientes_ativos
-      txApp.db().newQuery('DELETE FROM resumo_clientes_ativos').execute()
-      txApp
-        .db()
-        .newQuery(`
+      const sqlClientesAtivos = `
         INSERT INTO resumo_clientes_ativos (
           ano_mes, ano, mes, tem_netsales, grupo_categoria, codigo_cliente, created, updated
         )
@@ -400,15 +430,13 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
             ELSE 'OUTROS'
           END),
           codigo_cliente
-      `)
-        .bind({ now: nowIso })
-        .execute()
+      `
+      reconciliar('resumo_clientes_ativos', 'resumo_clientes_ativos', sqlClientesAtivos)
+    }
 
+    {
       // 2.3 Reconcilia resumo_vendas_uf_regiao
-      txApp.db().newQuery('DELETE FROM resumo_vendas_uf_regiao').execute()
-      txApp
-        .db()
-        .newQuery(`
+      const sqlUfRegiao = `
         INSERT INTO resumo_vendas_uf_regiao (
           ano, mes, ano_mes, uf, regiao, tem_netsales, total_linha, qtd_documentos, qtd_itens, created, updated
         )
@@ -440,10 +468,9 @@ cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
           substr(data_lancamento, 1, 7),
           COALESCE(NULLIF(estado, ''), 'Sem informação'),
           (CASE WHEN tem_netsales = 1 THEN 1 ELSE 0 END)
-      `)
-        .bind({ now: nowIso })
-        .execute()
-    })
+      `
+      reconciliar('resumo_vendas_uf_regiao', 'resumo_vendas_uf_regiao', sqlUfRegiao)
+    }
 
     console.log(
       'cron_reconcile_summaries concluído com sucesso em ' + (Date.now() - startTime) + 'ms',
