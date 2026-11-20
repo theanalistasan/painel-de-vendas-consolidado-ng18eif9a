@@ -96,10 +96,14 @@ var __dashboardStatsHandler = (e) => {
     // reconcilia logo depois. Nada muda no caso normal (tabela preenchida).
     let precisaAutoInicializar = true
     try {
-      const chkRapido = arrayOf(new DynamicModel({ c: '' }))
-      $app.db().newQuery('SELECT COUNT(*) AS c FROM resumo_vendas_mensal LIMIT 1').all(chkRapido)
-      const jaTem = chkRapido.length > 0 ? parseInt(chkRapido[0].c, 10) || 0 : 0
-      precisaAutoInicializar = jaTem === 0
+      // ATENÇÃO: NÃO usar COUNT(*) aqui. Em SQLite o COUNT(*) agregado varre a
+      // tabela inteira mesmo com LIMIT 1, e resumo_vendas_mensal tem centenas de
+      // milhares de linhas. Fazer isso em TODA requisição levou o endpoint de
+      // 0,17 s para 23 s e derrubou o modo 'all' em 504 (medido na 0.0.417).
+      // `SELECT 1 ... LIMIT 1` para na primeira linha e custa microssegundos.
+      const chkRapido = arrayOf(new DynamicModel({ c: 0 }))
+      $app.db().newQuery('SELECT 1 AS c FROM resumo_vendas_mensal LIMIT 1').all(chkRapido)
+      precisaAutoInicializar = chkRapido.length === 0
     } catch (_) {
       // Tabela ainda não existe: precisa criar.
       precisaAutoInicializar = true
