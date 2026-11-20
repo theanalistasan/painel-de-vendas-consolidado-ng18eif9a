@@ -96,16 +96,42 @@ export default function DashboardGeral() {
     setError(null)
 
     try {
+      // PERF (2026-11-20): mesma divisão já usada na Visão Canais. Antes esta
+      // tela pedia o payload inteiro e esperava ~12s (base de 142 mil linhas)
+      // para pintar QUALQUER número. Agora pinta com 'core' (KPIs + período +
+      // opções) e busca os gráficos em paralelo.
       const res = await fetchDashboardStats(activeFilters as unknown as Record<string, unknown>, {
         signal: currentController.signal,
+        parts: 'core',
       })
 
       if (seq !== requestSeqRef.current) {
         return
       }
 
-      setData(res)
+      setData({ ...res, charts: res.charts || {} } as DashboardStatsResult)
       setLoading(false)
+
+      // Gráficos chegam depois, sem bloquear os KPIs.
+      fetchDashboardStats(activeFilters as unknown as Record<string, unknown>, {
+        signal: currentController.signal,
+        parts: 'charts',
+      })
+        .then((chartsRes) => {
+          if (seq !== requestSeqRef.current) return
+          if (chartsRes?.charts) {
+            setData(
+              (prev) =>
+                ({
+                  ...(prev as DashboardStatsResult),
+                  charts: chartsRes.charts,
+                }) as DashboardStatsResult,
+            )
+          }
+        })
+        .catch(() => {
+          // Silencioso: os KPIs já estão na tela.
+        })
     } catch (err: unknown) {
       if (isAbortLikeError(err)) {
         return
