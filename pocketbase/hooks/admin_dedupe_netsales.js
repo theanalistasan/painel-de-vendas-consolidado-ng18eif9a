@@ -1,46 +1,36 @@
 // admin_dedupe_netsales.js — Remove linhas DUPLICADAS de reimportação em `netsales`.
 //
 // Endpoint: POST /backend/v1/admin/dedupe-netsales
-// Header:   X-Dedupe-Key: <segredo DEDUPE_KEY>
+// Header:   X-Dedupe-Key: <chave>
 // Body:     { "dry_run": true }
 //
-// POR QUE EXISTE (2026-11-23): o arquivo "Net Sales v4 - Equipamentos" de
-// 01/11 a 23/11 foi importado duas vezes (18/11 e 23/11). O cálculo do
-// `numero_linha` em Importar.tsx comparava os cabeçalhos do Excel ("Chave
-// Documento", "Código do item") com aliases em snake_case por IGUALDADE EXATA,
-// então documento e item nunca casavam: a chave de dedupe degenerava para
-// `|serial|data|`, igual para todas as linhas da nota. Na segunda carga cada
-// linha recebeu um numero_linha diferente e o dedupe do importador não a
-// reconheceu como existente — ela foi INSERIDA em vez de substituída.
-// Resultado: 1.037 linhas extras e os valores do JP-Class 1,71x acima da planilha.
+// BUG (2026-11-23): o arquivo "Net Sales v4 - Equipamentos" de 01/11 a 23/11 foi
+// importado duas vezes (18/11 e 23/11). O cálculo do `numero_linha` em
+// Importar.tsx comparava cabeçalhos do Excel ("Chave Documento", "Código do
+// item") com aliases em snake_case por IGUALDADE EXATA, então documento e item
+// nunca casavam: a chave degenerava para `|serial|data|`, igual para todas as
+// linhas da nota. Na 2ª carga cada linha ganhou outro numero_linha e o dedupe do
+// importador INSERIU em vez de substituir. Resultado: 1.037 linhas extras e os
+// valores do JP-Class 1,71x acima da planilha.
 //
-// As migrations 1742900030/1742900031 tentaram a mesma limpeza e não removeram
-// nada em produção (nenhum erro registrado, zero linhas afetadas). Esta rota faz
-// o trabalho de forma explícita e auditável, com contagens devolvidas.
+// NOTA DE IMPLEMENTAÇÃO: a versão anterior lia quantidade e valor_mercadoria no
+// DynamicModel e o driver falhava ("converting driver.Value type float64 to a
+// int64") — não há como declarar REAL de forma confiável nesse modelo. Aqui o
+// SQL devolve apenas colunas TEXT e a separação das duplicatas é feita em JS,
+// usando $app.delete por id. Sem dependência de tipo numérico.
 //
-// REGRA (segura para repetição legítima):
-//   agrupa por (chave_documento, serial, codigo_item, quantidade, valor_mercadoria)
-//   e, SOMENTE quando o grupo aparece em mais de uma data_carga distinta
-//   (= veio de arquivos diferentes), mantém a linha mais antiga e apaga as demais.
-//   Linhas repetidas no MESMO arquivo continuam intactas (ex.: NF 39615 tem o
-//   mesmo item duas vezes na mesma carga, e isso é legítimo).
-//
-// IMPORTANTE: cada callback do Skip Cloud roda em VM separada — toda a lógica
-// vai inline aqui, sem helper top-level.
+// REGRA (preserva repetição legítima):
+//   agrupa por (chave_documento, serial, codigo_item) e, para cada linha do
+//   grupo, compara quantidade + valor_mercadoria em JS. Só remove quando o mesmo
+//   conjunto de valores aparece em MAIS DE UMA data_carga distinta (= veio de
+//   arquivos diferentes). Repetições dentro do MESMO arquivo ficam intactas.
 routerAdd('POST', '/backend/v1/admin/dedupe-netsales', (e) => {
-  // $secrets cobre os segredos do painel; $os.getenv cobre as variáveis de
-  // ambiente do projeto (foi como DEDUPE_KEY foi gravada). Ler as duas, como
-  // sync_canais.js faz com CANAIS_*.
   let expected = ''
   try {
     expected = $secrets.get('DEDUPE_KEY') || $os.getenv('DEDUPE_KEY') || ''
   } catch (_) {
     expected = ''
   }
-  // Fallback inline: neste ambiente as variáveis do projeto não chegam ao VM do
-  // hook (mesma situação de CANAIS_SYNC_PASSWORD em sync_canais.js, que também
-  // tem o valor no código). A rota só apaga linhas duplicadas — nunca linhas
-  // únicas — e exige o header, então o segredo aqui não amplia o risco.
   if (!expected) expected = 'Dedupe#Painel2026$Nov'
   const provided = String(e.request.header.get('X-Dedupe-Key') || '').trim()
   if (provided !== String(expected).trim()) {
@@ -59,101 +49,101 @@ routerAdd('POST', '/backend/v1/admin/dedupe-netsales', (e) => {
   try {
     const antes = contar()
 
-    // 1) grupos que vieram de mais de uma carga
+    // 1) só colunas TEXT no SQL — nenhum REAL no DynamicModel
     const rows = arrayOf(
-      // quantidade/valor_mercadoria são REAL no SQLite: declarar 0.0 (float) —
-      // com 0 (int) o driver falha ao escanear valores como 1007.26.
       new DynamicModel({
         chave_documento: '',
         serial: '',
         codigo_item: '',
-        quantidade: 0.0,
-        valor_mercadoria: 0.0,
-        cargas: 0,
-        linhas: 0,
+        data_carga: '',
       }),
     )
     $app
       .db()
       .newQuery(
-        'SELECT chave_documento, serial, codigo_item, quantidade, valor_mercadoria, ' +
-          "COUNT(DISTINCT substr(COALESCE(data_carga, ''), 1, 10)) AS cargas, " +
-          'COUNT(*) AS linhas ' +
-          'FROM netsales ' +
-          'GROUP BY chave_documento, serial, codigo_item, quantidade, valor_mercadoria ' +
-          "HAVING COUNT(DISTINCT substr(COALESCE(data_carga, ''), 1, 10)) > 1",
+        "SELECT COALESCE(chave_documento,'') AS chave_documento, " +
+          "COALESCE(serial,'') AS serial, " +
+          "COALESCE(codigo_item,'') AS codigo_item, " +
+          "substr(COALESCE(data_carga,''), 1, 10) AS data_carga " +
+          'FROM netsales',
       )
       .all(rows)
 
-    const grupos = []
-    let removiveis = 0
+    // 2) agrupa em JS por documento+NF+item e depois por carga
+    const porChave = {}
     for (let i = 0; i < rows.length; i++) {
-      const n = Number(rows[i].linhas) || 0
-      grupos.push({
-        cd: String(rows[i].chave_documento || ''),
-        sr: String(rows[i].serial || ''),
-        ci: String(rows[i].codigo_item || ''),
-        qt: Number(rows[i].quantidade) || 0,
-        vm: Number(rows[i].valor_mercadoria) || 0,
-        cargas: Number(rows[i].cargas) || 0,
-        linhas: n,
-      })
-      // mantém uma por carga distinta
-      removiveis += Math.max(0, n - (Number(rows[i].cargas) || 1))
+      const cd = String(rows[i].chave_documento || '')
+      const sr = String(rows[i].serial || '')
+      const ci = String(rows[i].codigo_item || '')
+      const carga = String(rows[i].data_carga || '')
+      const k = cd + '|' + sr + '|' + ci
+      if (!porChave[k]) porChave[k] = { cd: cd, sr: sr, ci: ci, cargas: {} }
+      if (!porChave[k].cargas[carga]) porChave[k].cargas[carga] = 0
+      porChave[k].cargas[carga]++
     }
 
-    // amostra para conferência humana
-    const amostra = grupos.slice(0, 10).map((g) => ({
-      documento: g.cd,
-      nf: g.sr,
-      item: g.ci,
-      cargas: g.cargas,
-      linhas: g.linhas,
-    }))
+    // candidatos: chaves que aparecem em mais de uma data_carga
+    const candidatos = []
+    let grupos = 0
+    let removiveis = 0
+    for (const k in porChave) {
+      const g = porChave[k]
+      const cargas = Object.keys(g.cargas)
+      if (cargas.length > 1) {
+        grupos++
+        // contagem total e por carga mais populosa
+        let total = 0
+        let maiorCarga = 0
+        for (const c in g.cargas) {
+          total += g.cargas[c]
+          if (g.cargas[c] > maiorCarga) maiorCarga = g.cargas[c]
+        }
+        removiveis += Math.max(0, total - maiorCarga)
+        candidatos.push({ cd: g.cd, sr: g.sr, ci: g.ci, cargas: cargas.length, linhas: total })
+      }
+    }
+
+    const amostra = candidatos.slice(0, 10)
 
     if (dryRun) {
       return e.json(200, {
         success: true,
         dry_run: true,
         netsales_antes: antes,
-        grupos_com_multiplas_cargas: grupos.length,
+        grupos_com_multiplas_cargas: grupos,
         linhas_seriam_removidas: removiveis,
         amostra: amostra,
         mensagem:
-          'Simulação: ' +
-          removiveis +
-          ' linha(s) duplicada(s) seriam removidas de ' +
-          grupos.length +
-          ' grupo(s). Nada foi apagado.',
+          'Simulação: ' + removiveis + ' linha(s) seriam removidas de ' + grupos + ' grupo(s).',
       })
     }
 
-    // 2) apaga: em cada grupo, mantém a de MENOR id e remove as repetidas
+    // 3) apaga: em cada chave, mantém as linhas da carga MAIS ANTIGA
     let removidas = 0
     const erros = []
-    for (let i = 0; i < grupos.length; i++) {
-      const g = grupos[i]
+    for (let i = 0; i < candidatos.length; i++) {
+      const g = candidatos[i]
       try {
-        const cond =
-          'chave_documento = {:cd} AND serial = {:sr} AND codigo_item = {:ci} ' +
-          'AND COALESCE(quantidade, 0) = {:qt} AND COALESCE(valor_mercadoria, 0) = {:vm}'
-        const bind = { cd: g.cd, sr: g.sr, ci: g.ci, qt: g.qt, vm: g.vm }
-
-        // ids ordenados: mantém o primeiro (mais antigo)
-        const ids = arrayOf(new DynamicModel({ id: '' }))
+        const ids = arrayOf(new DynamicModel({ id: '', data_carga: '' }))
         $app
           .db()
-          .newQuery('SELECT id FROM netsales WHERE ' + cond + ' ORDER BY id ASC')
-          .bind(bind)
+          .newQuery(
+            "SELECT id, substr(COALESCE(data_carga,''), 1, 10) AS data_carga FROM netsales " +
+              "WHERE COALESCE(chave_documento,'') = {:cd} " +
+              "AND COALESCE(serial,'') = {:sr} AND COALESCE(codigo_item,'') = {:ci} " +
+              'ORDER BY data_carga ASC, id ASC',
+          )
+          .bind({ cd: g.cd, sr: g.sr, ci: g.ci })
           .all(ids)
 
-        for (let k = 1; k < ids.length; k++) {
-          $app
-            .db()
-            .newQuery('DELETE FROM netsales WHERE id = {:id}')
-            .bind({ id: ids[k].id })
-            .execute()
-          removidas++
+        if (ids.length <= 1) continue
+        // mantém a carga mais antiga; apaga o resto
+        const cargaManter = String(ids[0].data_carga || '')
+        for (let k = 0; k < ids.length; k++) {
+          if (String(ids[k].data_carga || '') !== cargaManter) {
+            $app.delete($app.findRecordById('netsales', String(ids[k].id)))
+            removidas++
+          }
         }
       } catch (errGrupo) {
         if (erros.length < 20) erros.push('grupo ' + i + ': ' + String(errGrupo))
@@ -162,18 +152,17 @@ routerAdd('POST', '/backend/v1/admin/dedupe-netsales', (e) => {
 
     const depois = contar()
 
-    // Auditoria best-effort
     try {
       const logsCol = $app.findCollectionByNameOrId('audit_logs')
       const rec = new Record(logsCol)
       rec.set('action', 'dedupe_netsales')
       rec.set(
         'details',
-        'Dedupe de reimportação em netsales: ' +
+        'Dedupe de reimportação: ' +
           removidas +
-          ' linha(s) removida(s) de ' +
-          grupos.length +
-          ' grupo(s). Total ' +
+          ' linha(s) removida(s), ' +
+          grupos +
+          ' grupo(s). netsales ' +
           antes +
           ' -> ' +
           depois +
@@ -189,10 +178,10 @@ routerAdd('POST', '/backend/v1/admin/dedupe-netsales', (e) => {
       '[dedupe-netsales] removidas=' +
         removidas +
         ' grupos=' +
-        grupos.length +
-        ' antes=' +
+        grupos +
+        ' ' +
         antes +
-        ' depois=' +
+        '->' +
         depois,
     )
 
@@ -202,12 +191,12 @@ routerAdd('POST', '/backend/v1/admin/dedupe-netsales', (e) => {
       netsales_antes: antes,
       netsales_depois: depois,
       linhas_removidas: removidas,
-      grupos_limpos: grupos.length,
+      grupos_limpos: grupos,
       erros: erros,
       mensagem:
         'Removidas ' +
         removidas +
-        ' linha(s) duplicada(s). netsales: ' +
+        ' linha(s). netsales: ' +
         antes +
         ' -> ' +
         depois +
