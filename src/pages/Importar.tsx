@@ -245,10 +245,31 @@ function BaseImportCard({
     const ocorrencias = new Map<string, number>()
     const normTxt = (v: unknown) =>
       v === undefined || v === null ? '' : String(v).trim().toUpperCase()
+
+    // BUG CORRIGIDO (2026-11-23): aqui a comparação era
+    // `k.trim().toLowerCase() === a` — igualdade EXATA. Os arquivos do SAP vêm
+    // com cabeçalhos humanos ("Chave Documento", "Código do item", "Nº de Serie
+    // do Item", "DOCDATE"), então documento e item NUNCA casavam. A chave de
+    // dedupe degenerava para `|serial|data|`, idêntica para todas as linhas da
+    // nota, e a ocorrência corria entre itens diferentes. Na reimportação, cada
+    // linha ganhava um `numero_linha` diferente e o importador INSERIA tudo de
+    // novo em vez de substituir (1.037 duplicatas, R$ 1,97 mi só em nov/2026).
+    // Correção: normaliza o cabeçalho do arquivo (minúsculas, sem acento,
+    // separadores -> underscore) e compara com os mesmos aliases normalizados.
+    // Assim "Chave Documento" e "Código do item" passam a casar.
+    const normalizarCabecalho = (s: string) =>
+      String(s)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+
     const chaveDaLinha = (row: Record<string, unknown>) => {
       const g = (aliases: string[]) => {
         for (const a of aliases) {
-          const hit = Object.keys(row).find((k) => k.trim().toLowerCase() === a)
+          const alvo = normalizarCabecalho(a)
+          const hit = Object.keys(row).find((k) => normalizarCabecalho(k) === alvo)
           if (hit !== undefined && row[hit] !== undefined && row[hit] !== null) {
             const v = row[hit]
             if (String(v).trim() !== '') return v
