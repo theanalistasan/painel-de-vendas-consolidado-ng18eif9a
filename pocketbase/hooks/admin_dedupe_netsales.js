@@ -61,12 +61,14 @@ routerAdd('POST', '/backend/v1/admin/dedupe-netsales', (e) => {
 
     // 1) grupos que vieram de mais de uma carga
     const rows = arrayOf(
+      // quantidade/valor_mercadoria são REAL no SQLite: declarar 0.0 (float) —
+      // com 0 (int) o driver falha ao escanear valores como 1007.26.
       new DynamicModel({
         chave_documento: '',
         serial: '',
         codigo_item: '',
-        quantidade: 0,
-        valor_mercadoria: 0,
+        quantidade: 0.0,
+        valor_mercadoria: 0.0,
         cargas: 0,
         linhas: 0,
       }),
