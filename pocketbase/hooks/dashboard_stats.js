@@ -2246,60 +2246,70 @@ var __dashboardStatsHandler = (e) => {
       // agrupada por mês (yyyy-mm), respeitando SOMENTE os 5 filtros globais (sqlWhereGlobalRestricted),
       // e ignorando todos os demais filtros (período, canal, vendedor, base, etc).
       vendasEquipamentosHistorico = []
-      try {
-        // Item 8 do plano: o gráfico exibe o Valor Total (Bruto) — SUM(total_nf_novo)
-        // linha a linha na base bruta `vendas` (a resumo não tem a coluna). O recorte
-        // histórico 2015+ passa a ser por faixa de data, preservando o índice.
-        const equipSql =
-          'SELECT substr(data_lancamento, 1, 7) AS a, ' +
-          'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
-          'FROM vendas WHERE ' +
-          sqlWhereGlobalRestrictedVendas +
-          " AND data_lancamento >= '2015-01-01' " +
-          " AND UPPER(TRIM(COALESCE(grupo_item,''))) = 'EQUIPAMENTOS' " +
-          'GROUP BY substr(data_lancamento, 1, 7) ORDER BY 1 ASC'
-        const equipRows = runAgg(equipSql)
-
-        for (let i = 0; i < equipRows.length; i++) {
-          const periodo = equipRows[i].a
-          if (!periodo || periodo.indexOf('-') < 0) continue
-          vendasEquipamentosHistorico.push({
-            periodo: periodo,
-            total: toNum(equipRows[i].b),
-          })
-        }
-      } catch (err) {
-        console.error('dashboard_stats: vendasEquipamentosHistorico falhou:', err)
-      }
-
-      // 5.2) vendasInsumosHistorico — Histórico/Tendência de Insumos (Acumulado de Vendas — Insumos)
-      // REGRA DE NEGÓCIO (Ciclo C): Traz SEMPRE toda a base histórica (2015 em diante),
-      // agrupada por mês (yyyy-mm), dos grupos TINTAS, PEÇAS e ACESSÓRIOS.
-      // Respeita SOMENTE os 5 filtros globais (sqlWhereGlobalRestricted).
       vendasInsumosHistorico = []
+
+      // 5.1 + 5.2) Equipamentos e Insumos — PERF (2026-11-23)
+      //
+      // Antes eram DUAS varreduras completas da base bruta `vendas` desde 2015
+      // (142 mil linhas cada), com o mesmo WHERE e o mesmo GROUP BY — só mudava
+      // a lista de `grupo_item`. Somado ao `charts` inteiro, isso respondia por
+      // segundos de espera a cada cache frio e pelo pico de ~12s quando coincidia
+      // com o cron de resumos.
+      //
+      // Agora é UMA varredura só: agrupa por (mês, categoria) e separa em JS em
+      // duas séries. Os valores são exatamente os mesmos — os filtros de grupo
+      // de antes (EQUIPAMENTOS) e (PEÇAS/TINTAS/ACESSÓRIOS) são disjuntos, então
+      // rotular a categoria na própria consulta não muda nenhum total.
+      // Sem `ORDER BY` no SQL (a ordenação por mês é feita em JS), o que evita
+      // um sort extra de todo o resultado.
       try {
-        // Item 8 do plano: idem Equipamentos — Valor Total (Bruto) via
-        // SUM(total_nf_novo) na base bruta, histórico 2015+ por faixa de data.
-        const insumoSql =
+        const histSql =
           'SELECT substr(data_lancamento, 1, 7) AS a, ' +
+          "CASE WHEN UPPER(TRIM(COALESCE(grupo_item,''))) = 'EQUIPAMENTOS' " +
+          "THEN 'EQUIPAMENTOS' ELSE 'INSUMOS' END AS cat, " +
           'COALESCE(SUM(COALESCE(total_nf_novo,0)),0) AS b ' +
           'FROM vendas WHERE ' +
           sqlWhereGlobalRestrictedVendas +
           " AND data_lancamento >= '2015-01-01' " +
-          " AND UPPER(TRIM(COALESCE(grupo_item,''))) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS') " +
-          'GROUP BY substr(data_lancamento, 1, 7) ORDER BY 1 ASC'
-        const insumoRows = runAgg(insumoSql)
+          " AND (UPPER(TRIM(COALESCE(grupo_item,''))) = 'EQUIPAMENTOS' " +
+          "   OR UPPER(TRIM(COALESCE(grupo_item,''))) IN ('PEÇAS', 'PECAS', 'TINTAS', 'ACESSÓRIOS', 'ACESSORIOS')) " +
+          'GROUP BY substr(data_lancamento, 1, 7), 2'
 
-        for (let i = 0; i < insumoRows.length; i++) {
-          const periodo = insumoRows[i].a
+        const histRows = arrayOf(
+          new DynamicModel({
+            a: '',
+            cat: '',
+            b: 0.0,
+          }),
+        )
+        $app.db().newQuery(histSql).all(histRows)
+
+        const equipPorMes = {}
+        const insumoPorMes = {}
+        for (let i = 0; i < histRows.length; i++) {
+          const periodo = histRows[i].a
           if (!periodo || periodo.indexOf('-') < 0) continue
-          vendasInsumosHistorico.push({
-            periodo: periodo,
-            total: toNum(insumoRows[i].b),
-          })
+          const valor = toNum(histRows[i].b)
+          if (String(histRows[i].cat) === 'EQUIPAMENTOS') equipPorMes[periodo] = valor
+          else insumoPorMes[periodo] = valor
+        }
+
+        // Ordena por mês (mesmo resultado do antigo ORDER BY 1 ASC)
+        const periodos = Object.keys(equipPorMes)
+          .concat(Object.keys(insumoPorMes))
+          .filter((v, i, arr) => arr.indexOf(v) === i)
+          .sort()
+        for (let i = 0; i < periodos.length; i++) {
+          const p = periodos[i]
+          if (equipPorMes[p] !== undefined) {
+            vendasEquipamentosHistorico.push({ periodo: p, total: equipPorMes[p] })
+          }
+          if (insumoPorMes[p] !== undefined) {
+            vendasInsumosHistorico.push({ periodo: p, total: insumoPorMes[p] })
+          }
         }
       } catch (err) {
-        console.error('dashboard_stats: vendasInsumosHistorico falhou:', err)
+        console.error('dashboard_stats: historico equipamentos/insumos falhou:', err)
       }
 
       // 5.3) clientesAtivosEquipamentos, clientesAtivosInsumos e segregados (Tintas, Acessórios, Peças)

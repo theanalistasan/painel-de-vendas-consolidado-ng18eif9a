@@ -146,7 +146,19 @@ routerAdd('POST', '/backend/v1/trigger/reconciliar-resumos', (e) => {
   })
 })
 
-cronAdd('reconcile_sales_summaries', '0 */2 * * *', () => {
+// PERF (2026-11-23): a reconciliação rodava a cada 2 horas, 24 horas por dia —
+// inclusive no horário comercial, quando o painel está em uso. Como o SQLite
+// aceita um escritor por vez, cada leitura que coincidia com o cron entrava na
+// fila: era o pico de ~12s que aparecia de vez em quando (cache quente normal é
+// 0,02s; os resumos seguram o lock por 20–40s por execução).
+// A janela abaixo roda a cada 2 horas APENAS entre 22h e 06h:
+//   horas 0,2,4,6  -> madrugada
+//   horas 22      -> fim do dia
+// Fora dessa faixa (8h às 20h) o cron não dispara, e o horário comercial fica
+// livre. A defasagem máxima dos resumos passa a ser de ~16h (das 6h às 22h),
+// o que é irrelevante: os resumos só existem para acelerar leitura e os dados
+// mudam quando alguém importa uma planilha, não continuamente.
+cronAdd('reconcile_sales_summaries', '0 0,2,4,6,22 * * *', () => {
   try {
     const startTime = Date.now()
 
