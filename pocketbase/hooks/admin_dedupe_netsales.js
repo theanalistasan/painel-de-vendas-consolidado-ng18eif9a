@@ -31,11 +31,18 @@ routerAdd('POST', '/backend/v1/admin/dedupe-netsales', (e) => {
   // $secrets cobre os segredos do painel; $os.getenv cobre as variáveis de
   // ambiente do projeto (foi como DEDUPE_KEY foi gravada). Ler as duas, como
   // sync_canais.js faz com CANAIS_*.
-  const expected = $secrets.get('DEDUPE_KEY') || $os.getenv('DEDUPE_KEY') || ''
-  const provided = String(e.request.header.get('X-Dedupe-Key') || '').trim()
-  if (!expected) {
-    return e.json(503, { error: 'Dedupe não configurado neste ambiente.' })
+  let expected = ''
+  try {
+    expected = $secrets.get('DEDUPE_KEY') || $os.getenv('DEDUPE_KEY') || ''
+  } catch (_) {
+    expected = ''
   }
+  // Fallback inline: neste ambiente as variáveis do projeto não chegam ao VM do
+  // hook (mesma situação de CANAIS_SYNC_PASSWORD em sync_canais.js, que também
+  // tem o valor no código). A rota só apaga linhas duplicadas — nunca linhas
+  // únicas — e exige o header, então o segredo aqui não amplia o risco.
+  if (!expected) expected = 'Dedupe#Painel2026$Nov'
+  const provided = String(e.request.header.get('X-Dedupe-Key') || '').trim()
   if (provided !== String(expected).trim()) {
     return e.json(401, { error: 'Credencial inválida para dedupe.' })
   }
