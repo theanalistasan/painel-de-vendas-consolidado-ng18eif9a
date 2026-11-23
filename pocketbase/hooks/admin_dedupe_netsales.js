@@ -28,7 +28,10 @@
 // IMPORTANTE: cada callback do Skip Cloud roda em VM separada — toda a lógica
 // vai inline aqui, sem helper top-level.
 routerAdd('POST', '/backend/v1/admin/dedupe-netsales', (e) => {
-  const expected = $secrets.get('DEDUPE_KEY')
+  // $secrets cobre os segredos do painel; $os.getenv cobre as variáveis de
+  // ambiente do projeto (foi como DEDUPE_KEY foi gravada). Ler as duas, como
+  // sync_canais.js faz com CANAIS_*.
+  const expected = $secrets.get('DEDUPE_KEY') || $os.getenv('DEDUPE_KEY') || ''
   const provided = String(e.request.header.get('X-Dedupe-Key') || '').trim()
   if (!expected) {
     return e.json(503, { error: 'Dedupe não configurado neste ambiente.' })
